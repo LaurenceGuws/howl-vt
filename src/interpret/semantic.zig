@@ -115,6 +115,7 @@ pub const SemanticEvent = union(enum) {
     dec_mode_save: ModeParams,
     dec_mode_restore: ModeParams,
     device_status_report,
+    dec_device_status_report: u16,
     cursor_position_report,
     dec_cursor_position_report,
     primary_device_attributes,
@@ -122,6 +123,7 @@ pub const SemanticEvent = union(enum) {
     tertiary_device_attributes,
     xtchecksum: u16,
     rect_checksum_request: struct { request_id: u16, page: u16, area: RectArea },
+    selected_graphic_rendition_report: RectArea,
     presentation_state_report: u16,
     displayed_extent_report,
     terminal_parameters_report: u16,
@@ -385,7 +387,11 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
             }
             if (final == 's' and intermediates_len == 0) return SemanticEvent{ .dec_mode_save = collectParams(params, count) };
             if (final == 'r' and intermediates_len == 0) return SemanticEvent{ .dec_mode_restore = collectParams(params, count) };
-            if (final == 'n' and paramOrDefault0(params[0]) == 6) return SemanticEvent.dec_cursor_position_report;
+            if (final == 'n') return switch (paramOrDefault0(params[0])) {
+                6 => SemanticEvent.dec_cursor_position_report,
+                55, 56 => |status| SemanticEvent{ .dec_device_status_report = status },
+                else => null,
+            };
             return switch (params[0]) {
                 25 => switch (final) {
                     'h' => SemanticEvent{ .cursor_visible = true },
@@ -563,6 +569,7 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
             '#' => return switch (final) {
                 'y' => SemanticEvent{ .xtchecksum = paramOrDefault0(params[0]) },
                 'R' => SemanticEvent.xtreportcolors,
+                '|' => SemanticEvent{ .selected_graphic_rendition_report = rectArea(params, count, 0) },
                 else => null,
             },
             '\'' => return switch (final) {

@@ -690,6 +690,7 @@ pub const VtCore = struct {
             .dec_mode_save => |modes| TerminalModeNs.saveDecModes(self, modes.params[0..modes.param_count]),
             .dec_mode_restore => |modes| TerminalModeNs.restoreDecModes(self, modes.params[0..modes.param_count]),
             .device_status_report => self.appendPendingOutput("\x1b[0n"),
+            .dec_device_status_report => |param| LocatorNs.appendDeviceStatusReport(self.allocator, &self.pending_output, self.encode_buf[0..], param),
             .cursor_position_report => TerminalReportNs.appendCursorPositionReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.renderView()),
             .dec_cursor_position_report => TerminalReportNs.appendDecCursorPositionReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.renderView()),
             .primary_device_attributes => self.appendPendingOutput("\x1b[?62;22c"),
@@ -700,6 +701,7 @@ pub const VtCore = struct {
                 const checksum = TerminalReportNs.computeRectChecksum(self.activeState(), self.xtchecksum_flags, req.page, req.area);
                 TerminalReportNs.appendRectChecksumReport(self.allocator, &self.pending_output, self.encode_buf[0..], req, checksum);
             },
+            .selected_graphic_rendition_report => |area| TerminalReportNs.appendSelectedGraphicRenditionReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.activeState(), area),
             .presentation_state_report => |kind| switch (kind) {
                 1 => TerminalReportNs.appendCursorInformationReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.renderView(), self.pipeline.deccirCharsetState()),
                 2 => TerminalReportNs.appendTabStopReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.activeState()),

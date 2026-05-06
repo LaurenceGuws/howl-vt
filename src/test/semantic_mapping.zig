@@ -740,6 +740,14 @@ test "semantic: DECXCPR maps to DEC cursor position report" {
     try std.testing.expect(sem == .dec_cursor_position_report);
 }
 
+test "semantic: DEC DSR locator status and type map" {
+    const status = process(makePrivateStyleChange('n', &.{55})) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 55), status.dec_device_status_report);
+
+    const kind = process(makePrivateStyleChange('n', &.{56})) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 56), kind.dec_device_status_report);
+}
+
 test "semantic: DA maps to primary device attributes" {
     const sem = process(makeStyleChange('c', 0, 0, 0)) orelse return error.NoEvent;
     try std.testing.expect(sem == .primary_device_attributes);
@@ -873,6 +881,29 @@ test "semantic: report and checksum requests map" {
         .intermediates = intermediates,
         .intermediates_len = 1,
     } }).? == .xtreportcolors);
+}
+
+test "semantic: XTREPORTSGR maps to selected graphic rendition report" {
+    var intermediates = [_]u8{0} ** 4;
+    intermediates[0] = '#';
+    var params = [_]i32{0} ** 16;
+    params[0] = 1;
+    params[1] = 2;
+    params[2] = 3;
+    params[3] = 4;
+    const sgr = process(Event{ .style_change = .{
+        .final = '|',
+        .params = params,
+        .param_count = 4,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 0), sgr.selected_graphic_rendition_report.top);
+    try std.testing.expectEqual(@as(u16, 1), sgr.selected_graphic_rendition_report.left);
+    try std.testing.expectEqual(@as(?u16, 2), sgr.selected_graphic_rendition_report.bottom);
+    try std.testing.expectEqual(@as(?u16, 3), sgr.selected_graphic_rendition_report.right);
 }
 
 test "semantic: locator controls map" {

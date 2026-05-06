@@ -1147,6 +1147,7 @@ pub const GridModel = struct {
             .dec_mode_save,
             .dec_mode_restore,
             .device_status_report,
+            .dec_device_status_report,
             .cursor_position_report,
             .dec_cursor_position_report,
             .primary_device_attributes,
@@ -1154,6 +1155,7 @@ pub const GridModel = struct {
             .tertiary_device_attributes,
             .xtchecksum,
             .rect_checksum_request,
+            .selected_graphic_rendition_report,
             .presentation_state_report,
             .displayed_extent_report,
             .terminal_parameters_report,
@@ -2140,8 +2142,8 @@ pub const GridModel = struct {
                 },
                 24 => {
                     if (!reverse) {
-                    target.underline = false;
-                    target.underline_style = .straight;
+                        target.underline = false;
+                        target.underline_style = .straight;
                     }
                 },
                 25 => {

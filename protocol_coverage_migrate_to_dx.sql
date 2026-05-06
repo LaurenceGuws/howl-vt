@@ -267,7 +267,7 @@ WITH seeds(id, filters) AS (
         ('csi-csi-ps-c-3', 'extended report queries append host output' || char(10) || 'semantic: DA2 maps to secondary device attributes'),
         ('csi-csi-ps-n', 'modifyOtherKeys set query disable and encoding'),
         ('csi-csi-r', 'ANSI mode queries and XTREPORTCOLORS append host output'),
-        ('csi-deccksr', 'DECXCPR appends DEC cursor position report' || char(10) || 'semantic: DECXCPR maps to DEC cursor position report'),
+        ('csi-deccksr', 'DECXCPR appends DEC cursor position report' || char(10) || 'DEC locator DSR replies status and type' || char(10) || 'semantic: DECXCPR maps to DEC cursor position report'),
         ('csi-decefr', 'locator button and filter events append DECLRP' || char(10) || 'semantic: locator controls map'),
         ('csi-decelr', 'locator requests reply unavailable, then current position, then disable one-shot' || char(10) || 'locator button and filter events append DECLRP' || char(10) || 'semantic: locator controls map'),
         ('csi-decreqtparm', 'extended report queries append host output'),
@@ -277,6 +277,7 @@ WITH seeds(id, filters) AS (
         ('csi-decrqm', 'ANSI mode queries and XTREPORTCOLORS append host output'),
         ('csi-decrqm-2', 'DEC mode queries append DECRPM replies' || char(10) || 'semantic: DECRQM maps to dec mode query'),
         ('csi-dectabsr', 'DECCIR reports default cursor information' || char(10) || 'DECCIR reports cursor position and rendition bits' || char(10) || 'DECCIR reports protection origin and wrap flags' || char(10) || 'DECCIR reports charset designation and GL shift'),
+        ('csi-xtreportsgr', 'XTREPORTSGR reports common rectangle attrs conservatively' || char(10) || 'semantic: XTREPORTSGR maps to selected graphic rendition report'),
         ('csi-tbc', 'screen: HTS sets custom tab stop and TBC clears it' || char(10) || 'screen: TBC all clears defaults until reset restores them' || char(10) || 'semantic: HTS and TBC map to tab stop controls'),
         ('csi-xtmodkeys', 'modifyOtherKeys set query disable and encoding' || char(10) || 'semantic: application keypad and modifyOtherKeys mappings'),
         ('csi-xtqmodkeys', 'modifyOtherKeys set query disable and encoding'),
@@ -320,6 +321,18 @@ WITH seeds(id, filters) AS (
 UPDATE protocols
 SET unit_test_filters = (SELECT filters FROM seeds WHERE seeds.id = protocols.id)
 WHERE id IN (SELECT id FROM seeds);
+
+UPDATE protocols
+SET notes = 'DEC-specific DSR replies now cover DECXCPR plus locator status/type reports for Ps=55 and Ps=56.'
+WHERE id = 'csi-deccksr';
+
+UPDATE protocols
+SET implemented = 1,
+    unit_tested = 1,
+    host_tested = 0,
+    notes = 'Implemented conservative XTREPORTSGR replies using attributes common across a requested rectangle.',
+    unit_test_filters = 'XTREPORTSGR reports common rectangle attrs conservatively' || char(10) || 'semantic: XTREPORTSGR maps to selected graphic rendition report'
+WHERE id = 'csi-xtreportsgr';
 
 DROP TABLE IF EXISTS kitty_protocol_test_refs;
 DROP TABLE IF EXISTS protocol_test_refs;

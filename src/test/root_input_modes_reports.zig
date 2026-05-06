@@ -268,6 +268,16 @@ test "ANSI mode queries and XTREPORTCOLORS append host output" {
     try std.testing.expectEqualStrings("\x1b[2;1$y\x1b[4;1$y\x1b[12;1$y\x1b[20;1$y\x1b[1;1#Q", vt_core.pendingOutput());
 }
 
+test "XTREPORTSGR reports common rectangle attrs conservatively" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 2, 4);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b[31mAB\x1b[0mCD\x1b[1;1;1;2#|\x1b[1;1;1;4#|");
+    vt_core.apply();
+    try std.testing.expectEqualStrings("\x1b[0;31m\x1b[0m", vt_core.pendingOutput());
+}
+
 test "ANSI modes affect key encoding and insert writes" {
     const allocator = std.testing.allocator;
     var vt_core = try vt.VtCore.initWithCells(allocator, 2, 4);
@@ -408,6 +418,16 @@ test "DECXCPR appends DEC cursor position report" {
     vt_core.feedSlice("\x1b[3;4H\x1b[?6n");
     vt_core.apply();
     try std.testing.expectEqualStrings("\x1b[?3;4R", vt_core.pendingOutput());
+}
+
+test "DEC locator DSR replies status and type" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b[?55n\x1b[?56n");
+    vt_core.apply();
+    try std.testing.expectEqualStrings("\x1b[?50n\x1b[?57;1n", vt_core.pendingOutput());
 }
 
 test "DEC mode queries append DECRPM replies" {

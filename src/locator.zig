@@ -84,6 +84,15 @@ pub const Locator = struct {
         appendReport(state, allocator, output, encode_buf, 1, state.last_buttons_down, state.last_row.?, state.last_col.?);
     }
 
+    pub fn appendDeviceStatusReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, param: u16) void {
+        const text = switch (param) {
+            55 => std.fmt.bufPrint(encode_buf, "\x1b[?50n", .{}) catch return,
+            56 => std.fmt.bufPrint(encode_buf, "\x1b[?57;1n", .{}) catch return,
+            else => return,
+        };
+        output.appendSlice(allocator, text) catch {};
+    }
+
     pub fn handleMouseEvent(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event: Input.MouseEvent) void {
         if (event.row < 0) return;
         const row: u16 = @intCast(event.row);
