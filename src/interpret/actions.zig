@@ -148,6 +148,7 @@ pub fn modeAction(event: SemanticEvent) ?ModeAction {
         .modify_other_keys_disable => .modify_other_keys_disable,
         .key_format_change => |v| ModeAction{ .key_format_change = v },
         .pointer_mode => |v| ModeAction{ .pointer_mode = v },
+        .kitty_clipboard_mode => |v| ModeAction{ .kitty_clipboard_mode = v },
         .focus_reporting => |v| ModeAction{ .focus_reporting = v },
         .bracketed_paste => |v| ModeAction{ .bracketed_paste = v },
         .mouse_tracking_off => .mouse_tracking_off,
@@ -175,6 +176,8 @@ pub fn kittyAction(event: SemanticEvent) ?KittyAction {
         .kitty_pointer_shape => |v| KittyAction{ .kitty_pointer_shape = v },
         .kitty_color_stack => |v| KittyAction{ .kitty_color_stack = v },
         .kitty_multiple_cursor => |v| KittyAction{ .kitty_multiple_cursor = v },
+        .kitty_file_transfer => |v| KittyAction{ .kitty_file_transfer = v },
+        .kitty_text_size => |v| KittyAction{ .kitty_text_size = v },
         .kitty_graphics => |v| KittyAction{ .kitty_graphics = v },
         else => null,
     };

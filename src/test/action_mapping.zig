@@ -248,6 +248,21 @@ test "actions: SD defaults to one line" {
     try std.testing.expectEqual(@as(u16, 1), sem.scroll_down_lines);
 }
 
+test "actions: kitty unscroll maps plus modified SD" {
+    var intermediates = [_]u8{0} ** 4;
+    intermediates[0] = '+';
+    const sem = process(Event{ .style_change = .{
+        .final = 'T',
+        .params = .{3} ++ [_]i32{0} ** 15,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 3), sem.scroll_down_lines);
+}
+
 test "actions: DECSTBM captures top and bottom margins" {
     const sem = process(makeStyleChange('r', 2, 5, 2)) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 1), sem.set_scroll_region.top);
@@ -663,6 +678,29 @@ test "actions: DEC private bracketed paste disable maps false" {
         .intermediates_len = 0,
     } };
     try std.testing.expect(!process(ev).?.bracketed_paste);
+}
+
+test "actions: kitty clipboard mode maps enable disable and query" {
+    var params = [_]i32{0} ** 16;
+    params[0] = 5522;
+    var ev = Event{ .style_change = .{
+        .final = 'h',
+        .params = params,
+        .param_count = 1,
+        .leader = '?',
+        .private = true,
+        .intermediates = [_]u8{0} ** 4,
+        .intermediates_len = 0,
+    } };
+    try std.testing.expect(process(ev).?.kitty_clipboard_mode);
+
+    ev.style_change.final = 'l';
+    try std.testing.expect(!process(ev).?.kitty_clipboard_mode);
+
+    ev.style_change.final = 'p';
+    ev.style_change.intermediates[0] = '$';
+    ev.style_change.intermediates_len = 1;
+    try std.testing.expectEqual(@as(u16, 5522), process(ev).?.dec_mode_query);
 }
 
 test "actions: DEC private mouse tracking mode mappings" {
@@ -1248,4 +1286,15 @@ test "actions: terminal color OSC commands preserve command and payload" {
     const xterm = process(Event{ .osc = .{ .kind = .generic, .command = 4, .payload = "1;#ff0000", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 4), xterm.terminal_color_control.command);
     try std.testing.expectEqualStrings("1;#ff0000", xterm.terminal_color_control.payload);
+}
+
+test "actions: modern kitty OSC payload protocols map to host-neutral events" {
+    const clipboard = process(Event{ .osc = .{ .kind = .generic, .command = 5522, .payload = "type=write", .terminator = .st } }) orelse return error.NoEvent;
+    try std.testing.expectEqualStrings("type=write", clipboard.clipboard_set);
+
+    const transfer = process(Event{ .osc = .{ .kind = .generic, .command = 5113, .payload = "cmd=data", .terminator = .st } }) orelse return error.NoEvent;
+    try std.testing.expectEqualStrings("cmd=data", transfer.kitty_file_transfer);
+
+    const size = process(Event{ .osc = .{ .kind = .generic, .command = 66, .payload = "s=2;Big", .terminator = .st } }) orelse return error.NoEvent;
+    try std.testing.expectEqualStrings("s=2;Big", size.kitty_text_size);
 }

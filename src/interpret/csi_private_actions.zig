@@ -68,6 +68,11 @@ pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates:
                 'l' => SemanticEvent{ .bracketed_paste = false },
                 else => null,
             },
+            5522 => switch (final) {
+                'h' => SemanticEvent{ .kitty_clipboard_mode = true },
+                'l' => SemanticEvent{ .kitty_clipboard_mode = false },
+                else => null,
+            },
             9 => switch (final) {
                 'h' => SemanticEvent.mouse_tracking_x10,
                 'l' => SemanticEvent.mouse_tracking_off,

@@ -65,6 +65,10 @@ pub fn process(final: u8, params: [16]i32, count: u8, intermediates: [4]u8, inte
                 } };
                 return null;
             },
+            '+' => return switch (final) {
+                'T' => SemanticEvent{ .scroll_down_lines = csi_params.paramOrDefault1(params[0]) },
+                else => null,
+            },
             '#' => return switch (final) {
                 'S' => SemanticEvent.xttitlepos,
                 'y' => SemanticEvent{ .xtchecksum = csi_params.paramOrDefault0(params[0]) },

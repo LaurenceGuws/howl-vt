@@ -189,6 +189,7 @@ pub const VtCore = struct {
         key_format: [8]u16 = [_]u16{0} ** 8,
         focus_reporting: bool = false,
         bracketed_paste: bool = false,
+        kitty_clipboard: bool = false,
         mouse_tracking: Input.MouseTrackingMode = .off,
         mouse_protocol: Input.MouseProtocol = .none,
         pointer_mode: u2 = 1,
@@ -428,6 +429,10 @@ pub const VtCore = struct {
         return null;
     }
 
+    pub fn kittyClipboardMode(self: *const VtCore) bool {
+        return self.modes.kitty_clipboard;
+    }
+
     pub fn kittyShellMark(self: *const VtCore) KittyShellMark {
         return self.kitty.global.shell_mark;
     }
@@ -439,6 +444,14 @@ pub const VtCore = struct {
     pub fn kittyNotificationAt(self: *const VtCore, idx: usize) ?KittyNotificationRequest {
         if (idx >= self.kitty.global.notifications.items.len) return null;
         return self.kitty.global.notifications.items[idx];
+    }
+
+    pub fn kittyFileTransferRequest(self: *const VtCore) ?[]const u8 {
+        return self.kitty.global.file_transfer_request;
+    }
+
+    pub fn kittyTextSizeRequest(self: *const VtCore) ?[]const u8 {
+        return self.kitty.global.text_size_request;
     }
 
     pub fn kittyPointerShape(self: *const VtCore) []const u8 {

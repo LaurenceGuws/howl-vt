@@ -48,6 +48,31 @@ test "OSC 52 produces pending clipboard request" {
     try std.testing.expectEqual(@as(?[]const u8, null), vt_core.pendingClipboardSet());
 }
 
+test "kitty clipboard OSC 5522 and mode query use host-neutral state" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 3, 16);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b[?5522h\x1b[?5522$p\x1b]5522;type=write;AAAA\x1b\\");
+    vt_core.apply();
+
+    try std.testing.expect(vt_core.kittyClipboardMode());
+    try std.testing.expectEqualStrings("\x1b[?5522;1$y", vt_core.pendingOutput());
+    try std.testing.expectEqualStrings("type=write;AAAA", vt_core.pendingClipboardSet().?);
+}
+
+test "kitty file transfer and text sizing OSC payloads are retained" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 3, 16);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b]5113;cmd=data;AAAA\x1b\\\x1b]66;s=2;Hi\x1b\\");
+    vt_core.apply();
+
+    try std.testing.expectEqualStrings("cmd=data;AAAA", vt_core.kittyFileTransferRequest().?);
+    try std.testing.expectEqualStrings("s=2;Hi", vt_core.kittyTextSizeRequest().?);
+}
+
 test "kitty shell integration OSC 133 records latest mark" {
     const allocator = std.testing.allocator;
     var vt_core = try vt.VtCore.initWithCells(allocator, 3, 8);

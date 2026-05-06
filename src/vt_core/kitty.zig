@@ -51,6 +51,8 @@ pub const VtCoreKitty = struct {
                     .color_query => self.host.pending_output.appendSlice(self.allocator, "\x1b[>101;30:0;40:0 q") catch {},
                 }
             },
+            .kitty_file_transfer => |payload| KittyNs.setOptionalPayload(self.allocator, &self.kitty.global.file_transfer_request, payload),
+            .kitty_text_size => |payload| KittyNs.setOptionalPayload(self.allocator, &self.kitty.global.text_size_request, payload),
             .kitty_graphics => |cmd| {
                 self.kitty.global.graphics.handle(self.allocator, self.renderView(), &self.host.pending_output, self.encode.buf[0..], cmd);
             },

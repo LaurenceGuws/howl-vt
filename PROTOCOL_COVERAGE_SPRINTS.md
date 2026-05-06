@@ -20,7 +20,7 @@ Execute these in order. Do not mix sprints. A sprint is not complete until every
 ## Sprint 4: Modern input
 - Finish kitty keyboard and xterm keyboard-reporting gaps.
 - Close remaining negotiated mode and emitted-sequence gaps.
-- Status: partial. Kitty keyboard, modifyOtherKeys, focus/paste gates, and xterm key-format set/reset/query are implemented and unit tested, but remaining modern input database rows stay open until implemented and tested.
+- Status: modern priority rows are closed. Kitty keyboard, modifyOtherKeys, focus/paste gates, xterm key-format set/reset/query, kitty clipboard, file-transfer/text-sizing payload capture, pointer mode, visual metadata, and unscroll rows are implemented and unit tested. Lower-priority and unclassified rows remain open.
 
 ## Sprint 5: Visual metadata protocols
 - Finish underlines, pointer shapes, shell marks, notifications, and multiple cursors.

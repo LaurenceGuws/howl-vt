@@ -45,6 +45,9 @@ pub const VtCoreModes = struct {
             .pointer_mode => |value| {
                 self.modes.pointer_mode = value;
             },
+            .kitty_clipboard_mode => |enabled| {
+                self.modes.kitty_clipboard = enabled;
+            },
             .focus_reporting => |enabled| {
                 self.modes.focus_reporting = enabled;
             },

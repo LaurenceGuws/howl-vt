@@ -144,6 +144,7 @@ pub const SemanticEvent = union(enum) {
     key_format_change: KeyFormatChange,
     key_format_query: u8,
     pointer_mode: u2,
+    kitty_clipboard_mode: bool,
     focus_reporting: bool,
     bracketed_paste: bool,
     mouse_tracking_off,
@@ -163,6 +164,8 @@ pub const SemanticEvent = union(enum) {
     kitty_pointer_shape: KittyPointerShapeCommand,
     kitty_color_stack: KittyColorStackCommand,
     kitty_multiple_cursor: KittyMultipleCursorCommand,
+    kitty_file_transfer: []const u8,
+    kitty_text_size: []const u8,
     terminal_color_control: TerminalColorControlCommand,
     hyperlink_set: []const u8,
     hyperlink_clear,
@@ -340,6 +343,7 @@ pub const ModeAction = union(enum) {
     modify_other_keys_disable,
     key_format_change: KeyFormatChange,
     pointer_mode: u2,
+    kitty_clipboard_mode: bool,
     focus_reporting: bool,
     bracketed_paste: bool,
     mouse_tracking_off,
@@ -364,6 +368,8 @@ pub const KittyAction = union(enum) {
     kitty_pointer_shape: KittyPointerShapeCommand,
     kitty_color_stack: KittyColorStackCommand,
     kitty_multiple_cursor: KittyMultipleCursorCommand,
+    kitty_file_transfer: []const u8,
+    kitty_text_size: []const u8,
     kitty_graphics: KittyGraphicsCommand,
 };
 

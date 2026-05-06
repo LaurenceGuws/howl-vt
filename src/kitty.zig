@@ -27,6 +27,8 @@ pub const Kitty = struct {
         color_stack_depth: u16 = 0,
         color_stack: Color.Stack = .{},
         graphics: Graphics.State = .{},
+        file_transfer_request: ?[]u8 = null,
+        text_size_request: ?[]u8 = null,
 
         pub fn deinit(self: *GlobalState, allocator: std.mem.Allocator) void {
             allocator.free(self.shell_mark.metadata);
@@ -36,6 +38,8 @@ pub const Kitty = struct {
             }
             self.notifications.deinit(allocator);
             self.graphics.deinit(allocator);
+            if (self.file_transfer_request) |payload| allocator.free(payload);
+            if (self.text_size_request) |payload| allocator.free(payload);
         }
     };
 
@@ -67,5 +71,10 @@ pub const Kitty = struct {
             allocator.free(metadata);
             allocator.free(payload);
         };
+    }
+
+    pub fn setOptionalPayload(allocator: std.mem.Allocator, slot: *?[]u8, payload: []const u8) void {
+        if (slot.*) |old| allocator.free(old);
+        slot.* = allocator.dupe(u8, payload) catch null;
     }
 };

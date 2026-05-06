@@ -23,6 +23,7 @@ pub const TerminalMode = struct {
         mouse_protocol: Input.MouseProtocol,
         focus_reporting: bool,
         bracketed_paste: bool,
+        kitty_clipboard: bool,
     };
 
     pub const AnsiView = struct {
@@ -45,6 +46,7 @@ pub const TerminalMode = struct {
             .mouse_protocol = vt.modes.mouse_protocol,
             .focus_reporting = vt.modes.focus_reporting,
             .bracketed_paste = vt.modes.bracketed_paste,
+            .kitty_clipboard = vt.modes.kitty_clipboard,
         }, mode);
     }
 
@@ -100,6 +102,7 @@ pub const TerminalMode = struct {
             1006 => vt.modes.mouse_protocol = if (enabled) .sgr else .none,
             1015 => vt.modes.mouse_protocol = if (enabled) .urxvt else .none,
             2004 => vt.modes.bracketed_paste = enabled,
+            5522 => vt.modes.kitty_clipboard = enabled,
             else => {},
         }
     }
@@ -142,6 +145,7 @@ pub const TerminalMode = struct {
             1006 => boolToDecModeState(view.mouse_protocol == .sgr),
             1015 => boolToDecModeState(view.mouse_protocol == .urxvt),
             2004 => boolToDecModeState(view.bracketed_paste),
+            5522 => boolToDecModeState(view.kitty_clipboard),
             else => 0,
         };
     }
