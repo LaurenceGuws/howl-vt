@@ -60,6 +60,20 @@ pub const KittyMultipleCursorCommand = enum {
     color_query,
 };
 
+pub const DcsPayloadKind = enum {
+    xtsettcap,
+    sixel,
+    regis,
+    decrsps,
+    decudk,
+    decaupss,
+};
+
+pub const DcsPayload = struct {
+    kind: DcsPayloadKind,
+    payload: []const u8,
+};
+
 /// Screen-directed semantic event union.
 pub const SemanticEvent = union(enum) {
     pub const CursorShape = enum {
@@ -179,6 +193,7 @@ pub const SemanticEvent = union(enum) {
     dcs_request_status: []const u8,
     dcs_request_termcap: []const u8,
     dcs_request_resource: []const u8,
+    dcs_payload: DcsPayload,
     device_status_report,
     dec_device_status_report: u16,
     cursor_position_report,
@@ -390,5 +405,6 @@ pub const HostAction = union(enum) {
     locator_events: SemanticEvent.ModeParams,
     locator_request: u16,
     media_copy_request: u16,
+    dcs_payload: DcsPayload,
     reset_screen,
 };

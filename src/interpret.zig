@@ -24,6 +24,8 @@ pub const Interpret = struct {
     pub const KittyAction = actions.KittyAction;
     /// Host/protocol-edge action subset.
     pub const HostAction = actions.HostAction;
+    /// DCS payload classification.
+    pub const DcsPayloadKind = actions.DcsPayloadKind;
     /// ESC-final action subset.
     pub const EscAction = actions.EscAction;
     /// End-to-end interpretation apply-flow owner.

@@ -201,12 +201,18 @@ pub const VtCore = struct {
     };
 
     const HostState = struct {
+        const DcsPayloadOwned = struct {
+            kind: Interpret.DcsPayloadKind,
+            payload: []u8,
+        };
+
         terminal_colors: TerminalColorState = .{},
         pending_output: std.ArrayList(u8),
         hyperlink_targets: std.ArrayList([]u8),
         pending_clipboard: ?ClipboardRequest = null,
         locator: LocatorState = .{},
         media_copy_request: ?u16 = null,
+        dcs_payload: ?DcsPayloadOwned = null,
 
         fn init() HostState {
             return .{
@@ -219,6 +225,7 @@ pub const VtCore = struct {
             for (self.hyperlink_targets.items) |uri| allocator.free(uri);
             self.hyperlink_targets.deinit(allocator);
             if (self.pending_clipboard) |req| allocator.free(req.raw);
+            if (self.dcs_payload) |payload| allocator.free(payload.payload);
             self.pending_output.deinit(allocator);
         }
     };
@@ -451,6 +458,16 @@ pub const VtCore = struct {
 
     pub fn mediaCopyRequest(self: *const VtCore) ?u16 {
         return self.host.media_copy_request;
+    }
+
+    pub fn dcsPayloadKind(self: *const VtCore) ?Interpret.DcsPayloadKind {
+        if (self.host.dcs_payload) |payload| return payload.kind;
+        return null;
+    }
+
+    pub fn dcsPayload(self: *const VtCore) ?[]const u8 {
+        if (self.host.dcs_payload) |payload| return payload.payload;
+        return null;
     }
 
     pub fn kittyShellMark(self: *const VtCore) KittyShellMark {

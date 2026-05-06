@@ -56,6 +56,9 @@ pub const VtCoreHost = struct {
             .media_copy_request => |param| {
                 self.host.media_copy_request = param;
             },
+            .dcs_payload => |payload| {
+                setDcsPayload(self, payload);
+            },
             .reset_screen => {
                 resetTerminalState(self);
             },
@@ -85,6 +88,15 @@ pub const VtCoreHost = struct {
             return;
         };
         self.host.pending_clipboard = .{ .raw = owned };
+    }
+
+    fn setDcsPayload(self: anytype, payload: anytype) void {
+        if (self.host.dcs_payload) |old| self.allocator.free(old.payload);
+        const owned = self.allocator.dupe(u8, payload.payload) catch {
+            self.host.dcs_payload = null;
+            return;
+        };
+        self.host.dcs_payload = .{ .kind = payload.kind, .payload = owned };
     }
 
     fn resetTerminalState(self: anytype) void {

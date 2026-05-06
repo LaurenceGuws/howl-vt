@@ -600,6 +600,18 @@ test "actions: DCS resource queries map request payloads" {
     try std.testing.expectEqualStrings("6E616D65", resource.dcs_request_resource);
 }
 
+test "actions: DCS legacy payload protocols classify host-neutral payloads" {
+    const termcap = process(Event{ .dcs = "+p436F=7661" }) orelse return error.NoEvent;
+    try std.testing.expect(termcap.dcs_payload.kind == .xtsettcap);
+    try std.testing.expectEqualStrings("436F=7661", termcap.dcs_payload.payload);
+
+    try std.testing.expect(process(Event{ .dcs = "0;0;0qdata" }).?.dcs_payload.kind == .sixel);
+    try std.testing.expect(process(Event{ .dcs = "1pdraw" }).?.dcs_payload.kind == .regis);
+    try std.testing.expect(process(Event{ .dcs = "1$tstate" }).?.dcs_payload.kind == .decrsps);
+    try std.testing.expect(process(Event{ .dcs = "0;1|keys" }).?.dcs_payload.kind == .decudk);
+    try std.testing.expect(process(Event{ .dcs = "0!uA" }).?.dcs_payload.kind == .decaupss);
+}
+
 test "actions: DEC save and restore cursor from ESC finals" {
     try std.testing.expect(process(makeEscFinal('7')).? == .save_cursor);
     try std.testing.expect(process(makeEscFinal('8')).? == .restore_cursor);
