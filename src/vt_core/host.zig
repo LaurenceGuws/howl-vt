@@ -59,6 +59,9 @@ pub const VtCoreHost = struct {
             .dcs_payload => |payload| {
                 setDcsPayload(self, payload);
             },
+            .legacy_control => |kind| {
+                self.host.legacy_control = kind;
+            },
             .reset_screen => {
                 resetTerminalState(self);
             },

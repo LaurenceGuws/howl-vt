@@ -34,6 +34,13 @@ pub fn action(final: u8) ?EscAction {
 }
 
 pub fn process(final: u8) ?SemanticEvent {
+    switch (final) {
+        0x17 => return SemanticEvent{ .legacy_control = .tek_copy },
+        0x1C => return SemanticEvent{ .legacy_control = .tek_special_point_plot },
+        'l' => return SemanticEvent{ .legacy_control = .hp_memory_lock },
+        's' => return SemanticEvent{ .legacy_control = .tek_write_thru_short_dashed },
+        else => {},
+    }
     const mapped = action(final) orelse return null;
     return switch (mapped) {
         .line_feed => SemanticEvent.line_feed,

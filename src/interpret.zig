@@ -26,6 +26,8 @@ pub const Interpret = struct {
     pub const HostAction = actions.HostAction;
     /// DCS payload classification.
     pub const DcsPayloadKind = actions.DcsPayloadKind;
+    /// Legacy C0/ESC host-neutral control classification.
+    pub const LegacyControlKind = actions.LegacyControlKind;
     /// ESC-final action subset.
     pub const EscAction = actions.EscAction;
     /// End-to-end interpretation apply-flow owner.

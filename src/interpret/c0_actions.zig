@@ -23,6 +23,13 @@ pub fn action(control: u8) ?C0Action {
 }
 
 pub fn process(control: u8) ?SemanticEvent {
+    switch (control) {
+        0x1C => return SemanticEvent{ .legacy_control = .tek_point_plot },
+        0x1D => return SemanticEvent{ .legacy_control = .tek_graph },
+        0x1E => return SemanticEvent{ .legacy_control = .tek_incremental_plot },
+        0x1F => return SemanticEvent{ .legacy_control = .tek_alpha },
+        else => {},
+    }
     const mapped = action(control) orelse return null;
     return switch (mapped) {
         .line_feed => SemanticEvent.line_feed,

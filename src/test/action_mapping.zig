@@ -587,6 +587,20 @@ test "actions: APC PM and unsupported ESC transport return null" {
     try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .esc_final = 'z' }));
 }
 
+test "actions: legacy Tektronix C0 controls map host-neutral state" {
+    try std.testing.expect(process(Event{ .control = 0x1C }).?.legacy_control == .tek_point_plot);
+    try std.testing.expect(process(Event{ .control = 0x1D }).?.legacy_control == .tek_graph);
+    try std.testing.expect(process(Event{ .control = 0x1E }).?.legacy_control == .tek_incremental_plot);
+    try std.testing.expect(process(Event{ .control = 0x1F }).?.legacy_control == .tek_alpha);
+}
+
+test "actions: low legacy ESC controls map host-neutral state" {
+    try std.testing.expect(process(Event{ .esc_final = 0x17 }).?.legacy_control == .tek_copy);
+    try std.testing.expect(process(Event{ .esc_final = 0x1C }).?.legacy_control == .tek_special_point_plot);
+    try std.testing.expect(process(makeEscFinal('l')).?.legacy_control == .hp_memory_lock);
+    try std.testing.expect(process(makeEscFinal('s')).?.legacy_control == .tek_write_thru_short_dashed);
+}
+
 test "actions: DCS DECRQSS maps request payload" {
     const sem = process(Event{ .dcs = "$q q" }) orelse return error.NoEvent;
     try std.testing.expectEqualStrings(" q", sem.dcs_request_status);

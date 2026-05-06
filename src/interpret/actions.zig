@@ -21,6 +21,7 @@ pub const KittyPointerShapeCommand = action_types.KittyPointerShapeCommand;
 pub const KittyColorStackCommand = action_types.KittyColorStackCommand;
 pub const TerminalColorControlCommand = action_types.TerminalColorControlCommand;
 pub const DcsPayloadKind = action_types.DcsPayloadKind;
+pub const LegacyControlKind = action_types.LegacyControlKind;
 pub const EscAction = esc_actions.EscAction;
 pub const SemanticEvent = action_types.SemanticEvent;
 pub const ScreenAction = action_types.ScreenAction;
@@ -199,6 +200,7 @@ pub fn hostAction(event: SemanticEvent) ?HostAction {
         .locator_request => |v| HostAction{ .locator_request = v },
         .media_copy_request => |v| HostAction{ .media_copy_request = v },
         .dcs_payload => |v| HostAction{ .dcs_payload = v },
+        .legacy_control => |v| HostAction{ .legacy_control = v },
         .reset_screen => .reset_screen,
         else => null,
     };

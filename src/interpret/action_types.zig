@@ -74,6 +74,17 @@ pub const DcsPayload = struct {
     payload: []const u8,
 };
 
+pub const LegacyControlKind = enum {
+    tek_point_plot,
+    tek_graph,
+    tek_incremental_plot,
+    tek_alpha,
+    tek_copy,
+    tek_special_point_plot,
+    tek_write_thru_short_dashed,
+    hp_memory_lock,
+};
+
 /// Screen-directed semantic event union.
 pub const SemanticEvent = union(enum) {
     pub const CursorShape = enum {
@@ -215,6 +226,7 @@ pub const SemanticEvent = union(enum) {
     locator_events: ModeParams,
     locator_request: u16,
     media_copy_request: u16,
+    legacy_control: LegacyControlKind,
     sgr: struct {
         params: [16]i32,
         separators: [16]u8,
@@ -406,5 +418,6 @@ pub const HostAction = union(enum) {
     locator_request: u16,
     media_copy_request: u16,
     dcs_payload: DcsPayload,
+    legacy_control: LegacyControlKind,
     reset_screen,
 };

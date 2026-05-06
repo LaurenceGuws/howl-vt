@@ -503,6 +503,20 @@ test "DCS legacy payload protocols retain latest host-neutral payload" {
     try std.testing.expectEqualStrings("1pdraw", vt_core.dcsPayload().?);
 }
 
+test "legacy Tektronix C0 and ESC controls retain latest host-neutral state" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1c\x1d\x1e\x1f");
+    vt_core.apply();
+    try std.testing.expect(vt_core.legacyControl().? == .tek_alpha);
+
+    vt_core.feedSlice("\x1b\x17\x1b\x1c\x1bl\x1bs");
+    vt_core.apply();
+    try std.testing.expect(vt_core.legacyControl().? == .tek_write_thru_short_dashed);
+}
+
 test "XTSAVE and XTRESTORE restore supported DEC private modes" {
     const allocator = std.testing.allocator;
     var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);

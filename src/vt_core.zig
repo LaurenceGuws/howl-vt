@@ -213,6 +213,7 @@ pub const VtCore = struct {
         locator: LocatorState = .{},
         media_copy_request: ?u16 = null,
         dcs_payload: ?DcsPayloadOwned = null,
+        legacy_control: ?Interpret.LegacyControlKind = null,
 
         fn init() HostState {
             return .{
@@ -468,6 +469,10 @@ pub const VtCore = struct {
     pub fn dcsPayload(self: *const VtCore) ?[]const u8 {
         if (self.host.dcs_payload) |payload| return payload.payload;
         return null;
+    }
+
+    pub fn legacyControl(self: *const VtCore) ?Interpret.LegacyControlKind {
+        return self.host.legacy_control;
     }
 
     pub fn kittyShellMark(self: *const VtCore) KittyShellMark {
