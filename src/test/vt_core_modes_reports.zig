@@ -471,6 +471,17 @@ test "DECRQSS replies for owned state and invalid requests" {
     );
 }
 
+test "DCS resource queries return conservative invalid replies" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1bP+q436F\x1b\\\x1bP+Q6E616D65\x1b\\");
+    vt_core.apply();
+
+    try std.testing.expectEqualStrings("\x1bP0+r\x1b\\\x1bP0+R6E616D65\x1b\\", vt_core.pendingOutput());
+}
+
 test "XTSAVE and XTRESTORE restore supported DEC private modes" {
     const allocator = std.testing.allocator;
     var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);

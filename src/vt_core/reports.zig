@@ -28,6 +28,8 @@ pub const VtCoreReports = struct {
                 TerminalReportNs.appendDecModeReport(self.allocator, &self.host.pending_output, self.encode.buf[0..], mode, TerminalModeNs.decModeState(self, mode));
             },
             .dcs_request_status => |request| appendDecrqssReply(self, request),
+            .dcs_request_termcap => TerminalReportNs.appendTermcapInvalidReport(self.allocator, &self.host.pending_output),
+            .dcs_request_resource => |request| TerminalReportNs.appendResourceInvalidReport(self.allocator, &self.host.pending_output, request),
             .device_status_report => {
                 appendPendingOutput(self, "\x1b[0n");
             },

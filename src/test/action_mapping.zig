@@ -577,6 +577,14 @@ test "actions: DCS DECRQSS maps request payload" {
     try std.testing.expectEqualStrings(" q", sem.dcs_request_status);
 }
 
+test "actions: DCS resource queries map request payloads" {
+    const termcap = process(Event{ .dcs = "+q436F" }) orelse return error.NoEvent;
+    try std.testing.expectEqualStrings("436F", termcap.dcs_request_termcap);
+
+    const resource = process(Event{ .dcs = "+Q6E616D65" }) orelse return error.NoEvent;
+    try std.testing.expectEqualStrings("6E616D65", resource.dcs_request_resource);
+}
+
 test "actions: DEC save and restore cursor from ESC finals" {
     try std.testing.expect(process(makeEscFinal('7')).? == .save_cursor);
     try std.testing.expect(process(makeEscFinal('8')).? == .restore_cursor);

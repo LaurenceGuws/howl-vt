@@ -21,6 +21,16 @@ pub const TerminalReport = struct {
         output.appendSlice(allocator, "\x1bP>|" ++ xtversion_text ++ "\x1b\\") catch {};
     }
 
+    pub fn appendTermcapInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) void {
+        output.appendSlice(allocator, "\x1bP0+r\x1b\\") catch {};
+    }
+
+    pub fn appendResourceInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), request: []const u8) void {
+        output.appendSlice(allocator, "\x1bP0+R") catch return;
+        output.appendSlice(allocator, request) catch return;
+        output.appendSlice(allocator, "\x1b\\") catch {};
+    }
+
     pub fn appendTitleStackPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, current: u16, max: u16) void {
         const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}#S", .{ current, max }) catch return;
         output.appendSlice(allocator, text) catch {};

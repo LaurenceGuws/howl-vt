@@ -113,6 +113,8 @@ pub fn reportAction(event: SemanticEvent) ?ReportAction {
         .modify_other_keys_query => .modify_other_keys_query,
         .dec_mode_query => |v| ReportAction{ .dec_mode_query = v },
         .dcs_request_status => |v| ReportAction{ .dcs_request_status = v },
+        .dcs_request_termcap => |v| ReportAction{ .dcs_request_termcap = v },
+        .dcs_request_resource => |v| ReportAction{ .dcs_request_resource = v },
         .device_status_report => .device_status_report,
         .dec_device_status_report => |v| ReportAction{ .dec_device_status_report = v },
         .cursor_position_report => .cursor_position_report,

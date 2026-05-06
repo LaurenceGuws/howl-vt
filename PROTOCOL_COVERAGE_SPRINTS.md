@@ -10,6 +10,7 @@ Execute these in order. Do not mix sprints.
 ## Sprint 2: Reports and queries
 - Finish `DA`/`DSR`/`DECRQM`/`DECRQPSR`/`DECRQSS`-style replies.
 - Prefer explicit conservative replies over silent ignore.
+- Status: baseline/common/high report-query gaps are closed. DCS `DECRQSS`, `XTGETTCAP`, and `XTGETXRES` now have explicit replies; unsupported resource values reply conservatively instead of silently disappearing.
 
 ## Sprint 3: String protocol foundations
 - Finish `DCS`, `APC`, and `PM` transport and typed parser events.
