@@ -1,6 +1,6 @@
 //! Responsibility: input encoding, mode tracking, and report surface coverage.
-//! Ownership: root owner protocol behavior tests.
-//! Reason: keep host-input and host-output protocol tests out of root.zig.
+//! Ownership: vt-core input, mode, and report behavior tests.
+//! Reason: keep host-input and host-output protocol coverage out of the main vt-core facade.
 
 const std = @import("std");
 const vt = @import("vt_core");

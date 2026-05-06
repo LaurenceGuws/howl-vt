@@ -11,8 +11,8 @@ Execute these in order. Do not mix sprints.
 - Prefer explicit conservative replies over silent ignore.
 
 ## Sprint 3: String protocol foundations
-- Finish `DCS`, `APC`, and `PM` transport and typed bridge events.
-- Keep syntax in parser, meaning in semantics.
+- Finish `DCS`, `APC`, and `PM` transport and typed parser events.
+- Keep syntax in `parser/`, typed event shaping in `interpret/parser_events.zig`, meaning in `interpret/*_actions.zig`, and consequences in `vt_core/` owners.
 
 ## Sprint 4: Modern input
 - Finish kitty keyboard and xterm keyboard-reporting gaps.

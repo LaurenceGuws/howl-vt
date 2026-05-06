@@ -1,6 +1,6 @@
 //! Responsibility: vt-core facade and lifecycle surface coverage.
-//! Ownership: root owner API stability tests.
-//! Reason: keep the public VtCore surface explicit without embedding tests in root.zig.
+//! Ownership: vt-core API stability tests.
+//! Reason: keep the public VtCore surface explicit without embedding tests in the vt-core facade file.
 
 const std = @import("std");
 const vt = @import("vt_core");

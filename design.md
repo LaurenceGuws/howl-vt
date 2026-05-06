@@ -5,7 +5,9 @@ Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
 ## Purpose
 `howl-vt-core` owns the host-neutral terminal model.
 
-It parses terminal input streams, interprets them into semantic actions, applies them to grid state, tracks selection and snapshot state, and exposes stable render-facing and host-output-facing surfaces.
+It parses terminal input streams, shapes parser events, maps those events into terminal actions, applies actions to grid and boundary state, tracks selection and snapshots, and exposes stable render-facing and host-output-facing surfaces.
+
+Architecture drift rules: [`ARCHITECTURE_CLEANUP.md`](ARCHITECTURE_CLEANUP.md)
 
 ## Public Surface
 - `VtCore`: main runtime owner.
@@ -36,21 +38,22 @@ classDiagram
     class Snapshot
 
     VtCore --> Input : key/modifier vocabulary
-    VtCore --> Interpret : pipeline
+    VtCore --> Interpret : apply flow
     VtCore --> Grid : screen state
     VtCore --> Selection : selection state
     VtCore --> Snapshot : external snapshot contract
 ```
 
 ## Ownership Rules
-- `VtCore` owns lifecycle, parser pipeline ownership, grid state, and selection state.
-- `Input` owns key, modifier, mouse, and input codec vocabulary.
-- `Interpret` owns parser-to-grid translation flow.
-- `Grid` owns screen, cursor, and scrollback model state.
+- `VtCore` owns lifecycle, apply-flow orchestration, grouped screen/mode/host/kitty state, and the public terminal facade.
+- `Input` owns key, modifier, mouse, host-token parsing, and input encoding vocabulary.
+- `Interpret` owns parser-event buffering and parser-event-to-action mapping.
+- `Grid` owns screen, cursor, edit, erase, scrollback, style, dirty, tab, margin, and rectangular mutation state.
 - `Grid` treats scrollback truth as logical lines; history rows exposed to hosts and snapshots are width-dependent projections.
 - `Selection` owns selection state and validity against grid mutations.
 - `Snapshot` owns exported snapshot shapes only.
-- `parser.zig` remains a sibling internal owner for byte-stream parsing contracts used by interpret, tests, and fuzzing.
+- `ParserApi` owns byte-stream parsing contracts used by interpret, tests, and fuzzing.
+- Protocol syntax, parser-event shape, action meaning, grid mutation, and vt-core host consequences must stay in separate owners.
 
 ## Lifecycle
 ```mermaid
@@ -71,15 +74,18 @@ stateDiagram-v2
 sequenceDiagram
     participant Host
     participant V as VtCore
-    participant P as Interpret.Pipeline
+    participant F as Interpret.ApplyFlow
+    participant A as Interpret Actions
     participant G as GridModel
     participant S as SelectionState
 
     Host->>V: feedSlice(bytes)
-    V->>P: feedSlice(bytes)
+    V->>F: feedSlice(bytes)
     Host->>V: apply()
-    V->>P: applyToScreen(&state)
-    P->>G: mutate screen/cursor/history
+    V->>F: events()
+    V->>A: process(event)
+    A-->>V: semantic action
+    V->>G: apply grid-visible action
     V->>S: clearIfInvalidatedByGrid(&state)
     V-->>Host: renderView()/screen()/historyCount()
 ```
@@ -113,6 +119,10 @@ sequenceDiagram
 - Font loading or rasterization.
 
 ## Change Rules
-- New visible-state concepts should either live on `VtCore` or in a clearly named sibling domain owner.
-- Parser and interpret internals may change freely if the `VtCore` contract stays stable.
+- New visible-state concepts must have a named owner before code is added.
+- Parser syntax must not own terminal meaning.
+- Interpret action owners must not mutate grid or host state directly.
+- Grid mutation owners must not know protocol families.
+- `VtCore` boundary owners must keep host consequences explicit.
 - Hosts should depend on `VtCore`, not deep parser/grid leaves.
+- Update `protocol_coverage.db` and test filters with the same change that adds protocol behavior.

@@ -1,6 +1,6 @@
 //! Responsibility: kitty graphics host-neutral behavior coverage.
-//! Ownership: root owner graphics protocol tests.
-//! Reason: keep the kitty graphics surface out of root.zig while preserving behavior coverage.
+//! Ownership: vt-core graphics protocol tests.
+//! Reason: keep the kitty graphics surface out of the main vt-core facade while preserving behavior coverage.
 
 const std = @import("std");
 const vt = @import("vt_core");

@@ -1,11 +1,11 @@
 //! Responsibility: end-to-end vt-core flow coverage across module boundaries.
-//! Ownership: top-level system integration tests.
-//! Reason: keep host-facing byte-to-grid flows explicit and deterministic.
+//! Ownership: vt-core end-to-end tests.
+//! Reason: keep host-facing byte-to-screen flows explicit and deterministic.
 
 const std = @import("std");
 const vt = @import("vt_core");
 
-test "system: parse pipeline applies bytes to grid state deterministically" {
+test "vt-core: parser apply flow applies bytes to grid state deterministically" {
     const allocator = std.testing.allocator;
     var vt_core = try vt.VtCore.initWithCells(allocator, 3, 8);
     defer vt_core.deinit();

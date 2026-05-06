@@ -4,16 +4,16 @@
 
 const std = @import("std");
 const grid_owner = @import("grid.zig");
-const grid_model = @import("grid/model.zig");
+const grid_model = @import("grid/state.zig");
 const input_mod = @import("input.zig");
 const interpret_owner = @import("interpret.zig");
 const kitty_owner = @import("kitty.zig");
 const locator_owner = @import("locator.zig");
 const osc_color_owner = @import("osc_color.zig");
-const root_host_dispatch_owner = @import("root_host_dispatch.zig");
-const root_mode_dispatch_owner = @import("root_mode_dispatch.zig");
-const root_kitty_dispatch_owner = @import("root_kitty_dispatch.zig");
-const root_report_dispatch_owner = @import("root_report_dispatch.zig");
+const vt_core_host_owner = @import("vt_core/host.zig");
+const vt_core_modes_owner = @import("vt_core/modes.zig");
+const vt_core_kitty_owner = @import("vt_core/kitty.zig");
+const vt_core_reports_owner = @import("vt_core/reports.zig");
 const selection_owner = @import("selection.zig");
 const snapshot_owner = @import("snapshot.zig");
 const terminal_mode_owner = @import("terminal_mode.zig");
@@ -24,10 +24,10 @@ const Interpret = interpret_owner.Interpret;
 const KittyNs = kitty_owner.Kitty;
 const LocatorNs = locator_owner.Locator;
 const OscColorNs = osc_color_owner.OscColor;
-const RootHostDispatch = root_host_dispatch_owner.RootHostDispatch;
-const RootModeDispatch = root_mode_dispatch_owner.RootModeDispatch;
-const RootKittyDispatch = root_kitty_dispatch_owner.RootKittyDispatch;
-const RootReportDispatch = root_report_dispatch_owner.RootReportDispatch;
+const VtCoreHost = vt_core_host_owner.VtCoreHost;
+const VtCoreModes = vt_core_modes_owner.VtCoreModes;
+const VtCoreKitty = vt_core_kitty_owner.VtCoreKitty;
+const VtCoreReports = vt_core_reports_owner.VtCoreReports;
 const Selection = selection_owner.Selection;
 const Snapshot = snapshot_owner.Snapshot;
 const TerminalModeNs = terminal_mode_owner.TerminalMode;
@@ -179,169 +179,264 @@ pub const VtCore = struct {
 
     const LocatorState = LocatorNs.State;
 
+    const ModeState = struct {
+        keyboard_action_mode: bool = false,
+        application_cursor_keys: bool = false,
+        application_keypad: bool = false,
+        send_receive_mode: bool = false,
+        newline_mode: bool = false,
+        modify_other_keys: i8 = 0,
+        focus_reporting: bool = false,
+        bracketed_paste: bool = false,
+        mouse_tracking: Input.MouseTrackingMode = .off,
+        mouse_protocol: Input.MouseProtocol = .none,
+        saved_dec_modes: [16]TerminalModeNs.SavedDecMode = [_]TerminalModeNs.SavedDecMode{.{ .mode = 0, .state = 0 }} ** 16,
+        saved_dec_mode_count: u8 = 0,
+    };
+
+    const HostState = struct {
+        terminal_colors: TerminalColorState = .{},
+        pending_output: std.ArrayList(u8),
+        hyperlink_targets: std.ArrayList([]u8),
+        pending_clipboard: ?ClipboardRequest = null,
+        locator: LocatorState = .{},
+
+        fn init() HostState {
+            return .{
+                .pending_output = std.ArrayList(u8).empty,
+                .hyperlink_targets = std.ArrayList([]u8).empty,
+            };
+        }
+
+        fn deinit(self: *HostState, allocator: std.mem.Allocator) void {
+            for (self.hyperlink_targets.items) |uri| allocator.free(uri);
+            self.hyperlink_targets.deinit(allocator);
+            if (self.pending_clipboard) |req| allocator.free(req.raw);
+            self.pending_output.deinit(allocator);
+        }
+    };
+
+    const KittyState = struct {
+        main: KittyScreenState = .{},
+        alt: KittyScreenState = .{},
+        global: KittyGlobalState = .{},
+
+        fn deinit(self: *KittyState, allocator: std.mem.Allocator) void {
+            self.global.deinit(allocator);
+        }
+
+        pub fn activeScreen(self: *KittyState, alt_active: bool) *KittyScreenState {
+            return if (alt_active) &self.alt else &self.main;
+        }
+
+        pub fn activeScreenConst(self: *const KittyState, alt_active: bool) *const KittyScreenState {
+            return if (alt_active) &self.alt else &self.main;
+        }
+
+        pub fn resetTerminalState(self: *KittyState) void {
+            self.main.pointer.len = 0;
+            self.alt.pointer.len = 0;
+            self.global.color_stack_depth = 0;
+        }
+    };
+
+    const EncodeScratch = struct {
+        buf: [64]u8 = undefined,
+        len: usize = 0,
+    };
+
+    const ScreenState = struct {
+        const CursorSnapshot = struct {
+            row: u16,
+            col: u16,
+            wrap_pending: bool,
+            cursor_visible: bool,
+        };
+
+        primary: GridNs.GridModel,
+        alternate: GridNs.GridModel,
+        alt_active: bool = false,
+        saved_primary_cursor: ?CursorSnapshot = null,
+
+        fn init(primary: GridNs.GridModel, alternate: GridNs.GridModel) ScreenState {
+            return .{ .primary = primary, .alternate = alternate };
+        }
+
+        pub fn active(self: *ScreenState) *GridNs.GridModel {
+            return if (self.alt_active) &self.alternate else &self.primary;
+        }
+
+        pub fn activeConst(self: *const ScreenState) *const GridNs.GridModel {
+            return if (self.alt_active) &self.alternate else &self.primary;
+        }
+
+        pub fn reset(self: *ScreenState) void {
+            self.active().reset();
+        }
+
+        pub fn resize(self: *ScreenState, allocator: std.mem.Allocator, rows: u16, cols: u16) !void {
+            try self.primary.resize(allocator, rows, cols);
+            try self.alternate.resize(allocator, rows, cols);
+        }
+
+        pub fn enterAlt(self: *ScreenState, clear_alt: bool, save_cursor: bool) void {
+            if (save_cursor) {
+                self.saved_primary_cursor = .{
+                    .row = self.primary.cursor_row,
+                    .col = self.primary.cursor_col,
+                    .wrap_pending = self.primary.wrap_pending,
+                    .cursor_visible = self.primary.cursor_visible,
+                };
+            }
+            if (clear_alt) self.alternate.reset();
+            self.alt_active = true;
+            self.alternate.markAllDirty();
+        }
+
+        pub fn exitAlt(self: *ScreenState, restore_cursor: bool) void {
+            self.alt_active = false;
+            if (restore_cursor) {
+                if (self.saved_primary_cursor) |saved| {
+                    self.primary.cursor_row = @min(saved.row, self.primary.rows -| 1);
+                    self.primary.cursor_col = @min(saved.col, self.primary.cols -| 1);
+                    self.primary.wrap_pending = saved.wrap_pending;
+                    self.primary.cursor_visible = saved.cursor_visible;
+                }
+                self.saved_primary_cursor = null;
+            }
+            self.primary.markAllDirty();
+        }
+
+        fn deinit(self: *ScreenState, allocator: std.mem.Allocator) void {
+            self.primary.deinit(allocator);
+            self.alternate.deinit(allocator);
+        }
+    };
+
     allocator: std.mem.Allocator,
-    pipeline: Interpret.Pipeline,
-    primary_state: GridNs.GridModel,
-    alt_state: GridNs.GridModel,
-    alt_active: bool,
-    saved_primary_cursor: ?struct {
-        row: u16,
-        col: u16,
-        wrap_pending: bool,
-        cursor_visible: bool,
-    } = null,
+    apply_flow: Interpret.ApplyFlow,
+    screen_state: ScreenState,
     selection: Selection.SelectionState,
-    keyboard_action_mode: bool = false,
-    application_cursor_keys: bool = false,
-    application_keypad: bool = false,
-    send_receive_mode: bool = false,
-    newline_mode: bool = false,
-    modify_other_keys: i8 = 0,
-    focus_reporting: bool = false,
-    bracketed_paste: bool = false,
-    kitty_main: KittyScreenState = .{},
-    kitty_alt: KittyScreenState = .{},
-    mouse_tracking: Input.MouseTrackingMode = .off,
-    mouse_protocol: Input.MouseProtocol = .none,
-    saved_dec_modes: [16]TerminalModeNs.SavedDecMode = [_]TerminalModeNs.SavedDecMode{.{ .mode = 0, .state = 0 }} ** 16,
-    saved_dec_mode_count: u8 = 0,
+    modes: ModeState = .{},
+    kitty: KittyState = .{},
     xtchecksum_flags: u16 = 0,
-    terminal_colors: TerminalColorState = .{},
-    pending_output: std.ArrayList(u8),
-    hyperlink_targets: std.ArrayList([]u8),
-    pending_clipboard: ?ClipboardRequest = null,
-    kitty: KittyGlobalState = .{},
-    locator: LocatorState = .{},
-    encode_buf: [64]u8 = undefined,
-    encode_len: usize = 0,
+    host: HostState,
+    encode: EncodeScratch = .{},
 
     /// Initialize vt_core without cell storage.
     pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !VtCore {
-        var pipeline = try Interpret.Pipeline.init(allocator);
-        errdefer pipeline.deinit();
+        var apply_flow = try Interpret.ApplyFlow.init(allocator);
+        errdefer apply_flow.deinit();
         const state = GridNs.GridModel.init(rows, cols);
         const alt_state = GridNs.GridModel.init(rows, cols);
         return VtCore{
             .allocator = allocator,
-            .pipeline = pipeline,
-            .primary_state = state,
-            .alt_state = alt_state,
-            .alt_active = false,
+            .apply_flow = apply_flow,
+            .screen_state = ScreenState.init(state, alt_state),
             .selection = Selection.SelectionState.init(),
-            .pending_output = std.ArrayList(u8).empty,
-            .hyperlink_targets = std.ArrayList([]u8).empty,
+            .host = HostState.init(),
         };
     }
 
     /// Initialize vt_core with cell storage.
     pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !VtCore {
-        var pipeline = try Interpret.Pipeline.init(allocator);
-        errdefer pipeline.deinit();
+        var apply_flow = try Interpret.ApplyFlow.init(allocator);
+        errdefer apply_flow.deinit();
         var state = try GridNs.GridModel.initWithCells(allocator, rows, cols);
         errdefer state.deinit(allocator);
         var alt_state = try GridNs.GridModel.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return VtCore{
             .allocator = allocator,
-            .pipeline = pipeline,
-            .primary_state = state,
-            .alt_state = alt_state,
-            .alt_active = false,
+            .apply_flow = apply_flow,
+            .screen_state = ScreenState.init(state, alt_state),
             .selection = Selection.SelectionState.init(),
-            .pending_output = std.ArrayList(u8).empty,
-            .hyperlink_targets = std.ArrayList([]u8).empty,
+            .host = HostState.init(),
         };
     }
 
     /// Initialize vt_core with cell and history storage.
     pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !VtCore {
-        var pipeline = try Interpret.Pipeline.init(allocator);
-        errdefer pipeline.deinit();
+        var apply_flow = try Interpret.ApplyFlow.init(allocator);
+        errdefer apply_flow.deinit();
         var state = try GridNs.GridModel.initWithCellsAndHistory(allocator, rows, cols, history_capacity);
         errdefer state.deinit(allocator);
         var alt_state = try GridNs.GridModel.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return VtCore{
             .allocator = allocator,
-            .pipeline = pipeline,
-            .primary_state = state,
-            .alt_state = alt_state,
-            .alt_active = false,
+            .apply_flow = apply_flow,
+            .screen_state = ScreenState.init(state, alt_state),
             .selection = Selection.SelectionState.init(),
-            .pending_output = std.ArrayList(u8).empty,
-            .hyperlink_targets = std.ArrayList([]u8).empty,
+            .host = HostState.init(),
         };
     }
 
     /// Release vt_core-owned resources.
     pub fn deinit(self: *VtCore) void {
-        for (self.hyperlink_targets.items) |uri| self.allocator.free(uri);
-        self.hyperlink_targets.deinit(self.allocator);
-        if (self.pending_clipboard) |req| self.allocator.free(req.raw);
+        self.host.deinit(self.allocator);
         self.kitty.deinit(self.allocator);
-        self.pending_output.deinit(self.allocator);
-        self.primary_state.deinit(self.allocator);
-        self.alt_state.deinit(self.allocator);
-        self.pipeline.deinit();
+        self.screen_state.deinit(self.allocator);
+        self.apply_flow.deinit();
     }
 
     /// Feed one input byte into parser state.
     pub fn feedByte(self: *VtCore, byte: u8) void {
-        self.pipeline.feedByte(byte);
+        self.apply_flow.feedByte(byte);
     }
 
     /// Feed a byte slice into parser state.
     pub fn feedSlice(self: *VtCore, bytes: []const u8) void {
-        self.pipeline.feedSlice(bytes);
+        self.apply_flow.feedSlice(bytes);
     }
 
-    /// Apply queued events to the grid model.
+    /// Apply queued events to the screen state.
     pub fn apply(self: *VtCore) void {
-        for (self.pipeline.events()) |ev| {
+        for (self.apply_flow.events()) |ev| {
             if (Interpret.process(ev)) |sem_ev| {
                 self.applySemantic(sem_ev);
             }
         }
-        self.pipeline.clear();
+        self.apply_flow.clear();
         self.selection.clearIfInvalidatedByGrid(self.activeState());
     }
 
     /// Clear queued events without applying.
     pub fn clear(self: *VtCore) void {
-        self.pipeline.clear();
+        self.apply_flow.clear();
     }
 
     pub fn pendingOutput(self: *const VtCore) []const u8 {
-        return self.pending_output.items;
+        return self.host.pending_output.items;
     }
 
     pub fn clearPendingOutput(self: *VtCore) void {
-        self.pending_output.clearRetainingCapacity();
+        self.host.pending_output.clearRetainingCapacity();
     }
 
     pub fn hyperlinkUriForId(self: *const VtCore, link_id: u32) ?[]const u8 {
         if (link_id == 0) return null;
         const idx = link_id - 1;
-        if (idx >= self.hyperlink_targets.items.len) return null;
-        return self.hyperlink_targets.items[idx];
+        if (idx >= self.host.hyperlink_targets.items.len) return null;
+        return self.host.hyperlink_targets.items[idx];
     }
 
     pub fn pendingClipboardSet(self: *const VtCore) ?[]const u8 {
-        if (self.pending_clipboard) |req| return req.raw;
+        if (self.host.pending_clipboard) |req| return req.raw;
         return null;
     }
 
     pub fn kittyShellMark(self: *const VtCore) KittyShellMark {
-        return self.kitty.shell_mark;
+        return self.kitty.global.shell_mark;
     }
 
     pub fn kittyNotificationCount(self: *const VtCore) usize {
-        return self.kitty.notifications.items.len;
+        return self.kitty.global.notifications.items.len;
     }
 
     pub fn kittyNotificationAt(self: *const VtCore, idx: usize) ?KittyNotificationRequest {
-        if (idx >= self.kitty.notifications.items.len) return null;
-        return self.kitty.notifications.items[idx];
+        if (idx >= self.kitty.global.notifications.items.len) return null;
+        return self.kitty.global.notifications.items[idx];
     }
 
     pub fn kittyPointerShape(self: *const VtCore) []const u8 {
@@ -349,45 +444,45 @@ pub const VtCore = struct {
     }
 
     pub fn kittyColorStackDepth(self: *const VtCore) u16 {
-        return self.kitty.color_stack_depth;
+        return self.kitty.global.color_stack_depth;
     }
 
     pub fn terminalColorState(self: *const VtCore) TerminalColorState {
-        return self.terminal_colors;
+        return self.host.terminal_colors;
     }
 
     pub fn kittyGraphicsImageCount(self: *const VtCore) usize {
-        return self.kitty.graphics.imageCount();
+        return self.kitty.global.graphics.imageCount();
     }
 
     pub fn kittyGraphicsImageAt(self: *const VtCore, idx: usize) ?KittyGraphicsImage {
-        return self.kitty.graphics.imageAt(idx);
+        return self.kitty.global.graphics.imageAt(idx);
     }
 
     pub fn kittyGraphicsPlacementCount(self: *const VtCore) usize {
-        return self.kitty.graphics.placementCount();
+        return self.kitty.global.graphics.placementCount();
     }
 
     pub fn kittyGraphicsPlacementAt(self: *const VtCore, idx: usize) ?KittyGraphicsPlacement {
-        return self.kitty.graphics.placementAt(idx);
+        return self.kitty.global.graphics.placementAt(idx);
     }
 
     pub fn kittyGraphicsFrameCount(self: *const VtCore) usize {
-        return self.kitty.graphics.frameCount();
+        return self.kitty.global.graphics.frameCount();
     }
 
     pub fn kittyGraphicsFrameAt(self: *const VtCore, idx: usize) ?KittyGraphicsFrame {
-        return self.kitty.graphics.frameAt(idx);
+        return self.kitty.global.graphics.frameAt(idx);
     }
 
     pub fn clearPendingClipboardSet(self: *VtCore) void {
-        if (self.pending_clipboard) |req| self.allocator.free(req.raw);
-        self.pending_clipboard = null;
+        if (self.host.pending_clipboard) |req| self.allocator.free(req.raw);
+        self.host.pending_clipboard = null;
     }
 
     /// Reset parser state and clear queue.
     pub fn reset(self: *VtCore) void {
-        self.pipeline.reset();
+        self.apply_flow.reset();
     }
 
     /// Reset visible grid state only.
@@ -397,12 +492,11 @@ pub const VtCore = struct {
 
     /// Resize visible screen while preserving history ring contents.
     pub fn resize(self: *VtCore, rows: u16, cols: u16) !void {
-        try self.primary_state.resize(self.allocator, rows, cols);
-        try self.alt_state.resize(self.allocator, rows, cols);
+        try self.screen_state.resize(self.allocator, rows, cols);
         self.selection.clearIfInvalidatedByGrid(self.activeState());
     }
 
-    /// Return read-only grid model reference.
+    /// Return read-only screen state reference.
     pub fn screen(self: *const VtCore) *const GridNs.GridModel {
         return self.activeState();
     }
@@ -416,7 +510,7 @@ pub const VtCore = struct {
             .cursor_col = self.activeState().cursor_col,
             .cursor_visible = self.activeState().cursor_visible,
             .cursor_shape = self.activeState().cursor_style.shape,
-            .is_alternate_screen = self.alt_active,
+            .is_alternate_screen = self.screen_state.alt_active,
             .screen = self.activeState(),
         };
     }
@@ -431,15 +525,15 @@ pub const VtCore = struct {
 
     /// Return queued event count.
     pub fn queuedEventCount(self: *const VtCore) usize {
-        return self.pipeline.len();
+        return self.apply_flow.len();
     }
 
     /// Return the most recent queued title-set event before apply clears the queue.
     pub fn latestTitleSet(self: *const VtCore) ?[]const u8 {
-        var i = self.pipeline.events().len;
+        var i = self.apply_flow.events().len;
         while (i > 0) {
             i -= 1;
-            const ev = self.pipeline.events()[i];
+            const ev = self.apply_flow.events()[i];
             switch (ev) {
                 .osc => |osc| if (osc.kind == .title) return osc.payload,
                 else => {},
@@ -450,28 +544,28 @@ pub const VtCore = struct {
 
     /// Return history cell by recency index and column.
     pub fn historyRowAt(self: *const VtCore, history_idx: usize, col: u16) u21 {
-        if (self.alt_active) return 0;
-        return self.primary_state.historyRowAt(history_idx, col);
+        if (self.screen_state.alt_active) return 0;
+        return self.screen_state.primary.historyRowAt(history_idx, col);
     }
 
     pub fn historyCellAt(self: *const VtCore, history_idx: usize, col: u16) GridNs.Cell {
-        if (self.alt_active) return GridNs.default_cell;
-        return self.primary_state.historyCellAt(history_idx, col);
+        if (self.screen_state.alt_active) return GridNs.default_cell;
+        return self.screen_state.primary.historyCellAt(history_idx, col);
     }
 
     /// Return retained history row count.
     pub fn historyCount(self: *const VtCore) usize {
-        if (self.alt_active) return 0;
-        return self.primary_state.historyCount();
+        if (self.screen_state.alt_active) return 0;
+        return self.screen_state.primary.historyCount();
     }
 
     /// Return configured history capacity.
     pub fn historyCapacity(self: *const VtCore) u16 {
-        return self.primary_state.historyCapacity();
+        return self.screen_state.primary.historyCapacity();
     }
 
     pub fn isAlternateScreen(self: *const VtCore) bool {
-        return self.alt_active;
+        return self.screen_state.alt_active;
     }
 
     /// Return active selection snapshot or null.
@@ -501,18 +595,18 @@ pub const VtCore = struct {
 
     /// Encode logical key and modifiers.
     pub fn encodeKey(self: *VtCore, key: Input.Key, mod: Input.Modifier) []const u8 {
-        if (self.keyboard_action_mode) {
-            self.encode_len = 0;
-            return self.encode_buf[0..0];
+        if (self.modes.keyboard_action_mode) {
+            self.encode.len = 0;
+            return self.encode.buf[0..0];
         }
-        const encoded = Input.Codec.encodeKey(self.encode_buf[0..], key, mod, self.application_cursor_keys, self.application_keypad, self.modify_other_keys, self.activeKittyKeyboardFlags());
-        if (self.newline_mode and key == Input.key_enter and std.mem.eql(u8, encoded, "\r")) {
-            self.encode_buf[0] = '\r';
-            self.encode_buf[1] = '\n';
-            self.encode_len = 2;
-            return self.encode_buf[0..2];
+        const encoded = Input.Codec.encodeKey(self.encode.buf[0..], key, mod, self.modes.application_cursor_keys, self.modes.application_keypad, self.modes.modify_other_keys, self.activeKittyKeyboardFlags());
+        if (self.modes.newline_mode and key == Input.key_enter and std.mem.eql(u8, encoded, "\r")) {
+            self.encode.buf[0] = '\r';
+            self.encode.buf[1] = '\n';
+            self.encode.len = 2;
+            return self.encode.buf[0..2];
         }
-        self.encode_len = encoded.len;
+        self.encode.len = encoded.len;
         return encoded;
     }
 
@@ -521,47 +615,47 @@ pub const VtCore = struct {
     }
 
     pub fn isApplicationKeypad(self: *const VtCore) bool {
-        return self.application_keypad;
+        return self.modes.application_keypad;
     }
 
     pub fn modifyOtherKeys(self: *const VtCore) i8 {
-        return self.modify_other_keys;
+        return self.modes.modify_other_keys;
     }
 
     /// Encode mouse event payload (placeholder surface).
     pub fn encodeMouse(self: *VtCore, event: Input.MouseEvent) []const u8 {
-        LocatorNs.handleMouseEvent(&self.locator, self.allocator, &self.pending_output, self.encode_buf[0..], event);
-        const encoded = Input.Codec.encodeMouse(self.encode_buf[0..], event, self.mouse_tracking, self.mouse_protocol);
-        self.encode_len = encoded.len;
+        LocatorNs.handleMouseEvent(&self.host.locator, self.allocator, &self.host.pending_output, self.encode.buf[0..], event);
+        const encoded = Input.Codec.encodeMouse(self.encode.buf[0..], event, self.modes.mouse_tracking, self.modes.mouse_protocol);
+        self.encode.len = encoded.len;
         return encoded;
     }
 
     pub fn encodeFocusIn(self: *VtCore) []const u8 {
-        const encoded = if (self.focus_reporting) "\x1b[I" else "";
-        @memcpy(self.encode_buf[0..encoded.len], encoded);
-        self.encode_len = encoded.len;
-        return self.encode_buf[0..encoded.len];
+        const encoded = if (self.modes.focus_reporting) "\x1b[I" else "";
+        @memcpy(self.encode.buf[0..encoded.len], encoded);
+        self.encode.len = encoded.len;
+        return self.encode.buf[0..encoded.len];
     }
 
     pub fn encodeFocusOut(self: *VtCore) []const u8 {
-        const encoded = if (self.focus_reporting) "\x1b[O" else "";
-        @memcpy(self.encode_buf[0..encoded.len], encoded);
-        self.encode_len = encoded.len;
-        return self.encode_buf[0..encoded.len];
+        const encoded = if (self.modes.focus_reporting) "\x1b[O" else "";
+        @memcpy(self.encode.buf[0..encoded.len], encoded);
+        self.encode.len = encoded.len;
+        return self.encode.buf[0..encoded.len];
     }
 
     pub fn encodePasteStart(self: *VtCore) []const u8 {
-        const encoded = if (self.bracketed_paste) "\x1b[200~" else "";
-        @memcpy(self.encode_buf[0..encoded.len], encoded);
-        self.encode_len = encoded.len;
-        return self.encode_buf[0..encoded.len];
+        const encoded = if (self.modes.bracketed_paste) "\x1b[200~" else "";
+        @memcpy(self.encode.buf[0..encoded.len], encoded);
+        self.encode.len = encoded.len;
+        return self.encode.buf[0..encoded.len];
     }
 
     pub fn encodePasteEnd(self: *VtCore) []const u8 {
-        const encoded = if (self.bracketed_paste) "\x1b[201~" else "";
-        @memcpy(self.encode_buf[0..encoded.len], encoded);
-        self.encode_len = encoded.len;
-        return self.encode_buf[0..encoded.len];
+        const encoded = if (self.modes.bracketed_paste) "\x1b[201~" else "";
+        @memcpy(self.encode.buf[0..encoded.len], encoded);
+        self.encode.len = encoded.len;
+        return self.encode.buf[0..encoded.len];
     }
 
     /// Parse host key token into vt-core key constant.
@@ -604,11 +698,11 @@ pub const VtCore = struct {
     }
 
     fn activeState(self: *const VtCore) *const GridNs.GridModel {
-        return if (self.alt_active) &self.alt_state else &self.primary_state;
+        return self.screen_state.activeConst();
     }
 
     fn activeStateMut(self: *VtCore) *GridNs.GridModel {
-        return if (self.alt_active) &self.alt_state else &self.primary_state;
+        return self.screen_state.active();
     }
 
     fn activeKittyKeyboard(self: *VtCore) *KittyKeyboardStack {
@@ -624,50 +718,47 @@ pub const VtCore = struct {
     }
 
     fn activeKittyScreen(self: *VtCore) *KittyScreenState {
-        return if (self.alt_active) &self.kitty_alt else &self.kitty_main;
+        return self.kitty.activeScreen(self.screen_state.alt_active);
     }
 
     fn activeKittyScreenConst(self: *const VtCore) *const KittyScreenState {
-        return if (self.alt_active) &self.kitty_alt else &self.kitty_main;
+        return self.kitty.activeScreenConst(self.screen_state.alt_active);
     }
 
     fn resetTerminalState(self: *VtCore) void {
         self.activeStateMut().reset();
-        self.kitty_main.pointer.len = 0;
-        self.kitty_alt.pointer.len = 0;
-        self.kitty.color_stack_depth = 0;
-        self.locator = .{};
+        self.kitty.resetTerminalState();
+        self.host.locator = .{};
     }
 
     fn applySemantic(self: *VtCore, sem_ev: Interpret.SemanticEvent) void {
         if (Interpret.reportAction(sem_ev)) |action| {
-            RootReportDispatch.apply(self, action);
+            VtCoreReports.apply(self, action);
             return;
         }
         if (Interpret.kittyAction(sem_ev)) |action| {
-            RootKittyDispatch.apply(self, action);
+            VtCoreKitty.apply(self, action);
             return;
         }
         if (Interpret.modeAction(sem_ev)) |action| {
-            RootModeDispatch.apply(self, action);
+            VtCoreModes.apply(self, action);
             return;
         }
         if (Interpret.hostAction(sem_ev)) |action| {
-            RootHostDispatch.apply(self, action);
+            VtCoreHost.apply(self, action);
             return;
         }
         if (Interpret.screenAction(sem_ev)) |screen_ev| self.activeStateMut().applyScreen(screen_ev);
     }
-
 };
 test {
-    _ = @import("test/pipeline_regression.zig");
-    _ = @import("test/root_graphics.zig");
-    _ = @import("test/root_input_modes_reports.zig");
-    _ = @import("test/root_osc_and_colors.zig");
-    _ = @import("test/root_surface.zig");
+    _ = @import("test/apply_flow_regression.zig");
+    _ = @import("test/vt_core_graphics.zig");
+    _ = @import("test/vt_core_modes_reports.zig");
+    _ = @import("test/vt_core_osc_colors.zig");
+    _ = @import("test/vt_core_surface.zig");
     _ = @import("test/screen_state_behavior.zig");
-    _ = @import("test/semantic_mapping.zig");
+    _ = @import("test/action_mapping.zig");
     _ = @import("test/snapshot_regression.zig");
-    _ = @import("test/system_flows.zig");
+    _ = @import("test/vt_core_end_to_end.zig");
 }

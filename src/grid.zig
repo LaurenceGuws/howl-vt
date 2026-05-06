@@ -2,13 +2,13 @@
 //! Ownership: grid package boundary.
 //! Reason: keep one canonical owner for grid state and behavior.
 
-const model = @import("grid/model.zig");
+const state = @import("grid/state.zig");
 const types = @import("grid/types.zig");
 
 /// Canonical grid domain owner.
 pub const Grid = struct {
-    /// Main grid-state model.
-    pub const GridModel = model.GridModel;
+    /// Main terminal screen state.
+    pub const GridModel = state.GridModel;
     pub const Color = types.Color;
     pub const UnderlineStyle = types.UnderlineStyle;
     pub const CellAttrs = types.CellAttrs;

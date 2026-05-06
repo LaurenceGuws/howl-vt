@@ -2,14 +2,14 @@
 //! Ownership: selection package boundary.
 //! Reason: keep one canonical owner for selection state and data shapes.
 
-const model = @import("selection/model.zig");
+const state = @import("selection/state.zig");
 
 /// Canonical selection domain owner.
 pub const Selection = struct {
     /// Selection position payload.
-    pub const SelectionPos = model.SelectionPos;
+    pub const SelectionPos = state.SelectionPos;
     /// Read-only terminal selection payload.
-    pub const TerminalSelection = model.TerminalSelection;
+    pub const TerminalSelection = state.TerminalSelection;
     /// Mutable selection state owner.
-    pub const SelectionState = model.SelectionState;
+    pub const SelectionState = state.SelectionState;
 };

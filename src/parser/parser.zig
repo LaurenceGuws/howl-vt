@@ -5,6 +5,7 @@
 const std = @import("std");
 const stream_mod = @import("stream.zig");
 const csi_mod = @import("csi.zig");
+const string_control_mod = @import("string_control.zig");
 
 /// Escape-state machine mode.
 const EscState = enum {
@@ -12,34 +13,6 @@ const EscState = enum {
     esc,
     csi,
     charset,
-};
-
-/// OSC parse-state mode.
-const OscState = enum {
-    idle,
-    osc,
-    osc_esc,
-};
-
-/// APC parse-state mode.
-const ApcState = enum {
-    idle,
-    apc,
-    apc_esc,
-};
-
-/// DCS parse-state mode.
-const DcsState = enum {
-    idle,
-    dcs,
-    dcs_esc,
-};
-
-/// PM parse-state mode.
-const PmState = enum {
-    idle,
-    pm,
-    pm_esc,
 };
 
 /// OSC termination style.
@@ -126,15 +99,10 @@ pub const Parser = struct {
     stream: stream_mod.Stream,
     esc_state: EscState,
     csi: csi_mod.CsiParser,
-    osc_state: OscState,
-    osc_terminator: OscTerminator,
-    osc_buffer: std.ArrayList(u8),
-    apc_state: ApcState,
-    apc_buffer: std.ArrayList(u8),
-    dcs_state: DcsState,
-    dcs_buffer: std.ArrayList(u8),
-    pm_state: PmState,
-    pm_buffer: std.ArrayList(u8),
+    osc: string_control_mod.StringControl,
+    apc: string_control_mod.StringControl,
+    dcs: string_control_mod.StringControl,
+    pm: string_control_mod.StringControl,
     g0_charset: Charset,
     g1_charset: Charset,
     gl_charset: Charset,
@@ -143,17 +111,17 @@ pub const Parser = struct {
 
     /// Initialize parser state and owned buffers.
     pub fn init(allocator: std.mem.Allocator, sink: Sink) !Parser {
-        var osc_buffer = try std.ArrayList(u8).initCapacity(allocator, 256);
-        errdefer osc_buffer.deinit(allocator);
+        var osc = try string_control_mod.StringControl.init(allocator, 256, 4096, true);
+        errdefer osc.deinit();
 
-        var apc_buffer = try std.ArrayList(u8).initCapacity(allocator, 256);
-        errdefer apc_buffer.deinit(allocator);
+        var apc = try string_control_mod.StringControl.init(allocator, 256, 1024 * 1024, true);
+        errdefer apc.deinit();
 
-        var dcs_buffer = try std.ArrayList(u8).initCapacity(allocator, 256);
-        errdefer dcs_buffer.deinit(allocator);
+        var dcs = try string_control_mod.StringControl.init(allocator, 256, 4096, false);
+        errdefer dcs.deinit();
 
-        var pm_buffer = try std.ArrayList(u8).initCapacity(allocator, 256);
-        errdefer pm_buffer.deinit(allocator);
+        var pm = try string_control_mod.StringControl.init(allocator, 256, 4096, false);
+        errdefer pm.deinit();
 
         return .{
             .allocator = allocator,
@@ -161,15 +129,10 @@ pub const Parser = struct {
             .stream = .{},
             .esc_state = .ground,
             .csi = .{},
-            .osc_state = .idle,
-            .osc_terminator = .st,
-            .osc_buffer = osc_buffer,
-            .apc_state = .idle,
-            .apc_buffer = apc_buffer,
-            .dcs_state = .idle,
-            .dcs_buffer = dcs_buffer,
-            .pm_state = .idle,
-            .pm_buffer = pm_buffer,
+            .osc = osc,
+            .apc = apc,
+            .dcs = dcs,
+            .pm = pm,
             .g0_charset = .ascii,
             .g1_charset = .ascii,
             .gl_charset = .ascii,
@@ -180,10 +143,10 @@ pub const Parser = struct {
 
     /// Release parser-owned buffers.
     pub fn deinit(self: *Parser) void {
-        self.osc_buffer.deinit(self.allocator);
-        self.apc_buffer.deinit(self.allocator);
-        self.dcs_buffer.deinit(self.allocator);
-        self.pm_buffer.deinit(self.allocator);
+        self.osc.deinit();
+        self.apc.deinit();
+        self.dcs.deinit();
+        self.pm.deinit();
     }
 
     /// Reset parser state and transient buffers.
@@ -191,37 +154,32 @@ pub const Parser = struct {
         self.stream.reset();
         self.csi.reset();
         self.esc_state = .ground;
-        self.osc_state = .idle;
-        self.osc_terminator = .st;
-        self.apc_state = .idle;
-        self.dcs_state = .idle;
-        self.pm_state = .idle;
         self.g0_charset = .ascii;
         self.g1_charset = .ascii;
         self.gl_charset = .ascii;
         self.gl_target = .g0;
         self.charset_target = .g0;
-        self.osc_buffer.clearRetainingCapacity();
-        self.apc_buffer.clearRetainingCapacity();
-        self.dcs_buffer.clearRetainingCapacity();
-        self.pm_buffer.clearRetainingCapacity();
+        self.osc.reset();
+        self.apc.reset();
+        self.dcs.reset();
+        self.pm.reset();
     }
 
     /// Handle one byte of terminal input.
     pub fn handleByte(self: *Parser, byte: u8) void {
-        if (self.osc_state != .idle) {
+        if (self.osc.active()) {
             self.handleOscByte(byte);
             return;
         }
-        if (self.apc_state != .idle) {
+        if (self.apc.active()) {
             self.handleApcByte(byte);
             return;
         }
-        if (self.dcs_state != .idle) {
+        if (self.dcs.active()) {
             self.handleDcsByte(byte);
             return;
         }
-        if (self.pm_state != .idle) {
+        if (self.pm.active()) {
             self.handlePmByte(byte);
             return;
         }
@@ -231,7 +189,7 @@ pub const Parser = struct {
                     self.esc_state = .esc;
                     self.stream.reset();
                     self.csi.reset();
-                    self.osc_state = .idle;
+                    self.osc.reset();
                     return;
                 }
                 if (byte == 0x0E) {
@@ -258,23 +216,19 @@ pub const Parser = struct {
                     self.csi.reset();
                 } else if (byte == ']') {
                     self.esc_state = .ground;
-                    self.osc_state = .osc;
-                    self.osc_buffer.clearRetainingCapacity();
+                    self.osc.start();
                     return;
                 } else if (byte == 'P') {
                     self.esc_state = .ground;
-                    self.dcs_state = .dcs;
-                    self.dcs_buffer.clearRetainingCapacity();
+                    self.dcs.start();
                     return;
                 } else if (byte == '_') {
                     self.esc_state = .ground;
-                    self.apc_state = .apc;
-                    self.apc_buffer.clearRetainingCapacity();
+                    self.apc.start();
                     return;
                 } else if (byte == '^') {
                     self.esc_state = .ground;
-                    self.pm_state = .pm;
-                    self.pm_buffer.clearRetainingCapacity();
+                    self.pm.start();
                     return;
                 } else if (byte == '(') {
                     self.charset_target = .g0;
@@ -316,22 +270,22 @@ pub const Parser = struct {
     pub fn handleSlice(self: *Parser, bytes: []const u8) void {
         var i: usize = 0;
         while (i < bytes.len) {
-            if (self.osc_state != .idle) {
+            if (self.osc.active()) {
                 self.handleOscByte(bytes[i]);
                 i += 1;
                 continue;
             }
-            if (self.apc_state != .idle) {
+            if (self.apc.active()) {
                 self.handleApcByte(bytes[i]);
                 i += 1;
                 continue;
             }
-            if (self.dcs_state != .idle) {
+            if (self.dcs.active()) {
                 self.handleDcsByte(bytes[i]);
                 i += 1;
                 continue;
             }
-            if (self.pm_state != .idle) {
+            if (self.pm.active()) {
                 self.handlePmByte(bytes[i]);
                 i += 1;
                 continue;
@@ -368,144 +322,35 @@ pub const Parser = struct {
     }
 
     fn handleOscByte(self: *Parser, byte: u8) void {
-        switch (self.osc_state) {
-            .idle => return,
-            .osc => {
-                if (byte == 0x07) {
-                    self.osc_terminator = .bel;
-                    self.finishOsc();
-                    return;
-                }
-                if (byte == 0x1B) {
-                    self.osc_state = .osc_esc;
-                    return;
-                }
-                if (self.osc_buffer.items.len < 4096) {
-                    self.osc_buffer.append(self.allocator, byte) catch {};
-                }
-            },
-            .osc_esc => {
-                if (byte == '\\') {
-                    self.osc_terminator = .st;
-                    self.finishOsc();
-                    return;
-                }
-
-                // Stray ESC marker is dropped; following byte stays OSC payload.
-                self.osc_state = .osc;
-                if (self.osc_buffer.items.len < 4096) {
-                    self.osc_buffer.append(self.allocator, byte) catch {};
-                }
-            },
+        if (self.osc.feed(byte)) |finish| {
+            const terminator: OscTerminator = switch (finish) {
+                .bel => .bel,
+                .st => .st,
+            };
+            self.sink.onOsc(self.osc.data(), terminator);
+            self.osc.clearFinished();
         }
-    }
-
-    fn finishOsc(self: *Parser) void {
-        self.sink.onOsc(self.osc_buffer.items, self.osc_terminator);
-        self.osc_buffer.clearRetainingCapacity();
-        self.osc_state = .idle;
     }
 
     fn handleApcByte(self: *Parser, byte: u8) void {
-        const apc_max_len: usize = 1024 * 1024;
-        switch (self.apc_state) {
-            .idle => return,
-            .apc => {
-                if (byte == 0x07) {
-                    self.finishApc();
-                    return;
-                }
-                if (byte == 0x1B) {
-                    self.apc_state = .apc_esc;
-                    return;
-                }
-                if (self.apc_buffer.items.len < apc_max_len) {
-                    self.apc_buffer.append(self.allocator, byte) catch {};
-                }
-            },
-            .apc_esc => {
-                if (byte == '\\') {
-                    self.finishApc();
-                    return;
-                }
-
-                self.apc_state = .apc;
-                if (self.apc_buffer.items.len < apc_max_len) {
-                    self.apc_buffer.append(self.allocator, byte) catch {};
-                }
-            },
+        if (self.apc.feed(byte)) |_| {
+            self.sink.onApc(self.apc.data());
+            self.apc.clearFinished();
         }
-    }
-
-    fn finishApc(self: *Parser) void {
-        self.sink.onApc(self.apc_buffer.items);
-        self.apc_buffer.clearRetainingCapacity();
-        self.apc_state = .idle;
     }
 
     fn handleDcsByte(self: *Parser, byte: u8) void {
-        switch (self.dcs_state) {
-            .idle => return,
-            .dcs => {
-                if (byte == 0x1B) {
-                    self.dcs_state = .dcs_esc;
-                    return;
-                }
-                if (self.dcs_buffer.items.len < 4096) {
-                    self.dcs_buffer.append(self.allocator, byte) catch {};
-                }
-            },
-            .dcs_esc => {
-                if (byte == '\\') {
-                    self.finishDcs();
-                    return;
-                }
-
-                // Stray ESC marker is dropped; following byte stays DCS payload.
-                self.dcs_state = .dcs;
-                if (self.dcs_buffer.items.len < 4096) {
-                    self.dcs_buffer.append(self.allocator, byte) catch {};
-                }
-            },
+        if (self.dcs.feed(byte)) |_| {
+            self.sink.onDcs(self.dcs.data());
+            self.dcs.clearFinished();
         }
-    }
-
-    fn finishDcs(self: *Parser) void {
-        self.sink.onDcs(self.dcs_buffer.items);
-        self.dcs_buffer.clearRetainingCapacity();
-        self.dcs_state = .idle;
     }
 
     fn handlePmByte(self: *Parser, byte: u8) void {
-        switch (self.pm_state) {
-            .idle => return,
-            .pm => {
-                if (byte == 0x1B) {
-                    self.pm_state = .pm_esc;
-                    return;
-                }
-                if (self.pm_buffer.items.len < 4096) {
-                    self.pm_buffer.append(self.allocator, byte) catch {};
-                }
-            },
-            .pm_esc => {
-                if (byte == '\\') {
-                    self.finishPm();
-                    return;
-                }
-
-                self.pm_state = .pm;
-                if (self.pm_buffer.items.len < 4096) {
-                    self.pm_buffer.append(self.allocator, byte) catch {};
-                }
-            },
+        if (self.pm.feed(byte)) |_| {
+            self.sink.onPm(self.pm.data());
+            self.pm.clearFinished();
         }
-    }
-
-    fn finishPm(self: *Parser) void {
-        self.sink.onPm(self.pm_buffer.items);
-        self.pm_buffer.clearRetainingCapacity();
-        self.pm_state = .idle;
     }
 };
 
@@ -548,7 +393,6 @@ fn charsetDesignation(charset: Charset) u8 {
         .dec_special => '0',
     };
 }
-
 
 const Event = union(enum) {
     stream_codepoint: u21,

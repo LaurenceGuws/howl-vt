@@ -2,10 +2,10 @@
 //! Ownership: snapshot package boundary.
 //! Reason: keep one canonical owner for observable-state capture types.
 
-const model = @import("snapshot/model.zig");
+const data = @import("snapshot/data.zig");
 
 /// Canonical snapshot domain owner.
 pub const Snapshot = struct {
     /// Serializable vt-core snapshot payload.
-    pub const VtCoreSnapshot = model.VtCoreSnapshot;
+    pub const VtCoreSnapshot = data.VtCoreSnapshot;
 };

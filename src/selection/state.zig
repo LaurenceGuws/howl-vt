@@ -1,5 +1,5 @@
 //! Responsibility: implement selection state and lifecycle transitions.
-//! Ownership: selection model authority.
+//! Ownership: selection state authority.
 //! Reason: keep selection behavior explicit and host-independent.
 
 const std = @import("std");

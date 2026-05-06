@@ -155,7 +155,7 @@ test "snapshot: selection state is included" {
     }
 }
 
-test "snapshot: parity with direct grid model" {
+test "snapshot: parity with direct screen state" {
     const gpa = std.testing.allocator;
     var vt_core = try vt_mod.VtCore.initWithCells(gpa, 5, 10);
     defer vt_core.deinit();

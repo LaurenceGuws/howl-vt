@@ -9,7 +9,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const perf_optimize: std.builtin.OptimizeMode = .ReleaseFast;
     const mod = b.addModule("vt_core", .{
-        .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path("src/vt_core.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
     });
     mod.addImport("fuzz_scrollback", fuzz_scrollback_mod);
     const perf_mod = b.addModule("vt_core_perf", .{
-        .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path("src/vt_core.zig"),
         .target = target,
         .optimize = perf_optimize,
     });

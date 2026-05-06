@@ -3,7 +3,7 @@
 //! Reason: keep protocol robustness separate from scrollback invariants.
 
 const std = @import("std");
-const vt = @import("../root.zig");
+const vt = @import("../vt_core.zig");
 const parser_api = @import("../parser.zig").ParserApi;
 
 const Parser = parser_api.Parser;

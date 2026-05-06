@@ -1,6 +1,6 @@
 //! Responsibility: OSC and color-control host-neutral coverage.
-//! Ownership: root owner OSC protocol tests.
-//! Reason: keep OSC/title/color behavior explicit without bloating root.zig.
+//! Ownership: vt-core OSC and color protocol tests.
+//! Reason: keep OSC/title/color behavior explicit without bloating the main vt-core facade.
 
 const std = @import("std");
 const vt = @import("vt_core");

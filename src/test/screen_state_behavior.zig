@@ -1,5 +1,5 @@
-//! Responsibility: behavioral conformance coverage for grid model mutations.
-//! Ownership: grid model correctness tests.
+//! Responsibility: behavioral conformance coverage for screen-state mutations.
+//! Ownership: terminal screen-state correctness tests.
 //! Reason: keep cursor, wrap, erase, and cell semantics explicit and build-gated.
 
 const std = @import("std");

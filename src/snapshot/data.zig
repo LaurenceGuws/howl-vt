@@ -1,5 +1,5 @@
 //! Responsibility: capture and represent vt_core observable state snapshots.
-//! Ownership: snapshot model authority.
+//! Ownership: snapshot data authority.
 //! Reason: provide host-neutral read-only snapshots for replay and diagnostic access.
 //!
 //! VtCoreSnapshot is a deterministic, read-only capture of vt_core observable state

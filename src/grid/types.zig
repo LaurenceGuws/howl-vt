@@ -1,6 +1,6 @@
 //! Responsibility: define terminal grid value types and defaults.
 //! Ownership: grid data shape authority.
-//! Reason: keep visible cell/cursor/color schema near the grid model.
+//! Reason: keep visible cell/cursor/color schema near terminal screen state.
 
 const selection_owner = @import("../selection.zig");
 

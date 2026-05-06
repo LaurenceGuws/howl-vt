@@ -1,12 +1,16 @@
-//! Responsibility: encode host input and parse host-facing input tokens.
-//! Ownership: input codec authority.
-//! Reason: keep terminal key/mouse encoding and token parsing out of vt_core orchestration.
+//! Responsibility: expose stable host-input encoding and token parsing facade.
+//! Ownership: input codec boundary.
+//! Reason: keep vt_core insulated from input owner splits.
 
 const std = @import("std");
 const keymap = @import("keymap.zig");
 const mouse = @import("mouse.zig");
+const mouse_encode = @import("mouse_encode.zig");
+const tokens = @import("tokens.zig");
 
+/// Stable facade for host input conversion.
 pub const InputCodec = struct {
+    /// Encode one host key for the active terminal keyboard modes.
     pub fn encodeKey(buf: []u8, key: keymap.Key, mod: keymap.Modifier, application_cursor_keys: bool, application_keypad: bool, modify_other_keys: i8, kitty_keyboard_flags: u32) []const u8 {
         if (kitty_keyboard_flags != 0) {
             if (encodeKittyKey(buf, key, mod)) |encoded| return encoded;
@@ -499,157 +503,18 @@ pub const InputCodec = struct {
             std.fmt.bufPrint(buf, "\x1b[{d};{d}~", .{ code, modifier }) catch "";
     }
 
+    /// Encode one host mouse event through the mouse encoding owner.
     pub fn encodeMouse(buf: []u8, event: mouse.MouseEvent, tracking: mouse.MouseTrackingMode, protocol: mouse.MouseProtocol) []const u8 {
-        if (tracking == .off) return buf[0..0];
-
-        const emit = switch (event.kind) {
-            .press, .wheel => true,
-            .release => tracking != .x10 and event.button != .wheel_up and event.button != .wheel_down,
-            .move => switch (tracking) {
-                .button_event => event.buttons_down != 0,
-                .any_event => true,
-                else => false,
-            },
-        };
-        if (!emit) return buf[0..0];
-
-        const row1 = if (event.row < 0) 1 else event.row + 1;
-        const col1 = @as(u32, event.col) + 1;
-        const cb = mouseCode(event, tracking);
-        return switch (protocol) {
-            .sgr => encodeSgrMouse(buf, cb, col1, @intCast(row1), event.kind == .release),
-            .urxvt => encodeUrxvtMouse(buf, cb, col1, @intCast(row1)),
-            .utf8 => encodeLegacyMouse(buf, cb, col1, @intCast(row1), true),
-            .none => encodeLegacyMouse(buf, cb, col1, @intCast(row1), false),
-        };
+        return mouse_encode.encodeMouse(buf, event, tracking, protocol);
     }
 
-    fn mouseCode(event: mouse.MouseEvent, tracking: mouse.MouseTrackingMode) u16 {
-        var code: u16 = switch (event.kind) {
-            .press => pressButtonCode(event.button),
-            .release => 3,
-            .wheel => wheelButtonCode(event.button),
-            .move => moveBaseCode(event, tracking),
-        };
-        if (tracking != .x10) {
-            if ((event.mod & keymap.VTERM_MOD_SHIFT) != 0) code += 4;
-            if ((event.mod & keymap.VTERM_MOD_ALT) != 0) code += 8;
-            if ((event.mod & keymap.VTERM_MOD_CTRL) != 0) code += 16;
-        }
-        if (event.kind == .move) code += 32;
-        return code;
-    }
-
-    fn encodeSgrMouse(buf: []u8, cb: u16, col1: u32, row1: u32, release: bool) []const u8 {
-        const final: u8 = if (release) 'm' else 'M';
-        return std.fmt.bufPrint(buf, "\x1b[<{d};{d};{d}{c}", .{ cb, col1, row1, final }) catch buf[0..0];
-    }
-
-    fn encodeUrxvtMouse(buf: []u8, cb: u16, col1: u32, row1: u32) []const u8 {
-        return std.fmt.bufPrint(buf, "\x1b[{d};{d};{d}M", .{ cb + 32, col1, row1 }) catch buf[0..0];
-    }
-
-    fn encodeLegacyMouse(buf: []u8, cb: u16, col1: u32, row1: u32, utf8: bool) []const u8 {
-        if (!utf8 and (cb > 223 or col1 > 223 or row1 > 223)) return buf[0..0];
-        var idx: usize = 0;
-        buf[idx] = '\x1b';
-        idx += 1;
-        buf[idx] = '[';
-        idx += 1;
-        buf[idx] = 'M';
-        idx += 1;
-        idx += encodeMouseNumber(buf[idx..], cb + 32, utf8);
-        idx += encodeMouseNumber(buf[idx..], col1 + 32, utf8);
-        idx += encodeMouseNumber(buf[idx..], row1 + 32, utf8);
-        return buf[0..idx];
-    }
-
-    fn encodeMouseNumber(out: []u8, value: u32, utf8: bool) usize {
-        if (!utf8 or value < 128) {
-            out[0] = @intCast(value);
-            return 1;
-        }
-        return std.unicode.utf8Encode(@intCast(value), out) catch 0;
-    }
-
-    fn pressButtonCode(button: mouse.MouseButton) u16 {
-        return switch (button) {
-            .left => 0,
-            .middle => 1,
-            .right => 2,
-            .wheel_up => 64,
-            .wheel_down => 65,
-            .none => 3,
-        };
-    }
-
-    fn wheelButtonCode(button: mouse.MouseButton) u16 {
-        return switch (button) {
-            .wheel_up => 64,
-            .wheel_down => 65,
-            else => pressButtonCode(button),
-        };
-    }
-
-    fn moveBaseCode(event: mouse.MouseEvent, tracking: mouse.MouseTrackingMode) u16 {
-        _ = tracking;
-        if ((event.buttons_down & 0x01) != 0) return 0;
-        if ((event.buttons_down & 0x02) != 0) return 1;
-        if ((event.buttons_down & 0x04) != 0) return 2;
-        return 3;
-    }
-
+    /// Parse a host key token through the token owner.
     pub fn parseKeyToken(name: []const u8) ?keymap.Key {
-        if (std.mem.eql(u8, name, "KEYCODE_ENTER")) return keymap.VTERM_KEY_ENTER;
-        if (std.mem.eql(u8, name, "KEYCODE_TAB")) return keymap.VTERM_KEY_TAB;
-        if (std.mem.eql(u8, name, "KEYCODE_DEL")) return keymap.VTERM_KEY_BACKSPACE;
-        if (std.mem.eql(u8, name, "KEYCODE_ESCAPE")) return keymap.VTERM_KEY_ESCAPE;
-        if (std.mem.eql(u8, name, "KEYCODE_DPAD_UP")) return keymap.VTERM_KEY_UP;
-        if (std.mem.eql(u8, name, "KEYCODE_DPAD_DOWN")) return keymap.VTERM_KEY_DOWN;
-        if (std.mem.eql(u8, name, "KEYCODE_DPAD_LEFT")) return keymap.VTERM_KEY_LEFT;
-        if (std.mem.eql(u8, name, "KEYCODE_DPAD_RIGHT")) return keymap.VTERM_KEY_RIGHT;
-        if (std.mem.eql(u8, name, "KEYCODE_INSERT")) return keymap.VTERM_KEY_INS;
-        if (std.mem.eql(u8, name, "KEYCODE_FORWARD_DEL")) return keymap.VTERM_KEY_DEL;
-        if (std.mem.eql(u8, name, "KEYCODE_MOVE_HOME")) return keymap.VTERM_KEY_HOME;
-        if (std.mem.eql(u8, name, "KEYCODE_MOVE_END")) return keymap.VTERM_KEY_END;
-        if (std.mem.eql(u8, name, "KEYCODE_PAGE_UP")) return keymap.VTERM_KEY_PAGEUP;
-        if (std.mem.eql(u8, name, "KEYCODE_PAGE_DOWN")) return keymap.VTERM_KEY_PAGEDOWN;
-        if (std.mem.eql(u8, name, "KEYCODE_F1")) return keymap.VTERM_KEY_F1;
-        if (std.mem.eql(u8, name, "KEYCODE_F2")) return keymap.VTERM_KEY_F2;
-        if (std.mem.eql(u8, name, "KEYCODE_F3")) return keymap.VTERM_KEY_F3;
-        if (std.mem.eql(u8, name, "KEYCODE_F4")) return keymap.VTERM_KEY_F4;
-        if (std.mem.eql(u8, name, "KEYCODE_F5")) return keymap.VTERM_KEY_F5;
-        if (std.mem.eql(u8, name, "KEYCODE_F6")) return keymap.VTERM_KEY_F6;
-        if (std.mem.eql(u8, name, "KEYCODE_F7")) return keymap.VTERM_KEY_F7;
-        if (std.mem.eql(u8, name, "KEYCODE_F8")) return keymap.VTERM_KEY_F8;
-        if (std.mem.eql(u8, name, "KEYCODE_F9")) return keymap.VTERM_KEY_F9;
-        if (std.mem.eql(u8, name, "KEYCODE_F10")) return keymap.VTERM_KEY_F10;
-        if (std.mem.eql(u8, name, "KEYCODE_F11")) return keymap.VTERM_KEY_F11;
-        if (std.mem.eql(u8, name, "KEYCODE_F12")) return keymap.VTERM_KEY_F12;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_0")) return keymap.VTERM_KEY_KP_0;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_1")) return keymap.VTERM_KEY_KP_1;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_2")) return keymap.VTERM_KEY_KP_2;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_3")) return keymap.VTERM_KEY_KP_3;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_4")) return keymap.VTERM_KEY_KP_4;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_5")) return keymap.VTERM_KEY_KP_5;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_6")) return keymap.VTERM_KEY_KP_6;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_7")) return keymap.VTERM_KEY_KP_7;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_8")) return keymap.VTERM_KEY_KP_8;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_9")) return keymap.VTERM_KEY_KP_9;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_DOT")) return keymap.VTERM_KEY_KP_DECIMAL;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_ADD")) return keymap.VTERM_KEY_KP_ADD;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_SUBTRACT")) return keymap.VTERM_KEY_KP_SUBTRACT;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_MULTIPLY")) return keymap.VTERM_KEY_KP_MULTIPLY;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_DIVIDE")) return keymap.VTERM_KEY_KP_DIVIDE;
-        if (std.mem.eql(u8, name, "KEYCODE_NUMPAD_ENTER")) return keymap.VTERM_KEY_KP_ENTER;
-        return null;
+        return tokens.parseKeyToken(name);
     }
 
+    /// Parse host modifier bits through the token owner.
     pub fn parseModifierBits(mods: i32) keymap.Modifier {
-        var out: keymap.Modifier = keymap.VTERM_MOD_NONE;
-        if ((mods & 0x01) != 0) out |= keymap.VTERM_MOD_CTRL;
-        if ((mods & 0x02) != 0) out |= keymap.VTERM_MOD_ALT;
-        if ((mods & 0x04) != 0) out |= keymap.VTERM_MOD_SHIFT;
-        return out;
+        return tokens.parseModifierBits(mods);
     }
 };
