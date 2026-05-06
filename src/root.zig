@@ -162,7 +162,6 @@ pub const VtCore = struct {
 
     pub const KittyShellMark = KittyNs.ShellMark;
     pub const KittyNotificationRequest = KittyNs.NotificationRequest;
-    const KittyPointerShapeStack = KittyNs.Pointer.Stack;
     pub const TerminalColorState = OscColorNs.State;
     const SpecialColorKey = OscColorNs.SpecialKey;
     const KittyGraphicsImage = KittyNs.Graphics.Image;
@@ -173,8 +172,6 @@ pub const VtCore = struct {
     const KittyGlobalState = KittyNs.GlobalState;
 
     const LocatorState = LocatorNs.State;
-
-    const SavedDecMode = TerminalModeNs.SavedDecMode;
 
     allocator: std.mem.Allocator,
     pipeline: Interpret.Pipeline,
@@ -200,7 +197,7 @@ pub const VtCore = struct {
     kitty_alt: KittyScreenState = .{},
     mouse_tracking: Input.MouseTrackingMode = .off,
     mouse_protocol: Input.MouseProtocol = .none,
-    saved_dec_modes: [16]SavedDecMode = [_]SavedDecMode{.{ .mode = 0, .state = 0 }} ** 16,
+    saved_dec_modes: [16]TerminalModeNs.SavedDecMode = [_]TerminalModeNs.SavedDecMode{.{ .mode = 0, .state = 0 }} ** 16,
     saved_dec_mode_count: u8 = 0,
     xtchecksum_flags: u16 = 0,
     terminal_colors: TerminalColorState = .{},
@@ -342,7 +339,7 @@ pub const VtCore = struct {
     }
 
     pub fn kittyPointerShape(self: *const VtCore) []const u8 {
-        return self.activeKittyPointerConst().currentName();
+        return self.activeKittyScreenConst().pointer.currentName();
     }
 
     pub fn kittyColorStackDepth(self: *const VtCore) u16 {
@@ -609,23 +606,23 @@ pub const VtCore = struct {
     }
 
     fn activeKittyKeyboard(self: *VtCore) *KittyKeyboardStack {
-        return if (self.alt_active) &self.kitty_alt.keyboard else &self.kitty_main.keyboard;
+        return &self.activeKittyScreen().keyboard;
     }
 
     fn activeKittyKeyboardConst(self: *const VtCore) *const KittyKeyboardStack {
-        return if (self.alt_active) &self.kitty_alt.keyboard else &self.kitty_main.keyboard;
+        return &self.activeKittyScreenConst().keyboard;
     }
 
     fn activeKittyKeyboardFlags(self: *const VtCore) u32 {
         return self.activeKittyKeyboardConst().flags;
     }
 
-    fn activeKittyPointer(self: *VtCore) *KittyPointerShapeStack {
-        return if (self.alt_active) &self.kitty_alt.pointer else &self.kitty_main.pointer;
+    fn activeKittyScreen(self: *VtCore) *KittyScreenState {
+        return if (self.alt_active) &self.kitty_alt else &self.kitty_main;
     }
 
-    fn activeKittyPointerConst(self: *const VtCore) *const KittyPointerShapeStack {
-        return if (self.alt_active) &self.kitty_alt.pointer else &self.kitty_main.pointer;
+    fn activeKittyScreenConst(self: *const VtCore) *const KittyScreenState {
+        return if (self.alt_active) &self.kitty_alt else &self.kitty_main;
     }
 
     fn resetTerminalState(self: *VtCore) void {
@@ -638,13 +635,13 @@ pub const VtCore = struct {
 
     fn applySemantic(self: *VtCore, sem_ev: Interpret.SemanticEvent) void {
         switch (sem_ev) {
-            .enter_alt_screen => |opts| self.enterAltScreen(opts.clear, opts.save_cursor),
-            .exit_alt_screen => |opts| self.exitAltScreen(opts.restore_cursor),
+            .enter_alt_screen => |opts| TerminalModeNs.enterAltScreen(self, opts.clear, opts.save_cursor),
+            .exit_alt_screen => |opts| TerminalModeNs.exitAltScreen(self, opts.restore_cursor),
             .application_cursor_keys => |enabled| self.application_cursor_keys = enabled,
             .application_keypad => |enabled| self.application_keypad = enabled,
-            .ansi_mode_set => |modes| self.setAnsiModes(modes.params[0..modes.param_count], true),
-            .ansi_mode_reset => |modes| self.setAnsiModes(modes.params[0..modes.param_count], false),
-            .ansi_mode_query => |mode| TerminalReportNs.appendAnsiModeReport(self.allocator, &self.pending_output, self.encode_buf[0..], mode, self.ansiModeState(mode)),
+            .ansi_mode_set => |modes| TerminalModeNs.setAnsiModes(self, modes.params[0..modes.param_count], true),
+            .ansi_mode_reset => |modes| TerminalModeNs.setAnsiModes(self, modes.params[0..modes.param_count], false),
+            .ansi_mode_query => |mode| TerminalReportNs.appendAnsiModeReport(self.allocator, &self.pending_output, self.encode_buf[0..], mode, TerminalModeNs.ansiModeState(self, mode)),
             .modify_other_keys_set => |value| self.modify_other_keys = value,
             .modify_other_keys_query => TerminalReportNs.appendModifyOtherKeysReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.modify_other_keys),
             .modify_other_keys_disable => self.modify_other_keys = -1,
@@ -657,10 +654,10 @@ pub const VtCore = struct {
             .kitty_shell_mark => |mark| KittyNs.setShellMark(self.allocator, &self.kitty.shell_mark, mark),
             .kitty_notification => |notification| KittyNs.appendNotification(self.allocator, &self.kitty.notifications, notification),
             .kitty_pointer_shape => |cmd| switch (cmd.action) {
-                '<' => self.activeKittyPointer().pop(),
-                '>' => self.activeKittyPointer().push(cmd.names),
-                '?' => self.activeKittyPointerConst().appendQuery(self.allocator, &self.pending_output, cmd.names),
-                else => self.activeKittyPointer().set(cmd.names),
+                '<' => self.activeKittyScreen().pointer.pop(),
+                '>' => self.activeKittyScreen().pointer.push(cmd.names),
+                '?' => self.activeKittyScreenConst().pointer.appendQuery(self.allocator, &self.pending_output, cmd.names),
+                else => self.activeKittyScreen().pointer.set(cmd.names),
             },
             .kitty_color_stack => |cmd| switch (cmd) {
                 .push => KittyNs.Color.pushState(&self.kitty.color_stack, &self.terminal_colors, &self.kitty.color_stack_depth),
@@ -689,9 +686,9 @@ pub const VtCore = struct {
             .hyperlink_set => |uri| self.activeStateMut().setCurrentLinkId(self.internHyperlink(uri)),
             .hyperlink_clear => self.activeStateMut().setCurrentLinkId(0),
             .clipboard_set => |payload| self.setPendingClipboard(payload),
-            .dec_mode_query => |mode| TerminalReportNs.appendDecModeReport(self.allocator, &self.pending_output, self.encode_buf[0..], mode, self.decModeState(mode)),
-            .dec_mode_save => |modes| self.saveDecModes(modes.params[0..modes.param_count]),
-            .dec_mode_restore => |modes| self.restoreDecModes(modes.params[0..modes.param_count]),
+            .dec_mode_query => |mode| TerminalReportNs.appendDecModeReport(self.allocator, &self.pending_output, self.encode_buf[0..], mode, TerminalModeNs.decModeState(self, mode)),
+            .dec_mode_save => |modes| TerminalModeNs.saveDecModes(self, modes.params[0..modes.param_count]),
+            .dec_mode_restore => |modes| TerminalModeNs.restoreDecModes(self, modes.params[0..modes.param_count]),
             .device_status_report => self.appendPendingOutput("\x1b[0n"),
             .cursor_position_report => TerminalReportNs.appendCursorPositionReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.renderView()),
             .dec_cursor_position_report => TerminalReportNs.appendDecCursorPositionReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.renderView()),
@@ -725,82 +722,6 @@ pub const VtCore = struct {
         self.pending_output.appendSlice(self.allocator, bytes) catch {};
     }
 
-    fn decModeState(self: *const VtCore, mode: u16) u8 {
-        return TerminalModeNs.decModeState(.{
-            .application_cursor_keys = self.application_cursor_keys,
-            .application_keypad = self.application_keypad,
-            .auto_wrap = self.activeState().auto_wrap,
-            .left_right_margin_mode = self.activeState().left_right_margin_mode,
-            .cursor_visible = self.activeState().cursor_visible,
-            .alt_active = self.alt_active,
-            .mouse_tracking = self.mouse_tracking,
-            .mouse_protocol = self.mouse_protocol,
-            .focus_reporting = self.focus_reporting,
-            .bracketed_paste = self.bracketed_paste,
-        }, mode);
-    }
-
-    fn ansiModeState(self: *const VtCore, mode: u16) u8 {
-        return TerminalModeNs.ansiModeState(.{
-            .keyboard_action_mode = self.keyboard_action_mode,
-            .insert_mode = self.activeState().insertMode(),
-            .send_receive_mode = self.send_receive_mode,
-            .newline_mode = self.newline_mode,
-        }, mode);
-    }
-
-    fn saveDecModes(self: *VtCore, modes: []const u16) void {
-        for (modes) |mode| {
-            if (!TerminalModeNs.canSetDecMode(mode)) continue;
-            self.saved_dec_modes[TerminalModeNs.savedDecModeSlot(self.saved_dec_modes[0..], &self.saved_dec_mode_count, mode)] = .{ .mode = mode, .state = self.decModeState(mode) };
-        }
-    }
-
-    fn restoreDecModes(self: *VtCore, modes: []const u16) void {
-        for (modes) |mode| {
-            const state = TerminalModeNs.savedDecModeState(self.saved_dec_modes[0..], self.saved_dec_mode_count, mode) orelse continue;
-            switch (state) {
-                1 => self.setDecMode(mode, true),
-                2 => self.setDecMode(mode, false),
-                else => {},
-            }
-        }
-    }
-
-    fn setDecMode(self: *VtCore, mode: u16, enabled: bool) void {
-        switch (mode) {
-            1 => self.application_cursor_keys = enabled,
-            6 => self.activeStateMut().apply(.{ .origin_mode = enabled }),
-            7 => self.activeStateMut().apply(.{ .auto_wrap = enabled }),
-            69 => self.activeStateMut().apply(.{ .left_right_margin_mode = enabled }),
-            25 => self.activeStateMut().apply(.{ .cursor_visible = enabled }),
-            66 => self.application_keypad = enabled,
-            47 => if (enabled) self.enterAltScreen(false, false) else self.exitAltScreen(false),
-            1047 => if (enabled) self.enterAltScreen(true, false) else self.exitAltScreen(false),
-            1049 => if (enabled) self.enterAltScreen(true, true) else self.exitAltScreen(true),
-            9 => self.mouse_tracking = if (enabled) .x10 else .off,
-            1000 => self.mouse_tracking = if (enabled) .normal else .off,
-            1002 => self.mouse_tracking = if (enabled) .button_event else .off,
-            1003 => self.mouse_tracking = if (enabled) .any_event else .off,
-            1004 => self.focus_reporting = enabled,
-            1005 => self.mouse_protocol = if (enabled) .utf8 else .none,
-            1006 => self.mouse_protocol = if (enabled) .sgr else .none,
-            1015 => self.mouse_protocol = if (enabled) .urxvt else .none,
-            2004 => self.bracketed_paste = enabled,
-            else => {},
-        }
-    }
-
-    fn setAnsiModes(self: *VtCore, modes: []const u16, enabled: bool) void {
-        for (modes) |mode| switch (mode) {
-            2 => self.keyboard_action_mode = enabled,
-            4 => self.activeStateMut().apply(.{ .insert_mode = enabled }),
-            12 => self.send_receive_mode = enabled,
-            20 => self.newline_mode = enabled,
-            else => {},
-        };
-    }
-
     fn internHyperlink(self: *VtCore, uri: []const u8) u32 {
         for (self.hyperlink_targets.items, 0..) |existing, idx| {
             if (std.mem.eql(u8, existing, uri)) return @intCast(idx + 1);
@@ -821,37 +742,6 @@ pub const VtCore = struct {
         };
         self.pending_clipboard = .{ .raw = owned };
     }
-
-    fn enterAltScreen(self: *VtCore, clear_alt: bool, save_cursor: bool) void {
-        if (save_cursor) {
-            self.saved_primary_cursor = .{
-                .row = self.primary_state.cursor_row,
-                .col = self.primary_state.cursor_col,
-                .wrap_pending = self.primary_state.wrap_pending,
-                .cursor_visible = self.primary_state.cursor_visible,
-            };
-        }
-        if (clear_alt) self.alt_state.reset();
-        self.alt_active = true;
-        self.alt_state.markAllDirty();
-        self.selection.clear();
-    }
-
-    fn exitAltScreen(self: *VtCore, restore_cursor: bool) void {
-        self.alt_active = false;
-        if (restore_cursor) {
-            if (self.saved_primary_cursor) |saved| {
-                self.primary_state.cursor_row = @min(saved.row, self.primary_state.rows -| 1);
-                self.primary_state.cursor_col = @min(saved.col, self.primary_state.cols -| 1);
-                self.primary_state.wrap_pending = saved.wrap_pending;
-                self.primary_state.cursor_visible = saved.cursor_visible;
-            }
-            self.saved_primary_cursor = null;
-        }
-        self.primary_state.markAllDirty();
-        self.selection.clear();
-    }
-
 };
 test {
     _ = @import("test/pipeline_regression.zig");

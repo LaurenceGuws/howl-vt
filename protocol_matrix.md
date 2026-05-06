@@ -6,12 +6,27 @@ Drive `howl-vt-core` toward explicit xterm baseline parity and staged kitty prot
 `protocol_coverage.db` is the source of truth for protocol maturity work in this repo.
 This file is a human summary of that ledger.
 
-The SQLite ledger is generated from `src/fuzz/assets/xterm-ctlseqs.ms` and records one row per parsed control-sequence entry, including separate `planned`, `implemented`, `test_verified`, and `host_verified` flags. Its `metadata` table records the `howl-vt-core` commit used when reviewing support flags.
+The SQLite ledger is DX-first, not provenance-first.
+It uses one `protocols` table with human-facing protocol names, sequence shapes, rich details, stable unit-test filter names, and three completeness flags:
+- `implemented`
+- `unit_tested`
+- `host_tested`
+
+`unit_test_filters` stores newline-delimited Zig test filter strings. It is intentionally human-curated, file-agnostic, and aimed at targeted regression runs.
+
+The schema lives in `protocol_coverage_schema.sql`.
+The database is curated to be easy to query during development, not to mirror upstream docs line-for-line.
 
 Example query:
 ```sh
 sqlite3 protocol_coverage.db \
-  "SELECT id, sequence FROM protocol_entries WHERE planned = 1 AND test_verified = 0;"
+  "SELECT id, family, kind, name, sequence FROM protocol_gaps WHERE implemented = 0 OR unit_tested = 0;"
+```
+
+Targeted regression query:
+```sh
+sqlite3 protocol_coverage.db \
+  "SELECT id, unit_test_filters FROM protocols WHERE unit_tested = 1 AND unit_test_filters <> '';"
 ```
 
 ## Status
@@ -21,7 +36,9 @@ sqlite3 protocol_coverage.db \
 - `deferred`: intentionally not in the current tranche.
 
 ## Corpus
-- Vendored xterm reference: `src/fuzz/assets/xterm-ctlseqs.ms`
+- Human reference inputs used when curating the ledger:
+  - `src/fuzz/assets/xterm-ctlseqs.ms`
+  - `/usr/share/doc/kitty/html/protocol-extensions.html`
 - Current deterministic fuzzers:
   - `src/fuzz/scrollback.zig`
   - `src/fuzz/protocol.zig`
