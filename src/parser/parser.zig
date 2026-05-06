@@ -53,6 +53,12 @@ const CharsetTarget = enum {
     g1,
 };
 
+pub const DeccirCharsetState = struct {
+    g0_designation: u8,
+    g1_designation: u8,
+    gl_index: u8,
+};
+
 /// Parser sink callback interface.
 pub const Sink = struct {
     ptr: *anyopaque,
@@ -117,6 +123,7 @@ pub const Parser = struct {
     g0_charset: Charset,
     g1_charset: Charset,
     gl_charset: Charset,
+    gl_target: CharsetTarget,
     charset_target: CharsetTarget,
 
     /// Initialize parser state and owned buffers.
@@ -146,6 +153,7 @@ pub const Parser = struct {
             .g0_charset = .ascii,
             .g1_charset = .ascii,
             .gl_charset = .ascii,
+            .gl_target = .g0,
             .charset_target = .g0,
         };
     }
@@ -169,6 +177,7 @@ pub const Parser = struct {
         self.g0_charset = .ascii;
         self.g1_charset = .ascii;
         self.gl_charset = .ascii;
+        self.gl_target = .g0;
         self.charset_target = .g0;
         self.osc_buffer.clearRetainingCapacity();
         self.apc_buffer.clearRetainingCapacity();
@@ -200,10 +209,12 @@ pub const Parser = struct {
                 }
                 if (byte == 0x0E) {
                     self.gl_charset = self.g1_charset;
+                    self.gl_target = .g1;
                     return;
                 }
                 if (byte == 0x0F) {
                     self.gl_charset = self.g0_charset;
+                    self.gl_target = .g0;
                     return;
                 }
                 if (self.gl_charset == .dec_special and byte >= 0x20 and byte <= 0x7e) {
@@ -256,6 +267,7 @@ pub const Parser = struct {
                 }
                 if (self.charset_target == .g0) {
                     self.gl_charset = self.g0_charset;
+                    self.gl_target = .g0;
                 }
                 self.esc_state = .ground;
             },
@@ -305,6 +317,17 @@ pub const Parser = struct {
             self.handleByte(bytes[i]);
             i += 1;
         }
+    }
+
+    pub fn deccirCharsetState(self: *const Parser) DeccirCharsetState {
+        return .{
+            .g0_designation = charsetDesignation(self.g0_charset),
+            .g1_designation = charsetDesignation(self.g1_charset),
+            .gl_index = switch (self.gl_target) {
+                .g0 => 0,
+                .g1 => 1,
+            },
+        };
     }
 
     fn handleOscByte(self: *Parser, byte: u8) void {
@@ -447,6 +470,13 @@ fn mapDecSpecial(byte: u8) u21 {
         '}' => 0x00A3, // £
         '~' => 0x00B7, // ·
         else => byte,
+    };
+}
+
+fn charsetDesignation(charset: Charset) u8 {
+    return switch (charset) {
+        .ascii => 'B',
+        .dec_special => '0',
     };
 }
 

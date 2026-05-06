@@ -93,6 +93,11 @@ pub const GridModel = struct {
     cursor_style: CursorStyle,
     auto_wrap: bool,
     origin_mode: bool,
+    insert_mode: bool,
+    left_right_margin_mode: bool,
+    left_margin: u16,
+    right_margin: u16,
+    attr_change_extent_rect: bool,
     view_padding_rows: u16,
     row_origin: u16,
     scroll_top: u16,
@@ -133,6 +138,11 @@ pub const GridModel = struct {
             .cursor_style = types.default_cursor_style,
             .auto_wrap = true,
             .origin_mode = false,
+            .insert_mode = false,
+            .left_right_margin_mode = false,
+            .left_margin = 0,
+            .right_margin = cols -| 1,
+            .attr_change_extent_rect = false,
             .view_padding_rows = 0,
             .row_origin = 0,
             .scroll_top = 0,
@@ -190,6 +200,11 @@ pub const GridModel = struct {
             .cursor_style = types.default_cursor_style,
             .auto_wrap = true,
             .origin_mode = false,
+            .insert_mode = false,
+            .left_right_margin_mode = false,
+            .left_margin = 0,
+            .right_margin = cols -| 1,
+            .attr_change_extent_rect = false,
             .view_padding_rows = 0,
             .row_origin = 0,
             .scroll_top = 0,
@@ -256,6 +271,11 @@ pub const GridModel = struct {
             .cursor_style = types.default_cursor_style,
             .auto_wrap = true,
             .origin_mode = false,
+            .insert_mode = false,
+            .left_right_margin_mode = false,
+            .left_margin = 0,
+            .right_margin = cols -| 1,
+            .attr_change_extent_rect = false,
             .view_padding_rows = 0,
             .row_origin = 0,
             .scroll_top = 0,
@@ -503,6 +523,10 @@ pub const GridModel = struct {
         self.view_padding_rows = 0;
         self.scroll_top = 0;
         self.scroll_bottom = rows -| 1;
+        self.left_right_margin_mode = false;
+        self.left_margin = 0;
+        self.right_margin = cols -| 1;
+        self.attr_change_extent_rect = false;
         self.dirty_rows = dirtyRowsForFull(rows, new_dirty_cols_start, new_dirty_cols_end);
 
         try self.replaceHistoryAuthority(
@@ -883,6 +907,11 @@ pub const GridModel = struct {
         self.cursor_style = types.default_cursor_style;
         self.auto_wrap = true;
         self.origin_mode = false;
+        self.insert_mode = false;
+        self.left_right_margin_mode = false;
+        self.left_margin = 0;
+        self.right_margin = self.cols -| 1;
+        self.attr_change_extent_rect = false;
         self.view_padding_rows = 0;
         self.row_origin = 0;
         self.scroll_top = 0;
@@ -920,6 +949,19 @@ pub const GridModel = struct {
         if (row >= self.rows or col >= self.cols) return default_cell;
         const start = self.rowStart(row);
         return c[start + @as(usize, col)];
+    }
+
+    pub fn tabStopAt(self: *const GridModel, col: u16) bool {
+        return self.isTabStop(col);
+    }
+
+    pub fn insertMode(self: *const GridModel) bool {
+        return self.insert_mode;
+    }
+
+    pub fn rectBoundsForReport(self: *const GridModel, area: SemanticEvent.RectArea) ?struct { top: u16, left: u16, bottom: u16, right: u16 } {
+        const bounds = self.rectBounds(area) orelse return null;
+        return .{ .top = bounds.top, .left = bounds.left, .bottom = bounds.bottom, .right = bounds.right };
     }
 
     /// Read history cell by recency index and column.
@@ -972,25 +1014,25 @@ pub const GridModel = struct {
             },
             .cursor_forward => |n| {
                 self.wrap_pending = false;
-                self.cursor_col = @min(self.cursor_col +| n, self.cols -| 1);
+                self.cursor_col = @min(self.cursor_col +| n, self.rightBoundary());
             },
             .cursor_back => |n| {
                 self.wrap_pending = false;
-                self.cursor_col = self.cursor_col -| n;
+                self.cursor_col = @max(self.cursor_col -| n, self.leftBoundary());
             },
             .cursor_next_line => |n| {
                 self.wrap_pending = false;
                 self.cursor_row = @min(self.cursor_row +| n, self.rows -| 1);
-                self.cursor_col = 0;
+                self.cursor_col = self.lineHomeCol();
             },
             .cursor_prev_line => |n| {
                 self.wrap_pending = false;
                 self.cursor_row = self.cursor_row -| n;
-                self.cursor_col = 0;
+                self.cursor_col = self.lineHomeCol();
             },
             .cursor_horizontal_absolute => |col| {
                 self.wrap_pending = false;
-                self.cursor_col = @min(col, self.cols -| 1);
+                self.cursor_col = @min(self.resolveAbsoluteCol(col), self.rightBoundary());
             },
             .cursor_vertical_absolute => |row| {
                 self.wrap_pending = false;
@@ -999,7 +1041,7 @@ pub const GridModel = struct {
             .cursor_position => |pos| {
                 self.wrap_pending = false;
                 self.cursor_row = @min(self.resolveAbsoluteRow(pos.row), self.rows -| 1);
-                self.cursor_col = @min(pos.col, self.cols -| 1);
+                self.cursor_col = @min(self.resolveAbsoluteCol(pos.col), self.rightBoundary());
             },
             .write_text => |s| {
                 for (s) |byte| {
@@ -1068,10 +1110,14 @@ pub const GridModel = struct {
                 self.origin_mode = enabled;
                 self.wrap_pending = false;
                 self.cursor_row = if (enabled) self.scroll_top else 0;
-                self.cursor_col = 0;
+                self.cursor_col = self.lineHomeCol();
             },
+            .insert_mode => |enabled| self.insert_mode = enabled,
             .application_cursor_keys,
             .application_keypad,
+            .ansi_mode_set,
+            .ansi_mode_reset,
+            .ansi_mode_query,
             .modify_other_keys_set,
             .modify_other_keys_query,
             .modify_other_keys_disable,
@@ -1105,6 +1151,17 @@ pub const GridModel = struct {
             .dec_cursor_position_report,
             .primary_device_attributes,
             .secondary_device_attributes,
+            .tertiary_device_attributes,
+            .xtchecksum,
+            .rect_checksum_request,
+            .presentation_state_report,
+            .displayed_extent_report,
+            .terminal_parameters_report,
+            .xtreportcolors,
+            .locator_reporting,
+            .locator_filter,
+            .locator_events,
+            .locator_request,
             .kitty_graphics,
             => {},
             .save_cursor => self.saveCursor(),
@@ -1148,12 +1205,59 @@ pub const GridModel = struct {
                 self.wrap_pending = false;
                 self.eraseLine(mode);
             },
+            .selective_erase_display => |mode| {
+                self.wrap_pending = false;
+                self.selectiveEraseDisplay(mode);
+            },
+            .selective_erase_line => |mode| {
+                self.wrap_pending = false;
+                self.selectiveEraseLine(mode);
+            },
             .erase_chars => |count| {
                 self.wrap_pending = false;
                 self.eraseChars(count);
             },
+            .character_protection => |enabled| self.current_attrs.protected = enabled,
+            .attr_change_extent_rect => |enabled| self.attr_change_extent_rect = enabled,
+            .left_right_margin_mode => |enabled| self.setLeftRightMarginMode(enabled),
+            .set_left_right_margins => |margins| self.setLeftRightMargins(margins.left, margins.right),
+            .rect_erase => |area| {
+                self.wrap_pending = false;
+                self.eraseRect(area, false);
+            },
+            .rect_selective_erase => |area| {
+                self.wrap_pending = false;
+                self.eraseRect(area, true);
+            },
+            .rect_fill => |req| {
+                self.wrap_pending = false;
+                self.fillRect(req.area, req.ch);
+            },
+            .rect_copy => |req| {
+                self.wrap_pending = false;
+                self.copyRect(req);
+            },
+            .rect_attrs_change => |req| {
+                self.wrap_pending = false;
+                self.changeRectAttrs(req.area, req.attrs.params[0..req.attrs.param_count], req.reverse);
+            },
+            .insert_columns => |count| {
+                self.wrap_pending = false;
+                self.insertColumns(count);
+            },
+            .delete_columns => |count| {
+                self.wrap_pending = false;
+                self.deleteColumns(count);
+            },
         }
     }
+
+    const RectBounds = struct {
+        top: u16,
+        left: u16,
+        bottom: u16,
+        right: u16,
+    };
 
     fn eraseDisplay(self: *GridModel, mode: u2) void {
         const c = self.cells orelse return;
@@ -1198,6 +1302,12 @@ pub const GridModel = struct {
         return self.scroll_top + @min(row, region_len);
     }
 
+    fn resolveAbsoluteCol(self: *const GridModel, col: u16) u16 {
+        if (!(self.origin_mode and self.left_right_margin_mode)) return col;
+        const region_len = self.right_margin - self.left_margin;
+        return self.left_margin + @min(col, region_len);
+    }
+
     fn saveCursor(self: *GridModel) void {
         self.saved_cursor = .{
             .row = self.cursor_row,
@@ -1209,9 +1319,21 @@ pub const GridModel = struct {
     fn restoreCursor(self: *GridModel) void {
         if (self.saved_cursor) |saved| {
             self.cursor_row = @min(saved.row, self.rows -| 1);
-            self.cursor_col = @min(saved.col, self.cols -| 1);
+            self.cursor_col = @min(saved.col, self.rightBoundary());
             self.wrap_pending = saved.wrap_pending;
         }
+    }
+
+    fn lineHomeCol(self: *const GridModel) u16 {
+        return if (self.origin_mode and self.left_right_margin_mode) self.left_margin else 0;
+    }
+
+    fn leftBoundary(self: *const GridModel) u16 {
+        return if (self.left_right_margin_mode) self.left_margin else 0;
+    }
+
+    fn rightBoundary(self: *const GridModel) u16 {
+        return if (self.left_right_margin_mode) self.right_margin else self.cols -| 1;
     }
 
     fn clearScrollback(self: *GridModel) void {
@@ -1245,9 +1367,177 @@ pub const GridModel = struct {
 
     fn eraseChars(self: *GridModel, count: u16) void {
         if (self.rows == 0 or self.cols == 0) return;
-        const amount = @min(@max(count, 1), self.cols - self.cursor_col);
+        const amount = @min(@max(count, 1), self.rightBoundary() - self.cursor_col + 1);
         self.markDirtyCols(self.cursor_row, self.cursor_col, self.cursor_col + amount - 1);
         self.clearRowRange(self.cursor_row, self.cursor_col, self.cursor_col + amount);
+    }
+
+    fn changeRectAttrs(self: *GridModel, area: SemanticEvent.RectArea, attrs: []const u16, reverse: bool) void {
+        const c = self.cells orelse return;
+        if (attrs.len == 0) return;
+        const bounds = self.rectBounds(area) orelse return;
+        self.markDirtyRows(bounds.top, bounds.bottom);
+        var row = bounds.top;
+        while (row <= bounds.bottom) : (row += 1) {
+            const row_start = self.rowStart(row);
+            const start_col = if (self.attr_change_extent_rect or row == bounds.top) bounds.left else 0;
+            const end_col = if (self.attr_change_extent_rect or row == bounds.bottom) bounds.right else self.cols -| 1;
+            var col = start_col;
+            while (col <= end_col) : (col += 1) {
+                const idx = row_start + col;
+                applyRectAttrOps(&c[idx].attrs, attrs, reverse);
+            }
+        }
+    }
+
+    fn selectiveEraseDisplay(self: *GridModel, mode: u2) void {
+        if (self.rows == 0 or self.cols == 0) return;
+        switch (mode) {
+            0 => {
+                self.selectiveClearRowRange(self.cursor_row, self.cursor_col, self.cols);
+                var row = self.cursor_row + 1;
+                while (row < self.rows) : (row += 1) {
+                    self.selectiveClearRowRange(row, 0, self.cols);
+                    self.setRowWrapped(row, false);
+                }
+            },
+            1 => {
+                var row: u16 = 0;
+                while (row < self.cursor_row) : (row += 1) {
+                    self.selectiveClearRowRange(row, 0, self.cols);
+                    self.setRowWrapped(row, false);
+                }
+                self.selectiveClearRowRange(self.cursor_row, 0, self.cursor_col + 1);
+            },
+            2 => {
+                var row: u16 = 0;
+                while (row < self.rows) : (row += 1) {
+                    self.selectiveClearRowRange(row, 0, self.cols);
+                    self.setRowWrapped(row, false);
+                }
+            },
+            3 => {},
+        }
+    }
+
+    fn selectiveEraseLine(self: *GridModel, mode: u2) void {
+        if (self.rows == 0 or self.cols == 0) return;
+        switch (mode) {
+            0 => self.selectiveClearRowRange(self.cursor_row, self.cursor_col, self.cols),
+            1 => self.selectiveClearRowRange(self.cursor_row, 0, self.cursor_col + 1),
+            2 => {
+                self.selectiveClearRowRange(self.cursor_row, 0, self.cols);
+                self.setRowWrapped(self.cursor_row, false);
+            },
+            3 => {},
+        }
+    }
+
+    fn eraseRect(self: *GridModel, area: SemanticEvent.RectArea, selective: bool) void {
+        const bounds = self.rectBounds(area) orelse return;
+        self.markDirtyRows(bounds.top, bounds.bottom);
+        var row = bounds.top;
+        while (row <= bounds.bottom) : (row += 1) {
+            if (selective) {
+                self.selectiveClearRowRange(row, bounds.left, bounds.right + 1);
+            } else {
+                self.clearRowRange(row, bounds.left, bounds.right + 1);
+            }
+            if (bounds.left == 0 and bounds.right + 1 == self.cols) self.setRowWrapped(row, false);
+        }
+    }
+
+    fn fillRect(self: *GridModel, area: SemanticEvent.RectArea, ch: u21) void {
+        const c = self.cells orelse return;
+        const bounds = self.rectBounds(area) orelse return;
+        self.markDirtyRows(bounds.top, bounds.bottom);
+        var row = bounds.top;
+        while (row <= bounds.bottom) : (row += 1) {
+            const start = self.rowStart(row);
+            var col = bounds.left;
+            while (col <= bounds.right) : (col += 1) {
+                c[start + col] = .{ .codepoint = ch, .attrs = self.current_attrs };
+            }
+        }
+    }
+
+    fn copyRect(self: *GridModel, req: SemanticEvent.RectCopy) void {
+        const c = self.cells orelse return;
+        _ = c;
+        if (req.source_page != 1 or req.dest_page != 1) return;
+        const src = self.rectBounds(req.area) orelse return;
+        const row_base: u16 = if (self.origin_mode) self.scroll_top else 0;
+        const row_limit: u16 = if (self.origin_mode) self.scrollBottom() else self.rows -| 1;
+        const dest_top = row_base + @min(req.dest_top, row_limit -| row_base);
+        const dest_left = @min(req.dest_left, self.cols -| 1);
+        const height: u16 = src.bottom - src.top + 1;
+        const width: u16 = src.right - src.left + 1;
+        if (dest_top >= self.rows or dest_left >= self.cols) return;
+        const copy_height = @min(height, self.rows - dest_top);
+        const copy_width = @min(width, self.cols - dest_left);
+        if (copy_height == 0 or copy_width == 0) return;
+
+        const allocator = self.allocator orelse return;
+        const temp = allocator.alloc(Cell, @as(usize, copy_height) * @as(usize, copy_width)) catch return;
+        defer allocator.free(temp);
+
+        var row: u16 = 0;
+        while (row < copy_height) : (row += 1) {
+            var col: u16 = 0;
+            while (col < copy_width) : (col += 1) {
+                temp[@as(usize, row) * @as(usize, copy_width) + col] = self.cellInfoAt(src.top + row, src.left + col);
+            }
+        }
+
+        self.markDirtyRows(dest_top, dest_top + copy_height - 1);
+        row = 0;
+        while (row < copy_height) : (row += 1) {
+            const dst_start = self.rowStart(dest_top + row);
+            var col: u16 = 0;
+            while (col < copy_width) : (col += 1) {
+                self.cells.?[dst_start + dest_left + col] = temp[@as(usize, row) * @as(usize, copy_width) + col];
+            }
+        }
+    }
+
+    fn insertColumns(self: *GridModel, count: u16) void {
+        const bottom = self.scrollBottom();
+        if (self.cursor_col >= self.cols or self.scroll_top > bottom) return;
+        var row = self.scroll_top;
+        while (row <= bottom) : (row += 1) self.insertColumnsInRow(row, count);
+    }
+
+    fn deleteColumns(self: *GridModel, count: u16) void {
+        const bottom = self.scrollBottom();
+        if (self.cursor_col >= self.cols or self.scroll_top > bottom) return;
+        var row = self.scroll_top;
+        while (row <= bottom) : (row += 1) self.deleteColumnsInRow(row, count);
+    }
+
+    fn insertColumnsInRow(self: *GridModel, row: u16, count: u16) void {
+        const c = self.cells orelse return;
+        const amount = @min(@max(count, 1), self.cols - self.cursor_col);
+        const start = self.rowStart(row);
+        const cells = c[start .. start + @as(usize, self.cols)];
+        const dst_col = @as(usize, self.cursor_col) + @as(usize, amount);
+        const move_len = @as(usize, self.cols) - dst_col;
+        self.markDirtyCols(row, self.cursor_col, self.cols -| 1);
+        if (move_len > 0) std.mem.copyBackwards(Cell, cells[dst_col .. dst_col + move_len], cells[@as(usize, self.cursor_col) .. @as(usize, self.cursor_col) + move_len]);
+        @memset(cells[@as(usize, self.cursor_col) .. @as(usize, self.cursor_col) + @as(usize, amount)], self.eraseCell());
+        self.setRowWrapped(row, false);
+    }
+
+    fn deleteColumnsInRow(self: *GridModel, row: u16, count: u16) void {
+        const c = self.cells orelse return;
+        const amount = @min(@max(count, 1), self.cols - self.cursor_col);
+        const start = self.rowStart(row);
+        const cells = c[start .. start + @as(usize, self.cols)];
+        const src_col = @min(@as(usize, self.cursor_col) + @as(usize, amount), @as(usize, self.cols));
+        const move_len = @as(usize, self.cols) - src_col;
+        self.markDirtyCols(row, self.cursor_col, self.cols -| 1);
+        if (move_len > 0) std.mem.copyForwards(Cell, cells[@as(usize, self.cursor_col) .. @as(usize, self.cursor_col) + move_len], cells[src_col .. src_col + move_len]);
+        @memset(cells[@as(usize, self.cols) - @as(usize, amount) .. @as(usize, self.cols)], self.eraseCell());
+        self.setRowWrapped(row, false);
     }
 
     fn insertChars(self: *GridModel, count: u16) void {
@@ -1255,14 +1545,14 @@ pub const GridModel = struct {
         if (self.rows == 0 or self.cols == 0) return;
         if (self.cursor_col >= self.cols) return;
 
-        const amount = @min(@max(count, 1), self.cols - self.cursor_col);
+        const amount = @min(@max(count, 1), self.rightBoundary() - self.cursor_col + 1);
         const start = self.rowStart(self.cursor_row);
         const row = c[start .. start + @as(usize, self.cols)];
         const dst_col: usize = @as(usize, self.cursor_col) + @as(usize, amount);
         const src_col: usize = self.cursor_col;
-        const move_len = @as(usize, self.cols) - dst_col;
+        const move_len = @as(usize, self.rightBoundary() + 1) - dst_col;
 
-        self.markDirtyCols(self.cursor_row, self.cursor_col, self.cols -| 1);
+        self.markDirtyCols(self.cursor_row, self.cursor_col, self.rightBoundary());
         if (move_len > 0) {
             std.mem.copyBackwards(Cell, row[dst_col .. dst_col + move_len], row[src_col .. src_col + move_len]);
         }
@@ -1275,31 +1565,33 @@ pub const GridModel = struct {
         if (self.rows == 0 or self.cols == 0) return;
         if (self.cursor_col >= self.cols) return;
 
-        const amount = @min(@max(count, 1), self.cols - self.cursor_col);
+        const amount = @min(@max(count, 1), self.rightBoundary() - self.cursor_col + 1);
         const start = self.rowStart(self.cursor_row);
         const row = c[start .. start + @as(usize, self.cols)];
         const dst_col: usize = self.cursor_col;
-        const src_col: usize = @min(@as(usize, self.cursor_col) + @as(usize, amount), @as(usize, self.cols));
-        const move_len = @as(usize, self.cols) - src_col;
+        const src_col: usize = @min(@as(usize, self.cursor_col) + @as(usize, amount), @as(usize, self.rightBoundary() + 1));
+        const move_len = @as(usize, self.rightBoundary() + 1) - src_col;
 
-        self.markDirtyCols(self.cursor_row, self.cursor_col, self.cols -| 1);
+        self.markDirtyCols(self.cursor_row, self.cursor_col, self.rightBoundary());
         if (move_len > 0) {
             std.mem.copyForwards(Cell, row[dst_col .. dst_col + move_len], row[src_col .. src_col + move_len]);
         }
-        @memset(row[@as(usize, self.cols) - @as(usize, amount) .. @as(usize, self.cols)], default_cell);
+        @memset(row[@as(usize, self.rightBoundary() + 1) - @as(usize, amount) .. @as(usize, self.rightBoundary() + 1)], self.eraseCell());
         self.setRowWrapped(self.cursor_row, false);
     }
 
     fn writeCell(self: *GridModel, cp: u21) void {
         if (self.cols == 0 or self.rows == 0) return;
+        const right = self.rightBoundary();
         if (self.wrap_pending) {
             self.wrap_pending = false;
-            if (self.cursor_col == self.cols - 1) {
+            if (self.cursor_col == right) {
                 self.setRowWrapped(self.cursor_row, true);
                 self.lineFeed();
-                self.cursor_col = 0;
+                self.cursor_col = if (self.left_right_margin_mode) self.left_margin else 0;
             }
         }
+        if (self.insert_mode) self.insertChars(1);
         if (self.cells) |c| {
             const start = self.rowStart(self.cursor_row);
             self.markDirtyCols(self.cursor_row, self.cursor_col, self.cursor_col);
@@ -1309,7 +1601,7 @@ pub const GridModel = struct {
             };
         }
         self.last_graphic_codepoint = cp;
-        if (self.cursor_col < self.cols - 1) {
+        if (self.cursor_col < right) {
             self.cursor_col += 1;
         } else if (self.auto_wrap) {
             self.wrap_pending = true;
@@ -1520,7 +1812,27 @@ pub const GridModel = struct {
         self.scroll_top = new_top;
         self.scroll_bottom = new_bottom;
         self.cursor_row = if (self.origin_mode) self.scroll_top else 0;
-        self.cursor_col = 0;
+        self.cursor_col = self.lineHomeCol();
+    }
+
+    fn setLeftRightMarginMode(self: *GridModel, enabled: bool) void {
+        self.left_right_margin_mode = enabled;
+        if (!enabled) {
+            self.left_margin = 0;
+            self.right_margin = self.cols -| 1;
+        }
+    }
+
+    fn setLeftRightMargins(self: *GridModel, left: u16, right: ?u16) void {
+        if (!self.left_right_margin_mode or self.cols < 2) return;
+        const new_left = @min(left, self.cols - 2);
+        const new_right = if (right) |value| @min(value, self.cols - 1) else self.cols - 1;
+        if (new_left >= new_right) return;
+        self.left_margin = new_left;
+        self.right_margin = new_right;
+        self.wrap_pending = false;
+        self.cursor_row = if (self.origin_mode) self.scroll_top else 0;
+        self.cursor_col = self.lineHomeCol();
     }
 
     fn insertLines(self: *GridModel, count: u16) void {
@@ -1549,15 +1861,18 @@ pub const GridModel = struct {
         }
 
         self.markDirtyRows(top, bounded_bottom);
+        const left = if (self.left_right_margin_mode) self.left_margin else 0;
+        const right = if (self.left_right_margin_mode) self.right_margin else self.cols -| 1;
 
         var dst = top;
         while (dst + amount <= bounded_bottom) : (dst += 1) {
-            self.copyRow(dst, dst + amount);
+            self.copyRowRange(dst, dst + amount, left, right + 1);
         }
 
         var clear_row = bounded_bottom - amount + 1;
         while (clear_row <= bounded_bottom) : (clear_row += 1) {
-            self.clearFullRow(clear_row);
+            self.clearRowRange(clear_row, left, right + 1);
+            self.setRowWrapped(clear_row, false);
         }
     }
 
@@ -1569,17 +1884,20 @@ pub const GridModel = struct {
         if (amount == 0) return;
 
         self.markDirtyRows(top, bounded_bottom);
+        const left = if (self.left_right_margin_mode) self.left_margin else 0;
+        const right = if (self.left_right_margin_mode) self.right_margin else self.cols -| 1;
 
         var dst = bounded_bottom;
         while (dst >= top + amount) {
-            self.copyRow(dst, dst - amount);
+            self.copyRowRange(dst, dst - amount, left, right + 1);
             if (dst == top + amount) break;
             dst -= 1;
         }
 
         var clear_row = top;
         while (clear_row < top + amount) : (clear_row += 1) {
-            self.clearFullRow(clear_row);
+            self.clearRowRange(clear_row, left, right + 1);
+            self.setRowWrapped(clear_row, false);
         }
     }
 
@@ -1630,6 +1948,31 @@ pub const GridModel = struct {
         @memset(c[start + @as(usize, start_col) .. start + @as(usize, end_col_exclusive)], cell);
     }
 
+    fn selectiveClearRowRange(self: *GridModel, row: u16, start_col: u16, end_col_exclusive: u16) void {
+        const c = self.cells orelse return;
+        const start = self.rowStart(row);
+        const cell = self.eraseCell();
+        var col = start_col;
+        while (col < end_col_exclusive) : (col += 1) {
+            const idx = start + @as(usize, col);
+            if (c[idx].attrs.protected) continue;
+            c[idx] = cell;
+        }
+    }
+
+    fn rectBounds(self: *const GridModel, area: SemanticEvent.RectArea) ?RectBounds {
+        if (self.rows == 0 or self.cols == 0) return null;
+        const row_base: u16 = if (self.origin_mode) self.scroll_top else 0;
+        const row_limit: u16 = if (self.origin_mode) self.scrollBottom() else self.rows - 1;
+        const row_span = row_limit -| row_base;
+        const top = row_base + @min(area.top, row_span);
+        const bottom = row_base + @min(area.bottom orelse row_span, row_span);
+        const left = @min(area.left, self.cols - 1);
+        const right = @min(area.right orelse self.cols - 1, self.cols - 1);
+        if (top > bottom or left > right) return null;
+        return .{ .top = top, .left = left, .bottom = bottom, .right = right };
+    }
+
     fn eraseCell(self: *const GridModel) Cell {
         return .{ .codepoint = 0, .attrs = self.current_attrs };
     }
@@ -1647,6 +1990,14 @@ pub const GridModel = struct {
         const src_start = self.rowStart(src_row);
         std.mem.copyForwards(Cell, c[dst_start .. dst_start + row_len], c[src_start .. src_start + row_len]);
         self.setRowWrapped(dst_row, self.rowWrapped(src_row));
+    }
+
+    fn copyRowRange(self: *GridModel, dst_row: u16, src_row: u16, start_col: u16, end_col_exclusive: u16) void {
+        const c = self.cells orelse return;
+        const dst_start = self.rowStart(dst_row);
+        const src_start = self.rowStart(src_row);
+        std.mem.copyForwards(Cell, c[dst_start + start_col .. dst_start + end_col_exclusive], c[src_start + start_col .. src_start + end_col_exclusive]);
+        self.setRowWrapped(dst_row, false);
     }
 
     fn markDirtyRow(self: *GridModel, row: u16) void {
@@ -1753,5 +2104,57 @@ pub const GridModel = struct {
         }
         const gray: u8 = @intCast((@as(u32, idx) - 232) * 10 + 8);
         return .{ .r = gray, .g = gray, .b = gray };
+    }
+
+    fn applyRectAttrOps(target: *CellAttrs, attrs: []const u16, reverse: bool) void {
+        for (attrs) |attr| {
+            switch (attr) {
+                0 => if (!reverse) {
+                    target.bold = false;
+                    target.underline = false;
+                    target.underline_style = .straight;
+                    target.blink = false;
+                    target.blink_fast = false;
+                    target.reverse = false;
+                },
+                1 => {
+                    if (reverse) target.bold = !target.bold else target.bold = true;
+                },
+                4 => {
+                    if (reverse) {
+                        target.underline = !target.underline;
+                        if (target.underline) target.underline_style = .straight;
+                    } else {
+                        target.underline = true;
+                        target.underline_style = .straight;
+                    }
+                },
+                5 => {
+                    if (reverse) target.blink = !target.blink else target.blink = true;
+                },
+                7 => {
+                    if (reverse) target.reverse = !target.reverse else target.reverse = true;
+                },
+                22 => {
+                    if (!reverse) target.bold = false;
+                },
+                24 => {
+                    if (!reverse) {
+                    target.underline = false;
+                    target.underline_style = .straight;
+                    }
+                },
+                25 => {
+                    if (!reverse) {
+                        target.blink = false;
+                        target.blink_fast = false;
+                    }
+                },
+                27 => {
+                    if (!reverse) target.reverse = false;
+                },
+                else => {},
+            }
+        }
     }
 };

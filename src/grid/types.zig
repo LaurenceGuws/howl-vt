@@ -52,6 +52,7 @@ pub const CellAttrs = struct {
     underline: bool,
     underline_style: UnderlineStyle,
     underline_color: Color,
+    protected: bool,
     link_id: u32,
 };
 
@@ -88,6 +89,7 @@ pub const default_cell_attrs = CellAttrs{
     .underline = false,
     .underline_style = .straight,
     .underline_color = default_underline_color,
+    .protected = false,
     .link_id = 0,
 };
 
@@ -110,6 +112,7 @@ pub fn defaultCell() Cell {
             .underline = false,
             .underline_style = .straight,
             .underline_color = default_fg,
+            .protected = false,
             .link_id = 0,
         },
     };

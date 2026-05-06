@@ -26,6 +26,33 @@ pub const SemanticEvent = union(enum) {
         param_count: u8,
     };
 
+    pub const RectArea = struct {
+        top: u16,
+        left: u16,
+        bottom: ?u16,
+        right: ?u16,
+    };
+
+    pub const AttrParams = struct {
+        params: [16]u16,
+        param_count: u8,
+    };
+
+    pub const RectCopy = struct {
+        area: RectArea,
+        source_page: u16,
+        dest_top: u16,
+        dest_left: u16,
+        dest_page: u16,
+    };
+
+    pub const OptionalRectArea = struct {
+        top: ?u16,
+        left: ?u16,
+        bottom: ?u16,
+        right: ?u16,
+    };
+
     cursor_up: u16,
     cursor_down: u16,
     cursor_forward: u16,
@@ -53,8 +80,12 @@ pub const SemanticEvent = union(enum) {
     cursor_style: CursorStyle,
     auto_wrap: bool,
     origin_mode: bool,
+    insert_mode: bool,
     application_cursor_keys: bool,
     application_keypad: bool,
+    ansi_mode_set: ModeParams,
+    ansi_mode_reset: ModeParams,
+    ansi_mode_query: u16,
     modify_other_keys_set: i8,
     modify_other_keys_query,
     modify_other_keys_disable,
@@ -88,6 +119,17 @@ pub const SemanticEvent = union(enum) {
     dec_cursor_position_report,
     primary_device_attributes,
     secondary_device_attributes,
+    tertiary_device_attributes,
+    xtchecksum: u16,
+    rect_checksum_request: struct { request_id: u16, page: u16, area: RectArea },
+    presentation_state_report: u16,
+    displayed_extent_report,
+    terminal_parameters_report: u16,
+    xtreportcolors,
+    locator_reporting: struct { mode: u16, unit: u16 },
+    locator_filter: OptionalRectArea,
+    locator_events: ModeParams,
+    locator_request: u16,
     sgr: struct {
         params: [16]i32,
         separators: [16]u8,
@@ -111,7 +153,20 @@ pub const SemanticEvent = union(enum) {
     reset_screen,
     erase_display: u2,
     erase_line: u2,
+    selective_erase_display: u2,
+    selective_erase_line: u2,
     erase_chars: u16,
+    character_protection: bool,
+    rect_erase: RectArea,
+    rect_selective_erase: RectArea,
+    rect_fill: struct { area: RectArea, ch: u21 },
+    rect_copy: RectCopy,
+    rect_attrs_change: struct { area: RectArea, attrs: AttrParams, reverse: bool },
+    insert_columns: u16,
+    delete_columns: u16,
+    attr_change_extent_rect: bool,
+    left_right_margin_mode: bool,
+    set_left_right_margins: struct { left: u16, right: ?u16 },
 };
 
 /// Map bridge event to semantic event when supported.
@@ -321,6 +376,8 @@ fn parseKittyPointerShape(payload: []const u8) ?SemanticEvent {
 fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader: u8, private: bool, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     if (private) {
         if (leader == '?' and final == 'u') return SemanticEvent.kitty_keyboard_query;
+        if (leader == '?' and final == 'J') return SemanticEvent{ .selective_erase_display = eraseMode(params[0]) };
+        if (leader == '?' and final == 'K') return SemanticEvent{ .selective_erase_line = eraseMode(params[0]) };
         if (leader == '?' and count >= 1) {
             if (final == 'm' and paramOrDefault0(params[0]) == 4) return SemanticEvent.modify_other_keys_query;
             if (final == 'p' and intermediatesLenHas(intermediates, intermediates_len, '$')) {
@@ -353,6 +410,11 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
                 66 => switch (final) {
                     'h' => SemanticEvent{ .application_keypad = true },
                     'l' => SemanticEvent{ .application_keypad = false },
+                    else => null,
+                },
+                69 => switch (final) {
+                    'h' => SemanticEvent{ .left_right_margin_mode = true },
+                    'l' => SemanticEvent{ .left_right_margin_mode = false },
                     else => null,
                 },
                 1004 => switch (final) {
@@ -430,6 +492,7 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
         };
     }
     if (leader == '=') {
+        if (final == 'c') return SemanticEvent.tertiary_device_attributes;
         if (final == 'u') return SemanticEvent{ .kitty_keyboard_set = .{ .flags = @intCast(@max(params[0], 0)), .mode = @intCast(@max(if (count >= 2) params[1] else 1, 1)) } };
         return null;
     }
@@ -438,6 +501,81 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
         return null;
     }
     if (leader != 0) return null;
+    if (intermediates_len == 2 and intermediates[0] == '\'' and intermediates[1] == '*') {
+        if (final == '{') return SemanticEvent{ .locator_events = collectParams(params, count) };
+        return null;
+    }
+    if (intermediates_len == 1) {
+        switch (intermediates[0]) {
+            '"' => {
+                if (final == 'q') return switch (paramOrDefault0(params[0])) {
+                    0, 2 => SemanticEvent{ .character_protection = false },
+                    1 => SemanticEvent{ .character_protection = true },
+                    else => null,
+                };
+                if (final == 'v') return SemanticEvent.displayed_extent_report;
+                return switch (paramOrDefault0(params[0])) {
+                    else => null,
+                };
+            },
+            '$' => return switch (final) {
+                'p' => SemanticEvent{ .ansi_mode_query = paramOrDefault0(params[0]) },
+                'r' => SemanticEvent{ .rect_attrs_change = .{
+                    .area = rectArea(params, count, 0),
+                    .attrs = attrParams(params, count, 4),
+                    .reverse = false,
+                } },
+                't' => SemanticEvent{ .rect_attrs_change = .{
+                    .area = rectArea(params, count, 0),
+                    .attrs = attrParams(params, count, 4),
+                    .reverse = true,
+                } },
+                'v' => SemanticEvent{ .rect_copy = .{
+                    .area = rectArea(params, count, 0),
+                    .source_page = if (count >= 5) paramOrDefault1(params[4]) else 1,
+                    .dest_top = if (count >= 6) paramOrDefault1(params[5]) - 1 else 0,
+                    .dest_left = if (count >= 7) paramOrDefault1(params[6]) - 1 else 0,
+                    .dest_page = if (count >= 8) paramOrDefault1(params[7]) else 1,
+                } },
+                'x' => blk: {
+                    const ch = paramOrDefault0(params[0]);
+                    if (!isValidRectFillChar(ch)) break :blk null;
+                    break :blk SemanticEvent{ .rect_fill = .{ .area = rectArea(params, count, 1), .ch = ch } };
+                },
+                'z' => SemanticEvent{ .rect_erase = rectArea(params, count, 0) },
+                '{' => SemanticEvent{ .rect_selective_erase = rectArea(params, count, 0) },
+                'w' => SemanticEvent{ .presentation_state_report = paramOrDefault0(params[0]) },
+                else => null,
+            },
+            '*' => {
+                if (final == 'x') return switch (paramOrDefault0(params[0])) {
+                    0, 1 => SemanticEvent{ .attr_change_extent_rect = false },
+                    2 => SemanticEvent{ .attr_change_extent_rect = true },
+                    else => null,
+                };
+                if (final == 'y') return SemanticEvent{ .rect_checksum_request = .{
+                    .request_id = paramOrDefault0(params[0]),
+                    .page = if (count >= 2) paramOrDefault1(params[1]) else 1,
+                    .area = rectArea(params, count, 2),
+                } };
+                return null;
+            },
+            '#' => return switch (final) {
+                'y' => SemanticEvent{ .xtchecksum = paramOrDefault0(params[0]) },
+                'R' => SemanticEvent.xtreportcolors,
+                else => null,
+            },
+            '\'' => return switch (final) {
+                'w' => SemanticEvent{ .locator_filter = optionalRectArea(params, count) },
+                '}' => SemanticEvent{ .insert_columns = paramOrDefault1(params[0]) },
+                'z' => SemanticEvent{ .locator_reporting = .{ .mode = paramOrDefault0(params[0]), .unit = paramOrDefault0(if (count >= 2) params[1] else 0) } },
+                '|' => SemanticEvent{ .locator_request = paramOrDefault0(params[0]) },
+                '~' => SemanticEvent{ .delete_columns = paramOrDefault1(params[0]) },
+                else => null,
+            },
+            else => {},
+        }
+    }
     if (final == 'q' and intermediates_len == 1 and intermediates[0] == ' ') {
         return SemanticEvent{ .cursor_style = cursorStyle(paramOrDefault0(params[0])) };
     }
@@ -464,8 +602,13 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
         'P' => return SemanticEvent{ .delete_chars = paramOrDefault1(params[0]) },
         'S' => return SemanticEvent{ .scroll_up_lines = paramOrDefault1(params[0]) },
         'T' => return SemanticEvent{ .scroll_down_lines = paramOrDefault1(params[0]) },
+        'h' => return SemanticEvent{ .ansi_mode_set = collectParams(params, count) },
+        'l' => return SemanticEvent{ .ansi_mode_reset = collectParams(params, count) },
         'm' => return SemanticEvent{ .sgr = .{ .params = params, .separators = separators, .param_count = count } },
-        's' => return SemanticEvent.save_cursor,
+        's' => if (count == 0) return SemanticEvent.save_cursor else return SemanticEvent{ .set_left_right_margins = .{
+            .left = paramOrDefault1(params[0]) - 1,
+            .right = if (count >= 2 and params[1] > 0) paramOrDefault1(params[1]) - 1 else null,
+        } },
         'u' => return SemanticEvent.restore_cursor,
         'H', 'f' => {
             const row = paramOrDefault1(params[0]);
@@ -479,6 +622,7 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
         'J' => return SemanticEvent{ .erase_display = eraseMode(params[0]) },
         'K' => return SemanticEvent{ .erase_line = eraseMode(params[0]) },
         'X' => return SemanticEvent{ .erase_chars = paramOrDefault1(params[0]) },
+        'x' => return SemanticEvent{ .terminal_parameters_report = paramOrDefault0(params[0]) },
         'n' => switch (paramOrDefault0(params[0])) {
             5 => return SemanticEvent.device_status_report,
             6 => return SemanticEvent.cursor_position_report,
@@ -493,6 +637,41 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
         },
         else => return null,
     }
+}
+
+fn optionalRectArea(params: [16]i32, count: u8) SemanticEvent.OptionalRectArea {
+    return .{
+        .top = if (count >= 1 and params[0] > 0) paramOrDefault1(params[0]) - 1 else null,
+        .left = if (count >= 2 and params[1] > 0) paramOrDefault1(params[1]) - 1 else null,
+        .bottom = if (count >= 3 and params[2] > 0) paramOrDefault1(params[2]) - 1 else null,
+        .right = if (count >= 4 and params[3] > 0) paramOrDefault1(params[3]) - 1 else null,
+    };
+}
+
+fn rectArea(params: [16]i32, count: u8, start_idx: usize) SemanticEvent.RectArea {
+    return .{
+        .top = if (count > start_idx) paramOrDefault1(params[start_idx]) - 1 else 0,
+        .left = if (count > start_idx + 1) paramOrDefault1(params[start_idx + 1]) - 1 else 0,
+        .bottom = if (count > start_idx + 2) paramOrDefault1(params[start_idx + 2]) - 1 else null,
+        .right = if (count > start_idx + 3) paramOrDefault1(params[start_idx + 3]) - 1 else null,
+    };
+}
+
+fn attrParams(params: [16]i32, count: u8, start_idx: usize) SemanticEvent.AttrParams {
+    var out = [_]u16{0} ** 16;
+    var idx: usize = start_idx;
+    var dst: usize = 0;
+    while (idx < count and dst < out.len) : ({
+        idx += 1;
+        dst += 1;
+    }) {
+        out[dst] = paramOrDefault0(params[idx]);
+    }
+    return .{ .params = out, .param_count = @intCast(dst) };
+}
+
+fn isValidRectFillChar(ch: u16) bool {
+    return (ch >= 32 and ch <= 126) or (ch >= 160 and ch <= 255);
 }
 
 fn processControl(c: u8) ?SemanticEvent {

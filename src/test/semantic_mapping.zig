@@ -273,7 +273,7 @@ test "semantic: CUP no params defaults to origin" {
 }
 
 test "semantic: unsupported CSI returns null" {
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(makeStyleChange('x', 1, 0, 1)));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(makeStyleChange('Y', 1, 0, 1)));
 }
 
 test "semantic: DECSTR maps to reset_screen" {
@@ -390,6 +390,138 @@ test "semantic: HTS and TBC map to tab stop controls" {
     try std.testing.expect(process(makeEscFinal('H')).? == .horizontal_tab_set);
     try std.testing.expect(process(makeStyleChange('g', 0, 0, 0)).? == .tab_clear_current);
     try std.testing.expect(process(makeStyleChange('g', 3, 0, 1)).? == .tab_clear_all);
+}
+
+test "semantic: DECSCA maps protection modes" {
+    const protect = process(makeStyleChangeWithParamAndIntermediate('q', 1, '"')) orelse return error.NoEvent;
+    try std.testing.expect(protect.character_protection);
+
+    const unprotect = process(makeStyleChangeWithParamAndIntermediate('q', 2, '"')) orelse return error.NoEvent;
+    try std.testing.expect(!unprotect.character_protection);
+}
+
+test "semantic: DECSED and DECSEL map from private CSI" {
+    try std.testing.expectEqual(@as(u2, 2), process(makePrivateStyleChange('J', &.{2})).?.selective_erase_display);
+    try std.testing.expectEqual(@as(u2, 1), process(makePrivateStyleChange('K', &.{1})).?.selective_erase_line);
+}
+
+test "semantic: rectangular erase fill copy and column ops map" {
+    var params = [_]i32{0} ** 16;
+    params[0] = 88;
+    params[1] = 1;
+    params[2] = 2;
+    params[3] = 3;
+    params[4] = 4;
+    var intermediates = [_]u8{0} ** 4;
+    intermediates[0] = '$';
+    const fill = process(Event{ .style_change = .{
+        .final = 'x',
+        .params = params,
+        .param_count = 5,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u21, 88), fill.rect_fill.ch);
+    try std.testing.expectEqual(@as(u16, 0), fill.rect_fill.area.top);
+    try std.testing.expectEqual(@as(u16, 1), fill.rect_fill.area.left);
+
+    params = [_]i32{0} ** 16;
+    params[0] = 1;
+    params[1] = 1;
+    params[2] = 2;
+    params[3] = 2;
+    params[4] = 1;
+    params[5] = 3;
+    params[6] = 4;
+    params[7] = 1;
+    const copy = process(Event{ .style_change = .{
+        .final = 'v',
+        .params = params,
+        .param_count = 8,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 2), copy.rect_copy.dest_top);
+    try std.testing.expectEqual(@as(u16, 3), copy.rect_copy.dest_left);
+
+    intermediates[0] = '\'';
+    const insert = process(Event{ .style_change = .{
+        .final = '}',
+        .params = .{2} ++ [_]i32{0} ** 15,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 2), insert.insert_columns);
+
+    const delete = process(Event{ .style_change = .{
+        .final = '~',
+        .params = .{3} ++ [_]i32{0} ** 15,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 3), delete.delete_columns);
+}
+
+test "semantic: rectangular attr ops and margin controls map" {
+    var params = [_]i32{0} ** 16;
+    params[0] = 1;
+    params[1] = 1;
+    params[2] = 2;
+    params[3] = 2;
+    params[4] = 1;
+    var intermediates = [_]u8{0} ** 4;
+    intermediates[0] = '$';
+    const change = process(Event{ .style_change = .{
+        .final = 'r',
+        .params = params,
+        .param_count = 5,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expect(!change.rect_attrs_change.reverse);
+    try std.testing.expectEqual(@as(u16, 1), change.rect_attrs_change.attrs.params[0]);
+
+    const reverse = process(Event{ .style_change = .{
+        .final = 't',
+        .params = params,
+        .param_count = 5,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expect(reverse.rect_attrs_change.reverse);
+
+    intermediates[0] = '*';
+    const extent = process(Event{ .style_change = .{
+        .final = 'x',
+        .params = .{2} ++ [_]i32{0} ** 15,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expect(extent.attr_change_extent_rect);
+
+    const margins = process(makeStyleChange('s', 2, 4, 2)) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 1), margins.set_left_right_margins.left);
+    try std.testing.expectEqual(@as(?u16, 3), margins.set_left_right_margins.right);
+
+    try std.testing.expect(process(makePrivateStyleChange('h', &.{69})).?.left_right_margin_mode);
+    try std.testing.expect(!process(makePrivateStyleChange('l', &.{69})).?.left_right_margin_mode);
 }
 
 test "semantic: VT and FF map to line_feed" {
@@ -625,6 +757,186 @@ test "semantic: DA2 maps to secondary device attributes" {
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).? == .secondary_device_attributes);
+}
+
+test "semantic: DA3 maps to tertiary device attributes" {
+    const params = [_]i32{0} ** 16;
+    const ev = Event{ .style_change = .{
+        .final = 'c',
+        .params = params,
+        .param_count = 0,
+        .leader = '=',
+        .private = false,
+        .intermediates = [_]u8{0} ** 4,
+        .intermediates_len = 0,
+    } };
+    try std.testing.expect(process(ev).? == .tertiary_device_attributes);
+}
+
+test "semantic: ANSI mode set reset and query map" {
+    const set = process(makeStyleChange('h', 4, 20, 2)) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u8, 2), set.ansi_mode_set.param_count);
+    try std.testing.expectEqual(@as(u16, 4), set.ansi_mode_set.params[0]);
+    try std.testing.expectEqual(@as(u16, 20), set.ansi_mode_set.params[1]);
+
+    const reset = process(makeStyleChange('l', 2, 0, 1)) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u8, 1), reset.ansi_mode_reset.param_count);
+    try std.testing.expectEqual(@as(u16, 2), reset.ansi_mode_reset.params[0]);
+
+    var params = [_]i32{0} ** 16;
+    params[0] = 4;
+    var intermediates = [_]u8{0} ** 4;
+    intermediates[0] = '$';
+    const query = process(Event{ .style_change = .{
+        .final = 'p',
+        .params = params,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 4), query.ansi_mode_query);
+}
+
+test "semantic: report and checksum requests map" {
+    var intermediates = [_]u8{0} ** 4;
+    var params = [_]i32{0} ** 16;
+
+    intermediates[0] = '"';
+    try std.testing.expect(process(Event{ .style_change = .{
+        .final = 'v',
+        .params = params,
+        .param_count = 0,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }).? == .displayed_extent_report);
+
+    intermediates[0] = '$';
+    params[0] = 2;
+    const psr = process(Event{ .style_change = .{
+        .final = 'w',
+        .params = params,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 2), psr.presentation_state_report);
+
+    intermediates[0] = '#';
+    params[0] = 3;
+    const xt = process(Event{ .style_change = .{
+        .final = 'y',
+        .params = params,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 3), xt.xtchecksum);
+
+    intermediates[0] = '*';
+    params = [_]i32{0} ** 16;
+    params[0] = 7;
+    params[1] = 1;
+    params[2] = 2;
+    params[3] = 3;
+    params[4] = 4;
+    params[5] = 5;
+    const crc = process(Event{ .style_change = .{
+        .final = 'y',
+        .params = params,
+        .param_count = 6,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 7), crc.rect_checksum_request.request_id);
+    try std.testing.expectEqual(@as(u16, 1), crc.rect_checksum_request.page);
+
+    const parm = process(makeStyleChange('x', 1, 0, 1)) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 1), parm.terminal_parameters_report);
+
+    intermediates[0] = '#';
+    try std.testing.expect(process(Event{ .style_change = .{
+        .final = 'R',
+        .params = [_]i32{0} ** 16,
+        .param_count = 0,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }).? == .xtreportcolors);
+}
+
+test "semantic: locator controls map" {
+    var params = [_]i32{0} ** 16;
+    params[0] = 2;
+    params[1] = 1;
+    var intermediates = [_]u8{0} ** 4;
+    intermediates[0] = '\'';
+    const elr = process(Event{ .style_change = .{
+        .final = 'z',
+        .params = params,
+        .param_count = 2,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 2), elr.locator_reporting.mode);
+    try std.testing.expectEqual(@as(u16, 1), elr.locator_reporting.unit);
+
+    params = [_]i32{0} ** 16;
+    params[0] = 3;
+    const req = process(Event{ .style_change = .{
+        .final = '|',
+        .params = params,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 3), req.locator_request);
+
+    params = [_]i32{0} ** 16;
+    params[0] = 2;
+    params[1] = 3;
+    params[2] = 4;
+    params[3] = 5;
+    const filter = process(Event{ .style_change = .{
+        .final = 'w',
+        .params = params,
+        .param_count = 4,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(?u16, 1), filter.locator_filter.top);
+    try std.testing.expectEqual(@as(?u16, 4), filter.locator_filter.right);
+
+    intermediates[1] = '*';
+    params = [_]i32{0} ** 16;
+    params[0] = 1;
+    params[1] = 3;
+    const sle = process(Event{ .style_change = .{
+        .final = '{',
+        .params = params,
+        .param_count = 2,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 2,
+    } }) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u8, 2), sle.locator_events.param_count);
 }
 
 test "semantic: DECRQM maps to dec mode query" {

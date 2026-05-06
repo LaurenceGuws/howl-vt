@@ -730,6 +730,230 @@ test "screen: ECH uses current background without moving cursor" {
     }
 }
 
+test "screen: DECSCA protects cells from selective erase" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 2, 3);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .write_text = "A" });
+    s.apply(SemanticEvent{ .character_protection = true });
+    s.apply(SemanticEvent{ .write_text = "B" });
+    s.apply(SemanticEvent{ .character_protection = false });
+    s.apply(SemanticEvent{ .write_text = "CDEF" });
+
+    s.cursor_row = 1;
+    s.cursor_col = 2;
+    s.apply(SemanticEvent{ .selective_erase_display = 2 });
+
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 2));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 0));
+}
+
+test "screen: DECERA clips rectangle to viewport" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 3, 3);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "ABC" });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "DEF" });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "GHI" });
+
+    s.apply(SemanticEvent{ .rect_erase = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 } });
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 0));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 1));
+    try std.testing.expectEqual(@as(u21, 'F'), s.cellAt(1, 2));
+    try std.testing.expectEqual(@as(u21, 'I'), s.cellAt(2, 2));
+}
+
+test "screen: DECSERA preserves protected cells" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 3, 3);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "ABC" });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "D" });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 1 } });
+    s.apply(SemanticEvent{ .character_protection = true });
+    s.apply(SemanticEvent{ .write_text = "E" });
+    s.apply(SemanticEvent{ .character_protection = false });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 2 } });
+    s.apply(SemanticEvent{ .write_text = "FGHI" });
+
+    s.apply(SemanticEvent{ .rect_selective_erase = .{ .top = 0, .left = 0, .bottom = 2, .right = 2 } });
+    try std.testing.expectEqual(@as(u21, 'E'), s.cellAt(1, 1));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(2, 2));
+}
+
+test "screen: DECFRA fills clipped rectangle with current attrs" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 3, 3);
+    defer s.deinit(gpa);
+
+    s.current_attrs.bg = .{ .r = 40, .g = 44, .b = 52 };
+    s.apply(SemanticEvent{ .rect_fill = .{ .area = .{ .top = 1, .left = 1, .bottom = 9, .right = 9 }, .ch = 'X' } });
+
+    try std.testing.expectEqual(@as(u21, 'X'), s.cellAt(1, 1));
+    try std.testing.expectEqual(@as(u21, 'X'), s.cellAt(2, 2));
+    const cell = s.cellInfoAt(1, 1);
+    try std.testing.expectEqual(@as(u8, 40), cell.attrs.bg.r);
+}
+
+test "screen: DECCRA copies overlapping rectangle through temporary buffer" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 3, 7);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "ABC" });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "DEF" });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "GHI" });
+    s.apply(SemanticEvent{ .rect_copy = .{
+        .area = .{ .top = 0, .left = 0, .bottom = 2, .right = 2 },
+        .source_page = 1,
+        .dest_top = 0,
+        .dest_left = 3,
+        .dest_page = 1,
+    } });
+
+    try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 3));
+    try std.testing.expectEqual(@as(u21, 'D'), s.cellAt(1, 3));
+    try std.testing.expectEqual(@as(u21, 'G'), s.cellAt(2, 3));
+}
+
+test "screen: DECIC and DECDC shift columns inside scroll region" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 3, 5);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "ABCDE" });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "FGHIJ" });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "KLMNO" });
+
+    s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
+    s.cursor_col = 1;
+    s.current_attrs.bg = .{ .r = 40, .g = 44, .b = 52 };
+    s.apply(SemanticEvent{ .insert_columns = 2 });
+
+    try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 1));
+    try std.testing.expectEqual(@as(u21, 'G'), s.cellAt(1, 3));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(2, 1));
+
+    s.apply(SemanticEvent{ .delete_columns = 1 });
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 1));
+    try std.testing.expectEqual(@as(u21, 'G'), s.cellAt(1, 2));
+    try std.testing.expectEqual(@as(u21, 'L'), s.cellAt(2, 2));
+}
+
+test "screen: DECCARA stream mode spans full middle rows" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 3, 3);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "ABCDEFGHI" });
+    s.apply(SemanticEvent{ .rect_attrs_change = .{
+        .area = .{ .top = 0, .left = 1, .bottom = 2, .right = 1 },
+        .attrs = .{ .params = .{1} ++ [_]u16{0} ** 15, .param_count = 1 },
+        .reverse = false,
+    } });
+
+    try std.testing.expect(!s.cellInfoAt(0, 0).attrs.bold);
+    try std.testing.expect(s.cellInfoAt(0, 1).attrs.bold);
+    try std.testing.expect(s.cellInfoAt(0, 2).attrs.bold);
+    try std.testing.expect(s.cellInfoAt(1, 0).attrs.bold);
+    try std.testing.expect(s.cellInfoAt(1, 2).attrs.bold);
+    try std.testing.expect(s.cellInfoAt(2, 0).attrs.bold);
+    try std.testing.expect(!s.cellInfoAt(2, 2).attrs.bold);
+}
+
+test "screen: DECSACE rectangle mode constrains DECCARA to exact bounds" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 3, 3);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .write_text = "ABCDEFGHI" });
+    s.apply(SemanticEvent{ .attr_change_extent_rect = true });
+    s.apply(SemanticEvent{ .rect_attrs_change = .{
+        .area = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 },
+        .attrs = .{ .params = .{1} ++ [_]u16{0} ** 15, .param_count = 1 },
+        .reverse = false,
+    } });
+
+    try std.testing.expect(s.cellInfoAt(0, 0).attrs.bold);
+    try std.testing.expect(s.cellInfoAt(1, 1).attrs.bold);
+    try std.testing.expect(!s.cellInfoAt(0, 2).attrs.bold);
+    try std.testing.expect(!s.cellInfoAt(1, 2).attrs.bold);
+}
+
+test "screen: DECRARA toggles supported attrs" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 2, 3);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{4} ++ [_]i32{0} ** 15, .separators = [_]u8{0} ** 16, .param_count = 1 } });
+    s.apply(SemanticEvent{ .write_text = "ABCDEF" });
+    s.apply(SemanticEvent{ .rect_attrs_change = .{
+        .area = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 },
+        .attrs = .{ .params = .{1, 4} ++ [_]u16{0} ** 14, .param_count = 2 },
+        .reverse = true,
+    } });
+
+    try std.testing.expect(s.cellInfoAt(0, 0).attrs.bold);
+    try std.testing.expect(!s.cellInfoAt(0, 0).attrs.underline);
+    try std.testing.expect(s.cellInfoAt(1, 1).attrs.bold);
+    try std.testing.expect(!s.cellInfoAt(1, 1).attrs.underline);
+    try std.testing.expect(s.cellInfoAt(1, 2).attrs.underline);
+}
+
+test "screen: DECLRMM and DECSLRM wrap inside horizontal margins" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 3, 3);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .left_right_margin_mode = true });
+    s.apply(SemanticEvent{ .set_left_right_margins = .{ .left = 1, .right = null } });
+    s.apply(SemanticEvent{ .write_text = "ABCDEFG" });
+
+    try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'C'), s.cellAt(0, 2));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 0));
+    try std.testing.expectEqual(@as(u21, 'D'), s.cellAt(1, 1));
+    try std.testing.expectEqual(@as(u21, 'E'), s.cellAt(1, 2));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(2, 0));
+    try std.testing.expectEqual(@as(u21, 'F'), s.cellAt(2, 1));
+    try std.testing.expectEqual(@as(u21, 'G'), s.cellAt(2, 2));
+}
+
+test "screen: DECOM with DECSLRM makes cursor addressing margin-relative" {
+    var s = GridModel.init(4, 4);
+    s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
+    s.apply(SemanticEvent{ .origin_mode = true });
+    s.apply(SemanticEvent{ .left_right_margin_mode = true });
+    s.apply(SemanticEvent{ .set_left_right_margins = .{ .left = 1, .right = 2 } });
+
+    try std.testing.expectEqual(@as(u16, 1), s.cursor_row);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor_col);
+
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    try std.testing.expectEqual(@as(u16, 1), s.cursor_row);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor_col);
+}
+
 test "screen: SU scrolls only within configured region" {
     const gpa = std.testing.allocator;
     var s = try GridModel.initWithCells(gpa, 4, 4);

@@ -75,6 +75,10 @@ pub const Pipeline = struct {
         self.parser.reset();
     }
 
+    pub fn deccirCharsetState(self: *const Pipeline) @TypeOf(self.parser.deccirCharsetState()) {
+        return self.parser.deccirCharsetState();
+    }
+
     /// Apply queued events to screen.
     pub fn applyToScreen(self: *Pipeline, screen: *Grid.GridModel) void {
         for (self.bridge.events.items) |ev| {
