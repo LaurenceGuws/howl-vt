@@ -773,6 +773,28 @@ test "actions: xterm key format set reset and query mappings" {
     try std.testing.expectEqual(@as(u8, 4), process(ev).?.key_format_query);
 }
 
+test "actions: xterm pointer mode maps bounded value" {
+    var params = [_]i32{0} ** 16;
+    params[0] = 2;
+    var ev = Event{ .style_change = .{
+        .final = 'p',
+        .params = params,
+        .param_count = 1,
+        .leader = '>',
+        .private = false,
+        .intermediates = [_]u8{0} ** 4,
+        .intermediates_len = 0,
+    } };
+    try std.testing.expectEqual(@as(u2, 2), process(ev).?.pointer_mode);
+
+    params[0] = 9;
+    ev.style_change.params = params;
+    try std.testing.expectEqual(@as(u2, 3), process(ev).?.pointer_mode);
+
+    ev.style_change.param_count = 0;
+    try std.testing.expectEqual(@as(u2, 1), process(ev).?.pointer_mode);
+}
+
 test "actions: DSR 5 maps to device status report" {
     const sem = process(makeStyleChange('n', 5, 0, 1)) orelse return error.NoEvent;
     try std.testing.expect(sem == .device_status_report);
@@ -1167,6 +1189,42 @@ test "actions: kitty notification OSC 99 splits metadata and payload" {
     const sem = process(Event{ .osc = .{ .kind = .generic, .command = 99, .payload = "i=1:p=body;Hello", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("i=1:p=body", sem.kitty_notification.metadata);
     try std.testing.expectEqualStrings("Hello", sem.kitty_notification.payload);
+
+    const alias = process(Event{ .osc = .{ .kind = .generic, .command = 9, .payload = "i=2:p=body;Hi", .terminator = .st } }) orelse return error.NoEvent;
+    try std.testing.expectEqualStrings("i=2:p=body", alias.kitty_notification.metadata);
+    try std.testing.expectEqualStrings("Hi", alias.kitty_notification.payload);
+}
+
+test "actions: kitty multiple cursor query and clear mappings" {
+    var params = [_]i32{0} ** 16;
+    var intermediates = [_]u8{0} ** 4;
+    intermediates[0] = ' ';
+
+    var ev = Event{ .style_change = .{
+        .final = 'q',
+        .params = params,
+        .param_count = 0,
+        .leader = '>',
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } };
+    try std.testing.expect(process(ev).?.kitty_multiple_cursor == .support_query);
+
+    params[0] = 0;
+    params[1] = 4;
+    ev.style_change.params = params;
+    ev.style_change.param_count = 2;
+    try std.testing.expect(process(ev).?.kitty_multiple_cursor == .clear_all);
+
+    params[0] = 100;
+    ev.style_change.params = params;
+    ev.style_change.param_count = 1;
+    try std.testing.expect(process(ev).?.kitty_multiple_cursor == .cursor_query);
+
+    params[0] = 101;
+    ev.style_change.params = params;
+    try std.testing.expect(process(ev).?.kitty_multiple_cursor == .color_query);
 }
 
 test "actions: kitty pointer shape OSC 22 parses action and names" {

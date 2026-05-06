@@ -42,6 +42,9 @@ pub const VtCoreModes = struct {
                     self.modes.key_format = [_]u16{0} ** 8;
                 }
             },
+            .pointer_mode => |value| {
+                self.modes.pointer_mode = value;
+            },
             .focus_reporting => |enabled| {
                 self.modes.focus_reporting = enabled;
             },

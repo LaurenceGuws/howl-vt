@@ -18,6 +18,7 @@ pub const Kitty = struct {
     pub const ScreenState = struct {
         keyboard: Key.Stack = .{},
         pointer: Pointer.Stack = .{},
+        multiple_cursor_count: u16 = 0,
     };
 
     pub const GlobalState = struct {

@@ -77,6 +77,19 @@ test "kitty notification OSC 99 queues host-neutral request" {
     try std.testing.expectEqualStrings("World", vt_core.kittyNotificationAt(1).?.payload);
 }
 
+test "kitty notification OSC 9 alias queues host-neutral request" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 3, 8);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b]9;i=3:p=body;Alias\x1b\\");
+    vt_core.apply();
+
+    try std.testing.expectEqual(@as(usize, 1), vt_core.kittyNotificationCount());
+    try std.testing.expectEqualStrings("i=3:p=body", vt_core.kittyNotificationAt(0).?.metadata);
+    try std.testing.expectEqualStrings("Alias", vt_core.kittyNotificationAt(0).?.payload);
+}
+
 test "kitty pointer shape OSC 22 maintains per-screen stack and replies to queries" {
     const allocator = std.testing.allocator;
     var vt_core = try vt.VtCore.initWithCells(allocator, 3, 8);
@@ -92,6 +105,37 @@ test "kitty pointer shape OSC 22 maintains per-screen stack and replies to queri
     vt_core.feedSlice("\x1b[?1049h\x1b]22;text\x1b\\\x1b[?1049l");
     vt_core.apply();
     try std.testing.expectEqualStrings("crosshair", vt_core.kittyPointerShape());
+}
+
+test "kitty multiple cursor support clear and empty queries" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 3, 8);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b[> q\x1b[>100 q\x1b[>101 q\x1b[>0;4 q");
+    vt_core.apply();
+
+    try std.testing.expectEqual(@as(u16, 0), vt_core.kittyMultipleCursorCount());
+    try std.testing.expectEqualStrings("\x1b[>1;2;3;29;30;40;100;101 q\x1b[>100 q\x1b[>101;30:0;40:0 q", vt_core.pendingOutput());
+}
+
+test "xterm pointer mode stores bounded resource value" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 3, 8);
+    defer vt_core.deinit();
+
+    try std.testing.expectEqual(@as(u2, 1), vt_core.pointerMode());
+    vt_core.feedSlice("\x1b[>2p");
+    vt_core.apply();
+    try std.testing.expectEqual(@as(u2, 2), vt_core.pointerMode());
+
+    vt_core.feedSlice("\x1b[>9p");
+    vt_core.apply();
+    try std.testing.expectEqual(@as(u2, 3), vt_core.pointerMode());
+
+    vt_core.feedSlice("\x1b[>p");
+    vt_core.apply();
+    try std.testing.expectEqual(@as(u2, 1), vt_core.pointerMode());
 }
 
 test "kitty color stack OSC 30001 and 30101 track depth" {

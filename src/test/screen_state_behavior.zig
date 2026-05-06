@@ -194,9 +194,9 @@ test "screen: sgr reset restores default attrs for later writes" {
     var s = try GridModel.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 31 } ++ [_]i32{0} ** 15, .separators = [_]u8{0} ** 16, .param_count = 1 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{31} ++ [_]i32{0} ** 15, .separators = [_]u8{0} ** 16, .param_count = 1 } });
     s.apply(SemanticEvent{ .write_text = "A" });
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 0 } ++ [_]i32{0} ** 15, .separators = [_]u8{0} ** 16, .param_count = 1 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{0} ++ [_]i32{0} ** 15, .separators = [_]u8{0} ** 16, .param_count = 1 } });
     s.apply(SemanticEvent{ .write_text = "B" });
 
     const a = s.cellInfoAt(0, 0);
@@ -229,6 +229,26 @@ test "screen: kitty colon SGR sets underline styles without stealing semicolon p
     try std.testing.expect(straight.attrs.underline);
     try std.testing.expectEqual(grid_owner.Grid.UnderlineStyle.straight, straight.attrs.underline_style);
     try std.testing.expect(straight.attrs.blink);
+}
+
+test "screen: kitty underline color SGR sets and resets color" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 2, 4);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 4, 58, 2, 1, 2, 3 } ++ [_]i32{0} ** 10, .separators = [_]u8{0} ** 16, .param_count = 6 } });
+    s.apply(SemanticEvent{ .write_text = "C" });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{59} ++ [_]i32{0} ** 15, .separators = [_]u8{0} ** 16, .param_count = 1 } });
+    s.apply(SemanticEvent{ .write_text = "R" });
+
+    const colored = s.cellInfoAt(0, 0);
+    const reset = s.cellInfoAt(0, 1);
+    try std.testing.expect(colored.attrs.underline);
+    try std.testing.expectEqual(@as(u8, 1), colored.attrs.underline_color.r);
+    try std.testing.expectEqual(@as(u8, 2), colored.attrs.underline_color.g);
+    try std.testing.expectEqual(@as(u8, 3), colored.attrs.underline_color.b);
+    try std.testing.expect(reset.attrs.underline);
+    try std.testing.expectEqual(grid_owner.Grid.Color{ .r = 0, .g = 0, .b = 0, .a = 0 }, reset.attrs.underline_color);
 }
 
 test "screen: write_text wraps to next row after filled column" {
@@ -968,7 +988,7 @@ test "screen: DECRARA toggles supported attrs" {
     s.apply(SemanticEvent{ .write_text = "ABCDEF" });
     s.apply(SemanticEvent{ .rect_attrs_change = .{
         .area = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 },
-        .attrs = .{ .params = .{1, 4} ++ [_]u16{0} ** 14, .param_count = 2 },
+        .attrs = .{ .params = .{ 1, 4 } ++ [_]u16{0} ** 14, .param_count = 2 },
         .reverse = true,
     } });
 

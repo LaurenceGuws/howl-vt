@@ -43,6 +43,14 @@ pub const VtCoreKitty = struct {
                     .pop => KittyNs.Color.popState(&self.kitty.global.color_stack, &self.host.terminal_colors, &self.kitty.global.color_stack_depth),
                 }
             },
+            .kitty_multiple_cursor => |cmd| {
+                switch (cmd) {
+                    .support_query => self.host.pending_output.appendSlice(self.allocator, "\x1b[>1;2;3;29;30;40;100;101 q") catch {},
+                    .clear_all => activeKittyScreen(self).multiple_cursor_count = 0,
+                    .cursor_query => self.host.pending_output.appendSlice(self.allocator, "\x1b[>100 q") catch {},
+                    .color_query => self.host.pending_output.appendSlice(self.allocator, "\x1b[>101;30:0;40:0 q") catch {},
+                }
+            },
             .kitty_graphics => |cmd| {
                 self.kitty.global.graphics.handle(self.allocator, self.renderView(), &self.host.pending_output, self.encode.buf[0..], cmd);
             },

@@ -53,6 +53,13 @@ pub const KeyFormatChange = struct {
     value: ?u16,
 };
 
+pub const KittyMultipleCursorCommand = enum {
+    support_query,
+    clear_all,
+    cursor_query,
+    color_query,
+};
+
 /// Screen-directed semantic event union.
 pub const SemanticEvent = union(enum) {
     pub const CursorShape = enum {
@@ -136,6 +143,7 @@ pub const SemanticEvent = union(enum) {
     modify_other_keys_disable,
     key_format_change: KeyFormatChange,
     key_format_query: u8,
+    pointer_mode: u2,
     focus_reporting: bool,
     bracketed_paste: bool,
     mouse_tracking_off,
@@ -154,6 +162,7 @@ pub const SemanticEvent = union(enum) {
     kitty_notification: KittyNotificationCommand,
     kitty_pointer_shape: KittyPointerShapeCommand,
     kitty_color_stack: KittyColorStackCommand,
+    kitty_multiple_cursor: KittyMultipleCursorCommand,
     terminal_color_control: TerminalColorControlCommand,
     hyperlink_set: []const u8,
     hyperlink_clear,
@@ -330,6 +339,7 @@ pub const ModeAction = union(enum) {
     modify_other_keys_set: i8,
     modify_other_keys_disable,
     key_format_change: KeyFormatChange,
+    pointer_mode: u2,
     focus_reporting: bool,
     bracketed_paste: bool,
     mouse_tracking_off,
@@ -353,6 +363,7 @@ pub const KittyAction = union(enum) {
     kitty_notification: KittyNotificationCommand,
     kitty_pointer_shape: KittyPointerShapeCommand,
     kitty_color_stack: KittyColorStackCommand,
+    kitty_multiple_cursor: KittyMultipleCursorCommand,
     kitty_graphics: KittyGraphicsCommand,
 };
 

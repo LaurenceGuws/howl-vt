@@ -1,30 +1,31 @@
 # Protocol Coverage Sprints
 
-Execute these in order. Do not mix sprints.
+Execute these in order. Do not mix sprints. A sprint is not complete until every matching `protocol_coverage.db` row has real implemented behavior and unit coverage; documenting a deferral does not close a row.
 
 ## Sprint 1: Core VT parity
 - Finish remaining practical `C0`, `ESC`, and core `CSI` behavior.
 - Prioritize normal TUI correctness over obscure legacy features.
-- Status: baseline/common-app gaps are closed or reclassified. Remaining open `C0`/`ESC`/`CSI` rows are legacy, VT52/Tektronix, modern-input, visual/heavy, host-resource, or unclassified follow-up work.
+- Status: partial. Previously prioritized baseline/common-app rows were handled, but lower-priority and unclassified `C0`/`ESC`/`CSI` rows remain open in the database.
 
 ## Sprint 2: Reports and queries
 - Finish `DA`/`DSR`/`DECRQM`/`DECRQPSR`/`DECRQSS`-style replies.
 - Prefer explicit conservative replies over silent ignore.
-- Status: baseline/common/high report-query gaps are closed. DCS `DECRQSS`, `XTGETTCAP`, and `XTGETXRES` now have explicit replies; unsupported resource values reply conservatively instead of silently disappearing.
+- Status: partial. `DECRQSS`, `XTGETTCAP`, and `XTGETXRES` now have explicit replies, but the sprint remains open until all report/query database rows are implemented and tested.
 
 ## Sprint 3: String protocol foundations
 - Finish `DCS`, `APC`, and `PM` transport and typed parser events.
 - Keep syntax in `parser/`, typed event shaping in `interpret/parser_events.zig`, meaning in `interpret/*_actions.zig`, and consequences in `vt_core/` owners.
-- Status: transport foundations are closed. APC, DCS, and PM are buffered to terminators and emitted as typed parser events; PM and unknown APC are intentionally ignored at action mapping. Remaining DCS rows are feature protocols for later graphics/legacy work, not transport-foundation gaps.
+- Status: partial. APC, DCS, and PM are buffered to terminators and emitted as typed parser events, but feature-specific DCS/APC/PM database rows remain open until implemented and tested.
 
 ## Sprint 4: Modern input
 - Finish kitty keyboard and xterm keyboard-reporting gaps.
 - Close remaining negotiated mode and emitted-sequence gaps.
-- Status: keyboard-reporting gaps are closed. Kitty keyboard, modifyOtherKeys, focus/paste gates, and xterm key-format set/reset/query are implemented and unit tested. Remaining modern-priority pointer/notification rows belong to later host-input or metadata sprints.
+- Status: partial. Kitty keyboard, modifyOtherKeys, focus/paste gates, and xterm key-format set/reset/query are implemented and unit tested, but remaining modern input database rows stay open until implemented and tested.
 
 ## Sprint 5: Visual metadata protocols
 - Finish underlines, pointer shapes, shell marks, notifications, and multiple cursors.
 - Expose clean host-neutral state first.
+- Status: partial. Underline SGR variants, pointer shape/hyperlink interaction rows, notification rows, xterm pointer mode, and multiple-cursor query/clear rows have concrete behavior and tests; remaining visual metadata rows stay open until implemented and tested.
 
 ## Sprint 6: Heavy protocols
 - Finish kitty graphics.

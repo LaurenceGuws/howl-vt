@@ -191,6 +191,7 @@ pub const VtCore = struct {
         bracketed_paste: bool = false,
         mouse_tracking: Input.MouseTrackingMode = .off,
         mouse_protocol: Input.MouseProtocol = .none,
+        pointer_mode: u2 = 1,
         saved_dec_modes: [16]TerminalModeNs.SavedDecMode = [_]TerminalModeNs.SavedDecMode{.{ .mode = 0, .state = 0 }} ** 16,
         saved_dec_mode_count: u8 = 0,
     };
@@ -442,6 +443,14 @@ pub const VtCore = struct {
 
     pub fn kittyPointerShape(self: *const VtCore) []const u8 {
         return self.activeKittyScreenConst().pointer.currentName();
+    }
+
+    pub fn kittyMultipleCursorCount(self: *const VtCore) u16 {
+        return self.activeKittyScreenConst().multiple_cursor_count;
+    }
+
+    pub fn pointerMode(self: *const VtCore) u2 {
+        return self.modes.pointer_mode;
     }
 
     pub fn kittyColorStackDepth(self: *const VtCore) u16 {

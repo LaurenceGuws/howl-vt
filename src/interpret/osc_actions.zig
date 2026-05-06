@@ -13,7 +13,7 @@ pub fn process(kind: bridge_mod.OscKind, command: ?u16, payload: []const u8) ?Se
     if (command) |cmd| switch (cmd) {
         22 => return SemanticEvent{ .kitty_pointer_shape = kitty_actions.parsePointerShape(payload) },
         4, 10, 11, 12, 21, 104, 110, 111, 112 => return SemanticEvent{ .terminal_color_control = .{ .command = cmd, .payload = payload } },
-        99 => if (kitty_actions.parseNotification(payload)) |notification| return SemanticEvent{ .kitty_notification = notification },
+        9, 99 => if (kitty_actions.parseNotification(payload)) |notification| return SemanticEvent{ .kitty_notification = notification },
         133 => if (kitty_actions.parseShellMark(payload)) |mark| return SemanticEvent{ .kitty_shell_mark = mark },
         30001 => return SemanticEvent{ .kitty_color_stack = .push },
         30101 => return SemanticEvent{ .kitty_color_stack = .pop },
