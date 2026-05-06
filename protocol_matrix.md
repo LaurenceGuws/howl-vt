@@ -6,16 +6,31 @@ Drive `howl-vt-core` toward explicit xterm baseline parity and staged kitty prot
 `protocol_coverage.db` is the source of truth for protocol maturity work in this repo.
 This file is a human summary of that ledger.
 
-The SQLite ledger is DX-first, not provenance-first.
-It uses one `protocols` table with human-facing protocol names, sequence shapes, rich details, stable unit-test filter names, and three completeness flags:
+The stable day-to-day table is `protocols`, with human-facing protocol names,
+sequence shapes, stable unit-test filter names, and three completeness flags:
 - `implemented`
 - `unit_tested`
 - `host_tested`
 
 `unit_test_filters` stores newline-delimited Zig test filter strings. It is intentionally human-curated, file-agnostic, and aimed at targeted regression runs.
 
-The schema lives in `protocol_coverage_schema.sql`.
-The database is curated to be easy to query during development, not to mirror upstream docs line-for-line.
+Source provenance remains available through:
+
+- `protocol_sources`
+- `protocol_source_items`
+- `protocol_source_item_dispositions`
+- `protocol_source_links`
+- `protocol_aliases`
+
+Useful working views:
+
+- `protocol_gaps`
+- `protocol_summary`
+- `protocol_learning_inventory`
+- `protocol_source_audit`
+- `protocol_source_item_disposition_review`
+
+Repo-local source material now lives in `sources/xterm/` and `sources/kitty/`.
 
 Example query:
 ```sh
@@ -29,6 +44,18 @@ sqlite3 protocol_coverage.db \
   "SELECT id, unit_test_filters FROM protocols WHERE unit_tested = 1 AND unit_test_filters <> '';"
 ```
 
+Source audit query:
+```sh
+sqlite3 protocol_coverage.db \
+  "SELECT source_id, inventory_state, source_items, linked_items, classified_items, unlinked_items FROM protocol_source_audit;"
+```
+
+Disposition query:
+```sh
+sqlite3 protocol_coverage.db \
+  "SELECT disposition, source_id, title, sequence FROM protocol_source_item_disposition_review ORDER BY source_id, source_order;"
+```
+
 ## Status
 - `supported`: parser, semantic mapping, and grid/input behavior exist with tests.
 - `partial`: some layers exist, but behavior is incomplete, dropped, or mode-insensitive.
@@ -37,11 +64,73 @@ sqlite3 protocol_coverage.db \
 
 ## Corpus
 - Human reference inputs used when curating the ledger:
-  - `src/fuzz/assets/xterm-ctlseqs.ms`
-  - `/usr/share/doc/kitty/html/protocol-extensions.html`
+  - `sources/xterm/raw/ctlseqs.html`
+  - `sources/xterm/raw/ctlseqs-contents.html`
+  - `sources/kitty/raw/*.html`
+  - `sources/kitty/*.md`
 - Current deterministic fuzzers:
   - `src/fuzz/scrollback.zig`
   - `src/fuzz/protocol.zig`
+
+The current baseline is frozen.
+
+- `protocols` is the authoritative implementation scope.
+- Source material exists for provenance and clarification, not for ongoing
+  inventory generation.
+- Non-canonical source artifacts are tracked explicitly in
+  `protocol_source_item_dispositions`.
+
+## Development Loop
+
+Use this loop for every protocol slice:
+
+1. Pick a narrow slice from `protocol_gaps`.
+   Group by shared parser or semantic work, not by document order.
+2. Read the canonical row and linked source excerpts.
+   Use `protocol_learning_inventory` to confirm exact sequence shape,
+   terminology, and nearby related rows.
+3. Define the behavioral contract before editing code.
+   Decide what the parser must accept, what bridge event must exist, what
+   semantic state must change, and what host or render behavior must be
+   observable.
+4. Add or tighten tests first when practical.
+   Prefer targeted regression tests near the owning layer. Use the row's
+   `unit_test_filters` field to keep focused reruns easy.
+5. Implement the smallest complete change.
+   Keep syntax handling in the parser, typed event shaping in the bridge,
+   protocol meaning in semantic code, and UI or host consequences at the edge.
+6. Run focused tests, then `zig build test`.
+   Do not mark a row implemented or tested until behavior and tests actually
+   land.
+7. Update `protocols` metadata.
+   Set `implemented`, `unit_tested`, `host_tested`, adjust
+   `unit_test_filters`, and tighten notes so the ledger stays executable.
+8. Repeat by tranche.
+   Prefer finishing one coherent family cleanly over scattering partial
+   support across unrelated rows.
+
+## Structure Rules
+
+Maintain these invariants while implementing:
+
+1. Parser: recognize syntax only.
+   Do not bury protocol meaning in parse-time shape handling unless syntax
+   requires it.
+2. Bridge: preserve typed protocol events.
+   This is the boundary between raw escape decoding and semantic meaning.
+3. Semantics: own protocol interpretation and state transitions.
+   Mode toggles, reports, cursor movement, protection semantics, and similar
+   rules belong here.
+4. Host/render edges: stay explicit.
+   Clipboard, title, notifications, hyperlinks, mouse output, and rendering
+   side effects should remain visible at the boundary rather than leaking back
+   into parser logic.
+5. Minimality wins.
+   Prefer extending an existing protocol path over adding one-off helpers or
+   parallel state machines.
+6. Ledger accuracy matters.
+   If support is partial, keep the row partial. Do not collapse multiple wire
+   surfaces into a vague success state.
 
 ## Current Matrix
 
@@ -49,12 +138,13 @@ sqlite3 protocol_coverage.db \
 | --- | --- | --- |
 | Printable text + UTF-8 stream decode | supported | Parser emits ASCII slices and UTF-8 codepoints deterministically. |
 | Basic C0 controls: `LF`, `CR`, `BS`, `HT` | supported | Mapped in `interpret/semantic.zig` and applied in `grid/model.zig`. |
-| Remaining common C0 controls: `BEL`, `VT`, `FF`, `SO`, `SI`, `SUB`, `CAN` | unsupported | Not mapped into semantic behavior today. |
+| Additional common C0 controls: `BEL`, `ENQ`, `VT`, `FF`, `SI`, `SO`, `SP` | supported | `BEL` and default `ENQ` answerback are no-ops, `VT`/`FF` alias line feed, and `SI`/`SO` switch GL between the supported `G0`/`G1` charset set. |
+| Rare C0 controls: `SUB`, `CAN` | unsupported | Not mapped into semantic behavior today. |
 | CSI cursor movement: `CUU`, `CUD`, `CUF`, `CUB`, `CNL`, `CPL`, `CHA`, `VPA`, `CUP`, `HVP` | supported | Covered in semantic and screen behavior tests. |
 | CSI tab movement: `CHT`, `CBT` | supported | Uses mutable tab-stop state, defaulting to every 8 columns and honoring custom stops set/cleared by HTS/TBC. |
-| Tab-stop management: `HTS`, `TBC`, custom stops | supported | `ESC H` sets a stop at the cursor, `CSI 0 g` clears current stop, `CSI 3 g` clears all stops, and reset restores default 8-column stops. |
-| CSI insert/delete/scroll region edits: `IL`, `DL`, `SU`, `SD`, `DECSTBM` | supported | Recent tranche; covered by regression tests. |
-| Erase in display/line: `ED`, `EL`, `DECSED`, `DECSEL` | partial | Standard `ED`/`EL` modes `0-3` are implemented, including `ED 3` scrollback erase. DEC selective erase now honors `DECSCA`-protected cells. Broader erase/query parity work remains. |
+| Tab-stop management: `HTS`, `TBC`, `DECST8C`, custom stops | supported | `ESC H` sets a stop at the cursor, `CSI 0 g` clears current stop, `CSI 3 g` clears all stops, `CSI ? 5 W` restores default 8-column stops, and reset restores defaults. |
+| CSI insert/delete/scroll region edits: `IL`, `DL`, `SU`, `SD`, `SL`, `SR`, `DECSTBM` | supported | Covered by regression tests, including horizontal shifts across the active scroll region. |
+| Erase in display/line/chars: `ED`, `EL`, `ECH`, `DECSED`, `DECSEL` | partial | Standard `ED`/`EL` modes `0-3` and `ECH` are implemented, including `ED 3` scrollback erase. DEC selective erase now honors `DECSCA`-protected cells. Broader erase/query parity work remains. |
 | Rectangular and column edits: `DECCRA`, `DECCARA`, `DECRARA`, `DECFRA`, `DECERA`, `DECSERA`, `DECIC`, `DECDC`, `DECSACE`, `DECRQCRA`, `XTCHECKSUM` | partial | Page-1 rectangular copy/fill/erase/selective-erase, column insert/delete, rectangular-or-stream attribute changes, and rectangular checksum replies are implemented with clipping and overlap-safe copy buffering. Checksum semantics are still conservative and broader rectangle/report surfaces remain pending. |
 | Character protection: `DECSCA` | partial | Current-cell protection now gates selective erase behavior, but broader protected-cell interactions are not fully covered yet. |
 | SGR text attributes | partial | Supports reset, bold, underline, blink, reverse, ANSI 16, 256-color, RGB fg/bg, underline color, and kitty underline styles. Missing much of extended xterm attribute surface. |
@@ -62,7 +152,7 @@ sqlite3 protocol_coverage.db \
 | DEC private modes: `?6`, `?7`, `?25`, `?47`, `?69`, `?1047`, `?1049` | supported | Origin mode, wrap, cursor visibility, left/right margin mode, and alt-screen variants are implemented with DEC-mode query/save/restore coverage. |
 | DEC private modes beyond that baseline | partial | High-impact focus/paste/mouse/app-cursor modes exist, and supported DEC modes now answer `DECRQM`. Broader mode families remain unsupported. |
 | Locator protocols: `DECELR`, `DECEFR`, `DECSLE`, `DECRQLP` | partial | Locator reporting mode, filter rectangles, button-event selection, explicit locator requests, conservative `DECLRP` replies, and DEC locator status/type reports now work on the host-neutral mouse path. Pixel-perfect host integration and broader locator parity remain pending. |
-| ANSI modes and mode reports: `SM`, `RM`, `DECRQM`, `DSR`, `DA`, `DA2`, `DA3`, `DECXCPR`, `DECRQDE`, `DECRQPSR` (`DECCIR`, `DECTABSR`), `DECREQTPARM`, `XTREPORTCOLORS`, `XTREPORTSGR` | partial | `DSR`, `CPR`, `DA`, `DA2`, `DA3`, supported ANSI/DEC `DECRQM`, tracked ANSI `SM`/`RM` modes (`KAM`, `IRM`, `SRM`, `LNM`), displayed extent, cursor-information and tab-stop presentation-state reporting, VT100 terminal-parameter replies, conservative color-stack reporting, and conservative rectangle-common `XTREPORTSGR` replies now work. Full presentation-state and broader ANSI-mode families remain unsupported. |
+| ANSI modes and mode reports: `SM`, `RM`, `DECRQM`, `DSR`, `DA`, `DA2`, `DA3`, `DECXCPR`, `DECRQDE`, `DECRQPSR` (`DECCIR`, `DECTABSR`), `DECREQTPARM`, `XTVERSION`, `XTTITLEPOS`, `XTREPORTCOLORS`, `XTREPORTSGR` | partial | `DSR`, `CPR`, `DA`, `DA2`, `DA3`, supported ANSI/DEC `DECRQM`, tracked ANSI `SM`/`RM` modes (`KAM`, `IRM`, `SRM`, `LNM`), displayed extent, cursor-information and tab-stop presentation-state reporting, VT100 terminal-parameter replies, fixed `XTVERSION` identity replies, conservative empty-stack `XTTITLEPOS` replies, conservative color-stack reporting, and conservative rectangle-common `XTREPORTSGR` replies now work. Full presentation-state and broader ANSI-mode families remain unsupported. |
 | ESC single-byte control finals | partial | Parser and bridge preserve ESC finals; DEC save/restore cursor (`ESC 7`/`ESC 8`) is implemented, broader ESC-final semantics remain unsupported. |
 | Charset designation: `ESC (`, `ESC )`, DEC Special Graphics select | partial | Parser tracks G0/G1 designation and DEC Special Graphics maps through visible cells. Broader charset families remain unsupported. |
 | Shift in/out charset use: `SI`, `SO` | partial | G0/G1 GL switching is wired for the supported charset set, including DEC Special Graphics. |
@@ -89,56 +179,6 @@ sqlite3 protocol_coverage.db \
 | Function/navigation key encoding | partial | Basic xterm-style sequences exist, but not gated by negotiated modes and not extended past current key set. |
 | Alt-screen enter/exit and primary scrollback preservation | supported | Explicit tests exist for `1049` save/restore behavior and full-dirty transitions. |
 | Snapshot / replay determinism across chunking | supported | Unit/regression/fuzz coverage exists. |
-
-## Layer Notes
-
-### Parser Stronger Than Semantics
-- `src/parser/parser.zig` already understands CSI payloads with leaders/intermediates.
-- It also transports OSC, APC, DCS, ESC finals, and charset designation state.
-- Several gaps are not parser gaps anymore; they are bridge/semantic/host-response gaps.
-
-### Bridge Is Still A Key Boundary
-- `src/interpret/bridge.zig` now preserves:
-  - typed OSC payloads
-  - APC payloads
-  - DCS payloads
-  - ESC finals
-- Remaining gaps are now mostly in semantic interpretation and host/render policy, not raw bridge transport.
-
-### Response Path Exists, But Is Incomplete
-- `vt-core` now owns a host-output queue for:
-  - DSR/CPR replies
-  - DA/DA2 replies
-  - supported DEC-mode `DECRQM` replies
-  - negotiated focus/paste wrappers
-  - negotiated mouse output
-- Remaining gaps are broader OSC query replies, richer keyboard negotiation, and more legacy/extended mouse encodings.
-
-## First Tranche
-
-### Tranche 1A: xterm compatibility core
-Completed:
-1. Explicit non-title OSC event typing in the bridge.
-2. Semantic/host-facing support for device and status reports.
-3. High-impact DECSET/DECRST modes:
-   - focus
-   - bracketed paste
-   - app cursor
-   - initial mouse tracking entry points
-4. xterm-correct `ED 3` scrollback erase semantics.
-5. DEC mode query replies for supported tracked modes.
-
-### Tranche 1B: modern host interaction
-Completed:
-1. Mouse reporting encoder path for SGR (`1006`).
-2. Mode-aware arrow-key encoding for application cursor mode.
-3. OSC 8 hyperlink handling.
-4. OSC 52 clipboard handling with explicit host-facing pending request surface.
-
-Next:
-1. Legacy and extended mouse protocol families beyond current SGR path.
-2. Richer keyboard negotiation and keypad mode support.
-3. Broader DEC private mode families and remaining xterm query/setter surfaces.
 
 ## Slice Rules
 Every protocol slice should land with:

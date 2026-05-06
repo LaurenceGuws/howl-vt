@@ -83,7 +83,7 @@ pub const Pipeline = struct {
     pub fn applyToScreen(self: *Pipeline, screen: *Grid.GridModel) void {
         for (self.bridge.events.items) |ev| {
             if (semantic_mod.process(ev)) |sem_ev| {
-                screen.apply(sem_ev);
+                if (semantic_mod.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
             }
         }
         self.bridge.clear();

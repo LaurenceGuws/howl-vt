@@ -10,8 +10,19 @@ const GridTypes = grid_types;
 const Interpret = interpret_owner.Interpret;
 
 pub const TerminalReport = struct {
+    const xtversion_text = "howl-vt-core dev";
+
     pub fn appendModifyOtherKeysReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, value: i8) void {
         const text = std.fmt.bufPrint(encode_buf, "\x1b[>4;{d}m", .{value}) catch return;
+        output.appendSlice(allocator, text) catch {};
+    }
+
+    pub fn appendXtVersionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) void {
+        output.appendSlice(allocator, "\x1bP>|" ++ xtversion_text ++ "\x1b\\") catch {};
+    }
+
+    pub fn appendTitleStackPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, current: u16, max: u16) void {
+        const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}#S", .{ current, max }) catch return;
         output.appendSlice(allocator, text) catch {};
     }
 

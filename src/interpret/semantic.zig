@@ -114,6 +114,7 @@ pub const SemanticEvent = union(enum) {
     dec_mode_query: u16,
     dec_mode_save: ModeParams,
     dec_mode_restore: ModeParams,
+    dcs_request_status: []const u8,
     device_status_report,
     dec_device_status_report: u16,
     cursor_position_report,
@@ -121,6 +122,8 @@ pub const SemanticEvent = union(enum) {
     primary_device_attributes,
     secondary_device_attributes,
     tertiary_device_attributes,
+    xtversion,
+    xttitlepos,
     xtchecksum: u16,
     rect_checksum_request: struct { request_id: u16, page: u16, area: RectArea },
     selected_graphic_rendition_report: RectArea,
@@ -158,6 +161,8 @@ pub const SemanticEvent = union(enum) {
     selective_erase_display: u2,
     selective_erase_line: u2,
     erase_chars: u16,
+    shift_left_columns: u16,
+    shift_right_columns: u16,
     character_protection: bool,
     rect_erase: RectArea,
     rect_selective_erase: RectArea,
@@ -169,6 +174,145 @@ pub const SemanticEvent = union(enum) {
     attr_change_extent_rect: bool,
     left_right_margin_mode: bool,
     set_left_right_margins: struct { left: u16, right: ?u16 },
+    reset_default_tab_stops,
+};
+
+pub const ScreenAction = union(enum) {
+    cursor_up: u16,
+    cursor_down: u16,
+    cursor_forward: u16,
+    cursor_back: u16,
+    cursor_next_line: u16,
+    cursor_prev_line: u16,
+    cursor_horizontal_absolute: u16,
+    cursor_vertical_absolute: u16,
+    cursor_position: struct { row: u16, col: u16 },
+    write_text: []const u8,
+    write_codepoint: u21,
+    repeat_preceding: u16,
+    line_feed,
+    next_line,
+    reverse_index,
+    carriage_return,
+    backspace,
+    horizontal_tab,
+    horizontal_tab_forward: u16,
+    horizontal_tab_back: u16,
+    horizontal_tab_set,
+    tab_clear_current,
+    tab_clear_all,
+    cursor_visible: bool,
+    cursor_style: SemanticEvent.CursorStyle,
+    auto_wrap: bool,
+    origin_mode: bool,
+    insert_mode: bool,
+    save_cursor,
+    restore_cursor,
+    sgr: struct {
+        params: [16]i32,
+        separators: [16]u8,
+        param_count: u8,
+    },
+    insert_lines: u16,
+    delete_lines: u16,
+    insert_chars: u16,
+    delete_chars: u16,
+    scroll_up_lines: u16,
+    scroll_down_lines: u16,
+    set_scroll_region: struct {
+        top: u16,
+        bottom: ?u16,
+    },
+    reset_screen,
+    erase_display: u2,
+    erase_line: u2,
+    selective_erase_display: u2,
+    selective_erase_line: u2,
+    erase_chars: u16,
+    shift_left_columns: u16,
+    shift_right_columns: u16,
+    character_protection: bool,
+    rect_erase: SemanticEvent.RectArea,
+    rect_selective_erase: SemanticEvent.RectArea,
+    rect_fill: struct { area: SemanticEvent.RectArea, ch: u21 },
+    rect_copy: SemanticEvent.RectCopy,
+    rect_attrs_change: struct { area: SemanticEvent.RectArea, attrs: SemanticEvent.AttrParams, reverse: bool },
+    insert_columns: u16,
+    delete_columns: u16,
+    attr_change_extent_rect: bool,
+    left_right_margin_mode: bool,
+    set_left_right_margins: struct { left: u16, right: ?u16 },
+    reset_default_tab_stops,
+};
+
+pub const ReportAction = union(enum) {
+    ansi_mode_query: u16,
+    modify_other_keys_query,
+    dec_mode_query: u16,
+    dcs_request_status: []const u8,
+    device_status_report,
+    dec_device_status_report: u16,
+    cursor_position_report,
+    dec_cursor_position_report,
+    primary_device_attributes,
+    secondary_device_attributes,
+    tertiary_device_attributes,
+    xtversion,
+    xttitlepos,
+    xtchecksum: u16,
+    rect_checksum_request: struct { request_id: u16, page: u16, area: SemanticEvent.RectArea },
+    selected_graphic_rendition_report: SemanticEvent.RectArea,
+    presentation_state_report: u16,
+    displayed_extent_report,
+    terminal_parameters_report: u16,
+    xtreportcolors,
+};
+
+pub const ModeAction = union(enum) {
+    enter_alt_screen: struct { clear: bool, save_cursor: bool },
+    exit_alt_screen: struct { restore_cursor: bool },
+    application_cursor_keys: bool,
+    application_keypad: bool,
+    ansi_mode_set: SemanticEvent.ModeParams,
+    ansi_mode_reset: SemanticEvent.ModeParams,
+    modify_other_keys_set: i8,
+    modify_other_keys_disable,
+    focus_reporting: bool,
+    bracketed_paste: bool,
+    mouse_tracking_off,
+    mouse_tracking_x10,
+    mouse_tracking_normal,
+    mouse_tracking_button_event,
+    mouse_tracking_any_event,
+    mouse_protocol_utf8: bool,
+    mouse_protocol_sgr: bool,
+    mouse_protocol_urxvt: bool,
+    dec_mode_save: SemanticEvent.ModeParams,
+    dec_mode_restore: SemanticEvent.ModeParams,
+};
+
+pub const KittyAction = union(enum) {
+    kitty_keyboard_set: struct { flags: u32, mode: u8 },
+    kitty_keyboard_query,
+    kitty_keyboard_push: u32,
+    kitty_keyboard_pop: u16,
+    kitty_shell_mark: KittyShellMark,
+    kitty_notification: KittyNotificationCommand,
+    kitty_pointer_shape: KittyPointerShapeCommand,
+    kitty_color_stack: KittyColorStackCommand,
+    kitty_graphics: KittyGraphicsCommand,
+};
+
+pub const HostAction = union(enum) {
+    terminal_color_control: TerminalColorControlCommand,
+    hyperlink_set: []const u8,
+    hyperlink_clear,
+    clipboard_set: []const u8,
+    locator_reporting: struct { mode: u16, unit: u16 },
+    locator_filter: SemanticEvent.OptionalRectArea,
+    locator_events: SemanticEvent.ModeParams,
+    locator_request: u16,
+    reset_screen,
 };
 
 /// Map bridge event to semantic event when supported.
@@ -181,8 +325,155 @@ pub fn process(event: Event) ?SemanticEvent {
         .osc => |osc| return processOsc(osc.kind, osc.command, osc.payload),
         .esc_final => |final| return processEscFinal(final),
         .apc => |apc| return processApc(apc),
-        .dcs, .invalid_sequence => return null,
+        .dcs => |dcs| return processDcs(dcs),
+        .pm, .invalid_sequence => return null,
     }
+}
+
+pub fn screenAction(event: SemanticEvent) ?ScreenAction {
+    return switch (event) {
+        .cursor_up => |v| ScreenAction{ .cursor_up = v },
+        .cursor_down => |v| ScreenAction{ .cursor_down = v },
+        .cursor_forward => |v| ScreenAction{ .cursor_forward = v },
+        .cursor_back => |v| ScreenAction{ .cursor_back = v },
+        .cursor_next_line => |v| ScreenAction{ .cursor_next_line = v },
+        .cursor_prev_line => |v| ScreenAction{ .cursor_prev_line = v },
+        .cursor_horizontal_absolute => |v| ScreenAction{ .cursor_horizontal_absolute = v },
+        .cursor_vertical_absolute => |v| ScreenAction{ .cursor_vertical_absolute = v },
+        .cursor_position => |v| ScreenAction{ .cursor_position = .{ .row = v.row, .col = v.col } },
+        .write_text => |v| ScreenAction{ .write_text = v },
+        .write_codepoint => |v| ScreenAction{ .write_codepoint = v },
+        .repeat_preceding => |v| ScreenAction{ .repeat_preceding = v },
+        .line_feed => .line_feed,
+        .next_line => .next_line,
+        .reverse_index => .reverse_index,
+        .carriage_return => .carriage_return,
+        .backspace => .backspace,
+        .horizontal_tab => .horizontal_tab,
+        .horizontal_tab_forward => |v| ScreenAction{ .horizontal_tab_forward = v },
+        .horizontal_tab_back => |v| ScreenAction{ .horizontal_tab_back = v },
+        .horizontal_tab_set => .horizontal_tab_set,
+        .tab_clear_current => .tab_clear_current,
+        .tab_clear_all => .tab_clear_all,
+        .cursor_visible => |v| ScreenAction{ .cursor_visible = v },
+        .cursor_style => |v| ScreenAction{ .cursor_style = v },
+        .auto_wrap => |v| ScreenAction{ .auto_wrap = v },
+        .origin_mode => |v| ScreenAction{ .origin_mode = v },
+        .insert_mode => |v| ScreenAction{ .insert_mode = v },
+        .save_cursor => .save_cursor,
+        .restore_cursor => .restore_cursor,
+        .sgr => |v| ScreenAction{ .sgr = .{ .params = v.params, .separators = v.separators, .param_count = v.param_count } },
+        .insert_lines => |v| ScreenAction{ .insert_lines = v },
+        .delete_lines => |v| ScreenAction{ .delete_lines = v },
+        .insert_chars => |v| ScreenAction{ .insert_chars = v },
+        .delete_chars => |v| ScreenAction{ .delete_chars = v },
+        .scroll_up_lines => |v| ScreenAction{ .scroll_up_lines = v },
+        .scroll_down_lines => |v| ScreenAction{ .scroll_down_lines = v },
+        .set_scroll_region => |v| ScreenAction{ .set_scroll_region = .{ .top = v.top, .bottom = v.bottom } },
+        .reset_screen => .reset_screen,
+        .erase_display => |v| ScreenAction{ .erase_display = v },
+        .erase_line => |v| ScreenAction{ .erase_line = v },
+        .selective_erase_display => |v| ScreenAction{ .selective_erase_display = v },
+        .selective_erase_line => |v| ScreenAction{ .selective_erase_line = v },
+        .erase_chars => |v| ScreenAction{ .erase_chars = v },
+        .shift_left_columns => |v| ScreenAction{ .shift_left_columns = v },
+        .shift_right_columns => |v| ScreenAction{ .shift_right_columns = v },
+        .character_protection => |v| ScreenAction{ .character_protection = v },
+        .rect_erase => |v| ScreenAction{ .rect_erase = v },
+        .rect_selective_erase => |v| ScreenAction{ .rect_selective_erase = v },
+        .rect_fill => |v| ScreenAction{ .rect_fill = .{ .area = v.area, .ch = v.ch } },
+        .rect_copy => |v| ScreenAction{ .rect_copy = v },
+        .rect_attrs_change => |v| ScreenAction{ .rect_attrs_change = .{ .area = v.area, .attrs = v.attrs, .reverse = v.reverse } },
+        .insert_columns => |v| ScreenAction{ .insert_columns = v },
+        .delete_columns => |v| ScreenAction{ .delete_columns = v },
+        .attr_change_extent_rect => |v| ScreenAction{ .attr_change_extent_rect = v },
+        .left_right_margin_mode => |v| ScreenAction{ .left_right_margin_mode = v },
+        .set_left_right_margins => |v| ScreenAction{ .set_left_right_margins = .{ .left = v.left, .right = v.right } },
+        .reset_default_tab_stops => .reset_default_tab_stops,
+        else => null,
+    };
+}
+
+pub fn reportAction(event: SemanticEvent) ?ReportAction {
+    return switch (event) {
+        .ansi_mode_query => |v| ReportAction{ .ansi_mode_query = v },
+        .modify_other_keys_query => .modify_other_keys_query,
+        .dec_mode_query => |v| ReportAction{ .dec_mode_query = v },
+        .dcs_request_status => |v| ReportAction{ .dcs_request_status = v },
+        .device_status_report => .device_status_report,
+        .dec_device_status_report => |v| ReportAction{ .dec_device_status_report = v },
+        .cursor_position_report => .cursor_position_report,
+        .dec_cursor_position_report => .dec_cursor_position_report,
+        .primary_device_attributes => .primary_device_attributes,
+        .secondary_device_attributes => .secondary_device_attributes,
+        .tertiary_device_attributes => .tertiary_device_attributes,
+        .xtversion => .xtversion,
+        .xttitlepos => .xttitlepos,
+        .xtchecksum => |v| ReportAction{ .xtchecksum = v },
+        .rect_checksum_request => |v| ReportAction{ .rect_checksum_request = .{ .request_id = v.request_id, .page = v.page, .area = v.area } },
+        .selected_graphic_rendition_report => |v| ReportAction{ .selected_graphic_rendition_report = v },
+        .presentation_state_report => |v| ReportAction{ .presentation_state_report = v },
+        .displayed_extent_report => .displayed_extent_report,
+        .terminal_parameters_report => |v| ReportAction{ .terminal_parameters_report = v },
+        .xtreportcolors => .xtreportcolors,
+        else => null,
+    };
+}
+
+pub fn modeAction(event: SemanticEvent) ?ModeAction {
+    return switch (event) {
+        .enter_alt_screen => |v| ModeAction{ .enter_alt_screen = .{ .clear = v.clear, .save_cursor = v.save_cursor } },
+        .exit_alt_screen => |v| ModeAction{ .exit_alt_screen = .{ .restore_cursor = v.restore_cursor } },
+        .application_cursor_keys => |v| ModeAction{ .application_cursor_keys = v },
+        .application_keypad => |v| ModeAction{ .application_keypad = v },
+        .ansi_mode_set => |v| ModeAction{ .ansi_mode_set = v },
+        .ansi_mode_reset => |v| ModeAction{ .ansi_mode_reset = v },
+        .modify_other_keys_set => |v| ModeAction{ .modify_other_keys_set = v },
+        .modify_other_keys_disable => .modify_other_keys_disable,
+        .focus_reporting => |v| ModeAction{ .focus_reporting = v },
+        .bracketed_paste => |v| ModeAction{ .bracketed_paste = v },
+        .mouse_tracking_off => .mouse_tracking_off,
+        .mouse_tracking_x10 => .mouse_tracking_x10,
+        .mouse_tracking_normal => .mouse_tracking_normal,
+        .mouse_tracking_button_event => .mouse_tracking_button_event,
+        .mouse_tracking_any_event => .mouse_tracking_any_event,
+        .mouse_protocol_utf8 => |v| ModeAction{ .mouse_protocol_utf8 = v },
+        .mouse_protocol_sgr => |v| ModeAction{ .mouse_protocol_sgr = v },
+        .mouse_protocol_urxvt => |v| ModeAction{ .mouse_protocol_urxvt = v },
+        .dec_mode_save => |v| ModeAction{ .dec_mode_save = v },
+        .dec_mode_restore => |v| ModeAction{ .dec_mode_restore = v },
+        else => null,
+    };
+}
+
+pub fn kittyAction(event: SemanticEvent) ?KittyAction {
+    return switch (event) {
+        .kitty_keyboard_set => |v| KittyAction{ .kitty_keyboard_set = .{ .flags = v.flags, .mode = v.mode } },
+        .kitty_keyboard_query => .kitty_keyboard_query,
+        .kitty_keyboard_push => |v| KittyAction{ .kitty_keyboard_push = v },
+        .kitty_keyboard_pop => |v| KittyAction{ .kitty_keyboard_pop = v },
+        .kitty_shell_mark => |v| KittyAction{ .kitty_shell_mark = v },
+        .kitty_notification => |v| KittyAction{ .kitty_notification = v },
+        .kitty_pointer_shape => |v| KittyAction{ .kitty_pointer_shape = v },
+        .kitty_color_stack => |v| KittyAction{ .kitty_color_stack = v },
+        .kitty_graphics => |v| KittyAction{ .kitty_graphics = v },
+        else => null,
+    };
+}
+
+pub fn hostAction(event: SemanticEvent) ?HostAction {
+    return switch (event) {
+        .terminal_color_control => |v| HostAction{ .terminal_color_control = v },
+        .hyperlink_set => |v| HostAction{ .hyperlink_set = v },
+        .hyperlink_clear => .hyperlink_clear,
+        .clipboard_set => |v| HostAction{ .clipboard_set = v },
+        .locator_reporting => |v| HostAction{ .locator_reporting = .{ .mode = v.mode, .unit = v.unit } },
+        .locator_filter => |v| HostAction{ .locator_filter = v },
+        .locator_events => |v| HostAction{ .locator_events = v },
+        .locator_request => |v| HostAction{ .locator_request = v },
+        .reset_screen => .reset_screen,
+        else => null,
+    };
 }
 
 pub const KittyGraphicsCommand = struct {
@@ -233,6 +524,13 @@ pub const TerminalColorControlCommand = struct {
 
 fn processApc(data: []const u8) ?SemanticEvent {
     return parseKittyGraphics(data) orelse null;
+}
+
+fn processDcs(data: []const u8) ?SemanticEvent {
+    if (data.len >= 2 and data[0] == '$' and data[1] == 'q') {
+        return SemanticEvent{ .dcs_request_status = data[2..] };
+    }
+    return null;
 }
 
 fn parseKittyGraphics(data: []const u8) ?SemanticEvent {
@@ -380,6 +678,7 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
         if (leader == '?' and final == 'u') return SemanticEvent.kitty_keyboard_query;
         if (leader == '?' and final == 'J') return SemanticEvent{ .selective_erase_display = eraseMode(params[0]) };
         if (leader == '?' and final == 'K') return SemanticEvent{ .selective_erase_line = eraseMode(params[0]) };
+        if (leader == '?' and final == 'W' and paramOrDefault0(params[0]) == 5) return SemanticEvent.reset_default_tab_stops;
         if (leader == '?' and count >= 1) {
             if (final == 'm' and paramOrDefault0(params[0]) == 4) return SemanticEvent.modify_other_keys_query;
             if (final == 'p' and intermediatesLenHas(intermediates, intermediates_len, '$')) {
@@ -491,6 +790,7 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
     if (leader == '>') {
         return switch (final) {
             'c' => SemanticEvent.secondary_device_attributes,
+            'q' => if (paramOrDefault0(params[0]) == 0) SemanticEvent.xtversion else null,
             'm' => if (paramOrDefault0(params[0]) == 4) SemanticEvent{ .modify_other_keys_set = @intCast(@max(if (count >= 2) params[1] else 0, 0)) } else null,
             'n' => if (paramOrDefault0(params[0]) == 4) SemanticEvent.modify_other_keys_disable else null,
             'u' => SemanticEvent{ .kitty_keyboard_push = @intCast(@max(params[0], 0)) },
@@ -567,6 +867,7 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
                 return null;
             },
             '#' => return switch (final) {
+                'S' => SemanticEvent.xttitlepos,
                 'y' => SemanticEvent{ .xtchecksum = paramOrDefault0(params[0]) },
                 'R' => SemanticEvent.xtreportcolors,
                 '|' => SemanticEvent{ .selected_graphic_rendition_report = rectArea(params, count, 0) },
@@ -585,6 +886,13 @@ fn processCsi(final: u8, params: [16]i32, separators: [16]u8, count: u8, leader:
     }
     if (final == 'q' and intermediates_len == 1 and intermediates[0] == ' ') {
         return SemanticEvent{ .cursor_style = cursorStyle(paramOrDefault0(params[0])) };
+    }
+    if (intermediates_len == 1 and intermediates[0] == ' ') {
+        return switch (final) {
+            '@' => SemanticEvent{ .shift_left_columns = paramOrDefault1(params[0]) },
+            'A' => SemanticEvent{ .shift_right_columns = paramOrDefault1(params[0]) },
+            else => null,
+        };
     }
     switch (final) {
         '@' => return SemanticEvent{ .insert_chars = paramOrDefault1(params[0]) },

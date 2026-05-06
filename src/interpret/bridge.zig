@@ -30,6 +30,7 @@ pub const Event = union(enum) {
     },
     apc: []const u8,
     dcs: []const u8,
+    pm: []const u8,
     esc_final: u8,
     invalid_sequence,
 };
@@ -96,6 +97,7 @@ pub const Bridge = struct {
             .onOscFn = onOsc,
             .onApcFn = onApc,
             .onDcsFn = onDcs,
+            .onPmFn = onPm,
             .onEscFinalFn = onEscFinal,
         };
     }
@@ -158,6 +160,12 @@ pub const Bridge = struct {
         const self: *Bridge = @ptrCast(@alignCast(ptr));
         const owned = self.arena.allocator().dupe(u8, data) catch return;
         self.events.append(self.allocator, Event{ .dcs = owned }) catch {};
+    }
+
+    fn onPm(ptr: *anyopaque, data: []const u8) void {
+        const self: *Bridge = @ptrCast(@alignCast(ptr));
+        const owned = self.arena.allocator().dupe(u8, data) catch return;
+        self.events.append(self.allocator, Event{ .pm = owned }) catch {};
     }
 
     fn onEscFinal(ptr: *anyopaque, byte: u8) void {
@@ -315,18 +323,20 @@ test "bridge: parses OSC command without semicolon payload" {
     try std.testing.expectEqualSlices(u8, "", bridge.events.items[0].osc.payload);
 }
 
-test "bridge: preserves APC, DCS, and ESC final transport" {
+test "bridge: preserves APC, DCS, PM, and ESC final transport" {
     const gpa = std.testing.allocator;
     var bridge = Bridge.init(gpa);
     defer bridge.deinit();
     var parser = try ParserApi.Parser.init(gpa, bridge.toSink());
     defer parser.deinit();
-    parser.handleSlice("\x1b_kitty\x1b\\\x1bPdata\x1b\\\x1bM");
-    try std.testing.expectEqual(@as(usize, 3), bridge.events.items.len);
+    parser.handleSlice("\x1b_kitty\x1b\\\x1bPdata\x1b\\\x1b^ignored\x1b\\\x1bM");
+    try std.testing.expectEqual(@as(usize, 4), bridge.events.items.len);
     try std.testing.expect(bridge.events.items[0] == .apc);
     try std.testing.expectEqualSlices(u8, "kitty", bridge.events.items[0].apc);
     try std.testing.expect(bridge.events.items[1] == .dcs);
     try std.testing.expectEqualSlices(u8, "data", bridge.events.items[1].dcs);
-    try std.testing.expect(bridge.events.items[2] == .esc_final);
-    try std.testing.expectEqual(@as(u8, 'M'), bridge.events.items[2].esc_final);
+    try std.testing.expect(bridge.events.items[2] == .pm);
+    try std.testing.expectEqualSlices(u8, "ignored", bridge.events.items[2].pm);
+    try std.testing.expect(bridge.events.items[3] == .esc_final);
+    try std.testing.expectEqual(@as(u8, 'M'), bridge.events.items[3].esc_final);
 }

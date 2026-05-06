@@ -239,12 +239,28 @@ test "report queries append pending host output" {
     var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);
     defer vt_core.deinit();
 
-    vt_core.feedSlice("\x1b[2;3H\x1b[5n\x1b[6n\x1b[c\x1b[>c");
+    vt_core.feedSlice("\x1b[2;3H\x1b[5n\x1b[6n\x1b[c\x1b[>c\x1b[>0q\x1b[#S");
     vt_core.apply();
-    try std.testing.expectEqualStrings("\x1b[0n\x1b[2;3R\x1b[?62;22c\x1b[>1;10;0c", vt_core.pendingOutput());
+    try std.testing.expectEqualStrings("\x1b[0n\x1b[2;3R\x1b[?62;22c\x1b[>1;10;0c\x1bP>|howl-vt-core dev\x1b\\\x1b[0;0#S", vt_core.pendingOutput());
 
     vt_core.clearPendingOutput();
     try std.testing.expectEqualStrings("", vt_core.pendingOutput());
+}
+
+test "ENQ default answerback is empty and printable space remains text" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 2, 8);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("A \x05B");
+    vt_core.apply();
+
+    try std.testing.expectEqualStrings("", vt_core.pendingOutput());
+    try std.testing.expectEqual(@as(u16, 0), vt_core.renderView().cursor_row);
+    try std.testing.expectEqual(@as(u16, 3), vt_core.renderView().cursor_col);
+    try std.testing.expectEqual(@as(u21, 'A'), vt_core.renderView().cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, ' '), vt_core.renderView().cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'B'), vt_core.renderView().cellAt(0, 2));
 }
 
 test "extended report queries append host output" {
@@ -438,6 +454,21 @@ test "DEC mode queries append DECRPM replies" {
     vt_core.feedSlice("\x1b[?1004h\x1b[?2004h\x1b[?1002h\x1b[?1006h\x1b[?1004$p\x1b[?2004$p\x1b[?1002$p\x1b[?1006$p\x1b[?25$p\x1b[?9999$p");
     vt_core.apply();
     try std.testing.expectEqualStrings("\x1b[?1004;1$y\x1b[?2004;1$y\x1b[?1002;1$y\x1b[?1006;1$y\x1b[?25;1$y\x1b[?9999;0$y", vt_core.pendingOutput());
+}
+
+test "DECRQSS replies for owned state and invalid requests" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b[2;3r\x1b[?69h\x1b[2;7s\x1b[3 q\x1b[1\"q\x1b[2*x");
+    vt_core.feedSlice("\x1bP$qr\x1b\\\x1bP$qs\x1b\\\x1bP$q q\x1b\\\x1bP$q\"q\x1b\\\x1bP$q*x\x1b\\\x1bP$qm\x1b\\");
+    vt_core.apply();
+
+    try std.testing.expectEqualStrings(
+        "\x1bP1$r2;3r\x1b\\\x1bP1$r2;7s\x1b\\\x1bP1$r3 q\x1b\\\x1bP1$r1\"q\x1b\\\x1bP1$r2*x\x1b\\\x1bP0$r\x1b\\",
+        vt_core.pendingOutput(),
+    );
 }
 
 test "XTSAVE and XTRESTORE restore supported DEC private modes" {

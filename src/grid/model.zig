@@ -8,6 +8,7 @@ const types = @import("types.zig");
 
 /// Semantic event alias for grid application.
 const SemanticEvent = interpret_owner.Interpret.SemanticEvent;
+const ScreenAction = interpret_owner.Interpret.ScreenAction;
 const Cell = types.Cell;
 const Color = types.Color;
 const CellAttrs = types.CellAttrs;
@@ -1003,6 +1004,11 @@ pub const GridModel = struct {
 
     /// Apply one semantic event to grid state.
     pub fn apply(self: *GridModel, event: SemanticEvent) void {
+        const action = interpret_owner.Interpret.screenAction(event) orelse return;
+        self.applyScreen(action);
+    }
+
+    pub fn applyScreen(self: *GridModel, event: ScreenAction) void {
         switch (event) {
             .cursor_up => |n| {
                 self.wrap_pending = false;
@@ -1113,63 +1119,9 @@ pub const GridModel = struct {
                 self.cursor_col = self.lineHomeCol();
             },
             .insert_mode => |enabled| self.insert_mode = enabled,
-            .application_cursor_keys,
-            .application_keypad,
-            .ansi_mode_set,
-            .ansi_mode_reset,
-            .ansi_mode_query,
-            .modify_other_keys_set,
-            .modify_other_keys_query,
-            .modify_other_keys_disable,
-            .focus_reporting,
-            .bracketed_paste,
-            .mouse_tracking_off,
-            .mouse_tracking_x10,
-            .mouse_tracking_normal,
-            .mouse_tracking_button_event,
-            .mouse_tracking_any_event,
-            .mouse_protocol_utf8,
-            .mouse_protocol_sgr,
-            .mouse_protocol_urxvt,
-            .kitty_keyboard_set,
-            .kitty_keyboard_query,
-            .kitty_keyboard_push,
-            .kitty_keyboard_pop,
-            .kitty_shell_mark,
-            .kitty_notification,
-            .kitty_pointer_shape,
-            .kitty_color_stack,
-            .terminal_color_control,
-            .hyperlink_set,
-            .hyperlink_clear,
-            .clipboard_set,
-            .dec_mode_query,
-            .dec_mode_save,
-            .dec_mode_restore,
-            .device_status_report,
-            .dec_device_status_report,
-            .cursor_position_report,
-            .dec_cursor_position_report,
-            .primary_device_attributes,
-            .secondary_device_attributes,
-            .tertiary_device_attributes,
-            .xtchecksum,
-            .rect_checksum_request,
-            .selected_graphic_rendition_report,
-            .presentation_state_report,
-            .displayed_extent_report,
-            .terminal_parameters_report,
-            .xtreportcolors,
-            .locator_reporting,
-            .locator_filter,
-            .locator_events,
-            .locator_request,
-            .kitty_graphics,
-            => {},
             .save_cursor => self.saveCursor(),
             .restore_cursor => self.restoreCursor(),
             .sgr => |sgr| self.applySgr(sgr.params[0..sgr.param_count], sgr.separators[0..sgr.param_count]),
-            .enter_alt_screen, .exit_alt_screen => {},
             .insert_lines => |count| {
                 self.wrap_pending = false;
                 self.insertLines(count);
@@ -1219,10 +1171,19 @@ pub const GridModel = struct {
                 self.wrap_pending = false;
                 self.eraseChars(count);
             },
+            .shift_left_columns => |count| {
+                self.wrap_pending = false;
+                self.shiftColumnsLeft(count);
+            },
+            .shift_right_columns => |count| {
+                self.wrap_pending = false;
+                self.shiftColumnsRight(count);
+            },
             .character_protection => |enabled| self.current_attrs.protected = enabled,
             .attr_change_extent_rect => |enabled| self.attr_change_extent_rect = enabled,
             .left_right_margin_mode => |enabled| self.setLeftRightMarginMode(enabled),
             .set_left_right_margins => |margins| self.setLeftRightMargins(margins.left, margins.right),
+            .reset_default_tab_stops => self.resetDefaultTabStops(),
             .rect_erase => |area| {
                 self.wrap_pending = false;
                 self.eraseRect(area, false);
@@ -1516,6 +1477,20 @@ pub const GridModel = struct {
         while (row <= bottom) : (row += 1) self.deleteColumnsInRow(row, count);
     }
 
+    fn shiftColumnsLeft(self: *GridModel, count: u16) void {
+        const bottom = self.scrollBottom();
+        if (self.cols == 0 or self.scroll_top > bottom) return;
+        var row = self.scroll_top;
+        while (row <= bottom) : (row += 1) self.shiftRowLeft(row, count);
+    }
+
+    fn shiftColumnsRight(self: *GridModel, count: u16) void {
+        const bottom = self.scrollBottom();
+        if (self.cols == 0 or self.scroll_top > bottom) return;
+        var row = self.scroll_top;
+        while (row <= bottom) : (row += 1) self.shiftRowRight(row, count);
+    }
+
     fn insertColumnsInRow(self: *GridModel, row: u16, count: u16) void {
         const c = self.cells orelse return;
         const amount = @min(@max(count, 1), self.cols - self.cursor_col);
@@ -1539,6 +1514,48 @@ pub const GridModel = struct {
         self.markDirtyCols(row, self.cursor_col, self.cols -| 1);
         if (move_len > 0) std.mem.copyForwards(Cell, cells[@as(usize, self.cursor_col) .. @as(usize, self.cursor_col) + move_len], cells[src_col .. src_col + move_len]);
         @memset(cells[@as(usize, self.cols) - @as(usize, amount) .. @as(usize, self.cols)], self.eraseCell());
+        self.setRowWrapped(row, false);
+    }
+
+    fn shiftRowLeft(self: *GridModel, row: u16, count: u16) void {
+        const c = self.cells orelse return;
+        const left = if (self.left_right_margin_mode) self.left_margin else 0;
+        const right = if (self.left_right_margin_mode) self.right_margin else self.cols -| 1;
+        if (left > right or right >= self.cols) return;
+
+        const width = right - left + 1;
+        const amount = @min(@max(count, 1), width);
+        const start = self.rowStart(row);
+        const cells = c[start .. start + @as(usize, self.cols)];
+        const left_idx = @as(usize, left);
+        const move_len = @as(usize, width - amount);
+
+        self.markDirtyCols(row, left, right);
+        if (move_len > 0) {
+            std.mem.copyForwards(Cell, cells[left_idx .. left_idx + move_len], cells[left_idx + @as(usize, amount) .. left_idx + @as(usize, amount) + move_len]);
+        }
+        @memset(cells[left_idx + move_len .. left_idx + @as(usize, width)], self.eraseCell());
+        self.setRowWrapped(row, false);
+    }
+
+    fn shiftRowRight(self: *GridModel, row: u16, count: u16) void {
+        const c = self.cells orelse return;
+        const left = if (self.left_right_margin_mode) self.left_margin else 0;
+        const right = if (self.left_right_margin_mode) self.right_margin else self.cols -| 1;
+        if (left > right or right >= self.cols) return;
+
+        const width = right - left + 1;
+        const amount = @min(@max(count, 1), width);
+        const start = self.rowStart(row);
+        const cells = c[start .. start + @as(usize, self.cols)];
+        const left_idx = @as(usize, left);
+        const move_len = @as(usize, width - amount);
+
+        self.markDirtyCols(row, left, right);
+        if (move_len > 0) {
+            std.mem.copyBackwards(Cell, cells[left_idx + @as(usize, amount) .. left_idx + @as(usize, amount) + move_len], cells[left_idx .. left_idx + move_len]);
+        }
+        @memset(cells[left_idx .. left_idx + @as(usize, amount)], self.eraseCell());
         self.setRowWrapped(row, false);
     }
 
@@ -1757,6 +1774,10 @@ pub const GridModel = struct {
 
     fn clearAllTabStops(self: *GridModel) void {
         if (self.tab_stops) |stops| @memset(stops, false);
+    }
+
+    fn resetDefaultTabStops(self: *GridModel) void {
+        if (self.tab_stops) |stops| setDefaultTabStops(stops);
     }
 
     fn lineFeed(self: *GridModel) void {

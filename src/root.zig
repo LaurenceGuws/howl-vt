@@ -10,10 +10,13 @@ const interpret_owner = @import("interpret.zig");
 const kitty_owner = @import("kitty.zig");
 const locator_owner = @import("locator.zig");
 const osc_color_owner = @import("osc_color.zig");
+const root_host_dispatch_owner = @import("root_host_dispatch.zig");
+const root_mode_dispatch_owner = @import("root_mode_dispatch.zig");
+const root_kitty_dispatch_owner = @import("root_kitty_dispatch.zig");
+const root_report_dispatch_owner = @import("root_report_dispatch.zig");
 const selection_owner = @import("selection.zig");
 const snapshot_owner = @import("snapshot.zig");
 const terminal_mode_owner = @import("terminal_mode.zig");
-const terminal_report_owner = @import("terminal_report.zig");
 
 const GridNs = grid_owner.Grid;
 const Input = input_mod.Input;
@@ -21,10 +24,13 @@ const Interpret = interpret_owner.Interpret;
 const KittyNs = kitty_owner.Kitty;
 const LocatorNs = locator_owner.Locator;
 const OscColorNs = osc_color_owner.OscColor;
+const RootHostDispatch = root_host_dispatch_owner.RootHostDispatch;
+const RootModeDispatch = root_mode_dispatch_owner.RootModeDispatch;
+const RootKittyDispatch = root_kitty_dispatch_owner.RootKittyDispatch;
+const RootReportDispatch = root_report_dispatch_owner.RootReportDispatch;
 const Selection = selection_owner.Selection;
 const Snapshot = snapshot_owner.Snapshot;
 const TerminalModeNs = terminal_mode_owner.TerminalMode;
-const TerminalReportNs = terminal_report_owner.TerminalReport;
 
 /// Host-neutral terminal facade.
 pub const VtCore = struct {
@@ -634,116 +640,25 @@ pub const VtCore = struct {
     }
 
     fn applySemantic(self: *VtCore, sem_ev: Interpret.SemanticEvent) void {
-        switch (sem_ev) {
-            .enter_alt_screen => |opts| TerminalModeNs.enterAltScreen(self, opts.clear, opts.save_cursor),
-            .exit_alt_screen => |opts| TerminalModeNs.exitAltScreen(self, opts.restore_cursor),
-            .application_cursor_keys => |enabled| self.application_cursor_keys = enabled,
-            .application_keypad => |enabled| self.application_keypad = enabled,
-            .ansi_mode_set => |modes| TerminalModeNs.setAnsiModes(self, modes.params[0..modes.param_count], true),
-            .ansi_mode_reset => |modes| TerminalModeNs.setAnsiModes(self, modes.params[0..modes.param_count], false),
-            .ansi_mode_query => |mode| TerminalReportNs.appendAnsiModeReport(self.allocator, &self.pending_output, self.encode_buf[0..], mode, TerminalModeNs.ansiModeState(self, mode)),
-            .modify_other_keys_set => |value| self.modify_other_keys = value,
-            .modify_other_keys_query => TerminalReportNs.appendModifyOtherKeysReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.modify_other_keys),
-            .modify_other_keys_disable => self.modify_other_keys = -1,
-            .focus_reporting => |enabled| self.focus_reporting = enabled,
-            .bracketed_paste => |enabled| self.bracketed_paste = enabled,
-            .kitty_keyboard_set => |req| self.activeKittyKeyboard().set(req.flags, req.mode),
-            .kitty_keyboard_query => self.activeKittyKeyboardConst().appendReport(self.allocator, &self.pending_output, self.encode_buf[0..]),
-            .kitty_keyboard_push => |flags| self.activeKittyKeyboard().push(flags),
-            .kitty_keyboard_pop => |count| self.activeKittyKeyboard().pop(count),
-            .kitty_shell_mark => |mark| KittyNs.setShellMark(self.allocator, &self.kitty.shell_mark, mark),
-            .kitty_notification => |notification| KittyNs.appendNotification(self.allocator, &self.kitty.notifications, notification),
-            .kitty_pointer_shape => |cmd| switch (cmd.action) {
-                '<' => self.activeKittyScreen().pointer.pop(),
-                '>' => self.activeKittyScreen().pointer.push(cmd.names),
-                '?' => self.activeKittyScreenConst().pointer.appendQuery(self.allocator, &self.pending_output, cmd.names),
-                else => self.activeKittyScreen().pointer.set(cmd.names),
-            },
-            .kitty_color_stack => |cmd| switch (cmd) {
-                .push => KittyNs.Color.pushState(&self.kitty.color_stack, &self.terminal_colors, &self.kitty.color_stack_depth),
-                .pop => KittyNs.Color.popState(&self.kitty.color_stack, &self.terminal_colors, &self.kitty.color_stack_depth),
-            },
-            .terminal_color_control => |cmd| switch (cmd.command) {
-                21 => KittyNs.Color.handleKittyControl(self.allocator, &self.terminal_colors, &self.pending_output, cmd.payload),
-                4 => OscColorNs.handleXtermPaletteControl(self.allocator, &self.terminal_colors, &self.pending_output, self.encode_buf[0..], cmd.payload),
-                10 => OscColorNs.handleXtermSpecialColor(self.allocator, &self.terminal_colors, &self.pending_output, self.encode_buf[0..], .foreground, cmd.payload),
-                11 => OscColorNs.handleXtermSpecialColor(self.allocator, &self.terminal_colors, &self.pending_output, self.encode_buf[0..], .background, cmd.payload),
-                12 => OscColorNs.handleXtermSpecialColor(self.allocator, &self.terminal_colors, &self.pending_output, self.encode_buf[0..], .cursor, cmd.payload),
-                104 => OscColorNs.resetXtermPalette(&self.terminal_colors, cmd.payload),
-                110 => self.terminal_colors.foreground = GridNs.default_fg,
-                111 => self.terminal_colors.background = GridNs.default_bg,
-                112 => self.terminal_colors.cursor = null,
-                else => {},
-            },
-            .mouse_tracking_off => self.mouse_tracking = .off,
-            .mouse_tracking_x10 => self.mouse_tracking = .x10,
-            .mouse_tracking_normal => self.mouse_tracking = .normal,
-            .mouse_tracking_button_event => self.mouse_tracking = .button_event,
-            .mouse_tracking_any_event => self.mouse_tracking = .any_event,
-            .mouse_protocol_utf8 => |enabled| self.mouse_protocol = if (enabled) .utf8 else .none,
-            .mouse_protocol_sgr => |enabled| self.mouse_protocol = if (enabled) .sgr else .none,
-            .mouse_protocol_urxvt => |enabled| self.mouse_protocol = if (enabled) .urxvt else .none,
-            .hyperlink_set => |uri| self.activeStateMut().setCurrentLinkId(self.internHyperlink(uri)),
-            .hyperlink_clear => self.activeStateMut().setCurrentLinkId(0),
-            .clipboard_set => |payload| self.setPendingClipboard(payload),
-            .dec_mode_query => |mode| TerminalReportNs.appendDecModeReport(self.allocator, &self.pending_output, self.encode_buf[0..], mode, TerminalModeNs.decModeState(self, mode)),
-            .dec_mode_save => |modes| TerminalModeNs.saveDecModes(self, modes.params[0..modes.param_count]),
-            .dec_mode_restore => |modes| TerminalModeNs.restoreDecModes(self, modes.params[0..modes.param_count]),
-            .device_status_report => self.appendPendingOutput("\x1b[0n"),
-            .dec_device_status_report => |param| LocatorNs.appendDeviceStatusReport(self.allocator, &self.pending_output, self.encode_buf[0..], param),
-            .cursor_position_report => TerminalReportNs.appendCursorPositionReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.renderView()),
-            .dec_cursor_position_report => TerminalReportNs.appendDecCursorPositionReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.renderView()),
-            .primary_device_attributes => self.appendPendingOutput("\x1b[?62;22c"),
-            .secondary_device_attributes => self.appendPendingOutput("\x1b[>1;10;0c"),
-            .tertiary_device_attributes => self.appendPendingOutput("\x1bP!|00000000\x1b\\"),
-            .xtchecksum => |flags| self.xtchecksum_flags = flags,
-            .rect_checksum_request => |req| {
-                const checksum = TerminalReportNs.computeRectChecksum(self.activeState(), self.xtchecksum_flags, req.page, req.area);
-                TerminalReportNs.appendRectChecksumReport(self.allocator, &self.pending_output, self.encode_buf[0..], req, checksum);
-            },
-            .selected_graphic_rendition_report => |area| TerminalReportNs.appendSelectedGraphicRenditionReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.activeState(), area),
-            .presentation_state_report => |kind| switch (kind) {
-                1 => TerminalReportNs.appendCursorInformationReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.renderView(), self.pipeline.deccirCharsetState()),
-                2 => TerminalReportNs.appendTabStopReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.activeState()),
-                else => self.appendPendingOutput("\x1bP0$u\x1b\\"),
-            },
-            .displayed_extent_report => TerminalReportNs.appendDisplayedExtentReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.renderView()),
-            .terminal_parameters_report => |kind| TerminalReportNs.appendTerminalParametersReport(self.allocator, &self.pending_output, self.encode_buf[0..], kind),
-            .xtreportcolors => TerminalReportNs.appendColorStackReport(self.allocator, &self.pending_output, self.encode_buf[0..], self.kitty.color_stack.len),
-            .locator_reporting => |cfg| LocatorNs.setReporting(&self.locator, cfg.mode, cfg.unit),
-            .locator_filter => |area| LocatorNs.setFilter(&self.locator, area),
-            .locator_events => |modes| LocatorNs.setEvents(&self.locator, modes.params[0..modes.param_count]),
-            .locator_request => |param| LocatorNs.appendReportForRequest(&self.locator, self.allocator, &self.pending_output, self.encode_buf[0..], param),
-            .kitty_graphics => |cmd| self.kitty.graphics.handle(self.allocator, self.renderView(), &self.pending_output, self.encode_buf[0..], cmd),
-            .reset_screen => self.resetTerminalState(),
-            else => self.activeStateMut().apply(sem_ev),
-        }
-    }
-
-    fn appendPendingOutput(self: *VtCore, bytes: []const u8) void {
-        self.pending_output.appendSlice(self.allocator, bytes) catch {};
-    }
-
-    fn internHyperlink(self: *VtCore, uri: []const u8) u32 {
-        for (self.hyperlink_targets.items, 0..) |existing, idx| {
-            if (std.mem.eql(u8, existing, uri)) return @intCast(idx + 1);
-        }
-        const owned = self.allocator.dupe(u8, uri) catch return 0;
-        self.hyperlink_targets.append(self.allocator, owned) catch {
-            self.allocator.free(owned);
-            return 0;
-        };
-        return @intCast(self.hyperlink_targets.items.len);
-    }
-
-    fn setPendingClipboard(self: *VtCore, payload: []const u8) void {
-        if (self.pending_clipboard) |req| self.allocator.free(req.raw);
-        const owned = self.allocator.dupe(u8, payload) catch {
-            self.pending_clipboard = null;
+        if (Interpret.reportAction(sem_ev)) |action| {
+            RootReportDispatch.apply(self, action);
             return;
-        };
-        self.pending_clipboard = .{ .raw = owned };
+        }
+        if (Interpret.kittyAction(sem_ev)) |action| {
+            RootKittyDispatch.apply(self, action);
+            return;
+        }
+        if (Interpret.modeAction(sem_ev)) |action| {
+            RootModeDispatch.apply(self, action);
+            return;
+        }
+        if (Interpret.hostAction(sem_ev)) |action| {
+            RootHostDispatch.apply(self, action);
+            return;
+        }
+        if (Interpret.screenAction(sem_ev)) |screen_ev| self.activeStateMut().applyScreen(screen_ev);
     }
+
 };
 test {
     _ = @import("test/pipeline_regression.zig");

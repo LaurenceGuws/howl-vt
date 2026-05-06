@@ -31,6 +31,7 @@ const OpKind = enum {
     osc,
     dcs,
     apc,
+    pm,
     esc_final,
     utf8,
     control,
@@ -56,6 +57,7 @@ const Event = union(enum) {
     },
     apc: []u8,
     dcs: []u8,
+    pm: []u8,
     esc_final: u8,
 };
 
@@ -77,6 +79,7 @@ const Harness = struct {
                 .osc => |osc| self.allocator.free(osc.data),
                 .apc => |bytes| self.allocator.free(bytes),
                 .dcs => |bytes| self.allocator.free(bytes),
+                .pm => |bytes| self.allocator.free(bytes),
                 else => {},
             }
         }
@@ -92,6 +95,7 @@ const Harness = struct {
             .onOscFn = onOsc,
             .onApcFn = onApc,
             .onDcsFn = onDcs,
+            .onPmFn = onPm,
             .onEscFinalFn = onEscFinal,
         };
     }
@@ -144,6 +148,12 @@ const Harness = struct {
         const self: *Harness = @ptrCast(@alignCast(ptr));
         const owned = self.allocator.dupe(u8, data) catch return;
         self.events.append(self.allocator, Event{ .dcs = owned }) catch {};
+    }
+
+    fn onPm(ptr: *anyopaque, data: []const u8) void {
+        const self: *Harness = @ptrCast(@alignCast(ptr));
+        const owned = self.allocator.dupe(u8, data) catch return;
+        self.events.append(self.allocator, Event{ .pm = owned }) catch {};
     }
 
     fn onEscFinal(ptr: *anyopaque, byte: u8) void {
@@ -214,6 +224,7 @@ fn buildCase(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.
             .osc => try appendStringCommand(allocator, bytes, rand, ']'),
             .dcs => try appendStringCommand(allocator, bytes, rand, 'P'),
             .apc => try appendStringCommand(allocator, bytes, rand, '_'),
+            .pm => try appendStringCommand(allocator, bytes, rand, '^'),
             .esc_final => try appendEscFinal(allocator, bytes, rand),
             .utf8 => try appendUtf8Burst(allocator, bytes, rand),
             .control => try appendControlBurst(allocator, bytes, rand),
@@ -579,7 +590,14 @@ fn digestEvents(events: []const Event) EventDigest {
                 hasher.update(bytes);
                 token_count += 1;
             },
+            .pm => |bytes| {
+                hashValue(&hasher, @as(u8, 8));
+                hashValue(&hasher, bytes.len);
+                hasher.update(bytes);
+                token_count += 1;
+            },
             .esc_final => |byte| {
+                hashValue(&hasher, @as(u8, 9));
                 hashValue(&hasher, @as(u8, 8));
                 hashValue(&hasher, byte);
                 token_count += 1;

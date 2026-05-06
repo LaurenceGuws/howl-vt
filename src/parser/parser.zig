@@ -35,6 +35,13 @@ const DcsState = enum {
     dcs_esc,
 };
 
+/// PM parse-state mode.
+const PmState = enum {
+    idle,
+    pm,
+    pm_esc,
+};
+
 /// OSC termination style.
 pub const OscTerminator = enum {
     bel,
@@ -68,6 +75,7 @@ pub const Sink = struct {
     onOscFn: *const fn (*anyopaque, []const u8, OscTerminator) void,
     onApcFn: *const fn (*anyopaque, []const u8) void,
     onDcsFn: *const fn (*anyopaque, []const u8) void,
+    onPmFn: *const fn (*anyopaque, []const u8) void,
     onEscFinalFn: *const fn (*anyopaque, u8) void,
 
     /// Emit stream event callback.
@@ -100,6 +108,11 @@ pub const Sink = struct {
         self.onDcsFn(self.ptr, data);
     }
 
+    /// Emit PM callback.
+    pub fn onPm(self: Sink, data: []const u8) void {
+        self.onPmFn(self.ptr, data);
+    }
+
     /// Emit ESC-final callback.
     pub fn onEscFinal(self: Sink, byte: u8) void {
         self.onEscFinalFn(self.ptr, byte);
@@ -120,6 +133,8 @@ pub const Parser = struct {
     apc_buffer: std.ArrayList(u8),
     dcs_state: DcsState,
     dcs_buffer: std.ArrayList(u8),
+    pm_state: PmState,
+    pm_buffer: std.ArrayList(u8),
     g0_charset: Charset,
     g1_charset: Charset,
     gl_charset: Charset,
@@ -137,6 +152,9 @@ pub const Parser = struct {
         var dcs_buffer = try std.ArrayList(u8).initCapacity(allocator, 256);
         errdefer dcs_buffer.deinit(allocator);
 
+        var pm_buffer = try std.ArrayList(u8).initCapacity(allocator, 256);
+        errdefer pm_buffer.deinit(allocator);
+
         return .{
             .allocator = allocator,
             .sink = sink,
@@ -150,6 +168,8 @@ pub const Parser = struct {
             .apc_buffer = apc_buffer,
             .dcs_state = .idle,
             .dcs_buffer = dcs_buffer,
+            .pm_state = .idle,
+            .pm_buffer = pm_buffer,
             .g0_charset = .ascii,
             .g1_charset = .ascii,
             .gl_charset = .ascii,
@@ -163,6 +183,7 @@ pub const Parser = struct {
         self.osc_buffer.deinit(self.allocator);
         self.apc_buffer.deinit(self.allocator);
         self.dcs_buffer.deinit(self.allocator);
+        self.pm_buffer.deinit(self.allocator);
     }
 
     /// Reset parser state and transient buffers.
@@ -174,6 +195,7 @@ pub const Parser = struct {
         self.osc_terminator = .st;
         self.apc_state = .idle;
         self.dcs_state = .idle;
+        self.pm_state = .idle;
         self.g0_charset = .ascii;
         self.g1_charset = .ascii;
         self.gl_charset = .ascii;
@@ -182,6 +204,7 @@ pub const Parser = struct {
         self.osc_buffer.clearRetainingCapacity();
         self.apc_buffer.clearRetainingCapacity();
         self.dcs_buffer.clearRetainingCapacity();
+        self.pm_buffer.clearRetainingCapacity();
     }
 
     /// Handle one byte of terminal input.
@@ -196,6 +219,10 @@ pub const Parser = struct {
         }
         if (self.dcs_state != .idle) {
             self.handleDcsByte(byte);
+            return;
+        }
+        if (self.pm_state != .idle) {
+            self.handlePmByte(byte);
             return;
         }
         switch (self.esc_state) {
@@ -243,6 +270,11 @@ pub const Parser = struct {
                     self.esc_state = .ground;
                     self.apc_state = .apc;
                     self.apc_buffer.clearRetainingCapacity();
+                    return;
+                } else if (byte == '^') {
+                    self.esc_state = .ground;
+                    self.pm_state = .pm;
+                    self.pm_buffer.clearRetainingCapacity();
                     return;
                 } else if (byte == '(') {
                     self.charset_target = .g0;
@@ -296,6 +328,11 @@ pub const Parser = struct {
             }
             if (self.dcs_state != .idle) {
                 self.handleDcsByte(bytes[i]);
+                i += 1;
+                continue;
+            }
+            if (self.pm_state != .idle) {
+                self.handlePmByte(bytes[i]);
                 i += 1;
                 continue;
             }
@@ -438,6 +475,38 @@ pub const Parser = struct {
         self.dcs_buffer.clearRetainingCapacity();
         self.dcs_state = .idle;
     }
+
+    fn handlePmByte(self: *Parser, byte: u8) void {
+        switch (self.pm_state) {
+            .idle => return,
+            .pm => {
+                if (byte == 0x1B) {
+                    self.pm_state = .pm_esc;
+                    return;
+                }
+                if (self.pm_buffer.items.len < 4096) {
+                    self.pm_buffer.append(self.allocator, byte) catch {};
+                }
+            },
+            .pm_esc => {
+                if (byte == '\\') {
+                    self.finishPm();
+                    return;
+                }
+
+                self.pm_state = .pm;
+                if (self.pm_buffer.items.len < 4096) {
+                    self.pm_buffer.append(self.allocator, byte) catch {};
+                }
+            },
+        }
+    }
+
+    fn finishPm(self: *Parser) void {
+        self.sink.onPm(self.pm_buffer.items);
+        self.pm_buffer.clearRetainingCapacity();
+        self.pm_state = .idle;
+    }
 };
 
 fn mapDecSpecial(byte: u8) u21 {
@@ -490,6 +559,7 @@ const Event = union(enum) {
     osc: struct { data: []const u8, term: OscTerminator },
     apc: []const u8,
     dcs: []const u8,
+    pm: []const u8,
     esc_final: u8,
 };
 
@@ -508,6 +578,7 @@ const Harness = struct {
                 .osc => |osc_ev| self.allocator.free(osc_ev.data),
                 .apc => |data| self.allocator.free(data),
                 .dcs => |data| self.allocator.free(data),
+                .pm => |data| self.allocator.free(data),
                 else => {},
             }
         }
@@ -515,7 +586,7 @@ const Harness = struct {
     }
 
     fn toSink(self: *Harness) Sink {
-        return .{ .ptr = self, .onStreamEventFn = onStreamEvent, .onAsciiSliceFn = onAsciiSlice, .onCsiFn = onCsi, .onOscFn = onOsc, .onApcFn = onApc, .onDcsFn = onDcs, .onEscFinalFn = onEscFinal };
+        return .{ .ptr = self, .onStreamEventFn = onStreamEvent, .onAsciiSliceFn = onAsciiSlice, .onCsiFn = onCsi, .onOscFn = onOsc, .onApcFn = onApc, .onDcsFn = onDcs, .onPmFn = onPm, .onEscFinalFn = onEscFinal };
     }
 
     fn onStreamEvent(ptr: *anyopaque, event: stream_mod.StreamEvent) void {
@@ -557,6 +628,12 @@ const Harness = struct {
         self.events.append(self.allocator, Event{ .dcs = owned }) catch {};
     }
 
+    fn onPm(ptr: *anyopaque, data: []const u8) void {
+        const self: *Harness = @ptrCast(@alignCast(ptr));
+        const owned = self.allocator.dupe(u8, data) catch return;
+        self.events.append(self.allocator, Event{ .pm = owned }) catch {};
+    }
+
     fn onEscFinal(ptr: *anyopaque, byte: u8) void {
         const self: *Harness = @ptrCast(@alignCast(ptr));
         self.events.append(self.allocator, Event{ .esc_final = byte }) catch {};
@@ -575,6 +652,20 @@ test "parser: mixed stream exact sequence (ASCII+CSI+ASCII)" {
     try std.testing.expectEqual(@as(u8, 'm'), harness.events.items[1].csi.final);
     try std.testing.expectEqual(@as(i32, 31), harness.events.items[1].csi.params[0]);
     try std.testing.expect(harness.events.items[2] == .ascii_slice);
+}
+
+test "parser: ASCII fast path preserves spaces" {
+    const gpa = std.testing.allocator;
+    var harness = Harness.init(gpa);
+    defer harness.deinit();
+    var parser = try Parser.init(gpa, harness.toSink());
+    defer parser.deinit();
+
+    parser.handleSlice("A B");
+
+    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expect(harness.events.items[0] == .ascii_slice);
+    try std.testing.expectEqualSlices(u8, "A B", harness.events.items[0].ascii_slice);
 }
 
 test "parser: ESC final passthrough (ESC M)" {
@@ -637,6 +728,18 @@ test "parser: DCS with ST terminator" {
     try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .dcs);
     try std.testing.expectEqualSlices(u8, "data", harness.events.items[0].dcs);
+}
+
+test "parser: PM with ST terminator" {
+    const gpa = std.testing.allocator;
+    var harness = Harness.init(gpa);
+    defer harness.deinit();
+    var parser = try Parser.init(gpa, harness.toSink());
+    defer parser.deinit();
+    parser.handleSlice("\x1b^ignored\x1b\\");
+    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expect(harness.events.items[0] == .pm);
+    try std.testing.expectEqualSlices(u8, "ignored", harness.events.items[0].pm);
 }
 
 test "parser: split input - partial UTF-8 then completion" {

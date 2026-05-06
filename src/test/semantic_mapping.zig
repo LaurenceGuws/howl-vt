@@ -566,10 +566,15 @@ test "semantic: OSC 52 maps to clipboard set" {
     } }).?.clipboard_set);
 }
 
-test "semantic: APC DCS and unsupported ESC transport return null" {
+test "semantic: APC PM and unsupported ESC transport return null" {
     try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "kitty" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .dcs = "data" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .pm = "ignored" }));
     try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .esc_final = 'z' }));
+}
+
+test "semantic: DCS DECRQSS maps request payload" {
+    const sem = process(Event{ .dcs = "$q q" }) orelse return error.NoEvent;
+    try std.testing.expectEqualStrings(" q", sem.dcs_request_status);
 }
 
 test "semantic: DEC save and restore cursor from ESC finals" {
@@ -765,6 +770,36 @@ test "semantic: DA2 maps to secondary device attributes" {
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).? == .secondary_device_attributes);
+}
+
+test "semantic: XTVERSION maps to xtversion report" {
+    var params = [_]i32{0} ** 16;
+    params[0] = 0;
+    const ev = Event{ .style_change = .{
+        .final = 'q',
+        .params = params,
+        .param_count = 1,
+        .leader = '>',
+        .private = false,
+        .intermediates = [_]u8{0} ** 4,
+        .intermediates_len = 0,
+    } };
+    try std.testing.expect(process(ev).? == .xtversion);
+}
+
+test "semantic: XTTITLEPOS maps to title stack report" {
+    var intermediates = [_]u8{0} ** 4;
+    intermediates[0] = '#';
+    const ev = Event{ .style_change = .{
+        .final = 'S',
+        .params = [_]i32{0} ** 16,
+        .param_count = 0,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates,
+        .intermediates_len = 1,
+    } };
+    try std.testing.expect(process(ev).? == .xttitlepos);
 }
 
 test "semantic: DA3 maps to tertiary device attributes" {
@@ -1047,6 +1082,20 @@ test "semantic: ECH explicit count" {
 test "semantic: ECH defaults to one char" {
     const sem = process(makeStyleChange('X', 0, 0, 0)) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 1), sem.erase_chars);
+}
+
+test "semantic: SL explicit count" {
+    const sem = process(makeStyleChangeWithParamAndIntermediate('@', 3, ' ')) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 3), sem.shift_left_columns);
+}
+
+test "semantic: SR defaults to one column" {
+    const sem = process(makeStyleChangeWithIntermediate('A', ' ')) orelse return error.NoEvent;
+    try std.testing.expectEqual(@as(u16, 1), sem.shift_right_columns);
+}
+
+test "semantic: DECST8C resets default tab stops" {
+    try std.testing.expect(process(makePrivateStyleChange('W', &.{5})).? == .reset_default_tab_stops);
 }
 
 test "semantic: kitty graphics APC parses control keys and payload" {

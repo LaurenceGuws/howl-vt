@@ -1955,3 +1955,27 @@ test "replay: DEC special graphics G1 via SO SI" {
     try std.testing.expectEqual(@as(u21, 0x2500), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'q'), screen.cellAt(0, 1));
 }
+
+test "replay: SL SR and DECST8C execute from CSI syntax" {
+    const gpa = std.testing.allocator;
+    var pl = try Pipeline.init(gpa);
+    defer pl.deinit();
+    var screen = try Grid.GridModel.initWithCells(gpa, 2, 20);
+    defer screen.deinit(gpa);
+
+    feed(&pl, &screen, "ABCDE\x1b[2 @");
+    try std.testing.expectEqual(@as(u21, 'C'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'D'), screen.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'E'), screen.cellAt(0, 2));
+    try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 3));
+
+    feed(&pl, &screen, "\x1b[1;1HABCDE\x1b[1 A");
+    try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'A'), screen.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'D'), screen.cellAt(0, 4));
+    try std.testing.expectEqual(@as(u21, 'E'), screen.cellAt(0, 5));
+
+    feed(&pl, &screen, "\x1b[3g\x1b[?5W");
+    try std.testing.expect(screen.tabStopAt(8));
+    try std.testing.expect(screen.tabStopAt(16));
+}

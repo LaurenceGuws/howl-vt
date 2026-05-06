@@ -730,6 +730,66 @@ test "screen: ECH uses current background without moving cursor" {
     }
 }
 
+test "screen: SL shifts scroll-region rows left" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 3, 5);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "ABCDE" });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "FGHIJ" });
+    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    s.apply(SemanticEvent{ .write_text = "KLMNO" });
+
+    s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
+    s.apply(SemanticEvent{ .shift_left_columns = 2 });
+
+    try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'C'), s.cellAt(0, 2));
+    try std.testing.expectEqual(@as(u21, 'H'), s.cellAt(1, 0));
+    try std.testing.expectEqual(@as(u21, 'I'), s.cellAt(1, 1));
+    try std.testing.expectEqual(@as(u21, 'J'), s.cellAt(1, 2));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 3));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 4));
+    try std.testing.expectEqual(@as(u21, 'M'), s.cellAt(2, 0));
+    try std.testing.expectEqual(@as(u21, 'N'), s.cellAt(2, 1));
+    try std.testing.expectEqual(@as(u21, 'O'), s.cellAt(2, 2));
+}
+
+test "screen: SR respects horizontal margins" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 1, 5);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .write_text = "ABCDE" });
+    s.apply(SemanticEvent{ .left_right_margin_mode = true });
+    s.apply(SemanticEvent{ .set_left_right_margins = .{ .left = 1, .right = 3 } });
+    s.apply(SemanticEvent{ .shift_right_columns = 1 });
+
+    try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 2));
+    try std.testing.expectEqual(@as(u21, 'C'), s.cellAt(0, 3));
+    try std.testing.expectEqual(@as(u21, 'E'), s.cellAt(0, 4));
+}
+
+test "screen: DECST8C restores default tab stops" {
+    const gpa = std.testing.allocator;
+    var s = try GridModel.initWithCells(gpa, 1, 20);
+    defer s.deinit(gpa);
+    s.cursor_col = 8;
+    s.apply(.tab_clear_current);
+    s.apply(.tab_clear_all);
+    try std.testing.expect(!s.tabStopAt(8));
+    try std.testing.expect(!s.tabStopAt(16));
+    s.apply(.reset_default_tab_stops);
+    try std.testing.expect(s.tabStopAt(8));
+    try std.testing.expect(s.tabStopAt(16));
+    try std.testing.expect(!s.tabStopAt(4));
+}
+
 test "screen: DECSCA protects cells from selective erase" {
     const gpa = std.testing.allocator;
     var s = try GridModel.initWithCells(gpa, 2, 3);
