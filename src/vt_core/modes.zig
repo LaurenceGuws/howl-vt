@@ -48,6 +48,15 @@ pub const VtCoreModes = struct {
             .kitty_clipboard_mode => |enabled| {
                 self.modes.kitty_clipboard = enabled;
             },
+            .sixel_display_mode => |enabled| {
+                self.modes.sixel_display_mode = enabled;
+            },
+            .reverse_wraparound_mode => |enabled| {
+                self.modes.reverse_wraparound_mode = enabled;
+            },
+            .extended_reverse_wraparound_mode => |enabled| {
+                self.modes.extended_reverse_wraparound_mode = enabled;
+            },
             .focus_reporting => |enabled| {
                 self.modes.focus_reporting = enabled;
             },

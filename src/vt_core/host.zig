@@ -53,6 +53,9 @@ pub const VtCoreHost = struct {
             .locator_request => |param| {
                 LocatorNs.appendReportForRequest(&self.host.locator, self.allocator, &self.host.pending_output, self.encode.buf[0..], param);
             },
+            .media_copy_request => |param| {
+                self.host.media_copy_request = param;
+            },
             .reset_screen => {
                 resetTerminalState(self);
             },

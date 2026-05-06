@@ -22,6 +22,7 @@ pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates:
         }
         if (final == 's' and intermediates_len == 0) return SemanticEvent{ .dec_mode_save = csi_params.collectParams(params, count) };
         if (final == 'r' and intermediates_len == 0) return SemanticEvent{ .dec_mode_restore = csi_params.collectParams(params, count) };
+        if (final == 'i') return SemanticEvent{ .media_copy_request = csi_params.paramOrDefault0(params[0]) };
         if (final == 'n') return switch (csi_params.paramOrDefault0(params[0])) {
             6 => SemanticEvent.dec_cursor_position_report,
             55, 56 => |status| SemanticEvent{ .dec_device_status_report = status },
@@ -56,6 +57,16 @@ pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates:
             69 => switch (final) {
                 'h' => SemanticEvent{ .left_right_margin_mode = true },
                 'l' => SemanticEvent{ .left_right_margin_mode = false },
+                else => null,
+            },
+            45 => switch (final) {
+                'h' => SemanticEvent{ .reverse_wraparound_mode = true },
+                'l' => SemanticEvent{ .reverse_wraparound_mode = false },
+                else => null,
+            },
+            80 => switch (final) {
+                'h' => SemanticEvent{ .sixel_display_mode = true },
+                'l' => SemanticEvent{ .sixel_display_mode = false },
                 else => null,
             },
             1004 => switch (final) {
@@ -106,6 +117,11 @@ pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates:
             1015 => switch (final) {
                 'h' => SemanticEvent{ .mouse_protocol_urxvt = true },
                 'l' => SemanticEvent{ .mouse_protocol_urxvt = false },
+                else => null,
+            },
+            1045 => switch (final) {
+                'h' => SemanticEvent{ .extended_reverse_wraparound_mode = true },
+                'l' => SemanticEvent{ .extended_reverse_wraparound_mode = false },
                 else => null,
             },
             47 => switch (final) {

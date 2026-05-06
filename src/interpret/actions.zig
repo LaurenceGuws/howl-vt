@@ -149,6 +149,9 @@ pub fn modeAction(event: SemanticEvent) ?ModeAction {
         .key_format_change => |v| ModeAction{ .key_format_change = v },
         .pointer_mode => |v| ModeAction{ .pointer_mode = v },
         .kitty_clipboard_mode => |v| ModeAction{ .kitty_clipboard_mode = v },
+        .sixel_display_mode => |v| ModeAction{ .sixel_display_mode = v },
+        .reverse_wraparound_mode => |v| ModeAction{ .reverse_wraparound_mode = v },
+        .extended_reverse_wraparound_mode => |v| ModeAction{ .extended_reverse_wraparound_mode = v },
         .focus_reporting => |v| ModeAction{ .focus_reporting = v },
         .bracketed_paste => |v| ModeAction{ .bracketed_paste = v },
         .mouse_tracking_off => .mouse_tracking_off,
@@ -193,6 +196,7 @@ pub fn hostAction(event: SemanticEvent) ?HostAction {
         .locator_filter => |v| HostAction{ .locator_filter = v },
         .locator_events => |v| HostAction{ .locator_events = v },
         .locator_request => |v| HostAction{ .locator_request = v },
+        .media_copy_request => |v| HostAction{ .media_copy_request = v },
         .reset_screen => .reset_screen,
         else => null,
     };

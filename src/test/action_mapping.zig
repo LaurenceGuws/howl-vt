@@ -736,6 +736,36 @@ test "actions: DEC private mouse tracking mode mappings" {
     try std.testing.expect(process(ev).?.mouse_protocol_urxvt);
 }
 
+test "actions: low priority DEC private modes and media copy map" {
+    var params = [_]i32{0} ** 16;
+    var ev = Event{ .style_change = .{
+        .final = 'h',
+        .params = params,
+        .param_count = 1,
+        .leader = '?',
+        .private = true,
+        .intermediates = [_]u8{0} ** 4,
+        .intermediates_len = 0,
+    } };
+
+    params[0] = 80;
+    ev.style_change.params = params;
+    try std.testing.expect(process(ev).?.sixel_display_mode);
+
+    params[0] = 45;
+    ev.style_change.params = params;
+    try std.testing.expect(process(ev).?.reverse_wraparound_mode);
+
+    params[0] = 1045;
+    ev.style_change.params = params;
+    try std.testing.expect(process(ev).?.extended_reverse_wraparound_mode);
+
+    params[0] = 5;
+    ev.style_change.final = 'i';
+    ev.style_change.params = params;
+    try std.testing.expectEqual(@as(u16, 5), process(ev).?.media_copy_request);
+}
+
 test "actions: application keypad and modifyOtherKeys mappings" {
     try std.testing.expect(process(makeEscFinal('=')).?.application_keypad);
     try std.testing.expect(!process(makeEscFinal('>')).?.application_keypad);

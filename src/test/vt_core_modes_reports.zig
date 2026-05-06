@@ -561,3 +561,22 @@ test "xterm key format query reset and other-key encoding" {
     try std.testing.expectEqual(@as(u16, 0), vt_core.keyFormatOption(4));
     try std.testing.expectEqualStrings("\x1b[>4;1f\x1b[>4;0f", vt_core.pendingOutput());
 }
+
+test "low priority private modes and media copy retain host-neutral state" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b[?80h\x1b[?45h\x1b[?1045h\x1b[?5i");
+    vt_core.apply();
+    try std.testing.expect(vt_core.sixelDisplayMode());
+    try std.testing.expect(vt_core.reverseWraparoundMode());
+    try std.testing.expect(vt_core.extendedReverseWraparoundMode());
+    try std.testing.expectEqual(@as(?u16, 5), vt_core.mediaCopyRequest());
+
+    vt_core.feedSlice("\x1b[?80l\x1b[?45l\x1b[?1045l");
+    vt_core.apply();
+    try std.testing.expect(!vt_core.sixelDisplayMode());
+    try std.testing.expect(!vt_core.reverseWraparoundMode());
+    try std.testing.expect(!vt_core.extendedReverseWraparoundMode());
+}

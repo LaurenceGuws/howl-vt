@@ -190,6 +190,9 @@ pub const VtCore = struct {
         focus_reporting: bool = false,
         bracketed_paste: bool = false,
         kitty_clipboard: bool = false,
+        sixel_display_mode: bool = false,
+        reverse_wraparound_mode: bool = false,
+        extended_reverse_wraparound_mode: bool = false,
         mouse_tracking: Input.MouseTrackingMode = .off,
         mouse_protocol: Input.MouseProtocol = .none,
         pointer_mode: u2 = 1,
@@ -203,6 +206,7 @@ pub const VtCore = struct {
         hyperlink_targets: std.ArrayList([]u8),
         pending_clipboard: ?ClipboardRequest = null,
         locator: LocatorState = .{},
+        media_copy_request: ?u16 = null,
 
         fn init() HostState {
             return .{
@@ -431,6 +435,22 @@ pub const VtCore = struct {
 
     pub fn kittyClipboardMode(self: *const VtCore) bool {
         return self.modes.kitty_clipboard;
+    }
+
+    pub fn sixelDisplayMode(self: *const VtCore) bool {
+        return self.modes.sixel_display_mode;
+    }
+
+    pub fn reverseWraparoundMode(self: *const VtCore) bool {
+        return self.modes.reverse_wraparound_mode;
+    }
+
+    pub fn extendedReverseWraparoundMode(self: *const VtCore) bool {
+        return self.modes.extended_reverse_wraparound_mode;
+    }
+
+    pub fn mediaCopyRequest(self: *const VtCore) ?u16 {
+        return self.host.media_copy_request;
     }
 
     pub fn kittyShellMark(self: *const VtCore) KittyShellMark {
