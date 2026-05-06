@@ -544,3 +544,20 @@ test "modifyOtherKeys set query disable and encoding" {
     vt_core.apply();
     try std.testing.expectEqual(@as(i8, -1), vt_core.modifyOtherKeys());
 }
+
+test "xterm key format query reset and other-key encoding" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b[>4;1f\x1b[?4g\x1b[>4;1m");
+    vt_core.apply();
+    try std.testing.expectEqual(@as(u16, 1), vt_core.keyFormatOption(4));
+    try std.testing.expectEqualStrings("\x1b[>4;1f", vt_core.pendingOutput());
+    try std.testing.expectEqualStrings("\x1b[97;3u", vt_core.encodeKey('a', vt.VtCore.mod_alt));
+
+    vt_core.feedSlice("\x1b[>4f\x1b[?4g");
+    vt_core.apply();
+    try std.testing.expectEqual(@as(u16, 0), vt_core.keyFormatOption(4));
+    try std.testing.expectEqualStrings("\x1b[>4;1f\x1b[>4;0f", vt_core.pendingOutput());
+}

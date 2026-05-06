@@ -35,6 +35,13 @@ pub const VtCoreModes = struct {
             .modify_other_keys_disable => {
                 self.modes.modify_other_keys = -1;
             },
+            .key_format_change => |change| {
+                if (change.resource) |resource| {
+                    if (self.isKeyFormatResource(resource)) self.modes.key_format[resource] = change.value orelse 0;
+                } else {
+                    self.modes.key_format = [_]u16{0} ** 8;
+                }
+            },
             .focus_reporting => |enabled| {
                 self.modes.focus_reporting = enabled;
             },

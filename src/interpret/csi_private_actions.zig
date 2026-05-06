@@ -2,6 +2,8 @@
 //! Ownership: interpret private CSI action mapping.
 //! Reason: keep DEC/private mode recognition out of the general CSI router.
 
+const std = @import("std");
+
 const action_types = @import("action_types.zig");
 const csi_params = @import("csi_params.zig");
 
@@ -9,6 +11,7 @@ const SemanticEvent = action_types.SemanticEvent;
 
 pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     if (leader == '?' and final == 'u') return SemanticEvent.kitty_keyboard_query;
+    if (leader == '?' and final == 'g') return SemanticEvent{ .key_format_query = @intCast(@min(csi_params.paramOrDefault0(params[0]), std.math.maxInt(u8))) };
     if (leader == '?' and final == 'J') return SemanticEvent{ .selective_erase_display = csi_params.eraseMode(params[0]) };
     if (leader == '?' and final == 'K') return SemanticEvent{ .selective_erase_line = csi_params.eraseMode(params[0]) };
     if (leader == '?' and final == 'W' and csi_params.paramOrDefault0(params[0]) == 5) return SemanticEvent.reset_default_tab_stops;

@@ -48,6 +48,11 @@ pub const TerminalColorControlCommand = struct {
     payload: []const u8,
 };
 
+pub const KeyFormatChange = struct {
+    resource: ?u8,
+    value: ?u16,
+};
+
 /// Screen-directed semantic event union.
 pub const SemanticEvent = union(enum) {
     pub const CursorShape = enum {
@@ -129,6 +134,8 @@ pub const SemanticEvent = union(enum) {
     modify_other_keys_set: i8,
     modify_other_keys_query,
     modify_other_keys_disable,
+    key_format_change: KeyFormatChange,
+    key_format_query: u8,
     focus_reporting: bool,
     bracketed_paste: bool,
     mouse_tracking_off,
@@ -290,6 +297,7 @@ pub const ScreenAction = union(enum) {
 pub const ReportAction = union(enum) {
     ansi_mode_query: u16,
     modify_other_keys_query,
+    key_format_query: u8,
     dec_mode_query: u16,
     dcs_request_status: []const u8,
     dcs_request_termcap: []const u8,
@@ -321,6 +329,7 @@ pub const ModeAction = union(enum) {
     ansi_mode_reset: SemanticEvent.ModeParams,
     modify_other_keys_set: i8,
     modify_other_keys_disable,
+    key_format_change: KeyFormatChange,
     focus_reporting: bool,
     bracketed_paste: bool,
     mouse_tracking_off,

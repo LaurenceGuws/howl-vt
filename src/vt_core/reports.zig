@@ -24,6 +24,9 @@ pub const VtCoreReports = struct {
             .modify_other_keys_query => {
                 TerminalReportNs.appendModifyOtherKeysReport(self.allocator, &self.host.pending_output, self.encode.buf[0..], self.modes.modify_other_keys);
             },
+            .key_format_query => |resource| {
+                if (self.isKeyFormatResource(resource)) TerminalReportNs.appendKeyFormatReport(self.allocator, &self.host.pending_output, self.encode.buf[0..], resource, self.modes.key_format[resource]);
+            },
             .dec_mode_query => |mode| {
                 TerminalReportNs.appendDecModeReport(self.allocator, &self.host.pending_output, self.encode.buf[0..], mode, TerminalModeNs.decModeState(self, mode));
             },

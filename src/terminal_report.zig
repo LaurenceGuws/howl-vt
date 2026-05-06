@@ -17,6 +17,11 @@ pub const TerminalReport = struct {
         output.appendSlice(allocator, text) catch {};
     }
 
+    pub fn appendKeyFormatReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, resource: u8, value: u16) void {
+        const text = std.fmt.bufPrint(encode_buf, "\x1b[>{d};{d}f", .{ resource, value }) catch return;
+        output.appendSlice(allocator, text) catch {};
+    }
+
     pub fn appendXtVersionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) void {
         output.appendSlice(allocator, "\x1bP>|" ++ xtversion_text ++ "\x1b\\") catch {};
     }

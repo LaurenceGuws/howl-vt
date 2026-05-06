@@ -11,7 +11,7 @@ const tokens = @import("tokens.zig");
 /// Stable facade for host input conversion.
 pub const InputCodec = struct {
     /// Encode one host key for the active terminal keyboard modes.
-    pub fn encodeKey(buf: []u8, key: keymap.Key, mod: keymap.Modifier, application_cursor_keys: bool, application_keypad: bool, modify_other_keys: i8, kitty_keyboard_flags: u32) []const u8 {
+    pub fn encodeKey(buf: []u8, key: keymap.Key, mod: keymap.Modifier, application_cursor_keys: bool, application_keypad: bool, modify_other_keys: i8, format_other_keys: u16, kitty_keyboard_flags: u32) []const u8 {
         if (kitty_keyboard_flags != 0) {
             if (encodeKittyKey(buf, key, mod)) |encoded| return encoded;
         }
@@ -381,7 +381,7 @@ pub const InputCodec = struct {
             },
             else => {
                 if (key > 31 and key < 127) {
-                    if (encodeModifyOtherKey(buf, key, mod, modify_other_keys)) |encoded| return encoded;
+                    if (encodeModifyOtherKey(buf, key, mod, modify_other_keys, format_other_keys)) |encoded| return encoded;
                     buf[0] = @intCast(key);
                     len = 1;
                 } else if (key > 127) {
@@ -443,9 +443,10 @@ pub const InputCodec = struct {
         return buf[0..3];
     }
 
-    fn encodeModifyOtherKey(buf: []u8, key: keymap.Key, mod: keymap.Modifier, modify_other_keys: i8) ?[]const u8 {
-        if (modify_other_keys < 2) return null;
+    fn encodeModifyOtherKey(buf: []u8, key: keymap.Key, mod: keymap.Modifier, modify_other_keys: i8, format_other_keys: u16) ?[]const u8 {
+        if (modify_other_keys < 2 and !(modify_other_keys == 1 and format_other_keys == 1)) return null;
         if (mod == keymap.VTERM_MOD_NONE and modify_other_keys < 3) return null;
+        if (format_other_keys == 1) return std.fmt.bufPrint(buf, "\x1b[{d};{d}u", .{ key, @as(u8, 1) + mod }) catch null;
         return std.fmt.bufPrint(buf, "\x1b[27;{d};{d}~", .{ @as(u8, 1) + mod, key }) catch null;
     }
 

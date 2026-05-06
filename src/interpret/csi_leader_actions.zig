@@ -2,6 +2,8 @@
 //! Ownership: interpret CSI leader action mapping.
 //! Reason: isolate kitty keyboard and device-attribute leader semantics.
 
+const std = @import("std");
+
 const action_types = @import("action_types.zig");
 const csi_params = @import("csi_params.zig");
 
@@ -11,6 +13,7 @@ pub fn process(final: u8, params: [16]i32, count: u8, leader: u8) ?SemanticEvent
     return switch (leader) {
         '>' => switch (final) {
             'c' => SemanticEvent.secondary_device_attributes,
+            'f' => keyFormatChange(params, count),
             'q' => if (csi_params.paramOrDefault0(params[0]) == 0) SemanticEvent.xtversion else null,
             'm' => if (csi_params.paramOrDefault0(params[0]) == 4) SemanticEvent{ .modify_other_keys_set = @intCast(@max(if (count >= 2) params[1] else 0, 0)) } else null,
             'n' => if (csi_params.paramOrDefault0(params[0]) == 4) SemanticEvent.modify_other_keys_disable else null,
@@ -28,4 +31,11 @@ pub fn process(final: u8, params: [16]i32, count: u8, leader: u8) ?SemanticEvent
         },
         else => null,
     };
+}
+
+fn keyFormatChange(params: [16]i32, count: u8) SemanticEvent {
+    if (count == 0) return SemanticEvent{ .key_format_change = .{ .resource = null, .value = null } };
+    const resource: u8 = @intCast(@min(csi_params.paramOrDefault0(params[0]), std.math.maxInt(u8)));
+    if (count == 1) return SemanticEvent{ .key_format_change = .{ .resource = resource, .value = null } };
+    return SemanticEvent{ .key_format_change = .{ .resource = resource, .value = csi_params.paramOrDefault0(params[1]) } };
 }

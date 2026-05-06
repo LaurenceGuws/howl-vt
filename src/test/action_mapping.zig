@@ -738,6 +738,41 @@ test "actions: application keypad and modifyOtherKeys mappings" {
     try std.testing.expect(process(ev).? == .modify_other_keys_query);
 }
 
+test "actions: xterm key format set reset and query mappings" {
+    var params = [_]i32{0} ** 16;
+    params[0] = 4;
+    params[1] = 1;
+    var ev = Event{ .style_change = .{
+        .final = 'f',
+        .params = params,
+        .param_count = 2,
+        .leader = '>',
+        .private = false,
+        .intermediates = [_]u8{0} ** 4,
+        .intermediates_len = 0,
+    } };
+
+    var change = process(ev).?.key_format_change;
+    try std.testing.expectEqual(@as(?u8, 4), change.resource);
+    try std.testing.expectEqual(@as(?u16, 1), change.value);
+
+    ev.style_change.param_count = 1;
+    change = process(ev).?.key_format_change;
+    try std.testing.expectEqual(@as(?u8, 4), change.resource);
+    try std.testing.expectEqual(@as(?u16, null), change.value);
+
+    ev.style_change.param_count = 0;
+    change = process(ev).?.key_format_change;
+    try std.testing.expectEqual(@as(?u8, null), change.resource);
+    try std.testing.expectEqual(@as(?u16, null), change.value);
+
+    ev.style_change.final = 'g';
+    ev.style_change.param_count = 1;
+    ev.style_change.leader = '?';
+    ev.style_change.private = true;
+    try std.testing.expectEqual(@as(u8, 4), process(ev).?.key_format_query);
+}
+
 test "actions: DSR 5 maps to device status report" {
     const sem = process(makeStyleChange('n', 5, 0, 1)) orelse return error.NoEvent;
     try std.testing.expect(sem == .device_status_report);

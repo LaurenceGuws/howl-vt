@@ -186,6 +186,7 @@ pub const VtCore = struct {
         send_receive_mode: bool = false,
         newline_mode: bool = false,
         modify_other_keys: i8 = 0,
+        key_format: [8]u16 = [_]u16{0} ** 8,
         focus_reporting: bool = false,
         bracketed_paste: bool = false,
         mouse_tracking: Input.MouseTrackingMode = .off,
@@ -599,7 +600,7 @@ pub const VtCore = struct {
             self.encode.len = 0;
             return self.encode.buf[0..0];
         }
-        const encoded = Input.Codec.encodeKey(self.encode.buf[0..], key, mod, self.modes.application_cursor_keys, self.modes.application_keypad, self.modes.modify_other_keys, self.activeKittyKeyboardFlags());
+        const encoded = Input.Codec.encodeKey(self.encode.buf[0..], key, mod, self.modes.application_cursor_keys, self.modes.application_keypad, self.modes.modify_other_keys, self.modes.key_format[4], self.activeKittyKeyboardFlags());
         if (self.modes.newline_mode and key == Input.key_enter and std.mem.eql(u8, encoded, "\r")) {
             self.encode.buf[0] = '\r';
             self.encode.buf[1] = '\n';
@@ -620,6 +621,15 @@ pub const VtCore = struct {
 
     pub fn modifyOtherKeys(self: *const VtCore) i8 {
         return self.modes.modify_other_keys;
+    }
+
+    pub fn keyFormatOption(self: *const VtCore, resource: u8) u16 {
+        return if (self.isKeyFormatResource(resource)) self.modes.key_format[resource] else 0;
+    }
+
+    pub fn isKeyFormatResource(self: *const VtCore, resource: u8) bool {
+        _ = self;
+        return resource <= 4 or resource == 6 or resource == 7;
     }
 
     /// Encode mouse event payload (placeholder surface).

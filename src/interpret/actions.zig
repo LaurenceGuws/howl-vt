@@ -111,6 +111,7 @@ pub fn reportAction(event: SemanticEvent) ?ReportAction {
     return switch (event) {
         .ansi_mode_query => |v| ReportAction{ .ansi_mode_query = v },
         .modify_other_keys_query => .modify_other_keys_query,
+        .key_format_query => |v| ReportAction{ .key_format_query = v },
         .dec_mode_query => |v| ReportAction{ .dec_mode_query = v },
         .dcs_request_status => |v| ReportAction{ .dcs_request_status = v },
         .dcs_request_termcap => |v| ReportAction{ .dcs_request_termcap = v },
@@ -145,6 +146,7 @@ pub fn modeAction(event: SemanticEvent) ?ModeAction {
         .ansi_mode_reset => |v| ModeAction{ .ansi_mode_reset = v },
         .modify_other_keys_set => |v| ModeAction{ .modify_other_keys_set = v },
         .modify_other_keys_disable => .modify_other_keys_disable,
+        .key_format_change => |v| ModeAction{ .key_format_change = v },
         .focus_reporting => |v| ModeAction{ .focus_reporting = v },
         .bracketed_paste => |v| ModeAction{ .bracketed_paste = v },
         .mouse_tracking_off => .mouse_tracking_off,
