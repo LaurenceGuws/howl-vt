@@ -15,6 +15,7 @@ Execute these in order. Do not mix sprints.
 ## Sprint 3: String protocol foundations
 - Finish `DCS`, `APC`, and `PM` transport and typed parser events.
 - Keep syntax in `parser/`, typed event shaping in `interpret/parser_events.zig`, meaning in `interpret/*_actions.zig`, and consequences in `vt_core/` owners.
+- Status: transport foundations are closed. APC, DCS, and PM are buffered to terminators and emitted as typed parser events; PM and unknown APC are intentionally ignored at action mapping. Remaining DCS rows are feature protocols for later graphics/legacy work, not transport-foundation gaps.
 
 ## Sprint 4: Modern input
 - Finish kitty keyboard and xterm keyboard-reporting gaps.
