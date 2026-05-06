@@ -5,6 +5,7 @@ Execute these in order. Do not mix sprints.
 ## Sprint 1: Core VT parity
 - Finish remaining practical `C0`, `ESC`, and core `CSI` behavior.
 - Prioritize normal TUI correctness over obscure legacy features.
+- Status: baseline/common-app gaps are closed or reclassified. Remaining open `C0`/`ESC`/`CSI` rows are legacy, VT52/Tektronix, modern-input, visual/heavy, host-resource, or unclassified follow-up work.
 
 ## Sprint 2: Reports and queries
 - Finish `DA`/`DSR`/`DECRQM`/`DECRQPSR`/`DECRQSS`-style replies.
