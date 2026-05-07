@@ -5,11 +5,9 @@
 const state = @import("selection/state.zig");
 
 /// Canonical selection domain owner.
-pub const Selection = struct {
-    /// Selection position payload.
-    pub const SelectionPos = state.SelectionPos;
-    /// Read-only terminal selection payload.
-    pub const TerminalSelection = state.TerminalSelection;
-    /// Mutable selection state owner.
-    pub const SelectionState = state.SelectionState;
-};
+/// Selection position payload.
+pub const SelectionPos = state.SelectionPos;
+/// Read-only terminal selection payload.
+pub const TerminalSelection = state.TerminalSelection;
+/// Mutable selection state owner.
+pub const SelectionState = state.SelectionState;

@@ -19,20 +19,20 @@ const selection_owner = @import("selection.zig");
 const snapshot_owner = @import("snapshot.zig");
 const terminal_mode_owner = @import("terminal_mode.zig");
 
-const GridNs = grid_owner.Grid;
-const Input = input_mod.Input;
-const Interpret = interpret_owner.Interpret;
+const GridNs = grid_owner;
+const Input = input_mod;
+const Interpret = interpret_owner;
 const DcsPayload = action_types.DcsPayload;
-const KittyNs = kitty_owner.Kitty;
-const LocatorNs = locator_owner.Locator;
-const OscColorNs = osc_color_owner.OscColor;
-const VtCoreHost = vt_core_host_owner.VtCoreHost;
-const VtCoreModes = vt_core_modes_owner.VtCoreModes;
-const VtCoreKitty = vt_core_kitty_owner.VtCoreKitty;
-const VtCoreReports = vt_core_reports_owner.VtCoreReports;
-const Selection = selection_owner.Selection;
-const Snapshot = snapshot_owner.Snapshot;
-const TerminalModeNs = terminal_mode_owner.TerminalMode;
+const KittyNs = kitty_owner;
+const LocatorNs = locator_owner;
+const OscColorNs = osc_color_owner;
+const VtCoreHost = vt_core_host_owner;
+const VtCoreModes = vt_core_modes_owner;
+const VtCoreKitty = vt_core_kitty_owner;
+const VtCoreReports = vt_core_reports_owner;
+const Selection = selection_owner;
+const Snapshot = snapshot_owner;
+const TerminalModeNs = terminal_mode_owner;
 
 /// Explicit package-surface grid owner alias retained for downstream runtime/render code.
 pub const Grid = GridNs;

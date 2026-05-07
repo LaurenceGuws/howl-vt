@@ -4,7 +4,7 @@
 
 const selection_owner = @import("../selection.zig");
 
-const Selection = selection_owner.Selection;
+const Selection = selection_owner;
 
 const CursorPos = struct {
     row: usize,

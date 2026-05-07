@@ -19,8 +19,8 @@ const types = @import("types.zig");
 const write = @import("write.zig");
 
 /// Semantic event alias for grid application.
-const SemanticEvent = interpret_owner.Interpret.SemanticEvent;
-const ScreenAction = interpret_owner.Interpret.ScreenAction;
+const SemanticEvent = interpret_owner.SemanticEvent;
+const ScreenAction = interpret_owner.ScreenAction;
 const Cell = types.Cell;
 const CellAttrs = types.CellAttrs;
 const CursorStyle = types.CursorStyle;
@@ -626,7 +626,7 @@ pub const GridModel = struct {
 
     /// Apply one terminal event to screen state.
     pub fn apply(self: *GridModel, event: SemanticEvent) void {
-        const action = interpret_owner.Interpret.screenAction(event) orelse return;
+        const action = interpret_owner.screenAction(event) orelse return;
         self.applyScreen(action);
     }
 

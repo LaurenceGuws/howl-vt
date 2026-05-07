@@ -6,8 +6,8 @@ const std = @import("std");
 const grid_owner = @import("../grid.zig");
 const interpret_owner = @import("../interpret.zig");
 
-const GridModel = grid_owner.Grid.GridModel;
-const SemanticEvent = interpret_owner.Interpret.SemanticEvent;
+const GridModel = grid_owner.GridModel;
+const SemanticEvent = interpret_owner.SemanticEvent;
 test "screen: initial cursor at origin" {
     const s = GridModel.init(24, 80);
     try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
@@ -202,9 +202,9 @@ test "screen: sgr reset restores default attrs for later writes" {
     const a = s.cellInfoAt(0, 0);
     const b = s.cellInfoAt(0, 1);
     try std.testing.expectEqual(@as(u8, 170), a.attrs.fg.r);
-    try std.testing.expectEqual(grid_owner.Grid.default_fg.r, b.attrs.fg.r);
-    try std.testing.expectEqual(grid_owner.Grid.default_fg.g, b.attrs.fg.g);
-    try std.testing.expectEqual(grid_owner.Grid.default_fg.b, b.attrs.fg.b);
+    try std.testing.expectEqual(grid_owner.default_fg.r, b.attrs.fg.r);
+    try std.testing.expectEqual(grid_owner.default_fg.g, b.attrs.fg.g);
+    try std.testing.expectEqual(grid_owner.default_fg.b, b.attrs.fg.b);
 }
 
 test "screen: kitty colon SGR sets underline styles without stealing semicolon params" {
@@ -225,9 +225,9 @@ test "screen: kitty colon SGR sets underline styles without stealing semicolon p
     const curly = s.cellInfoAt(0, 0);
     const straight = s.cellInfoAt(0, 1);
     try std.testing.expect(curly.attrs.underline);
-    try std.testing.expectEqual(grid_owner.Grid.UnderlineStyle.curly, curly.attrs.underline_style);
+    try std.testing.expectEqual(grid_owner.UnderlineStyle.curly, curly.attrs.underline_style);
     try std.testing.expect(straight.attrs.underline);
-    try std.testing.expectEqual(grid_owner.Grid.UnderlineStyle.straight, straight.attrs.underline_style);
+    try std.testing.expectEqual(grid_owner.UnderlineStyle.straight, straight.attrs.underline_style);
     try std.testing.expect(straight.attrs.blink);
 }
 
@@ -248,7 +248,7 @@ test "screen: kitty underline color SGR sets and resets color" {
     try std.testing.expectEqual(@as(u8, 2), colored.attrs.underline_color.g);
     try std.testing.expectEqual(@as(u8, 3), colored.attrs.underline_color.b);
     try std.testing.expect(reset.attrs.underline);
-    try std.testing.expectEqual(grid_owner.Grid.Color{ .r = 0, .g = 0, .b = 0, .a = 0 }, reset.attrs.underline_color);
+    try std.testing.expectEqual(grid_owner.Color{ .r = 0, .g = 0, .b = 0, .a = 0 }, reset.attrs.underline_color);
 }
 
 test "screen: write_text wraps to next row after filled column" {

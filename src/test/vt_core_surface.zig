@@ -8,9 +8,9 @@ const grid_owner = @import("../grid.zig");
 const selection_owner = @import("../selection.zig");
 const input_mod = @import("../input.zig");
 
-const Grid = grid_owner.Grid;
-const Selection = selection_owner.Selection;
-const Input = input_mod.Input;
+const Grid = grid_owner;
+const Selection = selection_owner;
+const Input = input_mod;
 
 test "VtCore facade methods remain available" {
     try std.testing.expect(@hasDecl(vt.VtCore, "init"));

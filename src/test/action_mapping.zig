@@ -5,7 +5,7 @@
 const std = @import("std");
 const interpret_owner = @import("../interpret.zig");
 
-const Interpret = interpret_owner.Interpret;
+const Interpret = interpret_owner;
 const Event = Interpret.Event;
 const SemanticEvent = Interpret.SemanticEvent;
 const process = Interpret.process;

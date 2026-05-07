@@ -11,8 +11,8 @@ const std = @import("std");
 const selection_owner = @import("../selection.zig");
 const grid_owner = @import("../grid.zig");
 
-const Selection = selection_owner.Selection;
-const Grid = grid_owner.Grid;
+const Selection = selection_owner;
+const Grid = grid_owner;
 
 /// Deterministic snapshot of vt_core observable state.
 ///

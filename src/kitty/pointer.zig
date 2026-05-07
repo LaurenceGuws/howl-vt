@@ -4,94 +4,92 @@
 
 const std = @import("std");
 
-pub const Pointer = struct {
-    pub const Shape = enum {
-        alias,
-        cell,
-        copy,
-        crosshair,
-        @"default",
-        e_resize,
-        ew_resize,
-        grab,
-        grabbing,
-        help,
-        move,
-        n_resize,
-        ne_resize,
-        nesw_resize,
-        no_drop,
-        not_allowed,
-        ns_resize,
-        nw_resize,
-        nwse_resize,
-        pointer,
-        progress,
-        s_resize,
-        se_resize,
-        sw_resize,
-        text,
-        vertical_text,
-        w_resize,
-        wait,
-        zoom_in,
-        zoom_out,
-    };
-
-    pub const Stack = struct {
-        stack: [16]Shape = undefined,
-        len: u8 = 0,
-
-        pub fn currentName(self: *const Stack) []const u8 {
-            if (self.len == 0) return "0";
-            return shapeName(self.stack[self.len - 1]);
-        }
-
-        pub fn set(self: *Stack, names: []const u8) void {
-            self.len = 0;
-            const shape = firstShape(names) orelse return;
-            self.stack[0] = shape;
-            self.len = 1;
-        }
-
-        pub fn push(self: *Stack, names: []const u8) void {
-            var parts = std.mem.splitScalar(u8, names, ',');
-            while (parts.next()) |name| {
-                const shape = parseShapeName(name) orelse continue;
-                if (self.len == self.stack.len) {
-                    std.mem.copyForwards(Shape, self.stack[0 .. self.stack.len - 1], self.stack[1..self.stack.len]);
-                    self.len -= 1;
-                }
-                self.stack[self.len] = shape;
-                self.len += 1;
-            }
-        }
-
-        pub fn pop(self: *Stack) void {
-            if (self.len > 0) self.len -= 1;
-        }
-
-        pub fn appendQuery(self: *const Stack, allocator: std.mem.Allocator, output: *std.ArrayList(u8), names: []const u8) void {
-            output.appendSlice(allocator, "\x1b]22;") catch return;
-            var first = true;
-            var parts = std.mem.splitScalar(u8, names, ',');
-            while (parts.next()) |name| {
-                if (!first) output.appendSlice(allocator, ",") catch return;
-                first = false;
-                if (std.mem.eql(u8, name, "__current__")) {
-                    output.appendSlice(allocator, self.currentName()) catch return;
-                } else if (std.mem.eql(u8, name, "__default__") or std.mem.eql(u8, name, "__grabbed__")) {
-                    output.appendSlice(allocator, "default") catch return;
-                } else {
-                    output.appendSlice(allocator, if (parseShapeName(name) != null) "1" else "0") catch return;
-                }
-            }
-            output.appendSlice(allocator, "\x1b\\") catch {};
-        }
-    };
+pub const Shape = enum {
+    alias,
+    cell,
+    copy,
+    crosshair,
+    default,
+    e_resize,
+    ew_resize,
+    grab,
+    grabbing,
+    help,
+    move,
+    n_resize,
+    ne_resize,
+    nesw_resize,
+    no_drop,
+    not_allowed,
+    ns_resize,
+    nw_resize,
+    nwse_resize,
+    pointer,
+    progress,
+    s_resize,
+    se_resize,
+    sw_resize,
+    text,
+    vertical_text,
+    w_resize,
+    wait,
+    zoom_in,
+    zoom_out,
 };
 
-fn firstShape(names: []const u8) ?Pointer.Shape {
+pub const Stack = struct {
+    stack: [16]Shape = undefined,
+    len: u8 = 0,
+
+    pub fn currentName(self: *const Stack) []const u8 {
+        if (self.len == 0) return "0";
+        return shapeName(self.stack[self.len - 1]);
+    }
+
+    pub fn set(self: *Stack, names: []const u8) void {
+        self.len = 0;
+        const shape = firstShape(names) orelse return;
+        self.stack[0] = shape;
+        self.len = 1;
+    }
+
+    pub fn push(self: *Stack, names: []const u8) void {
+        var parts = std.mem.splitScalar(u8, names, ',');
+        while (parts.next()) |name| {
+            const shape = parseShapeName(name) orelse continue;
+            if (self.len == self.stack.len) {
+                std.mem.copyForwards(Shape, self.stack[0 .. self.stack.len - 1], self.stack[1..self.stack.len]);
+                self.len -= 1;
+            }
+            self.stack[self.len] = shape;
+            self.len += 1;
+        }
+    }
+
+    pub fn pop(self: *Stack) void {
+        if (self.len > 0) self.len -= 1;
+    }
+
+    pub fn appendQuery(self: *const Stack, allocator: std.mem.Allocator, output: *std.ArrayList(u8), names: []const u8) void {
+        output.appendSlice(allocator, "\x1b]22;") catch return;
+        var first = true;
+        var parts = std.mem.splitScalar(u8, names, ',');
+        while (parts.next()) |name| {
+            if (!first) output.appendSlice(allocator, ",") catch return;
+            first = false;
+            if (std.mem.eql(u8, name, "__current__")) {
+                output.appendSlice(allocator, self.currentName()) catch return;
+            } else if (std.mem.eql(u8, name, "__default__") or std.mem.eql(u8, name, "__grabbed__")) {
+                output.appendSlice(allocator, "default") catch return;
+            } else {
+                output.appendSlice(allocator, if (parseShapeName(name) != null) "1" else "0") catch return;
+            }
+        }
+        output.appendSlice(allocator, "\x1b\\") catch {};
+    }
+};
+
+fn firstShape(names: []const u8) ?Shape {
     var parts = std.mem.splitScalar(u8, names, ',');
     while (parts.next()) |name| {
         if (parseShapeName(name)) |shape| return shape;
@@ -99,12 +97,12 @@ fn firstShape(names: []const u8) ?Pointer.Shape {
     return null;
 }
 
-fn parseShapeName(name: []const u8) ?Pointer.Shape {
+fn parseShapeName(name: []const u8) ?Shape {
     if (std.mem.eql(u8, name, "alias")) return .alias;
     if (std.mem.eql(u8, name, "cell")) return .cell;
     if (std.mem.eql(u8, name, "copy")) return .copy;
     if (std.mem.eql(u8, name, "crosshair")) return .crosshair;
-    if (std.mem.eql(u8, name, "default")) return .@"default";
+    if (std.mem.eql(u8, name, "default")) return .default;
     if (std.mem.eql(u8, name, "e-resize")) return .e_resize;
     if (std.mem.eql(u8, name, "ew-resize")) return .ew_resize;
     if (std.mem.eql(u8, name, "grab")) return .grab;
@@ -133,13 +131,13 @@ fn parseShapeName(name: []const u8) ?Pointer.Shape {
     return null;
 }
 
-fn shapeName(shape: Pointer.Shape) []const u8 {
+fn shapeName(shape: Shape) []const u8 {
     return switch (shape) {
         .alias => "alias",
         .cell => "cell",
         .copy => "copy",
         .crosshair => "crosshair",
-        .@"default" => "default",
+        .default => "default",
         .e_resize => "e-resize",
         .ew_resize => "ew-resize",
         .grab => "grab",

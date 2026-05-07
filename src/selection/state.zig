@@ -5,7 +5,7 @@
 const std = @import("std");
 const grid_owner = @import("../grid.zig");
 
-const Grid = grid_owner.Grid;
+const Grid = grid_owner;
 
 /// Selection endpoint coordinate.
 pub const SelectionPos = struct {

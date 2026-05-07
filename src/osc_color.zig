@@ -5,143 +5,146 @@
 const std = @import("std");
 const grid_owner = @import("grid.zig");
 
-const Grid = grid_owner.Grid;
+const Grid = grid_owner;
 
-pub const OscColor = struct {
-    pub const State = struct {
-        foreground: Grid.Color = Grid.default_fg,
-        background: Grid.Color = Grid.default_bg,
-        cursor: ?Grid.Color = null,
-        cursor_text: ?Grid.Color = null,
-        selection_background: ?Grid.Color = null,
-        selection_foreground: ?Grid.Color = null,
-        palette: [256]Grid.Color = OscColor.defaultPalette(),
-    };
-
-    pub const SpecialKey = enum { foreground, background, cursor, cursor_text, selection_background, selection_foreground };
-
-    pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) void {
-        var parts = std.mem.splitScalar(u8, payload, ';');
-        while (parts.next()) |idx_text| {
-            const value = parts.next() orelse break;
-            const idx = std.fmt.parseUnsigned(u8, idx_text, 10) catch continue;
-            if (std.mem.eql(u8, value, "?")) {
-                const text = std.fmt.bufPrint(encode_buf, "\x1b]4;{d};", .{idx}) catch continue;
-                output.appendSlice(allocator, text) catch continue;
-                appendColorOsc(allocator, output, colors.palette[idx]);
-                output.appendSlice(allocator, "\x1b\\") catch {};
-            } else if (parseColor(value)) |color| {
-                colors.palette[idx] = color;
-            }
-        }
-    }
-
-    pub fn handleXtermSpecialColor(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, key: SpecialKey, payload: []const u8) void {
-        if (std.mem.eql(u8, payload, "?")) {
-            appendXtermSpecialColorReply(allocator, output, encode_buf, colors.*, key);
-        } else if (parseColor(payload)) |color| {
-            setSpecialColor(colors, key, color);
-        }
-    }
-
-    pub fn resetXtermPalette(colors: *State, payload: []const u8) void {
-        if (payload.len == 0) {
-            colors.palette = buildDefaultPalette();
-            return;
-        }
-        var parts = std.mem.splitScalar(u8, payload, ';');
-        while (parts.next()) |idx_text| {
-            const idx = std.fmt.parseUnsigned(u8, idx_text, 10) catch continue;
-            colors.palette[idx] = paletteColor(idx);
-        }
-    }
-
-    pub fn parseColor(value: []const u8) ?Grid.Color {
-        const color_text = stripAlpha(std.mem.trim(u8, value, " \t\r\n"));
-        if (color_text.len == 0) return null;
-        if (std.mem.startsWith(u8, color_text, "#")) return parseHashColor(color_text[1..]);
-        if (std.mem.startsWith(u8, color_text, "rgb:")) return parseRgbColor(color_text[4..]);
-        if (std.ascii.eqlIgnoreCase(color_text, "black")) return .{ .r = 0, .g = 0, .b = 0 };
-        if (std.ascii.eqlIgnoreCase(color_text, "red")) return .{ .r = 255, .g = 0, .b = 0 };
-        if (std.ascii.eqlIgnoreCase(color_text, "green")) return .{ .r = 0, .g = 255, .b = 0 };
-        if (std.ascii.eqlIgnoreCase(color_text, "blue")) return .{ .r = 0, .g = 0, .b = 255 };
-        if (std.ascii.eqlIgnoreCase(color_text, "white")) return .{ .r = 255, .g = 255, .b = 255 };
-        return null;
-    }
-
-    pub fn defaultPalette() [256]Grid.Color {
-        return buildDefaultPalette();
-    }
-
-    pub fn defaultPaletteColor(idx: u8) Grid.Color {
-        return paletteColor(idx);
-    }
-
-    pub fn specialColorKey(key: []const u8) ?SpecialKey {
-        if (std.mem.eql(u8, key, "foreground")) return .foreground;
-        if (std.mem.eql(u8, key, "background")) return .background;
-        if (std.mem.eql(u8, key, "cursor")) return .cursor;
-        if (std.mem.eql(u8, key, "cursor_text")) return .cursor_text;
-        if (std.mem.eql(u8, key, "selection_background")) return .selection_background;
-        if (std.mem.eql(u8, key, "selection_foreground")) return .selection_foreground;
-        return null;
-    }
-
-    pub fn isKnownColorKey(key: []const u8) bool {
-        if (specialColorKey(key) != null) return true;
-        _ = std.fmt.parseUnsigned(u8, key, 10) catch return false;
-        return true;
-    }
-
-    pub fn colorForKey(colors: State, key: []const u8) ?Grid.Color {
-        if (std.fmt.parseUnsigned(u8, key, 10)) |idx| return colors.palette[idx] else |_| {}
-        if (specialColorKey(key)) |special| return switch (special) {
-            .foreground => colors.foreground,
-            .background => colors.background,
-            .cursor => colors.cursor,
-            .cursor_text => colors.cursor_text,
-            .selection_background => colors.selection_background,
-            .selection_foreground => colors.selection_foreground,
-        };
-        return null;
-    }
-
-    pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), color: Grid.Color) void {
-        var buf: [32]u8 = undefined;
-        const text = std.fmt.bufPrint(buf[0..], "rgb:{x:0>2}/{x:0>2}/{x:0>2}", .{ color.r, color.g, color.b }) catch return;
-        output.appendSlice(allocator, text) catch {};
-    }
-
-    pub fn setColorKey(colors: *State, key: []const u8, value: []const u8) void {
-        if (std.fmt.parseUnsigned(u8, key, 10)) |idx| {
-            if (parseColor(value)) |color| colors.palette[idx] = color;
-            return;
-        } else |_| {}
-        if (value.len == 0) {
-            setSpecialColorDynamic(colors, key);
-        } else if (parseColor(value)) |color| {
-            if (specialColorKey(key)) |special| setSpecialColor(colors, special, color);
-        }
-    }
-
-    pub fn resetColorKey(colors: *State, key: []const u8) void {
-        if (std.fmt.parseUnsigned(u8, key, 10)) |idx| {
-            colors.palette[idx] = paletteColor(idx);
-            return;
-        } else |_| {}
-        if (specialColorKey(key)) |special| switch (special) {
-            .foreground => colors.foreground = Grid.default_fg,
-            .background => colors.background = Grid.default_bg,
-            .cursor => colors.cursor = null,
-            .cursor_text => colors.cursor_text = null,
-            .selection_background => colors.selection_background = null,
-            .selection_foreground => colors.selection_foreground = null,
-        };
-    }
+pub const State = struct {
+    foreground: Grid.Color = Grid.default_fg,
+    background: Grid.Color = Grid.default_bg,
+    cursor: ?Grid.Color = null,
+    cursor_text: ?Grid.Color = null,
+    selection_background: ?Grid.Color = null,
+    selection_foreground: ?Grid.Color = null,
+    palette: [256]Grid.Color = defaultPalette(),
 };
 
-fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: OscColor.State, key: OscColor.SpecialKey) void {
-    const osc: u8 = switch (key) { .foreground => 10, .background => 11, .cursor => 12, else => 10 };
+pub const SpecialKey = enum { foreground, background, cursor, cursor_text, selection_background, selection_foreground };
+
+pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) void {
+    var parts = std.mem.splitScalar(u8, payload, ';');
+    while (parts.next()) |idx_text| {
+        const value = parts.next() orelse break;
+        const idx = std.fmt.parseUnsigned(u8, idx_text, 10) catch continue;
+        if (std.mem.eql(u8, value, "?")) {
+            const text = std.fmt.bufPrint(encode_buf, "\x1b]4;{d};", .{idx}) catch continue;
+            output.appendSlice(allocator, text) catch continue;
+            appendColorOsc(allocator, output, colors.palette[idx]);
+            output.appendSlice(allocator, "\x1b\\") catch {};
+        } else if (parseColor(value)) |color| {
+            colors.palette[idx] = color;
+        }
+    }
+}
+
+pub fn handleXtermSpecialColor(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, key: SpecialKey, payload: []const u8) void {
+    if (std.mem.eql(u8, payload, "?")) {
+        appendXtermSpecialColorReply(allocator, output, encode_buf, colors.*, key);
+    } else if (parseColor(payload)) |color| {
+        setSpecialColor(colors, key, color);
+    }
+}
+
+pub fn resetXtermPalette(colors: *State, payload: []const u8) void {
+    if (payload.len == 0) {
+        colors.palette = buildDefaultPalette();
+        return;
+    }
+    var parts = std.mem.splitScalar(u8, payload, ';');
+    while (parts.next()) |idx_text| {
+        const idx = std.fmt.parseUnsigned(u8, idx_text, 10) catch continue;
+        colors.palette[idx] = paletteColor(idx);
+    }
+}
+
+pub fn parseColor(value: []const u8) ?Grid.Color {
+    const color_text = stripAlpha(std.mem.trim(u8, value, " \t\r\n"));
+    if (color_text.len == 0) return null;
+    if (std.mem.startsWith(u8, color_text, "#")) return parseHashColor(color_text[1..]);
+    if (std.mem.startsWith(u8, color_text, "rgb:")) return parseRgbColor(color_text[4..]);
+    if (std.ascii.eqlIgnoreCase(color_text, "black")) return .{ .r = 0, .g = 0, .b = 0 };
+    if (std.ascii.eqlIgnoreCase(color_text, "red")) return .{ .r = 255, .g = 0, .b = 0 };
+    if (std.ascii.eqlIgnoreCase(color_text, "green")) return .{ .r = 0, .g = 255, .b = 0 };
+    if (std.ascii.eqlIgnoreCase(color_text, "blue")) return .{ .r = 0, .g = 0, .b = 255 };
+    if (std.ascii.eqlIgnoreCase(color_text, "white")) return .{ .r = 255, .g = 255, .b = 255 };
+    return null;
+}
+
+pub fn defaultPalette() [256]Grid.Color {
+    return buildDefaultPalette();
+}
+
+pub fn defaultPaletteColor(idx: u8) Grid.Color {
+    return paletteColor(idx);
+}
+
+pub fn specialColorKey(key: []const u8) ?SpecialKey {
+    if (std.mem.eql(u8, key, "foreground")) return .foreground;
+    if (std.mem.eql(u8, key, "background")) return .background;
+    if (std.mem.eql(u8, key, "cursor")) return .cursor;
+    if (std.mem.eql(u8, key, "cursor_text")) return .cursor_text;
+    if (std.mem.eql(u8, key, "selection_background")) return .selection_background;
+    if (std.mem.eql(u8, key, "selection_foreground")) return .selection_foreground;
+    return null;
+}
+
+pub fn isKnownColorKey(key: []const u8) bool {
+    if (specialColorKey(key) != null) return true;
+    _ = std.fmt.parseUnsigned(u8, key, 10) catch return false;
+    return true;
+}
+
+pub fn colorForKey(colors: State, key: []const u8) ?Grid.Color {
+    if (std.fmt.parseUnsigned(u8, key, 10)) |idx| return colors.palette[idx] else |_| {}
+    if (specialColorKey(key)) |special| return switch (special) {
+        .foreground => colors.foreground,
+        .background => colors.background,
+        .cursor => colors.cursor,
+        .cursor_text => colors.cursor_text,
+        .selection_background => colors.selection_background,
+        .selection_foreground => colors.selection_foreground,
+    };
+    return null;
+}
+
+pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), color: Grid.Color) void {
+    var buf: [32]u8 = undefined;
+    const text = std.fmt.bufPrint(buf[0..], "rgb:{x:0>2}/{x:0>2}/{x:0>2}", .{ color.r, color.g, color.b }) catch return;
+    output.appendSlice(allocator, text) catch {};
+}
+
+pub fn setColorKey(colors: *State, key: []const u8, value: []const u8) void {
+    if (std.fmt.parseUnsigned(u8, key, 10)) |idx| {
+        if (parseColor(value)) |color| colors.palette[idx] = color;
+        return;
+    } else |_| {}
+    if (value.len == 0) {
+        setSpecialColorDynamic(colors, key);
+    } else if (parseColor(value)) |color| {
+        if (specialColorKey(key)) |special| setSpecialColor(colors, special, color);
+    }
+}
+
+pub fn resetColorKey(colors: *State, key: []const u8) void {
+    if (std.fmt.parseUnsigned(u8, key, 10)) |idx| {
+        colors.palette[idx] = paletteColor(idx);
+        return;
+    } else |_| {}
+    if (specialColorKey(key)) |special| switch (special) {
+        .foreground => colors.foreground = Grid.default_fg,
+        .background => colors.background = Grid.default_bg,
+        .cursor => colors.cursor = null,
+        .cursor_text => colors.cursor_text = null,
+        .selection_background => colors.selection_background = null,
+        .selection_foreground => colors.selection_foreground = null,
+    };
+}
+
+fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: State, key: SpecialKey) void {
+    const osc: u8 = switch (key) {
+        .foreground => 10,
+        .background => 11,
+        .cursor => 12,
+        else => 10,
+    };
     const color = switch (key) {
         .foreground => colors.foreground,
         .background => colors.background,
@@ -150,11 +153,11 @@ fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.Array
     };
     const text = std.fmt.bufPrint(encode_buf, "\x1b]{d};", .{osc}) catch return;
     output.appendSlice(allocator, text) catch return;
-    OscColor.appendColorOsc(allocator, output, color);
+    appendColorOsc(allocator, output, color);
     output.appendSlice(allocator, "\x1b\\") catch {};
 }
 
-fn setSpecialColor(colors: *OscColor.State, key: OscColor.SpecialKey, color: Grid.Color) void {
+fn setSpecialColor(colors: *State, key: SpecialKey, color: Grid.Color) void {
     switch (key) {
         .foreground => colors.foreground = color,
         .background => colors.background = color,
@@ -165,8 +168,8 @@ fn setSpecialColor(colors: *OscColor.State, key: OscColor.SpecialKey, color: Gri
     }
 }
 
-fn setSpecialColorDynamic(colors: *OscColor.State, key: []const u8) void {
-    if (OscColor.specialColorKey(key)) |special| switch (special) {
+fn setSpecialColorDynamic(colors: *State, key: []const u8) void {
+    if (specialColorKey(key)) |special| switch (special) {
         .foreground => {},
         .background => {},
         .cursor => colors.cursor = null,

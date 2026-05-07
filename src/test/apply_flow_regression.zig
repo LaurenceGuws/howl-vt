@@ -7,8 +7,8 @@ const grid_owner = @import("../grid.zig");
 const interpret_owner = @import("../interpret.zig");
 const vt_mod = @import("vt_core");
 
-const Grid = grid_owner.Grid;
-const Interpret = interpret_owner.Interpret;
+const Grid = grid_owner;
+const Interpret = interpret_owner;
 const ApplyFlow = Interpret.ApplyFlow;
 
 fn feed(flow: *ApplyFlow, screen: *Grid.GridModel, bytes: []const u8) void {

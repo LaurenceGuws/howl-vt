@@ -5,7 +5,5 @@
 const data = @import("snapshot/data.zig");
 
 /// Canonical snapshot domain owner.
-pub const Snapshot = struct {
-    /// Serializable vt-core snapshot payload.
-    pub const VtCoreSnapshot = data.VtCoreSnapshot;
-};
+/// Serializable vt-core snapshot payload.
+pub const VtCoreSnapshot = data.VtCoreSnapshot;

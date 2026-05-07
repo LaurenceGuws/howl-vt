@@ -6,7 +6,7 @@ const std = @import("std");
 const vt = @import("vt_core");
 const grid_owner = @import("../grid.zig");
 
-const Grid = grid_owner.Grid;
+const Grid = grid_owner;
 
 test "latestTitleSet returns typed OSC title payload" {
     const allocator = std.testing.allocator;

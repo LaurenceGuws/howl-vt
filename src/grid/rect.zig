@@ -6,7 +6,7 @@ const interpret_owner = @import("../interpret.zig");
 const style_mod = @import("style.zig");
 const types = @import("types.zig");
 
-const SemanticEvent = interpret_owner.Interpret.SemanticEvent;
+const SemanticEvent = interpret_owner.SemanticEvent;
 const Cell = types.Cell;
 
 pub fn changeAttrs(self: anytype, area: SemanticEvent.RectArea, attrs: []const u16, reverse: bool) void {

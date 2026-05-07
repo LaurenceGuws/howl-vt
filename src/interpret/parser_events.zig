@@ -5,7 +5,7 @@
 const std = @import("std");
 const parser_owner = @import("../parser.zig");
 
-const ParserApi = parser_owner.ParserApi;
+const ParserApi = parser_owner;
 
 /// Parser-facing event union.
 pub const Event = union(enum) {

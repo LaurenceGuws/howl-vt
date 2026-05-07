@@ -6,7 +6,7 @@ const std = @import("std");
 const vt = @import("vt_core");
 const input_mod = @import("../input.zig");
 
-const Input = input_mod.Input;
+const Input = input_mod;
 
 test "encodeMouse returns empty output and does not mutate state" {
     const allocator = std.testing.allocator;

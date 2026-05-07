@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const vt = @import("../vt_core.zig");
-const parser_api = @import("../parser.zig").ParserApi;
+const parser_api = @import("../parser.zig");
 
 const Parser = parser_api.Parser;
 const Sink = parser_api.Sink;

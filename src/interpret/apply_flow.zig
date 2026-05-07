@@ -8,8 +8,8 @@ const parser_owner = @import("../parser.zig");
 const parser_events_mod = @import("parser_events.zig");
 const actions_mod = @import("actions.zig");
 
-const Grid = grid_owner.Grid;
-const ParserApi = parser_owner.ParserApi;
+const Grid = grid_owner;
+const ParserApi = parser_owner;
 
 /// ApplyFlow event alias.
 const Event = parser_events_mod.Event;

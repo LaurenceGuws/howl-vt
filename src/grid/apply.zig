@@ -4,7 +4,7 @@
 
 const interpret_owner = @import("../interpret.zig");
 
-const ScreenAction = interpret_owner.Interpret.ScreenAction;
+const ScreenAction = interpret_owner.ScreenAction;
 
 pub fn applyScreen(self: anytype, event: ScreenAction) void {
     switch (event) {
