@@ -5,10 +5,12 @@
 const std = @import("std");
 const grid_owner = @import("../grid.zig");
 const interpret_owner = @import("../interpret.zig");
+const action_types = @import("../interpret/action_types.zig");
 const kitty_owner = @import("../kitty.zig");
 const locator_owner = @import("../locator.zig");
 const osc_color_owner = @import("../osc_color.zig");
 
+const DcsPayload = action_types.DcsPayload;
 const GridNs = grid_owner.Grid;
 const HostAction = interpret_owner.Interpret.HostAction;
 const KittyNs = kitty_owner.Kitty;
@@ -16,95 +18,91 @@ const LocatorNs = locator_owner.Locator;
 const OscColorNs = osc_color_owner.OscColor;
 
 pub const VtCoreHost = struct {
-    pub fn apply(self: anytype, action: HostAction) void {
+    pub const LinkOps = struct {
+        ctx: *anyopaque,
+        set_current_link_id: *const fn (ctx: *anyopaque, link_id: u32) void,
+        intern_hyperlink: *const fn (ctx: *anyopaque, uri: []const u8) u32,
+    };
+
+    pub const ClipboardOps = struct {
+        ctx: *anyopaque,
+        set_pending_clipboard: *const fn (ctx: *anyopaque, payload: []const u8) void,
+    };
+
+    pub const DcsPayloadOps = struct {
+        ctx: *anyopaque,
+        set_dcs_payload: *const fn (ctx: *anyopaque, payload: DcsPayload) void,
+    };
+
+    pub const ResetOps = struct {
+        ctx: *anyopaque,
+        reset_terminal_state: *const fn (ctx: *anyopaque) void,
+    };
+
+    pub const Context = struct {
+        allocator: std.mem.Allocator,
+        terminal_colors: *OscColorNs.State,
+        pending_output: *std.ArrayList(u8),
+        encode_buf: []u8,
+        active_state: *GridNs.GridModel,
+        link_ops: LinkOps,
+        clipboard_ops: ClipboardOps,
+        locator: *LocatorNs.State,
+        media_copy_request: *?u16,
+        dcs_payload_ops: DcsPayloadOps,
+        legacy_control: *?interpret_owner.Interpret.LegacyControlKind,
+        reset_ops: ResetOps,
+    };
+
+    pub fn apply(ctx: Context, action: HostAction) void {
         switch (action) {
             .terminal_color_control => |cmd| {
                 switch (cmd.command) {
-                    21 => KittyNs.Color.handleKittyControl(self.allocator, &self.host.terminal_colors, &self.host.pending_output, cmd.payload),
-                    4 => OscColorNs.handleXtermPaletteControl(self.allocator, &self.host.terminal_colors, &self.host.pending_output, self.encode.buf[0..], cmd.payload),
-                    10 => OscColorNs.handleXtermSpecialColor(self.allocator, &self.host.terminal_colors, &self.host.pending_output, self.encode.buf[0..], .foreground, cmd.payload),
-                    11 => OscColorNs.handleXtermSpecialColor(self.allocator, &self.host.terminal_colors, &self.host.pending_output, self.encode.buf[0..], .background, cmd.payload),
-                    12 => OscColorNs.handleXtermSpecialColor(self.allocator, &self.host.terminal_colors, &self.host.pending_output, self.encode.buf[0..], .cursor, cmd.payload),
-                    104 => OscColorNs.resetXtermPalette(&self.host.terminal_colors, cmd.payload),
-                    110 => self.host.terminal_colors.foreground = GridNs.default_fg,
-                    111 => self.host.terminal_colors.background = GridNs.default_bg,
-                    112 => self.host.terminal_colors.cursor = null,
+                    21 => KittyNs.Color.handleKittyControl(ctx.allocator, ctx.terminal_colors, ctx.pending_output, cmd.payload),
+                    4 => OscColorNs.handleXtermPaletteControl(ctx.allocator, ctx.terminal_colors, ctx.pending_output, ctx.encode_buf, cmd.payload),
+                    10 => OscColorNs.handleXtermSpecialColor(ctx.allocator, ctx.terminal_colors, ctx.pending_output, ctx.encode_buf, .foreground, cmd.payload),
+                    11 => OscColorNs.handleXtermSpecialColor(ctx.allocator, ctx.terminal_colors, ctx.pending_output, ctx.encode_buf, .background, cmd.payload),
+                    12 => OscColorNs.handleXtermSpecialColor(ctx.allocator, ctx.terminal_colors, ctx.pending_output, ctx.encode_buf, .cursor, cmd.payload),
+                    104 => OscColorNs.resetXtermPalette(ctx.terminal_colors, cmd.payload),
+                    110 => ctx.terminal_colors.foreground = GridNs.default_fg,
+                    111 => ctx.terminal_colors.background = GridNs.default_bg,
+                    112 => ctx.terminal_colors.cursor = null,
                     else => {},
                 }
             },
             .hyperlink_set => |uri| {
-                activeStateMut(self).setCurrentLinkId(internHyperlink(self, uri));
+                ctx.link_ops.set_current_link_id(ctx.link_ops.ctx, ctx.link_ops.intern_hyperlink(ctx.link_ops.ctx, uri));
             },
             .hyperlink_clear => {
-                activeStateMut(self).setCurrentLinkId(0);
+                ctx.link_ops.set_current_link_id(ctx.link_ops.ctx, 0);
             },
             .clipboard_set => |payload| {
-                setPendingClipboard(self, payload);
+                ctx.clipboard_ops.set_pending_clipboard(ctx.clipboard_ops.ctx, payload);
             },
             .locator_reporting => |cfg| {
-                LocatorNs.setReporting(&self.host.locator, cfg.mode, cfg.unit);
+                LocatorNs.setReporting(ctx.locator, cfg.mode, cfg.unit);
             },
             .locator_filter => |area| {
-                LocatorNs.setFilter(&self.host.locator, area);
+                LocatorNs.setFilter(ctx.locator, area);
             },
             .locator_events => |modes| {
-                LocatorNs.setEvents(&self.host.locator, modes.params[0..modes.param_count]);
+                LocatorNs.setEvents(ctx.locator, modes.params[0..modes.param_count]);
             },
             .locator_request => |param| {
-                LocatorNs.appendReportForRequest(&self.host.locator, self.allocator, &self.host.pending_output, self.encode.buf[0..], param);
+                LocatorNs.appendReportForRequest(ctx.locator, ctx.allocator, ctx.pending_output, ctx.encode_buf, param);
             },
             .media_copy_request => |param| {
-                self.host.media_copy_request = param;
+                ctx.media_copy_request.* = param;
             },
             .dcs_payload => |payload| {
-                setDcsPayload(self, payload);
+                ctx.dcs_payload_ops.set_dcs_payload(ctx.dcs_payload_ops.ctx, payload);
             },
             .legacy_control => |kind| {
-                self.host.legacy_control = kind;
+                ctx.legacy_control.* = kind;
             },
             .reset_screen => {
-                resetTerminalState(self);
+                ctx.reset_ops.reset_terminal_state(ctx.reset_ops.ctx);
             },
         }
-    }
-
-    fn activeStateMut(self: anytype) *GridNs.GridModel {
-        return self.screen_state.active();
-    }
-
-    fn internHyperlink(self: anytype, uri: []const u8) u32 {
-        for (self.host.hyperlink_targets.items, 0..) |existing, idx| {
-            if (std.mem.eql(u8, existing, uri)) return @intCast(idx + 1);
-        }
-        const owned = self.allocator.dupe(u8, uri) catch return 0;
-        self.host.hyperlink_targets.append(self.allocator, owned) catch {
-            self.allocator.free(owned);
-            return 0;
-        };
-        return @intCast(self.host.hyperlink_targets.items.len);
-    }
-
-    fn setPendingClipboard(self: anytype, payload: []const u8) void {
-        if (self.host.pending_clipboard) |req| self.allocator.free(req.raw);
-        const owned = self.allocator.dupe(u8, payload) catch {
-            self.host.pending_clipboard = null;
-            return;
-        };
-        self.host.pending_clipboard = .{ .raw = owned };
-    }
-
-    fn setDcsPayload(self: anytype, payload: anytype) void {
-        if (self.host.dcs_payload) |old| self.allocator.free(old.payload);
-        const owned = self.allocator.dupe(u8, payload.payload) catch {
-            self.host.dcs_payload = null;
-            return;
-        };
-        self.host.dcs_payload = .{ .kind = payload.kind, .payload = owned };
-    }
-
-    fn resetTerminalState(self: anytype) void {
-        activeStateMut(self).reset();
-        self.kitty.resetTerminalState();
-        self.host.locator = .{};
     }
 };

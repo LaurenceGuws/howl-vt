@@ -3,14 +3,40 @@
 //! Reason: keep host-output-facing report generation out of the vt-core facade.
 
 const std = @import("std");
+const grid_state = @import("grid/state.zig");
 const grid_types = @import("grid/types.zig");
 const interpret_owner = @import("interpret.zig");
 
+const GridState = grid_state.GridModel;
 const GridTypes = grid_types;
 const Interpret = interpret_owner.Interpret;
 
 pub const TerminalReport = struct {
     const xtversion_text = "howl-vt-core dev";
+
+    pub const CursorReportView = struct {
+        rows: u16,
+        cols: u16,
+        cursor_row: u16,
+        cursor_col: u16,
+    };
+
+    pub const CharsetReportView = struct {
+        gl_index: u8,
+        g0_designation: u8,
+        g1_designation: u8,
+    };
+
+    pub const CursorInformationView = struct {
+        cursor: CursorReportView,
+        current_attrs: GridTypes.CellAttrs,
+        origin_mode: bool,
+        wrap_pending: bool,
+    };
+
+    pub const RectChecksumRequest = struct {
+        request_id: u16,
+    };
 
     pub fn appendModifyOtherKeysReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, value: i8) void {
         const text = std.fmt.bufPrint(encode_buf, "\x1b[>4;{d}m", .{value}) catch return;
@@ -41,12 +67,12 @@ pub const TerminalReport = struct {
         output.appendSlice(allocator, text) catch {};
     }
 
-    pub fn appendCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: anytype) void {
+    pub fn appendCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) void {
         const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}R", .{ render_view.cursor_row + 1, render_view.cursor_col + 1 }) catch return;
         output.appendSlice(allocator, text) catch {};
     }
 
-    pub fn appendDecCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: anytype) void {
+    pub fn appendDecCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) void {
         const text = std.fmt.bufPrint(encode_buf, "\x1b[?{d};{d}R", .{ render_view.cursor_row + 1, render_view.cursor_col + 1 }) catch return;
         output.appendSlice(allocator, text) catch {};
     }
@@ -66,8 +92,8 @@ pub const TerminalReport = struct {
         output.appendSlice(allocator, text) catch {};
     }
 
-    pub fn appendCursorInformationReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: anytype, charset: anytype) void {
-        const attrs = render_view.screen.current_attrs;
+    pub fn appendCursorInformationReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, view: CursorInformationView, charset: CharsetReportView) void {
+        const attrs = view.current_attrs;
 
         var srend_bits: u8 = 0;
         if (attrs.bold) srend_bits |= 1;
@@ -79,16 +105,16 @@ pub const TerminalReport = struct {
         const satt: u8 = if (attrs.protected) 0x41 else 0x40;
 
         var sflag_bits: u8 = 0;
-        if (render_view.screen.origin_mode) sflag_bits |= 1;
-        if (render_view.screen.wrap_pending) sflag_bits |= 8;
+        if (view.origin_mode) sflag_bits |= 1;
+        if (view.wrap_pending) sflag_bits |= 8;
         const sflag: u8 = 0x40 + sflag_bits;
 
         const text = std.fmt.bufPrint(
             encode_buf,
             "\x1bP1$u{d};{d};1;{c};{c};{c};{d};2;@;{c}{c}BB\x1b\\",
             .{
-                render_view.cursor_row + 1,
-                render_view.cursor_col + 1,
+                view.cursor.cursor_row + 1,
+                view.cursor.cursor_col + 1,
                 srend,
                 satt,
                 sflag,
@@ -100,7 +126,7 @@ pub const TerminalReport = struct {
         output.appendSlice(allocator, text) catch {};
     }
 
-    pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: anytype) void {
+    pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const GridState) void {
         output.appendSlice(allocator, "\x1bP2$u") catch return;
         var first = true;
         var col: u16 = 0;
@@ -114,7 +140,7 @@ pub const TerminalReport = struct {
         output.appendSlice(allocator, "\x1b\\") catch {};
     }
 
-    pub fn appendDisplayedExtentReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: anytype) void {
+    pub fn appendDisplayedExtentReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) void {
         const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d};1;1;1\"w", .{ render_view.rows, render_view.cols }) catch return;
         output.appendSlice(allocator, text) catch {};
     }
@@ -125,12 +151,12 @@ pub const TerminalReport = struct {
         output.appendSlice(allocator, text) catch {};
     }
 
-    pub fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, req: anytype, checksum: u16) void {
+    pub fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, req: RectChecksumRequest, checksum: u16) void {
         const text = std.fmt.bufPrint(encode_buf, "\x1bP{d}!~{X:0>4}\x1b\\", .{ req.request_id, checksum }) catch return;
         output.appendSlice(allocator, text) catch {};
     }
 
-    pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: anytype, area: Interpret.SemanticEvent.RectArea) void {
+    pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const GridState, area: Interpret.SemanticEvent.RectArea) void {
         const common = commonAttrsForRect(screen, area) orelse {
             output.appendSlice(allocator, "\x1b[0m") catch {};
             return;
@@ -151,7 +177,7 @@ pub const TerminalReport = struct {
         output.appendSlice(allocator, "m") catch {};
     }
 
-    pub fn computeRectChecksum(screen: anytype, xtchecksum_flags: u16, page: u16, area: Interpret.SemanticEvent.RectArea) u16 {
+    pub fn computeRectChecksum(screen: *const GridState, xtchecksum_flags: u16, page: u16, area: Interpret.SemanticEvent.RectArea) u16 {
         if (page != 1) return 0;
         const bounds = screen.rectBoundsForReport(area) orelse return 0;
         var sum: u16 = 0;
@@ -188,7 +214,7 @@ pub const TerminalReport = struct {
         bg: GridTypes.Color,
     };
 
-    fn commonAttrsForRect(screen: anytype, area: Interpret.SemanticEvent.RectArea) ?CommonAttrs {
+    fn commonAttrsForRect(screen: *const GridState, area: Interpret.SemanticEvent.RectArea) ?CommonAttrs {
         const bounds = screen.rectBoundsForReport(area) orelse return null;
         const first_cell = screen.cellInfoAt(bounds.top, bounds.left);
         var common = CommonAttrs{

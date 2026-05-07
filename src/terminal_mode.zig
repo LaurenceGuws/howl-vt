@@ -128,7 +128,7 @@ pub const TerminalMode = struct {
         vt.selection.clear();
     }
 
-    fn decModeStateForView(view: DecView, mode: u16) u8 {
+    pub fn decModeStateForView(view: DecView, mode: u16) u8 {
         return switch (mode) {
             1 => boolToDecModeState(view.application_cursor_keys),
             7 => boolToDecModeState(view.auto_wrap),
@@ -150,7 +150,7 @@ pub const TerminalMode = struct {
         };
     }
 
-    fn ansiModeStateForView(view: AnsiView, mode: u16) u8 {
+    pub fn ansiModeStateForView(view: AnsiView, mode: u16) u8 {
         return switch (mode) {
             2 => boolToDecModeState(view.keyboard_action_mode),
             4 => boolToDecModeState(view.insert_mode),

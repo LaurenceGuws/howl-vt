@@ -3,8 +3,16 @@
 //! Reason: keep graphics upload, placement, storage, and replies out of the vt-core facade.
 
 const std = @import("std");
+const action_types = @import("../interpret/action_types.zig");
+
+const KittyGraphicsCommand = action_types.KittyGraphicsCommand;
 
 pub const Graphics = struct {
+    pub const RenderCursorView = struct {
+        row: u16,
+        col: u16,
+    };
+
     pub const Image = struct {
         image_id: u32,
         image_number: u32,
@@ -87,7 +95,7 @@ pub const Graphics = struct {
             return self.frames.items[idx];
         }
 
-        pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: anytype, output: *std.ArrayList(u8), encode_buf: []u8, cmd: anytype) void {
+        pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) void {
             if (cmd.action == 'q') {
                 if (!cmd.quiet) appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:kitty graphics rendering unsupported");
                 return;
@@ -107,7 +115,7 @@ pub const Graphics = struct {
             self.captureUpload(allocator, output, encode_buf, cmd);
         }
 
-        fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: anytype, output: *std.ArrayList(u8), encode_buf: []u8, cmd: anytype) void {
+        fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) void {
             const image_id = self.resolveImageId(cmd) orelse {
                 if (!cmd.quiet) appendReply(allocator, output, encode_buf, cmd.image_id, "ENOENT:image not found");
                 return;
@@ -115,8 +123,8 @@ pub const Graphics = struct {
             self.placements.append(allocator, .{
                 .image_id = image_id,
                 .placement_id = cmd.placement_id,
-                .row = render_view.cursor_row,
-                .col = render_view.cursor_col,
+                .row = render_view.row,
+                .col = render_view.col,
                 .columns = cmd.columns,
                 .rows = cmd.rows,
                 .z_index = cmd.z,
@@ -124,7 +132,7 @@ pub const Graphics = struct {
             if (!cmd.quiet) appendReply(allocator, output, encode_buf, image_id, "OK");
         }
 
-        fn delete(self: *State, allocator: std.mem.Allocator, render_view: anytype, cmd: anytype) void {
+        fn delete(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, cmd: KittyGraphicsCommand) void {
             self.abortUpload(allocator);
             switch (cmd.delete_target) {
                 0, 'a', 'A' => {
@@ -139,7 +147,7 @@ pub const Graphics = struct {
                     if (cmd.placement_id != 0) self.deletePlacement(image_id, cmd.placement_id) else self.deleteImage(allocator, image_id);
                 },
                 'c', 'C' => {
-                    self.deletePlacementsAt(render_view.cursor_col + 1, render_view.cursor_row + 1, null);
+                    self.deletePlacementsAt(render_view.col + 1, render_view.row + 1, null);
                     if (cmd.delete_target == 'C') self.deleteUnplacedImages(allocator);
                 },
                 'p', 'P' => {
@@ -168,7 +176,7 @@ pub const Graphics = struct {
             }
         }
 
-        fn captureUpload(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: anytype) void {
+        fn captureUpload(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) void {
             if (cmd.medium != 'd') return;
             if (cmd.action != 't' and cmd.action != 'T' and cmd.action != 'f') return;
             if (cmd.more_chunks) {
@@ -182,7 +190,7 @@ pub const Graphics = struct {
             }
         }
 
-        fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: anytype, more: bool) void {
+        fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) void {
             if (self.upload == null) {
                 const image_id = self.imageIdForUpload(cmd);
                 self.upload = .{
@@ -217,7 +225,7 @@ pub const Graphics = struct {
             }
         }
 
-        fn storePayload(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: anytype, payload: []const u8) void {
+        fn storePayload(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, payload: []const u8) void {
             const owned = allocator.dupe(u8, payload) catch return;
             const image_id = self.imageIdForUpload(cmd);
             if (cmd.action == 'f') {
@@ -228,7 +236,7 @@ pub const Graphics = struct {
             }
         }
 
-        fn imageIdForUpload(self: *State, cmd: anytype) u32 {
+        fn imageIdForUpload(self: *State, cmd: KittyGraphicsCommand) u32 {
             if (cmd.image_id != 0) return cmd.image_id;
             if (cmd.image_number == 0) return 0;
             const image_id = self.next_image_id;
@@ -265,7 +273,7 @@ pub const Graphics = struct {
             return null;
         }
 
-        fn resolveImageId(self: *const State, cmd: anytype) ?u32 {
+        fn resolveImageId(self: *const State, cmd: KittyGraphicsCommand) ?u32 {
             if (cmd.image_id != 0 and cmd.image_number != 0) return null;
             if (cmd.image_id != 0) return if (self.findImage(cmd.image_id) != null) cmd.image_id else null;
             if (cmd.image_number != 0) {
@@ -375,7 +383,7 @@ pub const Graphics = struct {
             return false;
         }
 
-        fn deleteFrames(self: *State, allocator: std.mem.Allocator, cmd: anytype) void {
+        fn deleteFrames(self: *State, allocator: std.mem.Allocator, cmd: KittyGraphicsCommand) void {
             const image_id = self.resolveImageId(cmd) orelse cmd.image_id;
             var idx: usize = 0;
             while (idx < self.frames.items.len) {
