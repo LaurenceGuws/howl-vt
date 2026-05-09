@@ -706,6 +706,11 @@ test "actions: DEC private bracketed paste disable maps false" {
     try std.testing.expect(!process(ev).?.bracketed_paste);
 }
 
+test "actions: DEC private synchronized output maps enable disable" {
+    try std.testing.expect(process(makePrivateStyleChange('h', &.{2026})).?.synchronized_output);
+    try std.testing.expect(!process(makePrivateStyleChange('l', &.{2026})).?.synchronized_output);
+}
+
 test "actions: kitty clipboard mode maps enable disable and query" {
     var params = [_]i32{0} ** 16;
     params[0] = 5522;

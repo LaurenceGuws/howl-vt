@@ -79,6 +79,11 @@ pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates:
                 'l' => SemanticEvent{ .bracketed_paste = false },
                 else => null,
             },
+            2026 => switch (final) {
+                'h' => SemanticEvent{ .synchronized_output = true },
+                'l' => SemanticEvent{ .synchronized_output = false },
+                else => null,
+            },
             5522 => switch (final) {
                 'h' => SemanticEvent{ .kitty_clipboard_mode = true },
                 'l' => SemanticEvent{ .kitty_clipboard_mode = false },

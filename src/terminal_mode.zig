@@ -22,6 +22,7 @@ pub const DecView = struct {
     mouse_protocol: Input.MouseProtocol,
     focus_reporting: bool,
     bracketed_paste: bool,
+    synchronized_output: bool,
     kitty_clipboard: bool,
 };
 
@@ -101,6 +102,7 @@ pub fn setDecMode(vt: anytype, mode: u16, enabled: bool) void {
         1006 => vt.modes.mouse_protocol = if (enabled) .sgr else .none,
         1015 => vt.modes.mouse_protocol = if (enabled) .urxvt else .none,
         2004 => vt.modes.bracketed_paste = enabled,
+        2026 => vt.modes.synchronized_output = enabled,
         5522 => vt.modes.kitty_clipboard = enabled,
         else => {},
     }
@@ -144,6 +146,7 @@ pub fn decModeStateForView(view: DecView, mode: u16) u8 {
         1006 => boolToDecModeState(view.mouse_protocol == .sgr),
         1015 => boolToDecModeState(view.mouse_protocol == .urxvt),
         2004 => boolToDecModeState(view.bracketed_paste),
+        2026 => boolToDecModeState(view.synchronized_output),
         5522 => boolToDecModeState(view.kitty_clipboard),
         else => 0,
     };
@@ -186,7 +189,7 @@ pub fn savedDecModeState(saved_modes: []const SavedDecMode, saved_count: u8, mod
 
 pub fn canSetDecMode(mode: u16) bool {
     return switch (mode) {
-        1, 6, 7, 9, 25, 47, 66, 69, 1047, 1049, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004 => true,
+        1, 6, 7, 9, 25, 47, 66, 69, 1047, 1049, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004, 2026 => true,
         else => false,
     };
 }

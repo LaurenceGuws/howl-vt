@@ -156,6 +156,7 @@ pub fn modeAction(event: SemanticEvent) ?ModeAction {
         .extended_reverse_wraparound_mode => |v| ModeAction{ .extended_reverse_wraparound_mode = v },
         .focus_reporting => |v| ModeAction{ .focus_reporting = v },
         .bracketed_paste => |v| ModeAction{ .bracketed_paste = v },
+        .synchronized_output => |v| ModeAction{ .synchronized_output = v },
         .mouse_tracking_off => .mouse_tracking_off,
         .mouse_tracking_x10 => .mouse_tracking_x10,
         .mouse_tracking_normal => .mouse_tracking_normal,

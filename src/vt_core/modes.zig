@@ -29,6 +29,7 @@ pub const Context = struct {
     extended_reverse_wraparound_mode: *bool,
     focus_reporting: *bool,
     bracketed_paste: *bool,
+    synchronized_output: *bool,
     mouse_tracking: *Input.MouseTrackingMode,
     mouse_protocol: *Input.MouseProtocol,
     saved_dec_modes: *[16]TerminalModeNs.SavedDecMode,
@@ -92,6 +93,9 @@ pub fn apply(ctx: Context, action: ModeAction) void {
         },
         .bracketed_paste => |enabled| {
             ctx.bracketed_paste.* = enabled;
+        },
+        .synchronized_output => |enabled| {
+            ctx.synchronized_output.* = enabled;
         },
         .mouse_tracking_off => {
             ctx.mouse_tracking.* = .off;
@@ -178,6 +182,7 @@ fn setDecMode(ctx: Context, mode: u16, enabled: bool) void {
         1006 => ctx.mouse_protocol.* = if (enabled) .sgr else .none,
         1015 => ctx.mouse_protocol.* = if (enabled) .urxvt else .none,
         2004 => ctx.bracketed_paste.* = enabled,
+        2026 => ctx.synchronized_output.* = enabled,
         5522 => ctx.kitty_clipboard.* = enabled,
         else => {},
     }
@@ -199,6 +204,7 @@ fn decView(ctx: Context) TerminalModeNs.DecView {
         .mouse_protocol = ctx.mouse_protocol.*,
         .focus_reporting = ctx.focus_reporting.*,
         .bracketed_paste = ctx.bracketed_paste.*,
+        .synchronized_output = ctx.synchronized_output.*,
         .kitty_clipboard = ctx.kitty_clipboard.*,
     };
 }
@@ -215,6 +221,7 @@ fn decViewForDefaults() TerminalModeNs.DecView {
         .mouse_protocol = .none,
         .focus_reporting = false,
         .bracketed_paste = false,
+        .synchronized_output = false,
         .kitty_clipboard = false,
     };
 }

@@ -196,6 +196,7 @@ pub const VtCore = struct {
         key_format: [8]u16 = [_]u16{0} ** 8,
         focus_reporting: bool = false,
         bracketed_paste: bool = false,
+        synchronized_output: bool = false,
         kitty_clipboard: bool = false,
         sixel_display_mode: bool = false,
         reverse_wraparound_mode: bool = false,
@@ -595,6 +596,10 @@ pub const VtCore = struct {
         self.activeStateMut().clearDirtyRows();
     }
 
+    pub fn synchronizedOutputActive(self: *const VtCore) bool {
+        return self.modes.synchronized_output;
+    }
+
     /// Return queued event count.
     pub fn queuedEventCount(self: *const VtCore) usize {
         return self.apply_flow.len();
@@ -903,6 +908,7 @@ pub const VtCore = struct {
                     .mouse_protocol = self.modes.mouse_protocol,
                     .focus_reporting = self.modes.focus_reporting,
                     .bracketed_paste = self.modes.bracketed_paste,
+                    .synchronized_output = self.modes.synchronized_output,
                     .kitty_clipboard = self.modes.kitty_clipboard,
                 },
                 .modify_other_keys = self.modes.modify_other_keys,
@@ -951,6 +957,7 @@ pub const VtCore = struct {
                 .extended_reverse_wraparound_mode = &self.modes.extended_reverse_wraparound_mode,
                 .focus_reporting = &self.modes.focus_reporting,
                 .bracketed_paste = &self.modes.bracketed_paste,
+                .synchronized_output = &self.modes.synchronized_output,
                 .mouse_tracking = &self.modes.mouse_tracking,
                 .mouse_protocol = &self.modes.mouse_protocol,
                 .saved_dec_modes = &self.modes.saved_dec_modes,
@@ -995,6 +1002,20 @@ pub const VtCore = struct {
         if (Interpret.screenAction(sem_ev)) |screen_ev| self.activeStateMut().applyScreen(screen_ev);
     }
 };
+
+test "vt core tracks synchronized output private mode" {
+    var vt = try VtCore.init(std.testing.allocator, 2, 8);
+    defer vt.deinit();
+
+    vt.feedSlice("\x1b[?2026h");
+    vt.apply();
+    try std.testing.expect(vt.synchronizedOutputActive());
+
+    vt.feedSlice("\x1b[?2026l");
+    vt.apply();
+    try std.testing.expect(!vt.synchronizedOutputActive());
+}
+
 test {
     _ = @import("test/apply_flow_regression.zig");
     _ = @import("test/vt_core_graphics.zig");
