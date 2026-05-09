@@ -4,12 +4,12 @@
 
 const std = @import("std");
 const action_types = @import("action_types.zig");
-const bridge_mod = @import("parser_events.zig");
+const parser_events = @import("parser_events.zig");
 const kitty_actions = @import("kitty_actions.zig");
 
 const SemanticEvent = action_types.SemanticEvent;
 
-pub fn process(kind: bridge_mod.OscKind, command: ?u16, payload: []const u8) ?SemanticEvent {
+pub fn process(kind: parser_events.OscKind, command: ?u16, payload: []const u8) ?SemanticEvent {
     if (command) |cmd| switch (cmd) {
         22 => return SemanticEvent{ .kitty_pointer_shape = kitty_actions.parsePointerShape(payload) },
         4, 10, 11, 12, 21, 104, 110, 111, 112 => return SemanticEvent{ .terminal_color_control = .{ .command = cmd, .payload = payload } },

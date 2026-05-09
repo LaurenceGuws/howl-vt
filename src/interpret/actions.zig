@@ -4,7 +4,7 @@
 
 const action_types = @import("action_types.zig");
 const apc_actions = @import("apc_actions.zig");
-const bridge_mod = @import("parser_events.zig");
+const parser_events = @import("parser_events.zig");
 const c0_actions = @import("c0_actions.zig");
 const csi_actions = @import("csi_actions.zig");
 const dcs_actions = @import("dcs_actions.zig");
@@ -13,7 +13,7 @@ const kitty_actions = @import("kitty_actions.zig");
 const osc_actions = @import("osc_actions.zig");
 
 /// Parser-event alias for action mapping.
-const Event = bridge_mod.Event;
+const Event = parser_events.Event;
 pub const KittyGraphicsCommand = action_types.KittyGraphicsCommand;
 pub const KittyShellMark = action_types.KittyShellMark;
 pub const KittyNotificationCommand = action_types.KittyNotificationCommand;

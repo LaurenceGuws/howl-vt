@@ -1,4 +1,4 @@
-//! Responsibility: own logical-history helper payloads.
+//! Responsibility: own logical-history payloads.
 //! Ownership: terminal grid scrollback/history concern.
 //! Reason: keep rewrap/history data shapes separate from screen mutation logic.
 

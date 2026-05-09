@@ -1,5 +1,5 @@
 //! Responsibility: classify stream bytes into text/control events.
-//! Ownership: parser stream decoding helper.
+//! Ownership: parser stream decoding owner.
 //! Reason: isolate UTF-8 and control-path normalization logic.
 
 const std = @import("std");

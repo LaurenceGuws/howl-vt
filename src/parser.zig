@@ -24,7 +24,7 @@ pub const StreamEvent = stream.StreamEvent;
 pub const CsiAction = csi.CsiAction;
 /// CSI parser owner.
 pub const CsiParser = csi.CsiParser;
-/// String-control parser helper.
+/// String-control parser owner.
 pub const StringControl = string_control.StringControl;
 /// Maximum supported CSI parameter count.
 pub const max_params = csi.max_params;

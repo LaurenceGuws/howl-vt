@@ -1,5 +1,5 @@
 //! Responsibility: buffer OSC/APC/DCS/PM string-control payloads until terminator.
-//! Ownership: parser string-control syntax helper.
+//! Ownership: parser string-control syntax owner.
 //! Reason: keep string-control transport buffering separate from the main byte-state machine.
 
 const std = @import("std");
