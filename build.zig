@@ -8,11 +8,21 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const perf_optimize: std.builtin.OptimizeMode = .ReleaseFast;
+    const module_options = b.addOptions();
+    module_options.addOption(bool, "c_abi", false);
+    module_options.addOption(bool, "vt_core", true);
+    const perf_options = b.addOptions();
+    perf_options.addOption(bool, "c_abi", false);
+    perf_options.addOption(bool, "vt_core", true);
+    const ffi_options = b.addOptions();
+    ffi_options.addOption(bool, "c_abi", true);
+    ffi_options.addOption(bool, "vt_core", true);
     const mod = b.addModule("vt_core", .{
         .root_source_file = b.path("src/howl_vt.zig"),
         .target = target,
         .optimize = optimize,
     });
+    mod.addOptions("vt_options", module_options);
     mod.addImport("vt_core", mod);
     const fuzz_scrollback_mod = b.createModule(.{
         .root_source_file = b.path("src/fuzz/scrollback.zig"),
@@ -25,6 +35,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = perf_optimize,
     });
+    perf_mod.addOptions("vt_options", perf_options);
     perf_mod.addImport("vt_core", perf_mod);
     const perf_fuzz_scrollback_mod = b.createModule(.{
         .root_source_file = b.path("src/fuzz/scrollback.zig"),
@@ -55,6 +66,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    ffi_mod.addOptions("vt_options", ffi_options);
     ffi_mod.addImport("vt_core", ffi_mod);
     const ffi_lib = b.addLibrary(.{
         .name = "vt_core",
