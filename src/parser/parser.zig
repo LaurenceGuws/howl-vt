@@ -15,12 +15,6 @@ const EscState = enum {
     charset,
 };
 
-/// OSC termination style.
-pub const OscTerminator = enum {
-    bel,
-    st,
-};
-
 /// Character set selector.
 const Charset = enum {
     ascii,
@@ -39,61 +33,76 @@ pub const DeccirCharsetState = struct {
     gl_index: u8,
 };
 
-/// Parser sink callback interface.
-pub const Sink = struct {
-    ptr: *anyopaque,
-    onStreamEventFn: *const fn (*anyopaque, stream_mod.StreamEvent) void,
-    onAsciiSliceFn: *const fn (*anyopaque, []const u8) void,
-    onCsiFn: *const fn (*anyopaque, csi_mod.CsiAction) void,
-    onOscFn: *const fn (*anyopaque, []const u8, OscTerminator) void,
-    onApcFn: *const fn (*anyopaque, []const u8) void,
-    onDcsFn: *const fn (*anyopaque, []const u8) void,
-    onPmFn: *const fn (*anyopaque, []const u8) void,
-    onEscFinalFn: *const fn (*anyopaque, u8) void,
-
-    /// Emit stream event callback.
-    pub fn onStreamEvent(self: Sink, event: stream_mod.StreamEvent) void {
-        self.onStreamEventFn(self.ptr, event);
-    }
-
-    /// Emit ASCII slice callback.
-    pub fn onAsciiSlice(self: Sink, bytes: []const u8) void {
-        self.onAsciiSliceFn(self.ptr, bytes);
-    }
-
-    /// Emit CSI callback.
-    pub fn onCsi(self: Sink, action: csi_mod.CsiAction) void {
-        self.onCsiFn(self.ptr, action);
-    }
-
-    /// Emit OSC callback.
-    pub fn onOsc(self: Sink, data: []const u8, terminator: OscTerminator) void {
-        self.onOscFn(self.ptr, data, terminator);
-    }
-
-    /// Emit APC callback.
-    pub fn onApc(self: Sink, data: []const u8) void {
-        self.onApcFn(self.ptr, data);
-    }
-
-    /// Emit DCS callback.
-    pub fn onDcs(self: Sink, data: []const u8) void {
-        self.onDcsFn(self.ptr, data);
-    }
-
-    /// Emit PM callback.
-    pub fn onPm(self: Sink, data: []const u8) void {
-        self.onPmFn(self.ptr, data);
-    }
-
-    /// Emit ESC-final callback.
-    pub fn onEscFinal(self: Sink, byte: u8) void {
-        self.onEscFinalFn(self.ptr, byte);
-    }
-};
-
 /// Stateful parser for terminal input streams.
 pub const Parser = struct {
+    /// Stream event payload.
+    pub const StreamEvent = stream_mod.StreamEvent;
+    /// CSI action payload.
+    pub const CsiAction = csi_mod.CsiAction;
+    /// Maximum supported CSI parameter count.
+    pub const max_params = csi_mod.max_params;
+    /// Maximum supported CSI intermediate count.
+    pub const max_intermediates = csi_mod.max_intermediates;
+
+    /// OSC termination style.
+    pub const OscTerminator = enum {
+        bel,
+        st,
+    };
+
+    /// Parser sink callback interface.
+    pub const Sink = struct {
+        ptr: *anyopaque,
+        onStreamEventFn: *const fn (*anyopaque, StreamEvent) void,
+        onAsciiSliceFn: *const fn (*anyopaque, []const u8) void,
+        onCsiFn: *const fn (*anyopaque, CsiAction) void,
+        onOscFn: *const fn (*anyopaque, []const u8, OscTerminator) void,
+        onApcFn: *const fn (*anyopaque, []const u8) void,
+        onDcsFn: *const fn (*anyopaque, []const u8) void,
+        onPmFn: *const fn (*anyopaque, []const u8) void,
+        onEscFinalFn: *const fn (*anyopaque, u8) void,
+
+        /// Emit stream event callback.
+        pub fn onStreamEvent(self: Sink, event: StreamEvent) void {
+            self.onStreamEventFn(self.ptr, event);
+        }
+
+        /// Emit ASCII slice callback.
+        pub fn onAsciiSlice(self: Sink, bytes: []const u8) void {
+            self.onAsciiSliceFn(self.ptr, bytes);
+        }
+
+        /// Emit CSI callback.
+        pub fn onCsi(self: Sink, action: CsiAction) void {
+            self.onCsiFn(self.ptr, action);
+        }
+
+        /// Emit OSC callback.
+        pub fn onOsc(self: Sink, data: []const u8, terminator: OscTerminator) void {
+            self.onOscFn(self.ptr, data, terminator);
+        }
+
+        /// Emit APC callback.
+        pub fn onApc(self: Sink, data: []const u8) void {
+            self.onApcFn(self.ptr, data);
+        }
+
+        /// Emit DCS callback.
+        pub fn onDcs(self: Sink, data: []const u8) void {
+            self.onDcsFn(self.ptr, data);
+        }
+
+        /// Emit PM callback.
+        pub fn onPm(self: Sink, data: []const u8) void {
+            self.onPmFn(self.ptr, data);
+        }
+
+        /// Emit ESC-final callback.
+        pub fn onEscFinal(self: Sink, byte: u8) void {
+            self.onEscFinalFn(self.ptr, byte);
+        }
+    };
+
     allocator: std.mem.Allocator,
     sink: Sink,
     stream: stream_mod.Stream,
@@ -400,7 +409,7 @@ const Event = union(enum) {
     stream_invalid,
     ascii_slice: []const u8,
     csi: struct { final: u8, params: [16]i32, count: u8 },
-    osc: struct { data: []const u8, term: OscTerminator },
+    osc: struct { data: []const u8, term: Parser.OscTerminator },
     apc: []const u8,
     dcs: []const u8,
     pm: []const u8,
@@ -429,11 +438,11 @@ const Harness = struct {
         self.events.deinit(self.allocator);
     }
 
-    fn toSink(self: *Harness) Sink {
+    fn toSink(self: *Harness) Parser.Sink {
         return .{ .ptr = self, .onStreamEventFn = onStreamEvent, .onAsciiSliceFn = onAsciiSlice, .onCsiFn = onCsi, .onOscFn = onOsc, .onApcFn = onApc, .onDcsFn = onDcs, .onPmFn = onPm, .onEscFinalFn = onEscFinal };
     }
 
-    fn onStreamEvent(ptr: *anyopaque, event: stream_mod.StreamEvent) void {
+    fn onStreamEvent(ptr: *anyopaque, event: Parser.StreamEvent) void {
         const self: *Harness = @ptrCast(@alignCast(ptr));
         const ev = switch (event) {
             .codepoint => |cp| Event{ .stream_codepoint = cp },
@@ -449,12 +458,12 @@ const Harness = struct {
         self.events.append(self.allocator, Event{ .ascii_slice = owned }) catch {};
     }
 
-    fn onCsi(ptr: *anyopaque, action: csi_mod.CsiAction) void {
+    fn onCsi(ptr: *anyopaque, action: Parser.CsiAction) void {
         const self: *Harness = @ptrCast(@alignCast(ptr));
         self.events.append(self.allocator, Event{ .csi = .{ .final = action.final, .params = action.params, .count = action.count } }) catch {};
     }
 
-    fn onOsc(ptr: *anyopaque, data: []const u8, term: OscTerminator) void {
+    fn onOsc(ptr: *anyopaque, data: []const u8, term: Parser.OscTerminator) void {
         const self: *Harness = @ptrCast(@alignCast(ptr));
         const owned = self.allocator.dupe(u8, data) catch return;
         self.events.append(self.allocator, Event{ .osc = .{ .data = owned, .term = term } }) catch {};
@@ -533,7 +542,7 @@ test "parser: OSC with BEL terminator" {
     parser.handleSlice("\x1b]title\x07");
     try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .osc);
-    try std.testing.expectEqual(OscTerminator.bel, harness.events.items[0].osc.term);
+    try std.testing.expectEqual(Parser.OscTerminator.bel, harness.events.items[0].osc.term);
     try std.testing.expectEqualSlices(u8, "title", harness.events.items[0].osc.data);
 }
 
@@ -546,7 +555,7 @@ test "parser: OSC with ST terminator" {
     parser.handleSlice("\x1b]url\x1b\\");
     try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .osc);
-    try std.testing.expectEqual(OscTerminator.st, harness.events.items[0].osc.term);
+    try std.testing.expectEqual(Parser.OscTerminator.st, harness.events.items[0].osc.term);
     try std.testing.expectEqualSlices(u8, "url", harness.events.items[0].osc.data);
 }
 

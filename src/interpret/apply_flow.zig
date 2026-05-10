@@ -4,12 +4,12 @@
 
 const std = @import("std");
 const grid_owner = @import("../grid/grid.zig");
-const parser_owner = @import("../parser.zig");
+const parser_owner = @import("../parser/parser.zig");
 const parser_events_mod = @import("parser_events.zig");
 const actions_mod = @import("actions.zig");
 
 const Grid = grid_owner;
-const ParserApi = parser_owner;
+const ParserApi = parser_owner.Parser;
 
 /// ApplyFlow event alias.
 const Event = parser_events_mod.Event;
@@ -18,7 +18,7 @@ const Event = parser_events_mod.Event;
 pub const ApplyFlow = struct {
     allocator: std.mem.Allocator,
     parser_events: *parser_events_mod.ParserEvents,
-    parser: ParserApi.Parser,
+    parser: ParserApi,
 
     /// Initialize apply-flow resources.
     pub fn init(allocator: std.mem.Allocator) !ApplyFlow {
@@ -28,7 +28,7 @@ pub const ApplyFlow = struct {
             parser_events.deinit();
             allocator.destroy(parser_events);
         }
-        const p = try ParserApi.Parser.init(allocator, parser_events.toSink());
+        const p = try ParserApi.init(allocator, parser_events.toSink());
         return .{ .allocator = allocator, .parser_events = parser_events, .parser = p };
     }
 

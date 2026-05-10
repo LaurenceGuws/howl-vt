@@ -11,7 +11,7 @@ const osc_actions = @import("interpret/osc_actions.zig");
 const kitty = @import("kitty/kitty.zig");
 const locator = @import("locator.zig");
 const osc_color = @import("osc_color.zig");
-const parser = @import("parser.zig");
+const parser = @import("parser/parser.zig");
 const selection = @import("selection/selection.zig");
 const snapshot = @import("snapshot/snapshot.zig");
 const mode = @import("mode.zig");
@@ -24,7 +24,7 @@ const OscActions = osc_actions;
 const KittyNs = kitty;
 const LocatorNs = locator;
 const OscColorNs = osc_color;
-const ParserNs = parser;
+const ParserNs = parser.Parser;
 const Selection = selection;
 const Snapshot = snapshot;
 const TerminalModeNs = mode;
@@ -32,7 +32,7 @@ const TerminalReportNs = report;
 
 /// Explicit package-surface grid owner alias retained for downstream runtime/render code.
 pub const Grid = GridNs;
-/// Explicit package-surface parser owner alias retained for fuzz/protocol tools.
+/// Parser instance owner used by vt-core protocol tools.
 pub const Parser = ParserNs;
 
 /// Host-neutral terminal facade.

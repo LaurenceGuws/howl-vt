@@ -4,13 +4,11 @@
 
 const std = @import("std");
 const vt = @import("vt_core");
-const parser_api = vt.Parser;
-
-const Parser = parser_api.Parser;
-const Sink = parser_api.Sink;
-const OscTerminator = parser_api.OscTerminator;
-const CsiAction = parser_api.CsiAction;
-const StreamEvent = parser_api.StreamEvent;
+const Parser = vt.Parser;
+const Sink = Parser.Sink;
+const OscTerminator = Parser.OscTerminator;
+const CsiAction = Parser.CsiAction;
+const StreamEvent = Parser.StreamEvent;
 const xterm_ctlseqs = @embedFile("assets/xterm-ctlseqs.ms");
 
 pub const Options = struct {
@@ -46,9 +44,9 @@ const Event = union(enum) {
         final: u8,
         leader: u8,
         private: bool,
-        params: [parser_api.max_params]i32,
+        params: [Parser.max_params]i32,
         count: u8,
-        intermediates: [parser_api.max_intermediates]u8,
+        intermediates: [Parser.max_intermediates]u8,
         intermediates_len: u8,
     },
     osc: struct {

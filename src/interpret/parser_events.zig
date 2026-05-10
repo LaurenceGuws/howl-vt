@@ -3,9 +3,9 @@
 //! Reason: isolate parser sink mechanics from downstream action mapping.
 
 const std = @import("std");
-const parser_owner = @import("../parser.zig");
+const parser_owner = @import("../parser/parser.zig");
 
-const ParserApi = parser_owner;
+const ParserApi = parser_owner.Parser;
 
 /// Parser-facing event union.
 pub const Event = union(enum) {
@@ -205,7 +205,7 @@ test "parser events: maps ASCII text to text event" {
     const gpa = std.testing.allocator;
     var parser_events = ParserEvents.init(gpa);
     defer parser_events.deinit();
-    var parser = try ParserApi.Parser.init(gpa, parser_events.toSink());
+    var parser = try ParserApi.init(gpa, parser_events.toSink());
     defer parser.deinit();
     parser.handleSlice("hello");
     try std.testing.expectEqual(@as(usize, 1), parser_events.events.items.len);
@@ -217,7 +217,7 @@ test "parser events: maps single ASCII byte to codepoint event" {
     const gpa = std.testing.allocator;
     var parser_events = ParserEvents.init(gpa);
     defer parser_events.deinit();
-    var parser = try ParserApi.Parser.init(gpa, parser_events.toSink());
+    var parser = try ParserApi.init(gpa, parser_events.toSink());
     defer parser.deinit();
     parser.handleSlice("x");
     try std.testing.expectEqual(@as(usize, 1), parser_events.events.items.len);
@@ -229,7 +229,7 @@ test "parser events: maps UTF-8 codepoint to codepoint event" {
     const gpa = std.testing.allocator;
     var parser_events = ParserEvents.init(gpa);
     defer parser_events.deinit();
-    var parser = try ParserApi.Parser.init(gpa, parser_events.toSink());
+    var parser = try ParserApi.init(gpa, parser_events.toSink());
     defer parser.deinit();
     parser.handleSlice("\xC3\xA9");
     try std.testing.expectEqual(@as(usize, 1), parser_events.events.items.len);
@@ -241,7 +241,7 @@ test "parser events: maps control byte to control event" {
     const gpa = std.testing.allocator;
     var parser_events = ParserEvents.init(gpa);
     defer parser_events.deinit();
-    var parser = try ParserApi.Parser.init(gpa, parser_events.toSink());
+    var parser = try ParserApi.init(gpa, parser_events.toSink());
     defer parser.deinit();
     parser.handleByte(0x07);
     try std.testing.expectEqual(@as(usize, 1), parser_events.events.items.len);
@@ -253,7 +253,7 @@ test "parser events: maps CSI sequence to style_change event" {
     const gpa = std.testing.allocator;
     var parser_events = ParserEvents.init(gpa);
     defer parser_events.deinit();
-    var parser = try ParserApi.Parser.init(gpa, parser_events.toSink());
+    var parser = try ParserApi.init(gpa, parser_events.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b[31m");
     try std.testing.expectEqual(@as(usize, 1), parser_events.events.items.len);
@@ -266,7 +266,7 @@ test "parser events: preserves CSI leader private and intermediates" {
     const gpa = std.testing.allocator;
     var parser_events = ParserEvents.init(gpa);
     defer parser_events.deinit();
-    var parser = try ParserApi.Parser.init(gpa, parser_events.toSink());
+    var parser = try ParserApi.init(gpa, parser_events.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b[?25h\x1b[!p");
     try std.testing.expectEqual(@as(usize, 2), parser_events.events.items.len);
@@ -284,7 +284,7 @@ test "parser events: maps OSC title command to typed osc event" {
     const gpa = std.testing.allocator;
     var parser_events = ParserEvents.init(gpa);
     defer parser_events.deinit();
-    var parser = try ParserApi.Parser.init(gpa, parser_events.toSink());
+    var parser = try ParserApi.init(gpa, parser_events.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b]0;My Window\x07");
     try std.testing.expectEqual(@as(usize, 1), parser_events.events.items.len);
@@ -298,7 +298,7 @@ test "parser events: preserves OSC clipboard transport" {
     const gpa = std.testing.allocator;
     var parser_events = ParserEvents.init(gpa);
     defer parser_events.deinit();
-    var parser = try ParserApi.Parser.init(gpa, parser_events.toSink());
+    var parser = try ParserApi.init(gpa, parser_events.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b]52;c;Zm9v\x07");
     try std.testing.expectEqual(@as(usize, 1), parser_events.events.items.len);
@@ -312,7 +312,7 @@ test "parser events: parses OSC command without semicolon payload" {
     const gpa = std.testing.allocator;
     var parser_events = ParserEvents.init(gpa);
     defer parser_events.deinit();
-    var parser = try ParserApi.Parser.init(gpa, parser_events.toSink());
+    var parser = try ParserApi.init(gpa, parser_events.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b]30001\x1b\\");
     try std.testing.expectEqual(@as(usize, 1), parser_events.events.items.len);
@@ -326,7 +326,7 @@ test "parser events: preserves APC, DCS, PM, and ESC final transport" {
     const gpa = std.testing.allocator;
     var parser_events = ParserEvents.init(gpa);
     defer parser_events.deinit();
-    var parser = try ParserApi.Parser.init(gpa, parser_events.toSink());
+    var parser = try ParserApi.init(gpa, parser_events.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b_kitty\x1b\\\x1bPdata\x1b\\\x1b^ignored\x1b\\\x1bM");
     try std.testing.expectEqual(@as(usize, 4), parser_events.events.items.len);
