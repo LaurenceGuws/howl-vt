@@ -43,23 +43,18 @@ fn mainSmoke(gpa: std.mem.Allocator) !void {
         try scrollback.runCanonicalPreservation(gpa, seed, scrollback.defaultPreservationOptions(64));
     }
     try protocol.runSmoke(gpa);
-    std.log.info("fuzz smoke complete", .{});
 }
 
 fn mainProtocol(gpa: std.mem.Allocator, cli_args: CLIArgs) !void {
     const seed = cli_args.seed orelse 0x70726f746f636f6c;
-    std.log.info("protocol fuzz seed = {}", .{seed});
 
     try protocol.runDeterminism(gpa, seed, protocol.defaultOptions(cli_args.events_max));
-    std.log.info("protocol fuzz complete", .{});
 }
 
 fn mainScrollback(gpa: std.mem.Allocator, cli_args: CLIArgs) !void {
     const seed = cli_args.seed orelse 0x7363726f6c6c6261;
-    std.log.info("scrollback fuzz seed = {}", .{seed});
 
     try scrollback.runCanonicalPreservation(gpa, seed, scrollback.defaultPreservationOptions(cli_args.events_max));
-    std.log.info("scrollback fuzz complete", .{});
 }
 
 fn parseArgs(argv: []const [:0]const u8) !CLIArgs {

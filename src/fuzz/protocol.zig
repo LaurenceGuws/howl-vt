@@ -194,7 +194,6 @@ pub fn runSmoke(gpa: std.mem.Allocator) !void {
     for (seeds) |seed| {
         try runDeterminism(gpa, seed, defaultOptions(null));
     }
-    std.log.info("protocol smoke complete", .{});
 }
 
 pub fn runDeterminism(gpa: std.mem.Allocator, seed: u64, options: Options) !void {
