@@ -2,16 +2,16 @@
 
 const lib = @This();
 const std = @import("std");
-const ffi = @import("ffi.zig");
-const terminal = @import("terminal.zig");
+const vt = @import("vt/main.zig");
+const ffi = vt.c_api;
 
 pub const Ffi = ffi;
-pub const Input = @import("input.zig");
-pub const Grid = @import("grid.zig").Grid;
-pub const Parser = @import("parser.zig").Parser;
-pub const Snapshot = @import("snapshot.zig");
-pub const Selection = @import("selection.zig");
-pub const VtCore = terminal.VtCore;
+pub const Input = vt.Input;
+pub const Grid = vt.Grid;
+pub const Parser = vt.Parser;
+pub const Snapshot = vt.Snapshot;
+pub const Selection = vt.Selection;
+pub const VtCore = vt.VtCore;
 
 comptime {
     if (@import("root") == lib) {
@@ -41,6 +41,5 @@ comptime {
 }
 
 test {
-    _ = terminal;
     std.testing.refAllDecls(lib);
 }
