@@ -14,8 +14,8 @@ pub const EscAction = union(enum) {
     application_keypad: bool,
 };
 
-const types = @import("types.zig");
-const SemanticEvent = types.SemanticEvent;
+const event_mod = @import("../event.zig");
+const SemanticEvent = event_mod.SemanticEvent;
 
 pub fn action(final: u8) ?EscAction {
     return switch (final) {

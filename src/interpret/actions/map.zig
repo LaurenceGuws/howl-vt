@@ -2,7 +2,7 @@
 //! Ownership: interpret action mapping.
 //! Reason: separate escape parsing from vt-core consequences.
 
-const types = @import("types.zig");
+const event_mod = @import("../event.zig");
 const apc = @import("apc.zig");
 const parsed_events = @import("../parsed_events.zig");
 const c0 = @import("c0.zig");
@@ -14,21 +14,21 @@ const osc = @import("osc.zig");
 
 /// Parsed-event alias for action mapping.
 const Event = parsed_events.Event;
-pub const KittyGraphicsCommand = types.KittyGraphicsCommand;
-pub const KittyShellMark = types.KittyShellMark;
-pub const KittyNotificationCommand = types.KittyNotificationCommand;
-pub const KittyPointerShapeCommand = types.KittyPointerShapeCommand;
-pub const KittyColorStackCommand = types.KittyColorStackCommand;
-pub const TerminalColorControlCommand = types.TerminalColorControlCommand;
-pub const DcsPayloadKind = types.DcsPayloadKind;
-pub const LegacyControlKind = types.LegacyControlKind;
+pub const KittyGraphicsCommand = event_mod.KittyGraphicsCommand;
+pub const KittyShellMark = event_mod.KittyShellMark;
+pub const KittyNotificationCommand = event_mod.KittyNotificationCommand;
+pub const KittyPointerShapeCommand = event_mod.KittyPointerShapeCommand;
+pub const KittyColorStackCommand = event_mod.KittyColorStackCommand;
+pub const TerminalColorControlCommand = event_mod.TerminalColorControlCommand;
+pub const DcsPayloadKind = event_mod.DcsPayloadKind;
+pub const LegacyControlKind = event_mod.LegacyControlKind;
 pub const EscAction = esc.EscAction;
-pub const SemanticEvent = types.SemanticEvent;
-pub const ScreenAction = types.ScreenAction;
-pub const ReportAction = types.ReportAction;
-pub const ModeAction = types.ModeAction;
-pub const KittyAction = types.KittyAction;
-pub const HostAction = types.HostAction;
+pub const SemanticEvent = event_mod.SemanticEvent;
+pub const ScreenAction = event_mod.ScreenAction;
+pub const ReportAction = event_mod.ReportAction;
+pub const ModeAction = event_mod.ModeAction;
+pub const KittyAction = event_mod.KittyAction;
+pub const HostAction = event_mod.HostAction;
 
 /// Map parsed event to terminal event when supported.
 pub fn process(event: Event) ?SemanticEvent {

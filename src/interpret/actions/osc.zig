@@ -3,11 +3,11 @@
 //! Reason: keep string-protocol meaning separate from the top-level action router.
 
 const std = @import("std");
-const types = @import("types.zig");
+const event_mod = @import("../event.zig");
 const parsed_events = @import("../parsed_events.zig");
 const kitty = @import("kitty.zig");
 
-const SemanticEvent = types.SemanticEvent;
+const SemanticEvent = event_mod.SemanticEvent;
 
 pub fn process(kind: parsed_events.OscKind, command: ?u16, payload: []const u8) ?SemanticEvent {
     if (command) |cmd| switch (cmd) {

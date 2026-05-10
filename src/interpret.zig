@@ -5,17 +5,17 @@
 const parsed_events = @import("interpret/parsed_events.zig");
 const action_map = @import("interpret/actions/map.zig");
 const apply_flow = @import("interpret/apply_flow.zig");
+const event = @import("interpret/event.zig");
 const std = @import("std");
 const control = @import("control.zig");
 const grid = @import("grid.zig");
-const types = @import("interpret/actions/types.zig");
 const kitty = @import("kitty.zig");
 
 const GridNs = grid.Grid;
 const KittyNs = kitty;
 const LocatorNs = control.Locator;
 const OscColorNs = control.OscColor;
-const DcsPayload = types.DcsPayload;
+const DcsPayload = event.DcsPayload;
 
 /// Canonical interpret domain owner.
 /// Parsed event payload.
@@ -37,11 +37,11 @@ pub const HostAction = action_map.HostAction;
 /// DCS payload classification.
 pub const DcsPayloadKind = action_map.DcsPayloadKind;
 /// Kitty graphics command payload.
-pub const KittyGraphicsCommand = types.KittyGraphicsCommand;
+pub const KittyGraphicsCommand = event.KittyGraphicsCommand;
 /// Kitty notification payload.
-pub const KittyNotificationCommand = types.KittyNotificationCommand;
+pub const KittyNotificationCommand = event.KittyNotificationCommand;
 /// Kitty shell mark payload.
-pub const KittyShellMark = types.KittyShellMark;
+pub const KittyShellMark = event.KittyShellMark;
 /// Legacy C0/ESC host-neutral control classification.
 pub const LegacyControlKind = action_map.LegacyControlKind;
 /// ESC-final action subset.

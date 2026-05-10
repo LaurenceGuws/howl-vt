@@ -2,10 +2,10 @@
 //! Ownership: interpret plain CSI action mapping.
 //! Reason: keep common cursor/edit/report CSI mapping separate from private and intermediate variants.
 
-const types = @import("../actions/types.zig");
+const event_mod = @import("../event.zig");
 const params_mod = @import("params.zig");
 
-const SemanticEvent = types.SemanticEvent;
+const SemanticEvent = event_mod.SemanticEvent;
 
 pub fn process(final: u8, params: [16]i32, separators: [16]u8, count: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     switch (final) {

@@ -3,15 +3,15 @@
 //! Reason: keep kitty OSC/APC payload parsing out of the top-level action router.
 
 const std = @import("std");
-const types = @import("types.zig");
+const event_mod = @import("../event.zig");
 
-pub fn parseGraphics(data: []const u8) ?types.KittyGraphicsCommand {
+pub fn parseGraphics(data: []const u8) ?event_mod.KittyGraphicsCommand {
     if (data.len == 0 or data[0] != 'G') return null;
     const body = data[1..];
     const separator = std.mem.indexOfScalar(u8, body, ';') orelse body.len;
     const control = body[0..separator];
     const payload = if (separator < body.len) body[separator + 1 ..] else "";
-    var cmd = types.KittyGraphicsCommand{
+    var cmd = event_mod.KittyGraphicsCommand{
         .action = 't',
         .image_id = 0,
         .image_number = 0,
@@ -65,7 +65,7 @@ pub fn parseGraphics(data: []const u8) ?types.KittyGraphicsCommand {
     return cmd;
 }
 
-pub fn parseShellMark(payload: []const u8) ?types.KittyShellMark {
+pub fn parseShellMark(payload: []const u8) ?event_mod.KittyShellMark {
     if (payload.len == 0) return null;
     const separator = std.mem.indexOfScalar(u8, payload, ';') orelse payload.len;
     const kind = payload[0];
@@ -74,7 +74,7 @@ pub fn parseShellMark(payload: []const u8) ?types.KittyShellMark {
     return .{ .kind = kind, .status = status, .metadata = metadata };
 }
 
-pub fn parseNotification(payload: []const u8) ?types.KittyNotificationCommand {
+pub fn parseNotification(payload: []const u8) ?event_mod.KittyNotificationCommand {
     const separator = std.mem.indexOfScalar(u8, payload, ';') orelse return null;
     return .{
         .metadata = payload[0..separator],
@@ -82,7 +82,7 @@ pub fn parseNotification(payload: []const u8) ?types.KittyNotificationCommand {
     };
 }
 
-pub fn parsePointerShape(payload: []const u8) types.KittyPointerShapeCommand {
+pub fn parsePointerShape(payload: []const u8) event_mod.KittyPointerShapeCommand {
     if (payload.len == 0) return .{ .action = '=', .names = "" };
     const action = switch (payload[0]) {
         '=', '>', '<', '?' => payload[0],

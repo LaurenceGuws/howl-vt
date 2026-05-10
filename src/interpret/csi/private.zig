@@ -4,10 +4,10 @@
 
 const std = @import("std");
 
-const types = @import("../actions/types.zig");
+const event_mod = @import("../event.zig");
 const params_mod = @import("params.zig");
 
-const SemanticEvent = types.SemanticEvent;
+const SemanticEvent = event_mod.SemanticEvent;
 
 pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     if (leader == '?' and final == 'u') return SemanticEvent.kitty_keyboard_query;

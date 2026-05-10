@@ -2,10 +2,10 @@
 //! Ownership: interpret CSI intermediate action mapping.
 //! Reason: group rectangular, locator, and report CSI variants by syntax owner.
 
-const types = @import("../actions/types.zig");
+const event_mod = @import("../event.zig");
 const params_mod = @import("params.zig");
 
-const SemanticEvent = types.SemanticEvent;
+const SemanticEvent = event_mod.SemanticEvent;
 
 pub fn process(final: u8, params: [16]i32, count: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     if (intermediates_len == 2 and intermediates[0] == '\'' and intermediates[1] == '*') {

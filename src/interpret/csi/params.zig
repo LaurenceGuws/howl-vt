@@ -3,9 +3,9 @@
 //! Reason: share CSI defaulting rules without making protocol-family files import each other.
 
 const std = @import("std");
-const types = @import("../actions/types.zig");
+const event_mod = @import("../event.zig");
 
-const SemanticEvent = types.SemanticEvent;
+const SemanticEvent = event_mod.SemanticEvent;
 
 pub fn optionalRectArea(params: [16]i32, count: u8) SemanticEvent.OptionalRectArea {
     return .{
