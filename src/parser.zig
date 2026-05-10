@@ -3,9 +3,9 @@
 //! Reason: implement deterministic VT stream decoding boundaries.
 
 const std = @import("std");
-const stream_mod = @import("stream.zig");
-const csi_mod = @import("csi.zig");
-const string_control_mod = @import("string_control.zig");
+const stream_mod = @import("parser/stream.zig");
+const csi_mod = @import("parser/csi.zig");
+const string_control_mod = @import("parser/string_control.zig");
 
 /// Escape-state machine mode.
 const EscState = enum {

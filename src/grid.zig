@@ -3,21 +3,21 @@
 //! Reason: centralize deterministic screen mutations behind typed screen actions.
 
 const std = @import("std");
-const interpret = @import("../interpret/interpret.zig");
-const cursor = @import("cursor.zig");
-const dirty = @import("dirty.zig");
-const edit = @import("edit.zig");
-const erase = @import("erase.zig");
-const grid_apply = @import("apply.zig");
-const history_mod = @import("history.zig");
-const margins = @import("margins.zig");
-const rect = @import("rect.zig");
-const resize_mod = @import("resize.zig");
-const scroll = @import("scroll.zig");
-const style_mod = @import("style.zig");
-const tabs = @import("tabs.zig");
-const types = @import("types.zig");
-const write = @import("write.zig");
+const interpret = @import("interpret.zig");
+const cursor = @import("grid/cursor.zig");
+const dirty = @import("grid/dirty.zig");
+const edit = @import("grid/edit.zig");
+const erase = @import("grid/erase.zig");
+const grid_apply = @import("grid/apply.zig");
+const history_mod = @import("grid/history.zig");
+const margins = @import("grid/margins.zig");
+const rect = @import("grid/rect.zig");
+const resize_mod = @import("grid/resize.zig");
+const scroll = @import("grid/scroll.zig");
+const style_mod = @import("grid/style.zig");
+const tabs = @import("grid/tabs.zig");
+const types = @import("grid/types.zig");
+const write = @import("grid/write.zig");
 
 /// Semantic event alias for grid application.
 const SemanticEvent = interpret.SemanticEvent;
@@ -34,6 +34,7 @@ pub const Grid = struct {
     pub const CursorStyle = types.CursorStyle;
     pub const default_fg = types.default_fg;
     pub const default_bg = types.default_bg;
+    pub const default_underline_color = types.default_underline_color;
     pub const default_cell_attrs = types.default_cell_attrs;
     pub const default_cell = types.default_cell;
     pub const defaultCell = types.defaultCell;

@@ -3,7 +3,7 @@
 //! Reason: keep selection behavior explicit and host-independent.
 
 const std = @import("std");
-const grid_mod = @import("../grid/grid.zig");
+const grid_mod = @import("grid.zig");
 
 const Grid = grid_mod.Grid;
 

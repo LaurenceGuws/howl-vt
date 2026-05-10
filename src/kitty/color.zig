@@ -3,9 +3,9 @@
 //! Reason: keep kitty color behavior separate from shared OSC terminal color ownership.
 
 const std = @import("std");
-const osc_color = @import("../control/osc_color.zig");
+const control = @import("../control.zig");
 
-const OscColor = osc_color;
+const OscColor = control.OscColor;
 
 pub const State = OscColor.State;
 

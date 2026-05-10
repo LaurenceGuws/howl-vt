@@ -4,9 +4,9 @@
 
 const std = @import("std");
 const vt = @import("vt_core");
-const grid = @import("../grid/grid.zig");
-const selection = @import("../selection/selection.zig");
-const input_mod = @import("../input/input.zig");
+const grid = @import("../grid.zig");
+const selection = @import("../selection.zig");
+const input_mod = @import("../input.zig");
 
 const Grid = grid.Grid;
 const Selection = selection;

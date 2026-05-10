@@ -2,20 +2,19 @@
 //! Ownership: interpret package boundary.
 //! Reason: keep one canonical owner for parser-to-grid translation flow.
 
-const parsed_events = @import("parsed_events.zig");
-const action_map = @import("actions/map.zig");
-const apply_flow = @import("apply_flow.zig");
+const parsed_events = @import("interpret/parsed_events.zig");
+const action_map = @import("interpret/actions/map.zig");
+const apply_flow = @import("interpret/apply_flow.zig");
 const std = @import("std");
-const grid = @import("../grid/grid.zig");
-const types = @import("actions/types.zig");
-const kitty = @import("../kitty/kitty.zig");
-const locator = @import("../control/locator.zig");
-const osc_color = @import("../control/osc_color.zig");
+const control = @import("control.zig");
+const grid = @import("grid.zig");
+const types = @import("interpret/actions/types.zig");
+const kitty = @import("kitty.zig");
 
 const GridNs = grid.Grid;
 const KittyNs = kitty;
-const LocatorNs = locator;
-const OscColorNs = osc_color;
+const LocatorNs = control.Locator;
+const OscColorNs = control.OscColor;
 const DcsPayload = types.DcsPayload;
 
 /// Canonical interpret domain owner.
@@ -37,12 +36,20 @@ pub const KittyAction = action_map.KittyAction;
 pub const HostAction = action_map.HostAction;
 /// DCS payload classification.
 pub const DcsPayloadKind = action_map.DcsPayloadKind;
+/// Kitty graphics command payload.
+pub const KittyGraphicsCommand = types.KittyGraphicsCommand;
+/// Kitty notification payload.
+pub const KittyNotificationCommand = types.KittyNotificationCommand;
+/// Kitty shell mark payload.
+pub const KittyShellMark = types.KittyShellMark;
 /// Legacy C0/ESC host-neutral control classification.
 pub const LegacyControlKind = action_map.LegacyControlKind;
 /// ESC-final action subset.
 pub const EscAction = action_map.EscAction;
 /// End-to-end interpretation apply-flow owner.
 pub const ApplyFlow = apply_flow.ApplyFlow;
+/// OSC action helpers owned by interpret.
+pub const Osc = @import("interpret/actions/osc.zig");
 
 /// One-shot action mapping function.
 pub const process = action_map.process;

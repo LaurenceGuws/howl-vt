@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const vt = @import("vt_core");
-const input_mod = @import("../input/input.zig");
+const input_mod = @import("../input.zig");
 
 const Input = input_mod;
 

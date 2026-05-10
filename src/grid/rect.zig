@@ -2,7 +2,7 @@
 //! Ownership: terminal grid rectangle concern.
 //! Reason: isolate rectangular erase/fill/copy behavior from core state storage.
 
-const interpret = @import("../interpret/interpret.zig");
+const interpret = @import("../interpret.zig");
 const style_mod = @import("style.zig");
 const types = @import("types.zig");
 

@@ -2,9 +2,9 @@
 //! Ownership: input package boundary.
 //! Reason: keep one canonical owner for keyboard, mouse, and host token behavior.
 
-const keyboard = @import("keyboard.zig");
-const mouse = @import("mouse.zig");
-const tokens = @import("tokens.zig");
+const keyboard = @import("input/keyboard.zig");
+const mouse = @import("input/mouse.zig");
+const tokens = @import("input/tokens.zig");
 
 pub const Keyboard = keyboard;
 pub const Mouse = mouse;

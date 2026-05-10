@@ -3,20 +3,19 @@
 //! Reason: expose one host-neutral terminal object while keeping domain internals behind sibling owners.
 
 const std = @import("std");
-const control = @import("control/control.zig");
-const grid = @import("grid/grid.zig");
-const input = @import("input/input.zig");
-const interpret = @import("interpret/interpret.zig");
-const osc = @import("interpret/actions/osc.zig");
-const kitty = @import("kitty/kitty.zig");
-const parser = @import("parser/parser.zig");
-const selection = @import("selection/selection.zig");
-const snapshot = @import("snapshot/snapshot.zig");
+const control = @import("control.zig");
+const grid = @import("grid.zig");
+const input = @import("input.zig");
+const interpret = @import("interpret.zig");
+const kitty = @import("kitty.zig");
+const parser = @import("parser.zig");
+const selection = @import("selection.zig");
+const snapshot = @import("snapshot.zig");
 
 const GridNs = grid.Grid;
 const Input = input;
 const Interpret = interpret;
-const Osc = osc;
+const Osc = interpret.Osc;
 const KittyNs = kitty;
 const LocatorNs = control.Locator;
 const OscColorNs = control.OscColor;

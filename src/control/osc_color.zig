@@ -3,7 +3,7 @@
 //! Reason: keep non-kitty terminal color state and xterm color operations outside the kitty umbrella.
 
 const std = @import("std");
-const grid = @import("../grid/grid.zig");
+const grid = @import("../grid.zig");
 
 const Grid = grid.Grid;
 

@@ -3,14 +3,12 @@
 //! Reason: keep host-output-facing report generation out of the vt-core facade.
 
 const std = @import("std");
-const grid_mod = @import("../grid/grid.zig");
-const grid_types = @import("../grid/types.zig");
-const interpret = @import("../interpret/interpret.zig");
+const grid_mod = @import("../grid.zig");
+const interpret = @import("../interpret.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
 
 const Grid = grid_mod.Grid;
-const GridTypes = grid_types;
 const Interpret = interpret;
 const LocatorNs = locator;
 const ReportAction = Interpret.ReportAction;
@@ -33,7 +31,7 @@ pub const CharsetReportView = struct {
 
 pub const CursorInformationView = struct {
     cursor: CursorReportView,
-    current_attrs: GridTypes.CellAttrs,
+    current_attrs: Grid.CellAttrs,
     origin_mode: bool,
     wrap_pending: bool,
 };
@@ -322,9 +320,9 @@ pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output
     if (common.underline) appendSgrParam(allocator, output, &first, underlineStyleParam(common.underline_style));
     if (common.blink) appendSgrParam(allocator, output, &first, "5");
     if (common.reverse) appendSgrParam(allocator, output, &first, "7");
-    appendColorParam(allocator, output, encode_buf, &first, true, common.fg, GridTypes.default_cell_attrs.fg);
-    appendColorParam(allocator, output, encode_buf, &first, false, common.bg, GridTypes.default_cell_attrs.bg);
-    if (common.underline and !colorEq(common.underline_color, GridTypes.default_underline_color)) {
+    appendColorParam(allocator, output, encode_buf, &first, true, common.fg, Grid.default_cell_attrs.fg);
+    appendColorParam(allocator, output, encode_buf, &first, false, common.bg, Grid.default_cell_attrs.bg);
+    if (common.underline and !colorEq(common.underline_color, Grid.default_underline_color)) {
         appendExtendedColorParam(allocator, output, encode_buf, &first, 58, common.underline_color);
     }
     output.appendSlice(allocator, "m") catch {};
@@ -359,12 +357,12 @@ pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16
 const CommonAttrs = struct {
     bold: bool,
     underline: bool,
-    underline_style: GridTypes.UnderlineStyle,
-    underline_color: GridTypes.Color,
+    underline_style: Grid.UnderlineStyle,
+    underline_color: Grid.Color,
     blink: bool,
     reverse: bool,
-    fg: GridTypes.Color,
-    bg: GridTypes.Color,
+    fg: Grid.Color,
+    bg: Grid.Color,
 };
 
 fn commonAttrsForRect(screen: *const Grid, area: Interpret.SemanticEvent.RectArea) ?CommonAttrs {
@@ -391,14 +389,14 @@ fn commonAttrsForRect(screen: *const Grid, area: Interpret.SemanticEvent.RectAre
             if (attrs.blink != common.blink) common.blink = false;
             if (attrs.reverse != common.reverse) common.reverse = false;
             if (attrs.underline_style != common.underline_style) common.underline_style = .straight;
-            if (!colorEq(attrs.fg, common.fg)) common.fg = GridTypes.default_cell_attrs.fg;
-            if (!colorEq(attrs.bg, common.bg)) common.bg = GridTypes.default_cell_attrs.bg;
-            if (!colorEq(attrs.underline_color, common.underline_color)) common.underline_color = GridTypes.default_underline_color;
+            if (!colorEq(attrs.fg, common.fg)) common.fg = Grid.default_cell_attrs.fg;
+            if (!colorEq(attrs.bg, common.bg)) common.bg = Grid.default_cell_attrs.bg;
+            if (!colorEq(attrs.underline_color, common.underline_color)) common.underline_color = Grid.default_underline_color;
         }
     }
     if (!common.underline) {
         common.underline_style = .straight;
-        common.underline_color = GridTypes.default_underline_color;
+        common.underline_color = Grid.default_underline_color;
     }
     return common;
 }
@@ -409,7 +407,7 @@ fn appendSgrParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), firs
     output.appendSlice(allocator, text) catch {};
 }
 
-fn underlineStyleParam(style: GridTypes.UnderlineStyle) []const u8 {
+fn underlineStyleParam(style: Grid.UnderlineStyle) []const u8 {
     return switch (style) {
         .straight => "4",
         .double => "4:2",
@@ -419,7 +417,7 @@ fn underlineStyleParam(style: GridTypes.UnderlineStyle) []const u8 {
     };
 }
 
-fn appendColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, is_fg: bool, color: GridTypes.Color, default_color: GridTypes.Color) void {
+fn appendColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, is_fg: bool, color: Grid.Color, default_color: Grid.Color) void {
     if (colorEq(color, default_color)) return;
     if (ansi16Index(color)) |idx| {
         const code: u16 = if (is_fg)
@@ -433,7 +431,7 @@ fn appendColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), en
     appendExtendedColorParam(allocator, output, encode_buf, first, if (is_fg) 38 else 48, color);
 }
 
-fn appendExtendedColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, prefix: u8, color: GridTypes.Color) void {
+fn appendExtendedColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, prefix: u8, color: Grid.Color) void {
     if (indexed256Index(color)) |idx| {
         const text = std.fmt.bufPrint(encode_buf, "{d};5;{d}", .{ prefix, idx }) catch return;
         appendSgrParam(allocator, output, first, text);
@@ -443,7 +441,7 @@ fn appendExtendedColorParam(allocator: std.mem.Allocator, output: *std.ArrayList
     appendSgrParam(allocator, output, first, text);
 }
 
-fn ansi16Index(color: GridTypes.Color) ?u8 {
+fn ansi16Index(color: Grid.Color) ?u8 {
     var idx: u8 = 0;
     while (idx < 16) : (idx += 1) {
         if (colorEq(color, ansi16Color(idx))) return idx;
@@ -451,7 +449,7 @@ fn ansi16Index(color: GridTypes.Color) ?u8 {
     return null;
 }
 
-fn indexed256Index(color: GridTypes.Color) ?u8 {
+fn indexed256Index(color: Grid.Color) ?u8 {
     var idx: u16 = 0;
     while (idx < 256) : (idx += 1) {
         if (colorEq(color, indexed256Color(@intCast(idx)))) return @intCast(idx);
@@ -459,11 +457,11 @@ fn indexed256Index(color: GridTypes.Color) ?u8 {
     return null;
 }
 
-fn colorEq(a: GridTypes.Color, b: GridTypes.Color) bool {
+fn colorEq(a: Grid.Color, b: Grid.Color) bool {
     return a.r == b.r and a.g == b.g and a.b == b.b and a.a == b.a;
 }
 
-fn ansi16Color(idx: u8) GridTypes.Color {
+fn ansi16Color(idx: u8) Grid.Color {
     return switch (idx) {
         0 => .{ .r = 0, .g = 0, .b = 0 },
         1 => .{ .r = 170, .g = 0, .b = 0 },
@@ -481,11 +479,11 @@ fn ansi16Color(idx: u8) GridTypes.Color {
         13 => .{ .r = 255, .g = 85, .b = 255 },
         14 => .{ .r = 85, .g = 255, .b = 255 },
         15 => .{ .r = 255, .g = 255, .b = 255 },
-        else => GridTypes.default_fg,
+        else => Grid.default_fg,
     };
 }
 
-fn indexed256Color(idx: u8) GridTypes.Color {
+fn indexed256Color(idx: u8) Grid.Color {
     if (idx < 16) return ansi16Color(idx);
     if (idx < 232) {
         const n: u32 = idx - 16;

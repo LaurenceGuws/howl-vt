@@ -3,9 +3,9 @@
 //! Reason: keep graphics upload, placement, storage, and replies out of the vt-core facade.
 
 const std = @import("std");
-const types = @import("../interpret/actions/types.zig");
+const interpret = @import("../interpret.zig");
 
-const KittyGraphicsCommand = types.KittyGraphicsCommand;
+const KittyGraphicsCommand = interpret.KittyGraphicsCommand;
 
 pub const RenderCursorView = struct {
     row: u16,

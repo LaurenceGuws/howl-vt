@@ -2,7 +2,7 @@
 //! Ownership: terminal grid screen-action dispatch concern.
 //! Reason: keep action dispatch separate from screen state fields and lifecycle.
 
-const interpret = @import("../interpret/interpret.zig");
+const interpret = @import("../interpret.zig");
 
 const ScreenAction = interpret.ScreenAction;
 

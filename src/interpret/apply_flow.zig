@@ -3,8 +3,8 @@
 //! Reason: provide deterministic parser-to-screen action progression.
 
 const std = @import("std");
-const grid_mod = @import("../grid/grid.zig");
-const parser_mod = @import("../parser/parser.zig");
+const grid_mod = @import("../grid.zig");
+const parser_mod = @import("../parser.zig");
 const parsed_events_mod = @import("parsed_events.zig");
 const action_map = @import("actions/map.zig");
 

@@ -3,7 +3,7 @@
 //! Reason: isolate parser sink mechanics from downstream action mapping.
 
 const std = @import("std");
-const parser_mod = @import("../parser/parser.zig");
+const parser_mod = @import("../parser.zig");
 
 const ParserApi = parser_mod.Parser;
 
