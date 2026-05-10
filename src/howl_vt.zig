@@ -2,7 +2,7 @@
 
 const lib = @This();
 const std = @import("std");
-const vt = @import("vt/main.zig");
+const vt = @import("vt_namespace.zig");
 const ffi = vt.c_api;
 
 pub const Ffi = ffi;
