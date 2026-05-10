@@ -5,9 +5,9 @@
 const std = @import("std");
 const grid_state = @import("grid/state.zig");
 const grid_types = @import("grid/types.zig");
-const interpret_owner = @import("interpret.zig");
+const interpret_owner = @import("interpret/interpret.zig");
 const locator_owner = @import("locator.zig");
-const terminal_mode_owner = @import("terminal_mode.zig");
+const terminal_mode_owner = @import("mode.zig");
 
 const GridState = grid_state.GridModel;
 const GridTypes = grid_types;

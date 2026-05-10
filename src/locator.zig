@@ -3,8 +3,8 @@
 //! Reason: keep locator tracking and DECLRP formatting out of the vt-core facade.
 
 const std = @import("std");
-const input_mod = @import("input.zig");
-const interpret_owner = @import("interpret.zig");
+const input_mod = @import("input/input.zig");
+const interpret_owner = @import("interpret/interpret.zig");
 
 const Input = input_mod;
 const Interpret = interpret_owner;

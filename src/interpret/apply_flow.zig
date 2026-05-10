@@ -3,7 +3,7 @@
 //! Reason: provide deterministic parser-to-screen action progression.
 
 const std = @import("std");
-const grid_owner = @import("../grid.zig");
+const grid_owner = @import("../grid/grid.zig");
 const parser_owner = @import("../parser.zig");
 const parser_events_mod = @import("parser_events.zig");
 const actions_mod = @import("actions.zig");

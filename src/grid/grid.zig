@@ -2,8 +2,8 @@
 //! Ownership: grid package boundary.
 //! Reason: keep one canonical owner for grid state and behavior.
 
-const state = @import("grid/state.zig");
-const types = @import("grid/types.zig");
+const state = @import("state.zig");
+const types = @import("types.zig");
 
 /// Canonical grid domain owner.
 /// Main terminal screen state.

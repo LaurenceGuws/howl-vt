@@ -3,18 +3,18 @@
 //! Reason: expose one host-neutral terminal object while keeping domain internals behind sibling owners.
 
 const std = @import("std");
-const grid_owner = @import("grid.zig");
+const grid_owner = @import("grid/grid.zig");
 const grid_model = @import("grid/state.zig");
-const input_mod = @import("input.zig");
-const interpret_owner = @import("interpret.zig");
+const input_mod = @import("input/input.zig");
+const interpret_owner = @import("interpret/interpret.zig");
 const osc_actions_owner = @import("interpret/osc_actions.zig");
-const kitty_owner = @import("kitty.zig");
+const kitty_owner = @import("kitty/kitty.zig");
 const locator_owner = @import("locator.zig");
 const osc_color_owner = @import("osc_color.zig");
-const selection_owner = @import("selection.zig");
-const snapshot_owner = @import("snapshot.zig");
-const terminal_mode_owner = @import("terminal_mode.zig");
-const terminal_report_owner = @import("terminal_report.zig");
+const selection_owner = @import("selection/selection.zig");
+const snapshot_owner = @import("snapshot/snapshot.zig");
+const terminal_mode_owner = @import("mode.zig");
+const terminal_report_owner = @import("report.zig");
 
 const GridNs = grid_owner;
 const Input = input_mod;

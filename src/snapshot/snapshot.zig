@@ -8,8 +8,8 @@
 //! cross-version guarantees.
 
 const std = @import("std");
-const selection_owner = @import("../selection.zig");
-const grid_owner = @import("../grid.zig");
+const selection_owner = @import("../selection/selection.zig");
+const grid_owner = @import("../grid/grid.zig");
 
 const Selection = selection_owner;
 const Grid = grid_owner;

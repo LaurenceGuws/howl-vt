@@ -3,8 +3,8 @@
 //! Reason: keep cursor, wrap, erase, and cell semantics explicit and build-gated.
 
 const std = @import("std");
-const grid_owner = @import("../grid.zig");
-const interpret_owner = @import("../interpret.zig");
+const grid_owner = @import("../grid/grid.zig");
+const interpret_owner = @import("../interpret/interpret.zig");
 
 const GridModel = grid_owner.GridModel;
 const SemanticEvent = interpret_owner.SemanticEvent;

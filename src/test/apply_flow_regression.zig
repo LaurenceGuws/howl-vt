@@ -3,8 +3,8 @@
 //! Reason: guard parser and replay edge cases with replayable, build-gated coverage.
 
 const std = @import("std");
-const grid_owner = @import("../grid.zig");
-const interpret_owner = @import("../interpret.zig");
+const grid_owner = @import("../grid/grid.zig");
+const interpret_owner = @import("../interpret/interpret.zig");
 const vt_mod = @import("vt_core");
 
 const Grid = grid_owner;

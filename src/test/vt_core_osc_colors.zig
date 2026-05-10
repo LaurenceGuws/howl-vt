@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const vt = @import("vt_core");
-const grid_owner = @import("../grid.zig");
+const grid_owner = @import("../grid/grid.zig");
 
 const Grid = grid_owner;
 

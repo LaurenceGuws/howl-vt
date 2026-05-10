@@ -2,7 +2,7 @@
 //! Ownership: grid data shape authority.
 //! Reason: keep visible cell/cursor/color schema near terminal screen state.
 
-const selection_owner = @import("../selection.zig");
+const selection_owner = @import("../selection/selection.zig");
 
 const Selection = selection_owner;
 

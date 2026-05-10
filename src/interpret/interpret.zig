@@ -2,15 +2,15 @@
 //! Ownership: interpret package boundary.
 //! Reason: keep one canonical owner for parser-to-grid translation flow.
 
-const parser_events = @import("interpret/parser_events.zig");
-const actions = @import("interpret/actions.zig");
-const apply_flow = @import("interpret/apply_flow.zig");
+const parser_events = @import("parser_events.zig");
+const actions = @import("actions.zig");
+const apply_flow = @import("apply_flow.zig");
 const std = @import("std");
-const grid_owner = @import("grid.zig");
-const action_types = @import("interpret/action_types.zig");
-const kitty_owner = @import("kitty.zig");
-const locator_owner = @import("locator.zig");
-const osc_color_owner = @import("osc_color.zig");
+const grid_owner = @import("../grid/grid.zig");
+const action_types = @import("action_types.zig");
+const kitty_owner = @import("../kitty/kitty.zig");
+const locator_owner = @import("../locator.zig");
+const osc_color_owner = @import("../osc_color.zig");
 
 const GridNs = grid_owner;
 const KittyNs = kitty_owner;

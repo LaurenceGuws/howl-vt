@@ -2,9 +2,9 @@
 //! Ownership: input package boundary.
 //! Reason: keep one canonical owner for key, mouse, and codec behavior.
 
-const keymap = @import("input/keymap.zig");
-const mouse = @import("input/mouse.zig");
-const codec = @import("input/codec.zig");
+const keymap = @import("keymap.zig");
+const mouse = @import("mouse.zig");
+const codec = @import("codec.zig");
 
 /// Canonical input domain owner.
 /// Canonical VT key type.

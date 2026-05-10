@@ -3,7 +3,7 @@
 //! Reason: make translation defaults, aliases, and private modes explicit.
 
 const std = @import("std");
-const interpret_owner = @import("../interpret.zig");
+const interpret_owner = @import("../interpret/interpret.zig");
 
 const Interpret = interpret_owner;
 const Event = Interpret.Event;

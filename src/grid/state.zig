@@ -3,7 +3,7 @@
 //! Reason: centralize deterministic screen mutations behind typed screen actions.
 
 const std = @import("std");
-const interpret_owner = @import("../interpret.zig");
+const interpret_owner = @import("../interpret/interpret.zig");
 const cursor = @import("cursor.zig");
 const dirty = @import("dirty.zig");
 const edit = @import("edit.zig");
