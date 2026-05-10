@@ -5,7 +5,7 @@
 const std = @import("std");
 const grid = @import("grid/grid.zig");
 
-const Grid = grid;
+const Grid = grid.Grid;
 
 pub const State = struct {
     foreground: Grid.Color = Grid.default_fg,

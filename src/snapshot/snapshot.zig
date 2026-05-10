@@ -12,7 +12,7 @@ const selection_mod = @import("../selection/selection.zig");
 const grid_mod = @import("../grid/grid.zig");
 
 const Selection = selection_mod;
-const Grid = grid_mod;
+const Grid = grid_mod.Grid;
 
 /// Deterministic snapshot of vt_core observable state.
 ///
@@ -67,7 +67,7 @@ pub const VtCoreSnapshot = struct {
 
     /// Capture snapshot from vt_core observable state; allocates owned buffers.
     ///
-    /// This method extracts the observable state from a GridModel and optional
+    /// This method extracts the observable state from a Grid and optional
     /// selection state, allocating owned copies of cell and history buffers.
     ///
     /// Determinism: identical screen and selection state produce identical snapshots.
@@ -77,7 +77,7 @@ pub const VtCoreSnapshot = struct {
     /// Memory: allocated cells and history buffers are owned by the returned snapshot.
     /// Caller must call snapshot.deinit() to release them. If allocation fails,
     /// the error is returned and no partial allocation is left outstanding.
-    pub fn captureFromScreen(allocator: std.mem.Allocator, screen: *const Grid.GridModel, selection: ?Selection.TerminalSelection) !VtCoreSnapshot {
+    pub fn captureFromScreen(allocator: std.mem.Allocator, screen: *const Grid, selection: ?Selection.TerminalSelection) !VtCoreSnapshot {
         var snapshot = VtCoreSnapshot{
             .allocator = allocator,
             .rows = screen.rows,

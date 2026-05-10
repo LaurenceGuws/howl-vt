@@ -8,7 +8,7 @@ const parser_mod = @import("../parser/parser.zig");
 const parser_events_mod = @import("parser_events.zig");
 const actions_mod = @import("actions.zig");
 
-const Grid = grid_mod;
+const Grid = grid_mod.Grid;
 const ParserApi = parser_mod.Parser;
 
 /// ApplyFlow event alias.
@@ -80,7 +80,7 @@ pub const ApplyFlow = struct {
     }
 
     /// Apply queued events to screen.
-    pub fn applyToScreen(self: *ApplyFlow, screen: *Grid.GridModel) void {
+    pub fn applyToScreen(self: *ApplyFlow, screen: *Grid) void {
         for (self.parser_events.events.items) |ev| {
             if (actions_mod.process(ev)) |sem_ev| {
                 if (actions_mod.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
@@ -90,7 +90,7 @@ pub const ApplyFlow = struct {
     }
 };
 
-fn feed(flow: *ApplyFlow, screen: *Grid.GridModel, bytes: []const u8) void {
+fn feed(flow: *ApplyFlow, screen: *Grid, bytes: []const u8) void {
     flow.feedSlice(bytes);
     flow.applyToScreen(screen);
 }

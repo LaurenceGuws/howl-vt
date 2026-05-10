@@ -3,13 +3,13 @@
 //! Reason: keep host-output-facing report generation out of the vt-core facade.
 
 const std = @import("std");
-const grid_state = @import("grid/state.zig");
+const grid_mod = @import("grid/grid.zig");
 const grid_types = @import("grid/types.zig");
 const interpret = @import("interpret/interpret.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
 
-const GridState = grid_state.GridModel;
+const Grid = grid_mod.Grid;
 const GridTypes = grid_types;
 const Interpret = interpret;
 const LocatorNs = locator;
@@ -93,7 +93,7 @@ const Context = struct {
     allocator: std.mem.Allocator,
     pending_output: *std.ArrayList(u8),
     encode_buf: []u8,
-    active_screen: *const GridState,
+    active_screen: *const Grid,
     render_view: CursorReportView,
     ansi_modes: TerminalModeNs.AnsiView,
     dec_modes: TerminalModeNs.DecView,
@@ -279,7 +279,7 @@ pub fn appendCursorInformationReport(allocator: std.mem.Allocator, output: *std.
     output.appendSlice(allocator, text) catch {};
 }
 
-pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const GridState) void {
+pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid) void {
     output.appendSlice(allocator, "\x1bP2$u") catch return;
     var first = true;
     var col: u16 = 0;
@@ -309,7 +309,7 @@ pub fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.Array
     output.appendSlice(allocator, text) catch {};
 }
 
-pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const GridState, area: Interpret.SemanticEvent.RectArea) void {
+pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid, area: Interpret.SemanticEvent.RectArea) void {
     const common = commonAttrsForRect(screen, area) orelse {
         output.appendSlice(allocator, "\x1b[0m") catch {};
         return;
@@ -330,7 +330,7 @@ pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output
     output.appendSlice(allocator, "m") catch {};
 }
 
-pub fn computeRectChecksum(screen: *const GridState, xtchecksum_flags: u16, page: u16, area: Interpret.SemanticEvent.RectArea) u16 {
+pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: Interpret.SemanticEvent.RectArea) u16 {
     if (page != 1) return 0;
     const bounds = screen.rectBoundsForReport(area) orelse return 0;
     var sum: u16 = 0;
@@ -367,7 +367,7 @@ const CommonAttrs = struct {
     bg: GridTypes.Color,
 };
 
-fn commonAttrsForRect(screen: *const GridState, area: Interpret.SemanticEvent.RectArea) ?CommonAttrs {
+fn commonAttrsForRect(screen: *const Grid, area: Interpret.SemanticEvent.RectArea) ?CommonAttrs {
     const bounds = screen.rectBoundsForReport(area) orelse return null;
     const first_cell = screen.cellInfoAt(bounds.top, bounds.left);
     var common = CommonAttrs{

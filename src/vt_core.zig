@@ -4,7 +4,6 @@
 
 const std = @import("std");
 const grid = @import("grid/grid.zig");
-const grid_model = @import("grid/state.zig");
 const input = @import("input/input.zig");
 const interpret = @import("interpret/interpret.zig");
 const osc_actions = @import("interpret/osc_actions.zig");
@@ -17,7 +16,7 @@ const snapshot = @import("snapshot/snapshot.zig");
 const mode = @import("mode.zig");
 const report = @import("report.zig");
 
-const GridNs = grid;
+const GridNs = grid.Grid;
 const Input = input;
 const Interpret = interpret;
 const OscActions = osc_actions;
@@ -30,16 +29,16 @@ const Snapshot = snapshot;
 const TerminalModeNs = mode;
 const TerminalReportNs = report;
 
-/// Explicit package-surface grid owner alias retained for downstream runtime/render code.
+/// Grid instance owner exposed for downstream runtime/render code.
 pub const Grid = GridNs;
 /// Parser instance owner used by vt-core protocol tools.
 pub const Parser = ParserNs;
 
 /// Host-neutral terminal facade.
 pub const VtCore = struct {
-    /// Explicit grid compatibility surface retained for render/runtime owners.
+    /// Grid instance owner retained for render/runtime owners.
     pub const Grid = GridNs;
-    pub const DirtyRows = grid_model.DirtyRows;
+    pub const DirtyRows = GridNs.DirtyRows;
     /// Host control signals routed to transport/runtime owner.
     pub const ControlSignal = enum {
         hangup,
@@ -156,7 +155,7 @@ pub const VtCore = struct {
         cursor_visible: bool,
         cursor_shape: GridNs.CursorShape,
         is_alternate_screen: bool,
-        screen: *const GridNs.GridModel,
+        screen: *const GridNs,
 
         pub fn cellAt(self: RenderView, row: u16, col: u16) u21 {
             return self.screen.cellAt(row, col);
@@ -274,20 +273,20 @@ pub const VtCore = struct {
             cursor_visible: bool,
         };
 
-        primary: GridNs.GridModel,
-        alternate: GridNs.GridModel,
+        primary: GridNs,
+        alternate: GridNs,
         alt_active: bool = false,
         saved_primary_cursor: ?CursorSnapshot = null,
 
-        fn init(primary: GridNs.GridModel, alternate: GridNs.GridModel) ScreenState {
+        fn init(primary: GridNs, alternate: GridNs) ScreenState {
             return .{ .primary = primary, .alternate = alternate };
         }
 
-        pub fn active(self: *ScreenState) *GridNs.GridModel {
+        pub fn active(self: *ScreenState) *GridNs {
             return if (self.alt_active) &self.alternate else &self.primary;
         }
 
-        pub fn activeConst(self: *const ScreenState) *const GridNs.GridModel {
+        pub fn activeConst(self: *const ScreenState) *const GridNs {
             return if (self.alt_active) &self.alternate else &self.primary;
         }
 
@@ -348,8 +347,8 @@ pub const VtCore = struct {
     pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !VtCore {
         var apply_flow = try Interpret.ApplyFlow.init(allocator);
         errdefer apply_flow.deinit();
-        const state = GridNs.GridModel.init(rows, cols);
-        const alt_state = GridNs.GridModel.init(rows, cols);
+        const state = GridNs.init(rows, cols);
+        const alt_state = GridNs.init(rows, cols);
         return VtCore{
             .allocator = allocator,
             .apply_flow = apply_flow,
@@ -363,9 +362,9 @@ pub const VtCore = struct {
     pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !VtCore {
         var apply_flow = try Interpret.ApplyFlow.init(allocator);
         errdefer apply_flow.deinit();
-        var state = try GridNs.GridModel.initWithCells(allocator, rows, cols);
+        var state = try GridNs.initWithCells(allocator, rows, cols);
         errdefer state.deinit(allocator);
-        var alt_state = try GridNs.GridModel.initWithCells(allocator, rows, cols);
+        var alt_state = try GridNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return VtCore{
             .allocator = allocator,
@@ -380,9 +379,9 @@ pub const VtCore = struct {
     pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !VtCore {
         var apply_flow = try Interpret.ApplyFlow.init(allocator);
         errdefer apply_flow.deinit();
-        var state = try GridNs.GridModel.initWithCellsAndHistory(allocator, rows, cols, history_capacity);
+        var state = try GridNs.initWithCellsAndHistory(allocator, rows, cols, history_capacity);
         errdefer state.deinit(allocator);
-        var alt_state = try GridNs.GridModel.initWithCells(allocator, rows, cols);
+        var alt_state = try GridNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return VtCore{
             .allocator = allocator,
@@ -577,7 +576,7 @@ pub const VtCore = struct {
     }
 
     /// Return read-only screen state reference.
-    pub fn screen(self: *const VtCore) *const GridNs.GridModel {
+    pub fn screen(self: *const VtCore) *const GridNs {
         return self.activeState();
     }
 
@@ -790,11 +789,11 @@ pub const VtCore = struct {
         );
     }
 
-    fn activeState(self: *const VtCore) *const GridNs.GridModel {
+    fn activeState(self: *const VtCore) *const GridNs {
         return self.screen_state.activeConst();
     }
 
-    fn activeStateMut(self: *VtCore) *GridNs.GridModel {
+    fn activeStateMut(self: *VtCore) *GridNs {
         return self.screen_state.active();
     }
 

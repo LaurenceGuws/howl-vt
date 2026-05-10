@@ -8,7 +8,7 @@ const grid = @import("../grid/grid.zig");
 const selection = @import("../selection/selection.zig");
 const input_mod = @import("../input/input.zig");
 
-const Grid = grid;
+const Grid = grid.Grid;
 const Selection = selection;
 const Input = input_mod;
 
@@ -29,7 +29,6 @@ test "VtCore facade methods remain available" {
 
 test "VtCore method signatures remain host-facing" {
     const Allocator = std.mem.Allocator;
-    const GridModel = Grid.GridModel;
     const init_fn: fn (Allocator, u16, u16) anyerror!vt.VtCore = vt.VtCore.init;
     const init_cells_fn: fn (Allocator, u16, u16) anyerror!vt.VtCore = vt.VtCore.initWithCells;
     const deinit_fn: fn (*vt.VtCore) void = vt.VtCore.deinit;
@@ -40,7 +39,7 @@ test "VtCore method signatures remain host-facing" {
     const reset_fn: fn (*vt.VtCore) void = vt.VtCore.reset;
     const reset_screen_fn: fn (*vt.VtCore) void = vt.VtCore.resetScreen;
     const resize_fn: fn (*vt.VtCore, u16, u16) anyerror!void = vt.VtCore.resize;
-    const screen_fn: fn (*const vt.VtCore) *const GridModel = vt.VtCore.screen;
+    const screen_fn: fn (*const vt.VtCore) *const Grid = vt.VtCore.screen;
     const queue_fn: fn (*const vt.VtCore) usize = vt.VtCore.queuedEventCount;
     _ = .{ init_fn, init_cells_fn, deinit_fn, feed_byte_fn, feed_slice_fn, apply_fn, clear_fn, reset_fn, reset_screen_fn, resize_fn, screen_fn, queue_fn };
 }

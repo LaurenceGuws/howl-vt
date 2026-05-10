@@ -12,7 +12,7 @@ const kitty = @import("../kitty/kitty.zig");
 const locator = @import("../locator.zig");
 const osc_color = @import("../osc_color.zig");
 
-const GridNs = grid;
+const GridNs = grid.Grid;
 const KittyNs = kitty;
 const LocatorNs = locator;
 const OscColorNs = osc_color;
