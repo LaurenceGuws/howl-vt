@@ -6,10 +6,15 @@ const std = @import("std");
 const grid_state = @import("grid/state.zig");
 const grid_types = @import("grid/types.zig");
 const interpret_owner = @import("interpret.zig");
+const locator_owner = @import("locator.zig");
+const terminal_mode_owner = @import("terminal_mode.zig");
 
 const GridState = grid_state.GridModel;
 const GridTypes = grid_types;
 const Interpret = interpret_owner;
+const LocatorNs = locator_owner;
+const ReportAction = Interpret.ReportAction;
+const TerminalModeNs = terminal_mode_owner;
 
 const xtversion_text = "howl-vt-core dev";
 
@@ -36,6 +41,155 @@ pub const CursorInformationView = struct {
 pub const RectChecksumRequest = struct {
     request_id: u16,
 };
+
+pub fn apply(vt: anytype, action: ReportAction) void {
+    const active = vt.screen_state.activeConst();
+    const deccir_charset = vt.apply_flow.deccirCharsetState();
+    const ctx = Context{
+        .allocator = vt.allocator,
+        .pending_output = &vt.host.pending_output,
+        .encode_buf = vt.encode.buf[0..],
+        .active_screen = active,
+        .render_view = .{
+            .rows = active.rows,
+            .cols = active.cols,
+            .cursor_row = active.cursor_row,
+            .cursor_col = active.cursor_col,
+        },
+        .ansi_modes = .{
+            .keyboard_action_mode = vt.modes.keyboard_action_mode,
+            .insert_mode = active.insertMode(),
+            .send_receive_mode = vt.modes.send_receive_mode,
+            .newline_mode = vt.modes.newline_mode,
+        },
+        .dec_modes = .{
+            .application_cursor_keys = vt.modes.application_cursor_keys,
+            .application_keypad = vt.modes.application_keypad,
+            .auto_wrap = active.auto_wrap,
+            .left_right_margin_mode = active.left_right_margin_mode,
+            .cursor_visible = active.cursor_visible,
+            .alt_active = vt.screen_state.alt_active,
+            .mouse_tracking = vt.modes.mouse_tracking,
+            .mouse_protocol = vt.modes.mouse_protocol,
+            .focus_reporting = vt.modes.focus_reporting,
+            .bracketed_paste = vt.modes.bracketed_paste,
+            .synchronized_output = vt.modes.synchronized_output,
+            .kitty_clipboard = vt.modes.kitty_clipboard,
+        },
+        .modify_other_keys = vt.modes.modify_other_keys,
+        .key_format = vt.modes.key_format,
+        .xtchecksum_flags = &vt.xtchecksum_flags,
+        .deccir_charset = .{
+            .gl_index = deccir_charset.gl_index,
+            .g0_designation = deccir_charset.g0_designation,
+            .g1_designation = deccir_charset.g1_designation,
+        },
+        .color_stack_depth = vt.kitty.global.color_stack.len,
+    };
+    applyWithContext(ctx, action);
+}
+
+const Context = struct {
+    allocator: std.mem.Allocator,
+    pending_output: *std.ArrayList(u8),
+    encode_buf: []u8,
+    active_screen: *const GridState,
+    render_view: CursorReportView,
+    ansi_modes: TerminalModeNs.AnsiView,
+    dec_modes: TerminalModeNs.DecView,
+    modify_other_keys: i8,
+    key_format: [8]u16,
+    xtchecksum_flags: *u16,
+    deccir_charset: CharsetReportView,
+    color_stack_depth: u8,
+};
+
+fn applyWithContext(ctx: Context, action: ReportAction) void {
+    switch (action) {
+        .ansi_mode_query => |mode| appendAnsiModeReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, mode, TerminalModeNs.ansiModeStateForView(ctx.ansi_modes, mode)),
+        .modify_other_keys_query => appendModifyOtherKeysReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.modify_other_keys),
+        .key_format_query => |resource| if (isKeyFormatResource(resource)) appendKeyFormatReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, resource, ctx.key_format[resource]),
+        .dec_mode_query => |mode| appendDecModeReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, mode, TerminalModeNs.decModeStateForView(ctx.dec_modes, mode)),
+        .dcs_request_status => |request| appendDecrqssReply(ctx, request),
+        .dcs_request_termcap => appendTermcapInvalidReport(ctx.allocator, ctx.pending_output),
+        .dcs_request_resource => |request| appendResourceInvalidReport(ctx.allocator, ctx.pending_output, request),
+        .device_status_report => appendPendingOutput(ctx, "\x1b[0n"),
+        .dec_device_status_report => |param| LocatorNs.appendDeviceStatusReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, param),
+        .cursor_position_report => appendCursorPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
+        .dec_cursor_position_report => appendDecCursorPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
+        .primary_device_attributes => appendPendingOutput(ctx, "\x1b[?62;22c"),
+        .secondary_device_attributes => appendPendingOutput(ctx, "\x1b[>1;10;0c"),
+        .tertiary_device_attributes => appendPendingOutput(ctx, "\x1bP!|00000000\x1b\\"),
+        .xtversion => appendXtVersionReport(ctx.allocator, ctx.pending_output),
+        .xttitlepos => appendTitleStackPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, 0, 0),
+        .xtchecksum => |flags| ctx.xtchecksum_flags.* = flags,
+        .rect_checksum_request => |req| appendRectChecksumReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, .{ .request_id = req.request_id }, computeRectChecksum(ctx.active_screen, ctx.xtchecksum_flags.*, req.page, req.area)),
+        .selected_graphic_rendition_report => |area| appendSelectedGraphicRenditionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.active_screen, area),
+        .presentation_state_report => |kind| {
+            switch (kind) {
+                1 => appendCursorInformationReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, .{
+                    .cursor = ctx.render_view,
+                    .current_attrs = ctx.active_screen.current_attrs,
+                    .origin_mode = ctx.active_screen.origin_mode,
+                    .wrap_pending = ctx.active_screen.wrap_pending,
+                }, ctx.deccir_charset),
+                2 => appendTabStopReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.active_screen),
+                else => appendPendingOutput(ctx, "\x1bP0$u\x1b\\"),
+            }
+        },
+        .displayed_extent_report => appendDisplayedExtentReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
+        .terminal_parameters_report => |kind| appendTerminalParametersReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, kind),
+        .xtreportcolors => appendColorStackReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.color_stack_depth),
+    }
+}
+
+fn isKeyFormatResource(resource: u8) bool {
+    return resource <= 4 or resource == 6 or resource == 7;
+}
+
+fn appendPendingOutput(ctx: Context, bytes: []const u8) void {
+    ctx.pending_output.appendSlice(ctx.allocator, bytes) catch {};
+}
+
+fn appendDecrqssReply(ctx: Context, request: []const u8) void {
+    if (decrqssPayload(ctx, request)) |payload| {
+        ctx.pending_output.appendSlice(ctx.allocator, "\x1bP1$r") catch return;
+        ctx.pending_output.appendSlice(ctx.allocator, payload) catch return;
+        ctx.pending_output.appendSlice(ctx.allocator, "\x1b\\") catch return;
+        return;
+    }
+    appendPendingOutput(ctx, "\x1bP0$r\x1b\\");
+}
+
+fn decrqssPayload(ctx: Context, request: []const u8) ?[]const u8 {
+    const screen = ctx.active_screen;
+    if (std.mem.eql(u8, request, "r")) {
+        const bottom = if (screen.rows == 0) @as(u16, 0) else @min(screen.scroll_bottom, screen.rows - 1);
+        return std.fmt.bufPrint(ctx.encode_buf, "{d};{d}r", .{ screen.scroll_top + 1, bottom + 1 }) catch null;
+    }
+    if (std.mem.eql(u8, request, "s")) {
+        const right = if (screen.left_right_margin_mode) screen.right_margin else screen.cols -| 1;
+        return std.fmt.bufPrint(ctx.encode_buf, "{d};{d}s", .{ screen.left_margin + 1, right + 1 }) catch null;
+    }
+    if (std.mem.eql(u8, request, " q")) {
+        const style = screen.cursor_style;
+        const value: u8 = switch (style.shape) {
+            .block => if (style.blink) 1 else 2,
+            .underline => if (style.blink) 3 else 4,
+            .bar => if (style.blink) 5 else 6,
+        };
+        return std.fmt.bufPrint(ctx.encode_buf, "{d} q", .{value}) catch null;
+    }
+    if (std.mem.eql(u8, request, "\"q")) {
+        const value: u8 = if (screen.current_attrs.protected) 1 else 0;
+        return std.fmt.bufPrint(ctx.encode_buf, "{d}\"q", .{value}) catch null;
+    }
+    if (std.mem.eql(u8, request, "*x")) {
+        const value: u8 = if (screen.attr_change_extent_rect) 2 else 0;
+        return std.fmt.bufPrint(ctx.encode_buf, "{d}*x", .{value}) catch null;
+    }
+    return null;
+}
 
 pub fn appendModifyOtherKeysReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, value: i8) void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b[>4;{d}m", .{value}) catch return;

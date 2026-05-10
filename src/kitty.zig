@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const action_types = @import("interpret/action_types.zig");
+const actions_owner = @import("interpret/actions.zig");
 
 const key_mod = @import("kitty/key.zig");
 const pointer_mod = @import("kitty/pointer.zig");
@@ -12,11 +13,54 @@ const graphics_mod = @import("kitty/graphics.zig");
 
 const KittyNotificationCommand = action_types.KittyNotificationCommand;
 const KittyShellMark = action_types.KittyShellMark;
+const KittyAction = actions_owner.KittyAction;
 
 pub const Key = key_mod;
 pub const Pointer = pointer_mod;
 pub const Color = color_mod;
 pub const Graphics = graphics_mod;
+
+pub fn apply(vt: anytype, action: KittyAction) void {
+    const active_screen = vt.kitty.activeScreen(vt.screen_state.alt_active);
+    const active_screen_const = vt.kitty.activeScreenConst(vt.screen_state.alt_active);
+    switch (action) {
+        .kitty_keyboard_set => |req| active_screen.keyboard.set(req.flags, req.mode),
+        .kitty_keyboard_query => active_screen_const.keyboard.appendReport(vt.allocator, &vt.host.pending_output, vt.encode.buf[0..]),
+        .kitty_keyboard_push => |flags| active_screen.keyboard.push(flags),
+        .kitty_keyboard_pop => |count| active_screen.keyboard.pop(count),
+        .kitty_shell_mark => |mark| setShellMark(vt.allocator, &vt.kitty.global.shell_mark, mark),
+        .kitty_notification => |notification| appendNotification(vt.allocator, &vt.kitty.global.notifications, notification),
+        .kitty_pointer_shape => |cmd| {
+            switch (cmd.action) {
+                '<' => active_screen.pointer.pop(),
+                '>' => active_screen.pointer.push(cmd.names),
+                '?' => active_screen_const.pointer.appendQuery(vt.allocator, &vt.host.pending_output, cmd.names),
+                else => active_screen.pointer.set(cmd.names),
+            }
+        },
+        .kitty_color_stack => |cmd| {
+            switch (cmd) {
+                .push => Color.pushState(&vt.kitty.global.color_stack, &vt.host.terminal_colors, &vt.kitty.global.color_stack_depth),
+                .pop => Color.popState(&vt.kitty.global.color_stack, &vt.host.terminal_colors, &vt.kitty.global.color_stack_depth),
+            }
+        },
+        .kitty_multiple_cursor => |cmd| switch (cmd) {
+            .support_query => vt.host.pending_output.appendSlice(vt.allocator, "\x1b[>1;2;3;29;30;40;100;101 q") catch {},
+            .clear_all => active_screen.multiple_cursor_count = 0,
+            .cursor_query => vt.host.pending_output.appendSlice(vt.allocator, "\x1b[>100 q") catch {},
+            .color_query => vt.host.pending_output.appendSlice(vt.allocator, "\x1b[>101;30:0;40:0 q") catch {},
+        },
+        .kitty_file_transfer => |payload| setOptionalPayload(vt.allocator, &vt.kitty.global.file_transfer_request, payload),
+        .kitty_text_size => |payload| setOptionalPayload(vt.allocator, &vt.kitty.global.text_size_request, payload),
+        .kitty_graphics => |cmd| {
+            const cursor = vt.screen_state.activeConst();
+            vt.kitty.global.graphics.handle(vt.allocator, .{
+                .row = cursor.cursor_row,
+                .col = cursor.cursor_col,
+            }, &vt.host.pending_output, vt.encode.buf[0..], cmd);
+        },
+    }
+}
 
 pub const ScreenState = struct {
     keyboard: Key.Stack = .{},

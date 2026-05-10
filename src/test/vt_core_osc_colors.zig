@@ -48,6 +48,32 @@ test "OSC 52 produces pending clipboard request" {
     try std.testing.expectEqual(@as(?[]const u8, null), vt_core.pendingClipboardSet());
 }
 
+test "OSC 52 decoded clipboard drain clears pending request" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 3, 16);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b]52;c;SG93bA==\x07");
+    vt_core.apply();
+
+    const text = (try vt_core.drainPendingClipboardSet(allocator)).?;
+    defer allocator.free(text);
+    try std.testing.expectEqualStrings("Howl", text);
+    try std.testing.expectEqual(@as(?[]const u8, null), vt_core.pendingClipboardSet());
+}
+
+test "OSC 52 query clipboard drain clears without request" {
+    const allocator = std.testing.allocator;
+    var vt_core = try vt.VtCore.initWithCells(allocator, 3, 16);
+    defer vt_core.deinit();
+
+    vt_core.feedSlice("\x1b]52;c;?\x07");
+    vt_core.apply();
+
+    try std.testing.expectEqual(@as(?[]u8, null), try vt_core.drainPendingClipboardSet(allocator));
+    try std.testing.expectEqual(@as(?[]const u8, null), vt_core.pendingClipboardSet());
+}
+
 test "kitty clipboard OSC 5522 and mode query use host-neutral state" {
     const allocator = std.testing.allocator;
     var vt_core = try vt.VtCore.initWithCells(allocator, 3, 16);

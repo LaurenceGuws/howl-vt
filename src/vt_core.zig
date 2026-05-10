@@ -7,32 +7,26 @@ const grid_owner = @import("grid.zig");
 const grid_model = @import("grid/state.zig");
 const input_mod = @import("input.zig");
 const interpret_owner = @import("interpret.zig");
-const action_types = @import("interpret/action_types.zig");
+const osc_actions_owner = @import("interpret/osc_actions.zig");
 const kitty_owner = @import("kitty.zig");
 const locator_owner = @import("locator.zig");
 const osc_color_owner = @import("osc_color.zig");
-const vt_core_host_owner = @import("vt_core/host.zig");
-const vt_core_modes_owner = @import("vt_core/modes.zig");
-const vt_core_kitty_owner = @import("vt_core/kitty.zig");
-const vt_core_reports_owner = @import("vt_core/reports.zig");
 const selection_owner = @import("selection.zig");
 const snapshot_owner = @import("snapshot.zig");
 const terminal_mode_owner = @import("terminal_mode.zig");
+const terminal_report_owner = @import("terminal_report.zig");
 
 const GridNs = grid_owner;
 const Input = input_mod;
 const Interpret = interpret_owner;
-const DcsPayload = action_types.DcsPayload;
+const OscActions = osc_actions_owner;
 const KittyNs = kitty_owner;
 const LocatorNs = locator_owner;
 const OscColorNs = osc_color_owner;
-const VtCoreHost = vt_core_host_owner;
-const VtCoreModes = vt_core_modes_owner;
-const VtCoreKitty = vt_core_kitty_owner;
-const VtCoreReports = vt_core_reports_owner;
 const Selection = selection_owner;
 const Snapshot = snapshot_owner;
 const TerminalModeNs = terminal_mode_owner;
+const TerminalReportNs = terminal_report_owner;
 
 /// Explicit package-surface grid owner alias retained for downstream runtime/render code.
 pub const Grid = GridNs;
@@ -449,6 +443,15 @@ pub const VtCore = struct {
         return null;
     }
 
+    pub fn drainPendingClipboardSet(self: *VtCore, allocator: std.mem.Allocator) !?[]u8 {
+        const pending = self.pendingClipboardSet() orelse return null;
+        defer self.clearPendingClipboardSet();
+        return OscActions.decodeClipboardSet(allocator, pending) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            else => null,
+        };
+    }
+
     pub fn kittyClipboardMode(self: *const VtCore) bool {
         return self.modes.kitty_clipboard;
     }
@@ -811,192 +814,21 @@ pub const VtCore = struct {
         return self.kitty.activeScreenConst(self.screen_state.alt_active);
     }
 
-    fn resetTerminalState(self: *VtCore) void {
-        self.activeStateMut().reset();
-        self.kitty.resetTerminalState();
-        self.host.locator = .{};
-    }
-
-    fn enterAltScreenThunk(ctx: *anyopaque, clear_alt: bool, save_cursor: bool) void {
-        const self: *VtCore = @ptrCast(@alignCast(ctx));
-        self.screen_state.enterAlt(clear_alt, save_cursor);
-        self.selection.clear();
-    }
-
-    fn exitAltScreenThunk(ctx: *anyopaque, restore_cursor: bool) void {
-        const self: *VtCore = @ptrCast(@alignCast(ctx));
-        self.screen_state.exitAlt(restore_cursor);
-        self.selection.clear();
-    }
-
-    fn isKeyFormatResourceThunk(ctx: *anyopaque, resource: u8) bool {
-        const self: *const VtCore = @ptrCast(@alignCast(ctx));
-        return self.isKeyFormatResource(resource);
-    }
-
-    fn hostSetCurrentLinkIdThunk(ctx: *anyopaque, link_id: u32) void {
-        const self: *VtCore = @ptrCast(@alignCast(ctx));
-        self.activeStateMut().setCurrentLinkId(link_id);
-    }
-
-    fn hostInternHyperlinkThunk(ctx: *anyopaque, uri: []const u8) u32 {
-        const self: *VtCore = @ptrCast(@alignCast(ctx));
-        for (self.host.hyperlink_targets.items, 0..) |existing, idx| {
-            if (std.mem.eql(u8, existing, uri)) return @intCast(idx + 1);
-        }
-        const owned = self.allocator.dupe(u8, uri) catch return 0;
-        self.host.hyperlink_targets.append(self.allocator, owned) catch {
-            self.allocator.free(owned);
-            return 0;
-        };
-        return @intCast(self.host.hyperlink_targets.items.len);
-    }
-
-    fn hostSetPendingClipboardThunk(ctx: *anyopaque, payload: []const u8) void {
-        const self: *VtCore = @ptrCast(@alignCast(ctx));
-        if (self.host.pending_clipboard) |req| self.allocator.free(req.raw);
-        const owned = self.allocator.dupe(u8, payload) catch {
-            self.host.pending_clipboard = null;
-            return;
-        };
-        self.host.pending_clipboard = .{ .raw = owned };
-    }
-
-    fn hostSetDcsPayloadThunk(ctx: *anyopaque, payload: DcsPayload) void {
-        const self: *VtCore = @ptrCast(@alignCast(ctx));
-        if (self.host.dcs_payload) |old| self.allocator.free(old.payload);
-        const owned = self.allocator.dupe(u8, payload.payload) catch {
-            self.host.dcs_payload = null;
-            return;
-        };
-        self.host.dcs_payload = .{ .kind = payload.kind, .payload = owned };
-    }
-
-    fn hostResetTerminalStateThunk(ctx: *anyopaque) void {
-        const self: *VtCore = @ptrCast(@alignCast(ctx));
-        self.resetTerminalState();
-    }
-
     fn applySemantic(self: *VtCore, sem_ev: Interpret.SemanticEvent) void {
         if (Interpret.reportAction(sem_ev)) |action| {
-            const deccir_charset = self.apply_flow.deccirCharsetState();
-            VtCoreReports.apply(.{
-                .allocator = self.allocator,
-                .pending_output = &self.host.pending_output,
-                .encode_buf = self.encode.buf[0..],
-                .active_screen = self.activeState(),
-                .render_view = .{
-                    .rows = self.activeState().rows,
-                    .cols = self.activeState().cols,
-                    .cursor_row = self.activeState().cursor_row,
-                    .cursor_col = self.activeState().cursor_col,
-                },
-                .ansi_modes = .{
-                    .keyboard_action_mode = self.modes.keyboard_action_mode,
-                    .insert_mode = self.activeState().insertMode(),
-                    .send_receive_mode = self.modes.send_receive_mode,
-                    .newline_mode = self.modes.newline_mode,
-                },
-                .dec_modes = .{
-                    .application_cursor_keys = self.modes.application_cursor_keys,
-                    .application_keypad = self.modes.application_keypad,
-                    .auto_wrap = self.activeState().auto_wrap,
-                    .left_right_margin_mode = self.activeState().left_right_margin_mode,
-                    .cursor_visible = self.activeState().cursor_visible,
-                    .alt_active = self.screen_state.alt_active,
-                    .mouse_tracking = self.modes.mouse_tracking,
-                    .mouse_protocol = self.modes.mouse_protocol,
-                    .focus_reporting = self.modes.focus_reporting,
-                    .bracketed_paste = self.modes.bracketed_paste,
-                    .synchronized_output = self.modes.synchronized_output,
-                    .kitty_clipboard = self.modes.kitty_clipboard,
-                },
-                .modify_other_keys = self.modes.modify_other_keys,
-                .key_format = self.modes.key_format,
-                .xtchecksum_flags = &self.xtchecksum_flags,
-                .deccir_charset = .{
-                    .gl_index = deccir_charset.gl_index,
-                    .g0_designation = deccir_charset.g0_designation,
-                    .g1_designation = deccir_charset.g1_designation,
-                },
-                .color_stack_depth = self.kitty.global.color_stack.len,
-            }, action);
+            TerminalReportNs.apply(self, action);
             return;
         }
         if (Interpret.kittyAction(sem_ev)) |action| {
-            VtCoreKitty.apply(.{
-                .allocator = self.allocator,
-                .pending_output = &self.host.pending_output,
-                .encode_buf = self.encode.buf[0..],
-                .active_screen = self.activeKittyScreen(),
-                .active_screen_const = self.activeKittyScreenConst(),
-                .global = &self.kitty.global,
-                .terminal_colors = &self.host.terminal_colors,
-                .graphics_cursor = .{
-                    .row = self.activeState().cursor_row,
-                    .col = self.activeState().cursor_col,
-                },
-            }, action);
+            KittyNs.apply(self, action);
             return;
         }
         if (Interpret.modeAction(sem_ev)) |action| {
-            VtCoreModes.apply(.{
-                .active_state = self.activeStateMut(),
-                .alt_active = &self.screen_state.alt_active,
-                .keyboard_action_mode = &self.modes.keyboard_action_mode,
-                .application_cursor_keys = &self.modes.application_cursor_keys,
-                .application_keypad = &self.modes.application_keypad,
-                .send_receive_mode = &self.modes.send_receive_mode,
-                .newline_mode = &self.modes.newline_mode,
-                .modify_other_keys = &self.modes.modify_other_keys,
-                .key_format = &self.modes.key_format,
-                .pointer_mode = &self.modes.pointer_mode,
-                .kitty_clipboard = &self.modes.kitty_clipboard,
-                .sixel_display_mode = &self.modes.sixel_display_mode,
-                .reverse_wraparound_mode = &self.modes.reverse_wraparound_mode,
-                .extended_reverse_wraparound_mode = &self.modes.extended_reverse_wraparound_mode,
-                .focus_reporting = &self.modes.focus_reporting,
-                .bracketed_paste = &self.modes.bracketed_paste,
-                .synchronized_output = &self.modes.synchronized_output,
-                .mouse_tracking = &self.modes.mouse_tracking,
-                .mouse_protocol = &self.modes.mouse_protocol,
-                .saved_dec_modes = &self.modes.saved_dec_modes,
-                .saved_dec_mode_count = &self.modes.saved_dec_mode_count,
-                .owner_ctx = self,
-                .enter_alt_screen = enterAltScreenThunk,
-                .exit_alt_screen = exitAltScreenThunk,
-                .is_key_format_resource = isKeyFormatResourceThunk,
-            }, action);
+            TerminalModeNs.apply(self, action);
             return;
         }
         if (Interpret.hostAction(sem_ev)) |action| {
-            VtCoreHost.apply(.{
-                .allocator = self.allocator,
-                .terminal_colors = &self.host.terminal_colors,
-                .pending_output = &self.host.pending_output,
-                .encode_buf = self.encode.buf[0..],
-                .active_state = self.activeStateMut(),
-                .link_ops = .{
-                    .ctx = self,
-                    .set_current_link_id = hostSetCurrentLinkIdThunk,
-                    .intern_hyperlink = hostInternHyperlinkThunk,
-                },
-                .clipboard_ops = .{
-                    .ctx = self,
-                    .set_pending_clipboard = hostSetPendingClipboardThunk,
-                },
-                .locator = &self.host.locator,
-                .media_copy_request = &self.host.media_copy_request,
-                .dcs_payload_ops = .{
-                    .ctx = self,
-                    .set_dcs_payload = hostSetDcsPayloadThunk,
-                },
-                .legacy_control = &self.host.legacy_control,
-                .reset_ops = .{
-                    .ctx = self,
-                    .reset_terminal_state = hostResetTerminalStateThunk,
-                },
-            }, action);
+            Interpret.applyHost(self, action);
             return;
         }
         if (Interpret.screenAction(sem_ev)) |screen_ev| self.activeStateMut().applyScreen(screen_ev);

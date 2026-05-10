@@ -3,8 +3,48 @@
 //! Reason: keep DEC/ANSI mode bookkeeping out of the vt-core facade.
 
 const input_mod = @import("input.zig");
+const actions_owner = @import("interpret/actions.zig");
 
 const Input = input_mod;
+const ModeAction = actions_owner.ModeAction;
+
+pub fn apply(vt: anytype, action: ModeAction) void {
+    switch (action) {
+        .enter_alt_screen => |opts| enterAltScreen(vt, opts.clear, opts.save_cursor),
+        .exit_alt_screen => |opts| exitAltScreen(vt, opts.restore_cursor),
+        .application_cursor_keys => |enabled| vt.modes.application_cursor_keys = enabled,
+        .application_keypad => |enabled| vt.modes.application_keypad = enabled,
+        .ansi_mode_set => |modes| setAnsiModes(vt, modes.params[0..modes.param_count], true),
+        .ansi_mode_reset => |modes| setAnsiModes(vt, modes.params[0..modes.param_count], false),
+        .modify_other_keys_set => |value| vt.modes.modify_other_keys = value,
+        .modify_other_keys_disable => vt.modes.modify_other_keys = -1,
+        .key_format_change => |change| {
+            if (change.resource) |resource| {
+                if (isKeyFormatResource(resource)) vt.modes.key_format[resource] = change.value orelse 0;
+            } else {
+                vt.modes.key_format = [_]u16{0} ** 8;
+            }
+        },
+        .pointer_mode => |value| vt.modes.pointer_mode = value,
+        .kitty_clipboard_mode => |enabled| vt.modes.kitty_clipboard = enabled,
+        .sixel_display_mode => |enabled| vt.modes.sixel_display_mode = enabled,
+        .reverse_wraparound_mode => |enabled| vt.modes.reverse_wraparound_mode = enabled,
+        .extended_reverse_wraparound_mode => |enabled| vt.modes.extended_reverse_wraparound_mode = enabled,
+        .focus_reporting => |enabled| vt.modes.focus_reporting = enabled,
+        .bracketed_paste => |enabled| vt.modes.bracketed_paste = enabled,
+        .synchronized_output => |enabled| vt.modes.synchronized_output = enabled,
+        .mouse_tracking_off => vt.modes.mouse_tracking = .off,
+        .mouse_tracking_x10 => vt.modes.mouse_tracking = .x10,
+        .mouse_tracking_normal => vt.modes.mouse_tracking = .normal,
+        .mouse_tracking_button_event => vt.modes.mouse_tracking = .button_event,
+        .mouse_tracking_any_event => vt.modes.mouse_tracking = .any_event,
+        .mouse_protocol_utf8 => |enabled| vt.modes.mouse_protocol = if (enabled) .utf8 else .none,
+        .mouse_protocol_sgr => |enabled| vt.modes.mouse_protocol = if (enabled) .sgr else .none,
+        .mouse_protocol_urxvt => |enabled| vt.modes.mouse_protocol = if (enabled) .urxvt else .none,
+        .dec_mode_save => |modes| saveDecModes(vt, modes.params[0..modes.param_count]),
+        .dec_mode_restore => |modes| restoreDecModes(vt, modes.params[0..modes.param_count]),
+    }
+}
 
 pub const SavedDecMode = struct {
     mode: u16,
@@ -46,6 +86,7 @@ pub fn decModeState(vt: anytype, mode: u16) u8 {
         .mouse_protocol = vt.modes.mouse_protocol,
         .focus_reporting = vt.modes.focus_reporting,
         .bracketed_paste = vt.modes.bracketed_paste,
+        .synchronized_output = vt.modes.synchronized_output,
         .kitty_clipboard = vt.modes.kitty_clipboard,
     }, mode);
 }
@@ -189,7 +230,11 @@ pub fn savedDecModeState(saved_modes: []const SavedDecMode, saved_count: u8, mod
 
 pub fn canSetDecMode(mode: u16) bool {
     return switch (mode) {
-        1, 6, 7, 9, 25, 47, 66, 69, 1047, 1049, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004, 2026 => true,
+        1, 6, 7, 9, 25, 47, 66, 69, 1047, 1049, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004, 2026, 5522 => true,
         else => false,
     };
+}
+
+fn isKeyFormatResource(resource: u8) bool {
+    return resource <= 4 or resource == 6 or resource == 7;
 }
