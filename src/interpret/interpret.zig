@@ -3,11 +3,11 @@
 //! Reason: keep one canonical owner for parser-to-grid translation flow.
 
 const parser_events = @import("parser_events.zig");
-const actions = @import("actions.zig");
+const actions = @import("actions/actions.zig");
 const apply_flow = @import("apply_flow.zig");
 const std = @import("std");
 const grid = @import("../grid/grid.zig");
-const action_types = @import("action_types.zig");
+const types = @import("actions/types.zig");
 const kitty = @import("../kitty/kitty.zig");
 const locator = @import("../locator.zig");
 const osc_color = @import("../osc_color.zig");
@@ -16,7 +16,7 @@ const GridNs = grid.Grid;
 const KittyNs = kitty;
 const LocatorNs = locator;
 const OscColorNs = osc_color;
-const DcsPayload = action_types.DcsPayload;
+const DcsPayload = types.DcsPayload;
 
 /// Canonical interpret domain owner.
 /// Parser event payload.

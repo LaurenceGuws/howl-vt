@@ -6,7 +6,7 @@ const std = @import("std");
 const grid = @import("grid/grid.zig");
 const input = @import("input/input.zig");
 const interpret = @import("interpret/interpret.zig");
-const osc_actions = @import("interpret/osc_actions.zig");
+const osc = @import("interpret/actions/osc.zig");
 const kitty = @import("kitty/kitty.zig");
 const locator = @import("locator.zig");
 const osc_color = @import("osc_color.zig");
@@ -19,7 +19,7 @@ const report = @import("report.zig");
 const GridNs = grid.Grid;
 const Input = input;
 const Interpret = interpret;
-const OscActions = osc_actions;
+const Osc = osc;
 const KittyNs = kitty;
 const LocatorNs = locator;
 const OscColorNs = osc_color;
@@ -449,7 +449,7 @@ pub const VtCore = struct {
     pub fn drainPendingClipboardSet(self: *VtCore, allocator: std.mem.Allocator) !?[]u8 {
         const pending = self.pendingClipboardSet() orelse return null;
         defer self.clearPendingClipboardSet();
-        return OscActions.decodeClipboardSet(allocator, pending) catch |err| switch (err) {
+        return Osc.decodeClipboardSet(allocator, pending) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             else => null,
         };
@@ -618,7 +618,7 @@ pub const VtCore = struct {
             i -= 1;
             const ev = self.apply_flow.events()[i];
             switch (ev) {
-                .osc => |osc| if (osc.kind == .title) return osc.payload,
+                .osc => |osc_event| if (osc_event.kind == .title) return osc_event.payload,
                 else => {},
             }
         }

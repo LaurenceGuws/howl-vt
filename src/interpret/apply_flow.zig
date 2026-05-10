@@ -6,7 +6,7 @@ const std = @import("std");
 const grid_mod = @import("../grid/grid.zig");
 const parser_mod = @import("../parser/parser.zig");
 const parser_events_mod = @import("parser_events.zig");
-const actions_mod = @import("actions.zig");
+const actions = @import("actions/actions.zig");
 
 const Grid = grid_mod.Grid;
 const ParserApi = parser_mod.Parser;
@@ -82,8 +82,8 @@ pub const ApplyFlow = struct {
     /// Apply queued events to screen.
     pub fn applyToScreen(self: *ApplyFlow, screen: *Grid) void {
         for (self.parser_events.events.items) |ev| {
-            if (actions_mod.process(ev)) |sem_ev| {
-                if (actions_mod.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
+            if (actions.process(ev)) |sem_ev| {
+                if (actions.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
             }
         }
         self.parser_events.clear();

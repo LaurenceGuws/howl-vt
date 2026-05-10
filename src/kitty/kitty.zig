@@ -3,16 +3,16 @@
 //! Reason: keep kitty protocol state and operations behind a specific sibling owner.
 
 const std = @import("std");
-const action_types = @import("../interpret/action_types.zig");
-const actions = @import("../interpret/actions.zig");
+const types = @import("../interpret/actions/types.zig");
+const actions = @import("../interpret/actions/actions.zig");
 
 const key_mod = @import("key.zig");
 const pointer_mod = @import("pointer.zig");
 const color_mod = @import("color.zig");
 const graphics_mod = @import("graphics.zig");
 
-const KittyNotificationCommand = action_types.KittyNotificationCommand;
-const KittyShellMark = action_types.KittyShellMark;
+const KittyNotificationCommand = types.KittyNotificationCommand;
+const KittyShellMark = types.KittyShellMark;
 const KittyAction = actions.KittyAction;
 
 pub const Key = key_mod;

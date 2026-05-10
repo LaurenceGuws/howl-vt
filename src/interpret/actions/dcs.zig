@@ -17,8 +17,8 @@ pub fn requestResourcePayload(data: []const u8) ?[]const u8 {
     return null;
 }
 
-const action_types = @import("action_types.zig");
-const SemanticEvent = action_types.SemanticEvent;
+const types = @import("types.zig");
+const SemanticEvent = types.SemanticEvent;
 
 pub fn process(data: []const u8) ?SemanticEvent {
     if (requestStatusPayload(data)) |payload| return SemanticEvent{ .dcs_request_status = payload };

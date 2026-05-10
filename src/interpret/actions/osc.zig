@@ -3,18 +3,18 @@
 //! Reason: keep string-protocol meaning separate from the top-level action router.
 
 const std = @import("std");
-const action_types = @import("action_types.zig");
-const parser_events = @import("parser_events.zig");
-const kitty_actions = @import("kitty_actions.zig");
+const types = @import("types.zig");
+const parser_events = @import("../parser_events.zig");
+const kitty = @import("kitty.zig");
 
-const SemanticEvent = action_types.SemanticEvent;
+const SemanticEvent = types.SemanticEvent;
 
 pub fn process(kind: parser_events.OscKind, command: ?u16, payload: []const u8) ?SemanticEvent {
     if (command) |cmd| switch (cmd) {
-        22 => return SemanticEvent{ .kitty_pointer_shape = kitty_actions.parsePointerShape(payload) },
+        22 => return SemanticEvent{ .kitty_pointer_shape = kitty.parsePointerShape(payload) },
         4, 10, 11, 12, 21, 104, 110, 111, 112 => return SemanticEvent{ .color_control = .{ .command = cmd, .payload = payload } },
-        9, 99 => if (kitty_actions.parseNotification(payload)) |notification| return SemanticEvent{ .kitty_notification = notification },
-        133 => if (kitty_actions.parseShellMark(payload)) |mark| return SemanticEvent{ .kitty_shell_mark = mark },
+        9, 99 => if (kitty.parseNotification(payload)) |notification| return SemanticEvent{ .kitty_notification = notification },
+        133 => if (kitty.parseShellMark(payload)) |mark| return SemanticEvent{ .kitty_shell_mark = mark },
         66 => return SemanticEvent{ .kitty_text_size = payload },
         5522 => return SemanticEvent{ .clipboard_set = payload },
         5113 => return SemanticEvent{ .kitty_file_transfer = payload },

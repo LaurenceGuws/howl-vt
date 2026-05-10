@@ -9,8 +9,8 @@ pub const C0Action = enum {
     horizontal_tab,
 };
 
-const action_types = @import("action_types.zig");
-const SemanticEvent = action_types.SemanticEvent;
+const types = @import("types.zig");
+const SemanticEvent = types.SemanticEvent;
 
 pub fn action(control: u8) ?C0Action {
     return switch (control) {

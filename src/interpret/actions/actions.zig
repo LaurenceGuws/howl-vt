@@ -2,45 +2,45 @@
 //! Ownership: interpret action mapping.
 //! Reason: separate escape parsing from vt-core consequences.
 
-const action_types = @import("action_types.zig");
-const apc_actions = @import("apc_actions.zig");
-const parser_events = @import("parser_events.zig");
-const c0_actions = @import("c0_actions.zig");
-const csi_actions = @import("csi_actions.zig");
-const dcs_actions = @import("dcs_actions.zig");
-const esc_actions = @import("esc_actions.zig");
-const kitty_actions = @import("kitty_actions.zig");
-const osc_actions = @import("osc_actions.zig");
+const types = @import("types.zig");
+const apc = @import("apc.zig");
+const parser_events = @import("../parser_events.zig");
+const c0 = @import("c0.zig");
+const csi = @import("csi.zig");
+const dcs = @import("dcs.zig");
+const esc = @import("esc.zig");
+const kitty = @import("kitty.zig");
+const osc = @import("osc.zig");
 
 /// Parser-event alias for action mapping.
 const Event = parser_events.Event;
-pub const KittyGraphicsCommand = action_types.KittyGraphicsCommand;
-pub const KittyShellMark = action_types.KittyShellMark;
-pub const KittyNotificationCommand = action_types.KittyNotificationCommand;
-pub const KittyPointerShapeCommand = action_types.KittyPointerShapeCommand;
-pub const KittyColorStackCommand = action_types.KittyColorStackCommand;
-pub const TerminalColorControlCommand = action_types.TerminalColorControlCommand;
-pub const DcsPayloadKind = action_types.DcsPayloadKind;
-pub const LegacyControlKind = action_types.LegacyControlKind;
-pub const EscAction = esc_actions.EscAction;
-pub const SemanticEvent = action_types.SemanticEvent;
-pub const ScreenAction = action_types.ScreenAction;
-pub const ReportAction = action_types.ReportAction;
-pub const ModeAction = action_types.ModeAction;
-pub const KittyAction = action_types.KittyAction;
-pub const HostAction = action_types.HostAction;
+pub const KittyGraphicsCommand = types.KittyGraphicsCommand;
+pub const KittyShellMark = types.KittyShellMark;
+pub const KittyNotificationCommand = types.KittyNotificationCommand;
+pub const KittyPointerShapeCommand = types.KittyPointerShapeCommand;
+pub const KittyColorStackCommand = types.KittyColorStackCommand;
+pub const TerminalColorControlCommand = types.TerminalColorControlCommand;
+pub const DcsPayloadKind = types.DcsPayloadKind;
+pub const LegacyControlKind = types.LegacyControlKind;
+pub const EscAction = esc.EscAction;
+pub const SemanticEvent = types.SemanticEvent;
+pub const ScreenAction = types.ScreenAction;
+pub const ReportAction = types.ReportAction;
+pub const ModeAction = types.ModeAction;
+pub const KittyAction = types.KittyAction;
+pub const HostAction = types.HostAction;
 
 /// Map parser event to terminal event when supported.
 pub fn process(event: Event) ?SemanticEvent {
     switch (event) {
-        .style_change => |sc| return csi_actions.process(sc.final, sc.params, sc.separators, sc.param_count, sc.leader, sc.private, sc.intermediates, sc.intermediates_len),
+        .style_change => |sc| return csi.process(sc.final, sc.params, sc.separators, sc.param_count, sc.leader, sc.private, sc.intermediates, sc.intermediates_len),
         .text => |s| return SemanticEvent{ .write_text = s },
         .codepoint => |cp| return SemanticEvent{ .write_codepoint = cp },
-        .control => |c| return c0_actions.process(c),
-        .osc => |osc| return osc_actions.process(osc.kind, osc.command, osc.payload),
-        .esc_final => |final| return esc_actions.process(final),
-        .apc => |apc| return apc_actions.process(apc),
-        .dcs => |dcs| return dcs_actions.process(dcs),
+        .control => |c| return c0.process(c),
+        .osc => |osc_event| return osc.process(osc_event.kind, osc_event.command, osc_event.payload),
+        .esc_final => |final| return esc.process(final),
+        .apc => |apc_data| return apc.process(apc_data),
+        .dcs => |dcs_data| return dcs.process(dcs_data),
         .pm, .invalid_sequence => return null,
     }
 }

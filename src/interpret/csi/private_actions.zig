@@ -4,26 +4,26 @@
 
 const std = @import("std");
 
-const action_types = @import("action_types.zig");
-const csi_params = @import("csi_params.zig");
+const types = @import("../actions/types.zig");
+const params_mod = @import("params.zig");
 
-const SemanticEvent = action_types.SemanticEvent;
+const SemanticEvent = types.SemanticEvent;
 
 pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     if (leader == '?' and final == 'u') return SemanticEvent.kitty_keyboard_query;
-    if (leader == '?' and final == 'g') return SemanticEvent{ .key_format_query = @intCast(@min(csi_params.paramOrDefault0(params[0]), std.math.maxInt(u8))) };
-    if (leader == '?' and final == 'J') return SemanticEvent{ .selective_erase_display = csi_params.eraseMode(params[0]) };
-    if (leader == '?' and final == 'K') return SemanticEvent{ .selective_erase_line = csi_params.eraseMode(params[0]) };
-    if (leader == '?' and final == 'W' and csi_params.paramOrDefault0(params[0]) == 5) return SemanticEvent.reset_default_tab_stops;
+    if (leader == '?' and final == 'g') return SemanticEvent{ .key_format_query = @intCast(@min(params_mod.paramOrDefault0(params[0]), std.math.maxInt(u8))) };
+    if (leader == '?' and final == 'J') return SemanticEvent{ .selective_erase_display = params_mod.eraseMode(params[0]) };
+    if (leader == '?' and final == 'K') return SemanticEvent{ .selective_erase_line = params_mod.eraseMode(params[0]) };
+    if (leader == '?' and final == 'W' and params_mod.paramOrDefault0(params[0]) == 5) return SemanticEvent.reset_default_tab_stops;
     if (leader == '?' and count >= 1) {
-        if (final == 'm' and csi_params.paramOrDefault0(params[0]) == 4) return SemanticEvent.modify_other_keys_query;
-        if (final == 'p' and csi_params.intermediatesLenHas(intermediates, intermediates_len, '$')) {
-            return SemanticEvent{ .dec_mode_query = csi_params.paramOrDefault0(params[0]) };
+        if (final == 'm' and params_mod.paramOrDefault0(params[0]) == 4) return SemanticEvent.modify_other_keys_query;
+        if (final == 'p' and params_mod.intermediatesLenHas(intermediates, intermediates_len, '$')) {
+            return SemanticEvent{ .dec_mode_query = params_mod.paramOrDefault0(params[0]) };
         }
-        if (final == 's' and intermediates_len == 0) return SemanticEvent{ .dec_mode_save = csi_params.collectParams(params, count) };
-        if (final == 'r' and intermediates_len == 0) return SemanticEvent{ .dec_mode_restore = csi_params.collectParams(params, count) };
-        if (final == 'i') return SemanticEvent{ .media_copy_request = csi_params.paramOrDefault0(params[0]) };
-        if (final == 'n') return switch (csi_params.paramOrDefault0(params[0])) {
+        if (final == 's' and intermediates_len == 0) return SemanticEvent{ .dec_mode_save = params_mod.collectParams(params, count) };
+        if (final == 'r' and intermediates_len == 0) return SemanticEvent{ .dec_mode_restore = params_mod.collectParams(params, count) };
+        if (final == 'i') return SemanticEvent{ .media_copy_request = params_mod.paramOrDefault0(params[0]) };
+        if (final == 'n') return switch (params_mod.paramOrDefault0(params[0])) {
             6 => SemanticEvent.dec_cursor_position_report,
             55, 56 => |status| SemanticEvent{ .dec_device_status_report = status },
             else => null,

@@ -3,7 +3,7 @@
 //! Reason: keep DEC/ANSI mode bookkeeping out of the vt-core facade.
 
 const input_mod = @import("input/input.zig");
-const actions = @import("interpret/actions.zig");
+const actions = @import("interpret/actions/actions.zig");
 
 const Input = input_mod;
 const ModeAction = actions.ModeAction;

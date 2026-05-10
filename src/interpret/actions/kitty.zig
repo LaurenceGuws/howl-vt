@@ -3,15 +3,15 @@
 //! Reason: keep kitty OSC/APC payload parsing out of the top-level action router.
 
 const std = @import("std");
-const action_types = @import("action_types.zig");
+const types = @import("types.zig");
 
-pub fn parseGraphics(data: []const u8) ?action_types.KittyGraphicsCommand {
+pub fn parseGraphics(data: []const u8) ?types.KittyGraphicsCommand {
     if (data.len == 0 or data[0] != 'G') return null;
     const body = data[1..];
     const separator = std.mem.indexOfScalar(u8, body, ';') orelse body.len;
     const control = body[0..separator];
     const payload = if (separator < body.len) body[separator + 1 ..] else "";
-    var cmd = action_types.KittyGraphicsCommand{
+    var cmd = types.KittyGraphicsCommand{
         .action = 't',
         .image_id = 0,
         .image_number = 0,
@@ -65,7 +65,7 @@ pub fn parseGraphics(data: []const u8) ?action_types.KittyGraphicsCommand {
     return cmd;
 }
 
-pub fn parseShellMark(payload: []const u8) ?action_types.KittyShellMark {
+pub fn parseShellMark(payload: []const u8) ?types.KittyShellMark {
     if (payload.len == 0) return null;
     const separator = std.mem.indexOfScalar(u8, payload, ';') orelse payload.len;
     const kind = payload[0];
@@ -74,7 +74,7 @@ pub fn parseShellMark(payload: []const u8) ?action_types.KittyShellMark {
     return .{ .kind = kind, .status = status, .metadata = metadata };
 }
 
-pub fn parseNotification(payload: []const u8) ?action_types.KittyNotificationCommand {
+pub fn parseNotification(payload: []const u8) ?types.KittyNotificationCommand {
     const separator = std.mem.indexOfScalar(u8, payload, ';') orelse return null;
     return .{
         .metadata = payload[0..separator],
@@ -82,7 +82,7 @@ pub fn parseNotification(payload: []const u8) ?action_types.KittyNotificationCom
     };
 }
 
-pub fn parsePointerShape(payload: []const u8) action_types.KittyPointerShapeCommand {
+pub fn parsePointerShape(payload: []const u8) types.KittyPointerShapeCommand {
     if (payload.len == 0) return .{ .action = '=', .names = "" };
     const action = switch (payload[0]) {
         '=', '>', '<', '?' => payload[0],
