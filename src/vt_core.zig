@@ -682,7 +682,7 @@ pub const VtCore = struct {
             self.encode.len = 0;
             return self.encode.buf[0..0];
         }
-        const encoded = Input.Codec.encodeKey(self.encode.buf[0..], key, mod, self.modes.application_cursor_keys, self.modes.application_keypad, self.modes.modify_other_keys, self.modes.key_format[4], self.activeKittyKeyboardFlags());
+        const encoded = Input.Keyboard.encodeKey(self.encode.buf[0..], key, mod, self.modes.application_cursor_keys, self.modes.application_keypad, self.modes.modify_other_keys, self.modes.key_format[4], self.activeKittyKeyboardFlags());
         if (self.modes.newline_mode and key == Input.key_enter and std.mem.eql(u8, encoded, "\r")) {
             self.encode.buf[0] = '\r';
             self.encode.buf[1] = '\n';
@@ -717,7 +717,7 @@ pub const VtCore = struct {
     /// Encode mouse event payload (placeholder surface).
     pub fn encodeMouse(self: *VtCore, event: Input.MouseEvent) []const u8 {
         LocatorNs.handleMouseEvent(&self.host.locator, self.allocator, &self.host.pending_output, self.encode.buf[0..], event);
-        const encoded = Input.Codec.encodeMouse(self.encode.buf[0..], event, self.modes.mouse_tracking, self.modes.mouse_protocol);
+        const encoded = Input.Mouse.encodeMouse(self.encode.buf[0..], event, self.modes.mouse_tracking, self.modes.mouse_protocol);
         self.encode.len = encoded.len;
         return encoded;
     }
@@ -752,12 +752,12 @@ pub const VtCore = struct {
 
     /// Parse host key token into vt-core key constant.
     pub fn parseKeyToken(name: []const u8) ?Key {
-        return Input.Codec.parseKeyToken(name);
+        return Input.Tokens.parseKeyToken(name);
     }
 
     /// Parse host modifier bitfield into vt-core modifier mask.
     pub fn parseModifierBits(mods: i32) Modifier {
-        return Input.Codec.parseModifierBits(mods);
+        return Input.Tokens.parseModifierBits(mods);
     }
 
     /// Parse host control token into control signal.
