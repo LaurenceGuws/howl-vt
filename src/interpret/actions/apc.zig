@@ -1,4 +1,4 @@
-//! Responsibility: map APC parser events into typed terminal actions.
+//! Responsibility: map APC parsed events into typed terminal actions.
 //! Ownership: interpret APC action mapping.
 //! Reason: keep APC string-protocol meaning separate from the top-level action router.
 

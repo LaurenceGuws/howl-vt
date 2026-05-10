@@ -91,7 +91,7 @@ test "apply flow: stray ESC in OSC dropped, byte appended" {
     try std.testing.expectEqualSlices(u8, "title", flow.events()[0].osc.payload);
 }
 
-test "replay: apply-flow clear drops pending parser events before apply" {
+test "replay: apply-flow clear drops pending parsed events before apply" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -198,7 +198,7 @@ test "replay: apply-flow reset drops partial CBT parser state" {
     try std.testing.expectEqual(@as(u21, 'v'), screen.cellAt(0, 17));
 }
 
-test "replay: applyToScreen drains parser events once repeat apply is no-op" {
+test "replay: applyToScreen drains parsed events once repeat apply is no-op" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();

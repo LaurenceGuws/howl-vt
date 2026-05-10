@@ -1,4 +1,4 @@
-//! Responsibility: consume byte streams and emit parser events.
+//! Responsibility: consume byte streams and emit parser callbacks.
 //! Ownership: parser state-machine core.
 //! Reason: implement deterministic VT stream decoding boundaries.
 

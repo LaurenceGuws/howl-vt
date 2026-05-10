@@ -1,10 +1,10 @@
-//! Responsibility: map parser events into typed terminal actions.
+//! Responsibility: map parsed events into typed terminal actions.
 //! Ownership: interpret action mapping.
 //! Reason: separate escape parsing from vt-core consequences.
 
 const types = @import("types.zig");
 const apc = @import("apc.zig");
-const parser_events = @import("../parser_events.zig");
+const parsed_events = @import("../parsed_events.zig");
 const c0 = @import("c0.zig");
 const csi = @import("csi.zig");
 const dcs = @import("dcs.zig");
@@ -12,8 +12,8 @@ const esc = @import("esc.zig");
 const kitty = @import("kitty.zig");
 const osc = @import("osc.zig");
 
-/// Parser-event alias for action mapping.
-const Event = parser_events.Event;
+/// Parsed-event alias for action mapping.
+const Event = parsed_events.Event;
 pub const KittyGraphicsCommand = types.KittyGraphicsCommand;
 pub const KittyShellMark = types.KittyShellMark;
 pub const KittyNotificationCommand = types.KittyNotificationCommand;
@@ -30,7 +30,7 @@ pub const ModeAction = types.ModeAction;
 pub const KittyAction = types.KittyAction;
 pub const HostAction = types.HostAction;
 
-/// Map parser event to terminal event when supported.
+/// Map parsed event to terminal event when supported.
 pub fn process(event: Event) ?SemanticEvent {
     switch (event) {
         .style_change => |sc| return csi.process(sc.final, sc.params, sc.separators, sc.param_count, sc.leader, sc.private, sc.intermediates, sc.intermediates_len),

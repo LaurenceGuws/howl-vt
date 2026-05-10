@@ -5,38 +5,38 @@
 const std = @import("std");
 const grid_mod = @import("../grid/grid.zig");
 const parser_mod = @import("../parser/parser.zig");
-const parser_events_mod = @import("parser_events.zig");
+const parsed_events_mod = @import("parsed_events.zig");
 const action_map = @import("actions/map.zig");
 
 const Grid = grid_mod.Grid;
 const ParserApi = parser_mod.Parser;
 
 /// ApplyFlow event alias.
-const Event = parser_events_mod.Event;
+const Event = parsed_events_mod.Event;
 
-/// Parser event apply-flow surface.
+/// Parsed event apply-flow surface.
 pub const ApplyFlow = struct {
     allocator: std.mem.Allocator,
-    parser_events: *parser_events_mod.ParserEvents,
+    parsed_events: *parsed_events_mod.ParsedEvents,
     parser: ParserApi,
 
     /// Initialize apply-flow resources.
     pub fn init(allocator: std.mem.Allocator) !ApplyFlow {
-        const parser_events = try allocator.create(parser_events_mod.ParserEvents);
-        parser_events.* = parser_events_mod.ParserEvents.init(allocator);
+        const parsed_events = try allocator.create(parsed_events_mod.ParsedEvents);
+        parsed_events.* = parsed_events_mod.ParsedEvents.init(allocator);
         errdefer {
-            parser_events.deinit();
-            allocator.destroy(parser_events);
+            parsed_events.deinit();
+            allocator.destroy(parsed_events);
         }
-        const p = try ParserApi.init(allocator, parser_events.toSink());
-        return .{ .allocator = allocator, .parser_events = parser_events, .parser = p };
+        const p = try ParserApi.init(allocator, parsed_events.toSink());
+        return .{ .allocator = allocator, .parsed_events = parsed_events, .parser = p };
     }
 
     /// Release apply-flow resources.
     pub fn deinit(self: *ApplyFlow) void {
         self.parser.deinit();
-        self.parser_events.deinit();
-        self.allocator.destroy(self.parser_events);
+        self.parsed_events.deinit();
+        self.allocator.destroy(self.parsed_events);
     }
 
     /// Feed one byte.
@@ -51,27 +51,27 @@ pub const ApplyFlow = struct {
 
     /// Return queued event slice.
     pub fn events(self: *const ApplyFlow) []const Event {
-        return self.parser_events.events.items;
+        return self.parsed_events.events.items;
     }
 
     /// Return queued event count.
     pub fn len(self: *const ApplyFlow) usize {
-        return self.parser_events.len();
+        return self.parsed_events.len();
     }
 
     /// Return true when queue is empty.
     pub fn isEmpty(self: *const ApplyFlow) bool {
-        return self.parser_events.isEmpty();
+        return self.parsed_events.isEmpty();
     }
 
     /// Clear queued events only.
     pub fn clear(self: *ApplyFlow) void {
-        self.parser_events.clear();
+        self.parsed_events.clear();
     }
 
     /// Reset parser state and queue.
     pub fn reset(self: *ApplyFlow) void {
-        self.parser_events.clear();
+        self.parsed_events.clear();
         self.parser.reset();
     }
 
@@ -81,12 +81,12 @@ pub const ApplyFlow = struct {
 
     /// Apply queued events to screen.
     pub fn applyToScreen(self: *ApplyFlow, screen: *Grid) void {
-        for (self.parser_events.events.items) |ev| {
+        for (self.parsed_events.events.items) |ev| {
             if (action_map.process(ev)) |sem_ev| {
                 if (action_map.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
             }
         }
-        self.parser_events.clear();
+        self.parsed_events.clear();
     }
 };
 

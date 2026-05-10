@@ -2,7 +2,7 @@
 //! Ownership: interpret package boundary.
 //! Reason: keep one canonical owner for parser-to-grid translation flow.
 
-const parser_events = @import("parser_events.zig");
+const parsed_events = @import("parsed_events.zig");
 const action_map = @import("actions/map.zig");
 const apply_flow = @import("apply_flow.zig");
 const std = @import("std");
@@ -19,10 +19,10 @@ const OscColorNs = osc_color;
 const DcsPayload = types.DcsPayload;
 
 /// Canonical interpret domain owner.
-/// Parser event payload.
-pub const Event = parser_events.Event;
-/// Parser event queue owner.
-pub const ParserEvents = parser_events.ParserEvents;
+/// Parsed event payload.
+pub const Event = parsed_events.Event;
+/// Parsed event queue owner.
+pub const ParsedEvents = parsed_events.ParsedEvents;
 /// Semantic event payload.
 pub const SemanticEvent = action_map.SemanticEvent;
 /// Grid-directed action subset.

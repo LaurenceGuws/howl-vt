@@ -1,4 +1,4 @@
-//! Responsibility: route CSI parser events to CSI action-family owners.
+//! Responsibility: route CSI parsed events to CSI action-family owners.
 //! Ownership: interpret CSI action router.
 //! Reason: keep CSI dispatch separate from subfamily meaning.
 

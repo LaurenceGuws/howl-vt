@@ -1,6 +1,6 @@
 //! Responsibility: own semantic action payload shapes shared by action mapping and vt-core dispatch.
 //! Ownership: interpret action type definitions.
-//! Reason: keep protocol payload data shapes separate from parser-event mapping logic.
+//! Reason: keep protocol payload data shapes separate from parsed-event mapping logic.
 
 pub const KittyGraphicsCommand = struct {
     action: u8,

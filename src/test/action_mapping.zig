@@ -1,4 +1,4 @@
-//! Responsibility: mapping coverage from parser events to terminal actions.
+//! Responsibility: mapping coverage from parsed events to terminal actions.
 //! Ownership: parser-to-action translation correctness tests.
 //! Reason: make translation defaults, aliases, and private modes explicit.
 

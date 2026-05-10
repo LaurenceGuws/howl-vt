@@ -1,15 +1,15 @@
-//! Responsibility: map OSC parser events into typed terminal actions.
+//! Responsibility: map OSC parsed events into typed terminal actions.
 //! Ownership: interpret OSC action mapping.
 //! Reason: keep string-protocol meaning separate from the top-level action router.
 
 const std = @import("std");
 const types = @import("types.zig");
-const parser_events = @import("../parser_events.zig");
+const parsed_events = @import("../parsed_events.zig");
 const kitty = @import("kitty.zig");
 
 const SemanticEvent = types.SemanticEvent;
 
-pub fn process(kind: parser_events.OscKind, command: ?u16, payload: []const u8) ?SemanticEvent {
+pub fn process(kind: parsed_events.OscKind, command: ?u16, payload: []const u8) ?SemanticEvent {
     if (command) |cmd| switch (cmd) {
         22 => return SemanticEvent{ .kitty_pointer_shape = kitty.parsePointerShape(payload) },
         4, 10, 11, 12, 21, 104, 110, 111, 112 => return SemanticEvent{ .color_control = .{ .command = cmd, .payload = payload } },
