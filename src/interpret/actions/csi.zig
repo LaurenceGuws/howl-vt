@@ -3,10 +3,10 @@
 //! Reason: keep CSI dispatch separate from subfamily meaning.
 
 const types = @import("types.zig");
-const intermediate = @import("../csi/intermediate_actions.zig");
-const leader = @import("../csi/leader_actions.zig");
-const plain = @import("../csi/plain_actions.zig");
-const private = @import("../csi/private_actions.zig");
+const intermediate = @import("../csi/intermediate.zig");
+const leader = @import("../csi/leader.zig");
+const plain = @import("../csi/plain.zig");
+const private = @import("../csi/private.zig");
 
 const SemanticEvent = types.SemanticEvent;
 

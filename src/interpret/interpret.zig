@@ -3,7 +3,7 @@
 //! Reason: keep one canonical owner for parser-to-grid translation flow.
 
 const parser_events = @import("parser_events.zig");
-const actions = @import("actions/actions.zig");
+const action_map = @import("actions/map.zig");
 const apply_flow = @import("apply_flow.zig");
 const std = @import("std");
 const grid = @import("../grid/grid.zig");
@@ -24,38 +24,38 @@ pub const Event = parser_events.Event;
 /// Parser event queue owner.
 pub const ParserEvents = parser_events.ParserEvents;
 /// Semantic event payload.
-pub const SemanticEvent = actions.SemanticEvent;
+pub const SemanticEvent = action_map.SemanticEvent;
 /// Grid-directed action subset.
-pub const ScreenAction = actions.ScreenAction;
+pub const ScreenAction = action_map.ScreenAction;
 /// Report and query action subset.
-pub const ReportAction = actions.ReportAction;
+pub const ReportAction = action_map.ReportAction;
 /// Mode and state action subset.
-pub const ModeAction = actions.ModeAction;
+pub const ModeAction = action_map.ModeAction;
 /// Kitty-family action subset.
-pub const KittyAction = actions.KittyAction;
+pub const KittyAction = action_map.KittyAction;
 /// Host/protocol-edge action subset.
-pub const HostAction = actions.HostAction;
+pub const HostAction = action_map.HostAction;
 /// DCS payload classification.
-pub const DcsPayloadKind = actions.DcsPayloadKind;
+pub const DcsPayloadKind = action_map.DcsPayloadKind;
 /// Legacy C0/ESC host-neutral control classification.
-pub const LegacyControlKind = actions.LegacyControlKind;
+pub const LegacyControlKind = action_map.LegacyControlKind;
 /// ESC-final action subset.
-pub const EscAction = actions.EscAction;
+pub const EscAction = action_map.EscAction;
 /// End-to-end interpretation apply-flow owner.
 pub const ApplyFlow = apply_flow.ApplyFlow;
 
 /// One-shot action mapping function.
-pub const process = actions.process;
+pub const process = action_map.process;
 /// Convert terminal events into grid-directed actions.
-pub const screenAction = actions.screenAction;
+pub const screenAction = action_map.screenAction;
 /// Convert terminal events into report/query actions.
-pub const reportAction = actions.reportAction;
+pub const reportAction = action_map.reportAction;
 /// Convert terminal events into mode/state actions.
-pub const modeAction = actions.modeAction;
+pub const modeAction = action_map.modeAction;
 /// Convert terminal events into kitty-family actions.
-pub const kittyAction = actions.kittyAction;
+pub const kittyAction = action_map.kittyAction;
 /// Convert terminal events into host/protocol-edge actions.
-pub const hostAction = actions.hostAction;
+pub const hostAction = action_map.hostAction;
 
 pub fn applyHost(vt: anytype, action: HostAction) void {
     switch (action) {
