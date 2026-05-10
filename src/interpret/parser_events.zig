@@ -3,9 +3,9 @@
 //! Reason: isolate parser sink mechanics from downstream action mapping.
 
 const std = @import("std");
-const parser_owner = @import("../parser/parser.zig");
+const parser_mod = @import("../parser/parser.zig");
 
-const ParserApi = parser_owner.Parser;
+const ParserApi = parser_mod.Parser;
 
 /// Parser-facing event union.
 pub const Event = union(enum) {

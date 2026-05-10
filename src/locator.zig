@@ -4,10 +4,10 @@
 
 const std = @import("std");
 const input_mod = @import("input/input.zig");
-const interpret_owner = @import("interpret/interpret.zig");
+const interpret = @import("interpret/interpret.zig");
 
 const Input = input_mod;
-const Interpret = interpret_owner;
+const Interpret = interpret;
 
 pub const ReportingMode = enum(u2) {
     disabled,

@@ -3,9 +3,9 @@
 //! Reason: keep non-kitty terminal color state and xterm color operations outside the kitty umbrella.
 
 const std = @import("std");
-const grid_owner = @import("grid/grid.zig");
+const grid = @import("grid/grid.zig");
 
-const Grid = grid_owner;
+const Grid = grid;
 
 pub const State = struct {
     foreground: Grid.Color = Grid.default_fg,

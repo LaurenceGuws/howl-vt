@@ -8,11 +8,11 @@
 //! cross-version guarantees.
 
 const std = @import("std");
-const selection_owner = @import("../selection/selection.zig");
-const grid_owner = @import("../grid/grid.zig");
+const selection_mod = @import("../selection/selection.zig");
+const grid_mod = @import("../grid/grid.zig");
 
-const Selection = selection_owner;
-const Grid = grid_owner;
+const Selection = selection_mod;
+const Grid = grid_mod;
 
 /// Deterministic snapshot of vt_core observable state.
 ///

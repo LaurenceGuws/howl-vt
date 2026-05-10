@@ -4,12 +4,12 @@
 
 const std = @import("std");
 const vt = @import("vt_core");
-const grid_owner = @import("../grid/grid.zig");
-const selection_owner = @import("../selection/selection.zig");
+const grid = @import("../grid/grid.zig");
+const selection = @import("../selection/selection.zig");
 const input_mod = @import("../input/input.zig");
 
-const Grid = grid_owner;
-const Selection = selection_owner;
+const Grid = grid;
+const Selection = selection;
 const Input = input_mod;
 
 test "VtCore facade methods remain available" {

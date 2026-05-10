@@ -5,16 +5,16 @@
 const std = @import("std");
 const grid_state = @import("grid/state.zig");
 const grid_types = @import("grid/types.zig");
-const interpret_owner = @import("interpret/interpret.zig");
-const locator_owner = @import("locator.zig");
-const terminal_mode_owner = @import("mode.zig");
+const interpret = @import("interpret/interpret.zig");
+const locator = @import("locator.zig");
+const mode_mod = @import("mode.zig");
 
 const GridState = grid_state.GridModel;
 const GridTypes = grid_types;
-const Interpret = interpret_owner;
-const LocatorNs = locator_owner;
+const Interpret = interpret;
+const LocatorNs = locator;
 const ReportAction = Interpret.ReportAction;
-const TerminalModeNs = terminal_mode_owner;
+const TerminalModeNs = mode_mod;
 
 const xtversion_text = "howl-vt-core dev";
 
@@ -138,7 +138,7 @@ fn applyWithContext(ctx: Context, action: ReportAction) void {
             }
         },
         .displayed_extent_report => appendDisplayedExtentReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
-        .terminal_parameters_report => |kind| appendTerminalParametersReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, kind),
+        .parameters_report => |kind| appendTerminalParametersReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, kind),
         .xtreportcolors => appendColorStackReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.color_stack_depth),
     }
 }

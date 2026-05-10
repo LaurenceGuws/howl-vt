@@ -195,7 +195,7 @@ pub const SemanticEvent = union(enum) {
     kitty_multiple_cursor: KittyMultipleCursorCommand,
     kitty_file_transfer: []const u8,
     kitty_text_size: []const u8,
-    terminal_color_control: TerminalColorControlCommand,
+    color_control: TerminalColorControlCommand,
     hyperlink_set: []const u8,
     hyperlink_clear,
     clipboard_set: []const u8,
@@ -220,7 +220,7 @@ pub const SemanticEvent = union(enum) {
     selected_graphic_rendition_report: RectArea,
     presentation_state_report: u16,
     displayed_extent_report,
-    terminal_parameters_report: u16,
+    parameters_report: u16,
     xtreportcolors,
     locator_reporting: struct { mode: u16, unit: u16 },
     locator_filter: OptionalRectArea,
@@ -360,7 +360,7 @@ pub const ReportAction = union(enum) {
     selected_graphic_rendition_report: SemanticEvent.RectArea,
     presentation_state_report: u16,
     displayed_extent_report,
-    terminal_parameters_report: u16,
+    parameters_report: u16,
     xtreportcolors,
 };
 
@@ -410,7 +410,7 @@ pub const KittyAction = union(enum) {
 };
 
 pub const HostAction = union(enum) {
-    terminal_color_control: TerminalColorControlCommand,
+    color_control: TerminalColorControlCommand,
     hyperlink_set: []const u8,
     hyperlink_clear,
     clipboard_set: []const u8,

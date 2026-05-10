@@ -3,9 +3,9 @@
 //! Reason: keep selection behavior explicit and host-independent.
 
 const std = @import("std");
-const grid_owner = @import("../grid/grid.zig");
+const grid_mod = @import("../grid/grid.zig");
 
-const Grid = grid_owner;
+const Grid = grid_mod;
 
 /// Selection endpoint coordinate.
 pub const SelectionPos = struct {

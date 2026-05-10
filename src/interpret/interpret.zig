@@ -6,16 +6,16 @@ const parser_events = @import("parser_events.zig");
 const actions = @import("actions.zig");
 const apply_flow = @import("apply_flow.zig");
 const std = @import("std");
-const grid_owner = @import("../grid/grid.zig");
+const grid = @import("../grid/grid.zig");
 const action_types = @import("action_types.zig");
-const kitty_owner = @import("../kitty/kitty.zig");
-const locator_owner = @import("../locator.zig");
-const osc_color_owner = @import("../osc_color.zig");
+const kitty = @import("../kitty/kitty.zig");
+const locator = @import("../locator.zig");
+const osc_color = @import("../osc_color.zig");
 
-const GridNs = grid_owner;
-const KittyNs = kitty_owner;
-const LocatorNs = locator_owner;
-const OscColorNs = osc_color_owner;
+const GridNs = grid;
+const KittyNs = kitty;
+const LocatorNs = locator;
+const OscColorNs = osc_color;
 const DcsPayload = action_types.DcsPayload;
 
 /// Canonical interpret domain owner.
@@ -59,7 +59,7 @@ pub const hostAction = actions.hostAction;
 
 pub fn applyHost(vt: anytype, action: HostAction) void {
     switch (action) {
-        .terminal_color_control => |cmd| {
+        .color_control => |cmd| {
             switch (cmd.command) {
                 21 => KittyNs.Color.handleKittyControl(vt.allocator, &vt.host.colors, &vt.host.pending_output, cmd.payload),
                 4 => OscColorNs.handleXtermPaletteControl(vt.allocator, &vt.host.colors, &vt.host.pending_output, vt.encode.buf[0..], cmd.payload),

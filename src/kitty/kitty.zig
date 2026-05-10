@@ -4,7 +4,7 @@
 
 const std = @import("std");
 const action_types = @import("../interpret/action_types.zig");
-const actions_owner = @import("../interpret/actions.zig");
+const actions = @import("../interpret/actions.zig");
 
 const key_mod = @import("key.zig");
 const pointer_mod = @import("pointer.zig");
@@ -13,7 +13,7 @@ const graphics_mod = @import("graphics.zig");
 
 const KittyNotificationCommand = action_types.KittyNotificationCommand;
 const KittyShellMark = action_types.KittyShellMark;
-const KittyAction = actions_owner.KittyAction;
+const KittyAction = actions.KittyAction;
 
 pub const Key = key_mod;
 pub const Pointer = pointer_mod;

@@ -4,9 +4,9 @@
 
 const std = @import("std");
 const vt = @import("vt_core");
-const grid_owner = @import("../grid/grid.zig");
+const grid = @import("../grid/grid.zig");
 
-const Grid = grid_owner;
+const Grid = grid;
 
 test "latestTitleSet returns typed OSC title payload" {
     const allocator = std.testing.allocator;

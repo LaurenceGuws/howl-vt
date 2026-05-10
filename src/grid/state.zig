@@ -3,7 +3,7 @@
 //! Reason: centralize deterministic screen mutations behind typed screen actions.
 
 const std = @import("std");
-const interpret_owner = @import("../interpret/interpret.zig");
+const interpret = @import("../interpret/interpret.zig");
 const cursor = @import("cursor.zig");
 const dirty = @import("dirty.zig");
 const edit = @import("edit.zig");
@@ -19,8 +19,8 @@ const types = @import("types.zig");
 const write = @import("write.zig");
 
 /// Semantic event alias for grid application.
-const SemanticEvent = interpret_owner.SemanticEvent;
-const ScreenAction = interpret_owner.ScreenAction;
+const SemanticEvent = interpret.SemanticEvent;
+const ScreenAction = interpret.ScreenAction;
 const Cell = types.Cell;
 const CellAttrs = types.CellAttrs;
 const CursorStyle = types.CursorStyle;
@@ -626,7 +626,7 @@ pub const GridModel = struct {
 
     /// Apply one terminal event to screen state.
     pub fn apply(self: *GridModel, event: SemanticEvent) void {
-        const action = interpret_owner.screenAction(event) orelse return;
+        const action = interpret.screenAction(event) orelse return;
         self.applyScreen(action);
     }
 

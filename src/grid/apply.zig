@@ -2,9 +2,9 @@
 //! Ownership: terminal grid screen-action dispatch concern.
 //! Reason: keep action dispatch separate from screen state fields and lifecycle.
 
-const interpret_owner = @import("../interpret/interpret.zig");
+const interpret = @import("../interpret/interpret.zig");
 
-const ScreenAction = interpret_owner.ScreenAction;
+const ScreenAction = interpret.ScreenAction;
 
 pub fn applyScreen(self: anytype, event: ScreenAction) void {
     switch (event) {

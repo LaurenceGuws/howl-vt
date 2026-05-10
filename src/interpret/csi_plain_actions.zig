@@ -51,7 +51,7 @@ pub fn process(final: u8, params: [16]i32, separators: [16]u8, count: u8, interm
         'J' => return SemanticEvent{ .erase_display = csi_params.eraseMode(params[0]) },
         'K' => return SemanticEvent{ .erase_line = csi_params.eraseMode(params[0]) },
         'X' => return SemanticEvent{ .erase_chars = csi_params.paramOrDefault1(params[0]) },
-        'x' => return SemanticEvent{ .terminal_parameters_report = csi_params.paramOrDefault0(params[0]) },
+        'x' => return SemanticEvent{ .parameters_report = csi_params.paramOrDefault0(params[0]) },
         'n' => switch (csi_params.paramOrDefault0(params[0])) {
             5 => return SemanticEvent.device_status_report,
             6 => return SemanticEvent.cursor_position_report,

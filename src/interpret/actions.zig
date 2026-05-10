@@ -132,7 +132,7 @@ pub fn reportAction(event: SemanticEvent) ?ReportAction {
         .selected_graphic_rendition_report => |v| ReportAction{ .selected_graphic_rendition_report = v },
         .presentation_state_report => |v| ReportAction{ .presentation_state_report = v },
         .displayed_extent_report => .displayed_extent_report,
-        .terminal_parameters_report => |v| ReportAction{ .terminal_parameters_report = v },
+        .parameters_report => |v| ReportAction{ .parameters_report = v },
         .xtreportcolors => .xtreportcolors,
         else => null,
     };
@@ -191,7 +191,7 @@ pub fn kittyAction(event: SemanticEvent) ?KittyAction {
 
 pub fn hostAction(event: SemanticEvent) ?HostAction {
     return switch (event) {
-        .terminal_color_control => |v| HostAction{ .terminal_color_control = v },
+        .color_control => |v| HostAction{ .color_control = v },
         .hyperlink_set => |v| HostAction{ .hyperlink_set = v },
         .hyperlink_clear => .hyperlink_clear,
         .clipboard_set => |v| HostAction{ .clipboard_set = v },

@@ -3,13 +3,13 @@
 //! Reason: provide deterministic parser-to-screen action progression.
 
 const std = @import("std");
-const grid_owner = @import("../grid/grid.zig");
-const parser_owner = @import("../parser/parser.zig");
+const grid_mod = @import("../grid/grid.zig");
+const parser_mod = @import("../parser/parser.zig");
 const parser_events_mod = @import("parser_events.zig");
 const actions_mod = @import("actions.zig");
 
-const Grid = grid_owner;
-const ParserApi = parser_owner.Parser;
+const Grid = grid_mod;
+const ParserApi = parser_mod.Parser;
 
 /// ApplyFlow event alias.
 const Event = parser_events_mod.Event;

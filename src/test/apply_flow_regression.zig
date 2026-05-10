@@ -3,12 +3,12 @@
 //! Reason: guard parser and replay edge cases with replayable, build-gated coverage.
 
 const std = @import("std");
-const grid_owner = @import("../grid/grid.zig");
-const interpret_owner = @import("../interpret/interpret.zig");
+const grid = @import("../grid/grid.zig");
+const interpret = @import("../interpret/interpret.zig");
 const vt_mod = @import("vt_core");
 
-const Grid = grid_owner;
-const Interpret = interpret_owner;
+const Grid = grid;
+const Interpret = interpret;
 const ApplyFlow = Interpret.ApplyFlow;
 
 fn feed(flow: *ApplyFlow, screen: *Grid.GridModel, bytes: []const u8) void {

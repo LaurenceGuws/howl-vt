@@ -3,9 +3,9 @@
 //! Reason: make translation defaults, aliases, and private modes explicit.
 
 const std = @import("std");
-const interpret_owner = @import("../interpret/interpret.zig");
+const interpret = @import("../interpret/interpret.zig");
 
-const Interpret = interpret_owner;
+const Interpret = interpret;
 const Event = Interpret.Event;
 const SemanticEvent = Interpret.SemanticEvent;
 const process = Interpret.process;
@@ -1068,7 +1068,7 @@ test "actions: report and checksum requests map" {
     try std.testing.expectEqual(@as(u16, 1), crc.rect_checksum_request.page);
 
     const parm = process(makeStyleChange('x', 1, 0, 1)) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u16, 1), parm.terminal_parameters_report);
+    try std.testing.expectEqual(@as(u16, 1), parm.parameters_report);
 
     intermediates[0] = '#';
     try std.testing.expect(process(Event{ .style_change = .{
@@ -1341,12 +1341,12 @@ test "actions: kitty color stack OSC codes map to commands" {
 
 test "actions: terminal color OSC commands preserve command and payload" {
     const kitty = process(Event{ .osc = .{ .kind = .generic, .command = 21, .payload = "foreground=?", .terminator = .st } }) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u16, 21), kitty.terminal_color_control.command);
-    try std.testing.expectEqualStrings("foreground=?", kitty.terminal_color_control.payload);
+    try std.testing.expectEqual(@as(u16, 21), kitty.color_control.command);
+    try std.testing.expectEqualStrings("foreground=?", kitty.color_control.payload);
 
     const xterm = process(Event{ .osc = .{ .kind = .generic, .command = 4, .payload = "1;#ff0000", .terminator = .st } }) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u16, 4), xterm.terminal_color_control.command);
-    try std.testing.expectEqualStrings("1;#ff0000", xterm.terminal_color_control.payload);
+    try std.testing.expectEqual(@as(u16, 4), xterm.color_control.command);
+    try std.testing.expectEqualStrings("1;#ff0000", xterm.color_control.payload);
 }
 
 test "actions: modern kitty OSC payload protocols map to host-neutral events" {

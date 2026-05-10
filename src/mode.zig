@@ -3,10 +3,10 @@
 //! Reason: keep DEC/ANSI mode bookkeeping out of the vt-core facade.
 
 const input_mod = @import("input/input.zig");
-const actions_owner = @import("interpret/actions.zig");
+const actions = @import("interpret/actions.zig");
 
 const Input = input_mod;
-const ModeAction = actions_owner.ModeAction;
+const ModeAction = actions.ModeAction;
 
 pub fn apply(vt: anytype, action: ModeAction) void {
     switch (action) {

@@ -2,11 +2,11 @@
 //! Ownership: terminal grid rectangle concern.
 //! Reason: isolate rectangular erase/fill/copy behavior from core state storage.
 
-const interpret_owner = @import("../interpret/interpret.zig");
+const interpret = @import("../interpret/interpret.zig");
 const style_mod = @import("style.zig");
 const types = @import("types.zig");
 
-const SemanticEvent = interpret_owner.SemanticEvent;
+const SemanticEvent = interpret.SemanticEvent;
 const Cell = types.Cell;
 
 pub fn changeAttrs(self: anytype, area: SemanticEvent.RectArea, attrs: []const u16, reverse: bool) void {
