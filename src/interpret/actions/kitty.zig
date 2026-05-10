@@ -1,17 +1,15 @@
-//! Responsibility: parse kitty protocol action payloads.
-//! Ownership: kitty action mapping helpers.
-//! Reason: keep kitty OSC/APC payload parsing out of the top-level action router.
+//! Kitty semantic event payload parsing.
 
 const std = @import("std");
-const event_mod = @import("../event.zig");
+const events = @import("../event.zig");
 
-pub fn parseGraphics(data: []const u8) ?event_mod.KittyGraphicsCommand {
+pub fn parseGraphics(data: []const u8) ?events.KittyGraphicsCommand {
     if (data.len == 0 or data[0] != 'G') return null;
     const body = data[1..];
     const separator = std.mem.indexOfScalar(u8, body, ';') orelse body.len;
     const control = body[0..separator];
     const payload = if (separator < body.len) body[separator + 1 ..] else "";
-    var cmd = event_mod.KittyGraphicsCommand{
+    var cmd = events.KittyGraphicsCommand{
         .action = 't',
         .image_id = 0,
         .image_number = 0,
@@ -65,7 +63,7 @@ pub fn parseGraphics(data: []const u8) ?event_mod.KittyGraphicsCommand {
     return cmd;
 }
 
-pub fn parseShellMark(payload: []const u8) ?event_mod.KittyShellMark {
+pub fn parseShellMark(payload: []const u8) ?events.KittyShellMark {
     if (payload.len == 0) return null;
     const separator = std.mem.indexOfScalar(u8, payload, ';') orelse payload.len;
     const kind = payload[0];
@@ -74,7 +72,7 @@ pub fn parseShellMark(payload: []const u8) ?event_mod.KittyShellMark {
     return .{ .kind = kind, .status = status, .metadata = metadata };
 }
 
-pub fn parseNotification(payload: []const u8) ?event_mod.KittyNotificationCommand {
+pub fn parseNotification(payload: []const u8) ?events.KittyNotificationCommand {
     const separator = std.mem.indexOfScalar(u8, payload, ';') orelse return null;
     return .{
         .metadata = payload[0..separator],
@@ -82,7 +80,7 @@ pub fn parseNotification(payload: []const u8) ?event_mod.KittyNotificationComman
     };
 }
 
-pub fn parsePointerShape(payload: []const u8) event_mod.KittyPointerShapeCommand {
+pub fn parsePointerShape(payload: []const u8) events.KittyPointerShapeCommand {
     if (payload.len == 0) return .{ .action = '=', .names = "" };
     const action = switch (payload[0]) {
         '=', '>', '<', '?' => payload[0],

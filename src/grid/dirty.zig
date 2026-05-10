@@ -1,6 +1,4 @@
-//! Responsibility: own dirty-row tracking payloads and allocation helpers.
-//! Ownership: terminal grid dirty-region concern.
-//! Reason: keep repaint invalidation bookkeeping separate from screen mutation logic.
+//! Grid dirty-region tracking.
 
 const std = @import("std");
 

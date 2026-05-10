@@ -1,6 +1,4 @@
-//! Responsibility: own terminal mode query and save/restore bookkeeping helpers.
-//! Ownership: terminal mode protocol domain owner.
-//! Reason: keep DEC/ANSI mode bookkeeping out of the vt-core facade.
+//! Terminal mode state and save/restore.
 
 const input_mod = @import("../input.zig");
 const interpret = @import("../interpret.zig");

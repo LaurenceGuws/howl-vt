@@ -1,6 +1,4 @@
-//! Responsibility: own terminal host-output report formatting and checksum helpers.
-//! Ownership: terminal report protocol domain owner.
-//! Reason: keep host-output-facing report generation out of the vt-core facade.
+//! Terminal report formatting and checksums.
 
 const std = @import("std");
 const grid_mod = @import("../grid.zig");

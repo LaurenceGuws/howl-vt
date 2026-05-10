@@ -1,6 +1,4 @@
-//! Responsibility: reusable scrollback fuzz scenarios and replay helpers.
-//! Ownership: vt-core deterministic fuzz infrastructure.
-//! Reason: keep unit regressions and fuzz executables on one shared scrollback model.
+//! Scrollback fuzz scenarios.
 
 const std = @import("std");
 const vt_mod = @import("vt_core");

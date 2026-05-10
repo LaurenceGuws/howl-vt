@@ -1,6 +1,4 @@
-//! Responsibility: own cursor bounds, save/restore, and absolute origin helpers.
-//! Ownership: terminal grid cursor concern.
-//! Reason: keep cursor policy separate from screen mutation dispatch.
+//! Grid cursor bounds, origin, and save/restore.
 
 pub const CursorShape = enum {
     block,

@@ -1,6 +1,4 @@
-//! Responsibility: own grid cursor, cell, margin, history state, and screen actions.
-//! Ownership: terminal grid instance authority.
-//! Reason: centralize deterministic screen mutations behind typed screen actions.
+//! Terminal screen state and mutations.
 
 const std = @import("std");
 const interpret = @import("interpret.zig");
@@ -20,7 +18,6 @@ const style_mod = @import("grid/style.zig");
 const tabs = @import("grid/tabs.zig");
 const write = @import("grid/write.zig");
 
-/// Semantic event alias for grid application.
 const SemanticEvent = interpret.SemanticEvent;
 const ScreenAction = interpret.ScreenAction;
 const HistoryLine = history_mod.HistoryLine;

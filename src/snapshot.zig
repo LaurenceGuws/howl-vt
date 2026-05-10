@@ -1,11 +1,4 @@
-//! Responsibility: capture and represent vt_core observable state snapshots.
-//! Ownership: snapshot data authority.
-//! Reason: provide host-neutral read-only snapshots for replay and diagnostic access.
-//!
-//! VtCoreSnapshot is a deterministic, read-only capture of vt_core observable state
-//! at a point in time, aligned to the snapshot replay contract.
-//! Snapshots are host-neutral data structures without persistence format or
-//! cross-version guarantees.
+//! Read-only terminal snapshots.
 
 const std = @import("std");
 const selection_mod = @import("selection.zig");
@@ -14,17 +7,7 @@ const grid_mod = @import("grid.zig");
 const Selection = selection_mod;
 const Grid = grid_mod.Grid;
 
-/// Deterministic snapshot of vt_core observable state.
-///
-/// Captures visible screen cells, cursor position, modes, history buffer, and
-/// selection state. Does NOT capture parser state, queued events, or encode buffers.
-///
-/// Snapshots are deterministic: identical observable vt_core state produces
-/// identical snapshots. Split-feed input chunking is transparent (same bytes fed
-/// as chunks vs atomically produce identical final snapshot).
-///
-/// Snapshots own allocated buffers (cells, history); caller must call deinit()
-/// to release them.
+/// Owned copy of visible cells, history, cursor, modes, and selection state.
 pub const VtCoreSnapshot = struct {
     /// Allocator used for cell and history buffer allocation.
     allocator: std.mem.Allocator,

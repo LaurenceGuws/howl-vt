@@ -1,13 +1,11 @@
-//! Responsibility: map OSC parsed events into typed terminal actions.
-//! Ownership: interpret OSC action mapping.
-//! Reason: keep string-protocol meaning separate from the top-level action router.
+//! OSC semantic event mapping.
 
 const std = @import("std");
-const event_mod = @import("../event.zig");
+const events = @import("../event.zig");
 const parsed_events = @import("../parsed_events.zig");
 const kitty = @import("kitty.zig");
 
-const SemanticEvent = event_mod.SemanticEvent;
+const SemanticEvent = events.SemanticEvent;
 
 pub fn process(kind: parsed_events.OscKind, command: ?u16, payload: []const u8) ?SemanticEvent {
     if (command) |cmd| switch (cmd) {

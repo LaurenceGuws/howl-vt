@@ -1,6 +1,4 @@
-//! Responsibility: own the kitty protocol family surface for vt-core.
-//! Ownership: kitty protocol domain owner.
-//! Reason: keep kitty protocol state and operations behind a specific sibling owner.
+//! Kitty protocol state and actions.
 
 const std = @import("std");
 const interpret = @import("interpret.zig");

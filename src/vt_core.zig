@@ -1,6 +1,4 @@
-//! Responsibility: provide the vt-core package entry owner.
-//! Ownership: primary embeddable terminal boundary.
-//! Reason: expose one host-neutral terminal object while keeping domain internals behind sibling owners.
+//! Host-neutral terminal core.
 
 const std = @import("std");
 const control = @import("control.zig");
@@ -25,17 +23,13 @@ const Snapshot = snapshot;
 const TerminalModeNs = control.Mode;
 const TerminalReportNs = control.Report;
 
-/// Grid instance owner exposed for downstream runtime/render code.
 pub const Grid = GridNs;
-/// Parser instance owner used by vt-core protocol tools.
 pub const Parser = ParserNs;
 
-/// Host-neutral terminal facade.
+/// Host-neutral terminal state and protocol engine.
 pub const VtCore = struct {
-    /// Grid instance owner retained for render/runtime owners.
     pub const Grid = GridNs;
     pub const DirtyRows = GridNs.DirtyRows;
-    /// Host control signals routed to transport/runtime owner.
     pub const ControlSignal = enum {
         hangup,
         interrupt,
@@ -43,75 +37,41 @@ pub const VtCore = struct {
         resize_notify,
     };
 
-    /// Key type alias exported by vt-core facade.
     pub const Key = Input.Key;
-    /// Modifier type alias exported by vt-core facade.
     pub const Modifier = Input.Modifier;
-    /// Mouse button type alias exported by vt-core facade.
     pub const MouseButton = Input.MouseButton;
-    /// Mouse event kind alias exported by vt-core facade.
     pub const MouseEventKind = Input.MouseEventKind;
 
-    /// No modifiers set.
     pub const mod_none: Modifier = Input.mod_none;
-    /// Shift modifier bit.
     pub const mod_shift: Modifier = Input.mod_shift;
-    /// Alt modifier bit.
     pub const mod_alt: Modifier = Input.mod_alt;
-    /// Control modifier bit.
     pub const mod_ctrl: Modifier = Input.mod_ctrl;
 
-    /// Enter key alias.
     pub const key_enter: Key = Input.key_enter;
-    /// Tab key alias.
     pub const key_tab: Key = Input.key_tab;
-    /// Backspace key alias.
     pub const key_backspace: Key = Input.key_backspace;
-    /// Escape key alias.
     pub const key_escape: Key = Input.key_escape;
-    /// Arrow up key alias.
     pub const key_up: Key = Input.key_up;
-    /// Arrow down key alias.
     pub const key_down: Key = Input.key_down;
-    /// Arrow left key alias.
     pub const key_left: Key = Input.key_left;
-    /// Arrow right key alias.
     pub const key_right: Key = Input.key_right;
-    /// Insert key alias.
     pub const key_insert: Key = Input.key_insert;
-    /// Delete key alias.
     pub const key_delete: Key = Input.key_delete;
-    /// Home key alias.
     pub const key_home: Key = Input.key_home;
-    /// End key alias.
     pub const key_end: Key = Input.key_end;
-    /// Page-up key alias.
     pub const key_pageup: Key = Input.key_pageup;
-    /// Page-down key alias.
     pub const key_pagedown: Key = Input.key_pagedown;
-    /// F1 key alias.
     pub const key_f1: Key = Input.key_f1;
-    /// F2 key alias.
     pub const key_f2: Key = Input.key_f2;
-    /// F3 key alias.
     pub const key_f3: Key = Input.key_f3;
-    /// F4 key alias.
     pub const key_f4: Key = Input.key_f4;
-    /// F5 key alias.
     pub const key_f5: Key = Input.key_f5;
-    /// F6 key alias.
     pub const key_f6: Key = Input.key_f6;
-    /// F7 key alias.
     pub const key_f7: Key = Input.key_f7;
-    /// F8 key alias.
     pub const key_f8: Key = Input.key_f8;
-    /// F9 key alias.
     pub const key_f9: Key = Input.key_f9;
-    /// F10 key alias.
     pub const key_f10: Key = Input.key_f10;
-    /// F11 key alias.
     pub const key_f11: Key = Input.key_f11;
-    /// F12 key alias.
     pub const key_f12: Key = Input.key_f12;
     pub const key_kp_0: Key = Input.key_kp_0;
     pub const key_kp_1: Key = Input.key_kp_1;

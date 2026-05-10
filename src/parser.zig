@@ -1,13 +1,10 @@
-//! Responsibility: consume byte streams and emit parser callbacks.
-//! Ownership: parser state-machine core.
-//! Reason: implement deterministic VT stream decoding boundaries.
+//! VT byte-stream parser.
 
 const std = @import("std");
 const stream_mod = @import("parser/stream.zig");
 const csi_mod = @import("parser/csi.zig");
 const string_control_mod = @import("parser/string_control.zig");
 
-/// Escape-state machine mode.
 const EscState = enum {
     ground,
     esc,
@@ -15,13 +12,11 @@ const EscState = enum {
     charset,
 };
 
-/// Character set selector.
 const Charset = enum {
     ascii,
     dec_special,
 };
 
-/// Character set target selector.
 const CharsetTarget = enum {
     g0,
     g1,

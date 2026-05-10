@@ -1,6 +1,4 @@
-//! Responsibility: own SGR attribute and terminal color decoding helpers.
-//! Ownership: terminal grid text-style concern.
-//! Reason: keep attribute parsing effects separate from screen mutation dispatch.
+//! Grid text style and SGR color decoding.
 
 const cell_mod = @import("cell.zig");
 const color_mod = @import("color.zig");

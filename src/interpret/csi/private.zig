@@ -1,13 +1,11 @@
-//! Responsibility: map private CSI sequences into typed terminal actions.
-//! Ownership: interpret private CSI action mapping.
-//! Reason: keep DEC/private mode recognition out of the general CSI router.
+//! Private CSI semantic event mapping.
 
 const std = @import("std");
 
-const event_mod = @import("../event.zig");
+const events = @import("../event.zig");
 const params_mod = @import("params.zig");
 
-const SemanticEvent = event_mod.SemanticEvent;
+const SemanticEvent = events.SemanticEvent;
 
 pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     if (leader == '?' and final == 'u') return SemanticEvent.kitty_keyboard_query;

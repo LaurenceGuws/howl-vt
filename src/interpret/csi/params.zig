@@ -1,11 +1,9 @@
-//! Responsibility: normalize CSI parameters for action mapping owners.
-//! Ownership: interpret CSI parameter helpers.
-//! Reason: share CSI defaulting rules without making protocol-family files import each other.
+//! CSI parameter normalization.
 
 const std = @import("std");
-const event_mod = @import("../event.zig");
+const events = @import("../event.zig");
 
-const SemanticEvent = event_mod.SemanticEvent;
+const SemanticEvent = events.SemanticEvent;
 
 pub fn optionalRectArea(params: [16]i32, count: u8) SemanticEvent.OptionalRectArea {
     return .{

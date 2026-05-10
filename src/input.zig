@@ -1,6 +1,4 @@
-//! Responsibility: export the input domain owner surface.
-//! Ownership: input package boundary.
-//! Reason: keep one canonical owner for keyboard, mouse, and host token behavior.
+//! Host input vocabulary and encoding.
 
 const keyboard = @import("input/keyboard.zig");
 const mouse = @import("input/mouse.zig");
@@ -10,17 +8,11 @@ pub const Keyboard = keyboard;
 pub const Mouse = mouse;
 pub const Tokens = tokens;
 
-/// Canonical input domain owner.
-/// Canonical VT key type.
 pub const Key = keyboard.Key;
-/// Canonical VT modifier-bit type.
 pub const Modifier = keyboard.Modifier;
 
-/// Mouse-button enum.
 pub const MouseButton = mouse.MouseButton;
-/// Mouse-event kind enum.
 pub const MouseEventKind = mouse.MouseEventKind;
-/// Mouse-event payload.
 pub const MouseEvent = mouse.MouseEvent;
 pub const MouseTrackingMode = mouse.MouseTrackingMode;
 pub const MouseProtocol = mouse.MouseProtocol;

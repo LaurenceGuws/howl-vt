@@ -1,6 +1,4 @@
-//! Responsibility: map ESC final bytes to action names.
-//! Ownership: ESC action mapping helpers.
-//! Reason: keep simple ESC final dispatch separate from the top-level action router.
+//! ESC final-byte semantic mapping.
 
 pub const EscAction = union(enum) {
     line_feed,
@@ -14,8 +12,8 @@ pub const EscAction = union(enum) {
     application_keypad: bool,
 };
 
-const event_mod = @import("../event.zig");
-const SemanticEvent = event_mod.SemanticEvent;
+const events = @import("../event.zig");
+const SemanticEvent = events.SemanticEvent;
 
 pub fn action(final: u8) ?EscAction {
     return switch (final) {

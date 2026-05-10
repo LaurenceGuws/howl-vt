@@ -1,6 +1,4 @@
-//! Responsibility: implement selection state and lifecycle transitions.
-//! Ownership: selection state authority.
-//! Reason: keep selection behavior explicit and host-independent.
+//! Terminal selection state.
 
 const std = @import("std");
 const grid_mod = @import("grid.zig");

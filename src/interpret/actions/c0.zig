@@ -1,6 +1,4 @@
-//! Responsibility: map C0 controls to action names.
-//! Ownership: C0 action mapping helpers.
-//! Reason: keep byte-control mapping separate from the top-level action router.
+//! C0 semantic mapping.
 
 pub const C0Action = enum {
     line_feed,
@@ -9,8 +7,8 @@ pub const C0Action = enum {
     horizontal_tab,
 };
 
-const event_mod = @import("../event.zig");
-const SemanticEvent = event_mod.SemanticEvent;
+const events = @import("../event.zig");
+const SemanticEvent = events.SemanticEvent;
 
 pub fn action(control: u8) ?C0Action {
     return switch (control) {

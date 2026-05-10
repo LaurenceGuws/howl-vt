@@ -1,6 +1,4 @@
-//! Responsibility: protocol/parser fuzz scenarios and deterministic replay helpers.
-//! Ownership: vt-core protocol fuzz infrastructure.
-//! Reason: keep protocol robustness separate from scrollback invariants.
+//! Protocol/parser fuzz scenarios.
 
 const std = @import("std");
 const vt = @import("vt_core");
