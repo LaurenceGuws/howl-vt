@@ -1,6 +1,4 @@
-//! Responsibility: behavioral conformance coverage for screen-state mutations.
-//! Ownership: terminal screen-state correctness tests.
-//! Reason: keep cursor, wrap, erase, and cell semantics explicit and build-gated.
+//! Screen-state mutation behavior tests.
 
 const std = @import("std");
 const grid = @import("../grid.zig");

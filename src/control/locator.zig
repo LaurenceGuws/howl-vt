@@ -1,6 +1,4 @@
-//! Responsibility: own the locator protocol state and reply behavior.
-//! Ownership: locator protocol domain owner.
-//! Reason: keep locator tracking and DECLRP formatting out of the vt-core facade.
+//! Locator protocol state and replies.
 
 const std = @import("std");
 const input_mod = @import("../input.zig");

@@ -1,6 +1,4 @@
-//! Responsibility: own line feed and scrolling mutations.
-//! Ownership: terminal grid scroll concern.
-//! Reason: keep viewport movement separate from grid state storage fields.
+//! Grid line-feed and scroll mutations.
 
 const cell = @import("cell.zig");
 

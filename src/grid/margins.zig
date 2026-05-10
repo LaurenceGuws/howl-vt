@@ -1,6 +1,4 @@
-//! Responsibility: own scroll and left/right margin configuration.
-//! Ownership: terminal grid margin concern.
-//! Reason: keep margin clipping and origin cursor interactions out of core state storage.
+//! Grid scroll and left/right margin configuration.
 
 pub fn setScrollRegion(self: anytype, top: u16, bottom: ?u16) void {
     if (self.rows == 0) {

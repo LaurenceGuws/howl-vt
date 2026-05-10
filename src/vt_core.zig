@@ -299,7 +299,7 @@ pub const VtCore = struct {
     host: HostState,
     encode: EncodeScratch = .{},
 
-    /// Initialize vt_core without cell storage.
+    /// Initialize VtCore without cell storage.
     pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !VtCore {
         var apply_flow = try Interpret.ApplyFlow.init(allocator);
         errdefer apply_flow.deinit();
@@ -314,7 +314,7 @@ pub const VtCore = struct {
         };
     }
 
-    /// Initialize vt_core with cell storage.
+    /// Initialize VtCore with cell storage.
     pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !VtCore {
         var apply_flow = try Interpret.ApplyFlow.init(allocator);
         errdefer apply_flow.deinit();
@@ -331,7 +331,7 @@ pub const VtCore = struct {
         };
     }
 
-    /// Initialize vt_core with cell and history storage.
+    /// Initialize VtCore with cell and history storage.
     pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !VtCore {
         var apply_flow = try Interpret.ApplyFlow.init(allocator);
         errdefer apply_flow.deinit();
@@ -348,7 +348,7 @@ pub const VtCore = struct {
         };
     }
 
-    /// Release vt_core-owned resources.
+    /// Release VtCore resources.
     pub fn deinit(self: *VtCore) void {
         self.host.deinit(self.allocator);
         self.kitty.deinit(self.allocator);
@@ -670,7 +670,7 @@ pub const VtCore = struct {
         return resource <= 4 or resource == 6 or resource == 7;
     }
 
-    /// Encode mouse event payload (placeholder surface).
+    /// Encode a host mouse event for the active terminal mouse modes.
     pub fn encodeMouse(self: *VtCore, event: Input.MouseEvent) []const u8 {
         LocatorNs.handleMouseEvent(&self.host.locator, self.allocator, &self.host.pending_output, self.encode.buf[0..], event);
         const encoded = Input.Mouse.encodeMouse(self.encode.buf[0..], event, self.modes.mouse_tracking, self.modes.mouse_protocol);
@@ -723,20 +723,8 @@ pub const VtCore = struct {
         return null;
     }
 
-    /// Capture deterministic snapshot of vt_core observable state.
-    ///
-    /// Returns an VtCoreSnapshot containing visible cells, cursor, modes, history,
-    /// and selection state at the time of the call. Snapshots are host-neutral and
-    /// do not capture parser state, queued events, or internal encode buffers.
-    ///
-    /// Determinism: identical observable vt_core state produces identical snapshots.
-    /// Identical byte sequences fed via feedByte/feedSlice, followed by apply(),
-    /// produce identical snapshots regardless of how bytes are chunked.
-    ///
-    /// Memory: allocates owned copies of cell and history buffers. Caller must
-    /// call snapshot.deinit() to release them when done.
-    ///
-    /// Error: returns allocation error if owned buffer allocation fails.
+    /// Capture visible cells, cursor, modes, history, and selection state.
+    /// Parser state, queued events, and encode buffers are not included.
     pub fn snapshot(self: *const VtCore) !Snapshot.VtCoreSnapshot {
         return Snapshot.VtCoreSnapshot.captureFromScreen(
             self.allocator,

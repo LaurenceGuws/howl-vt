@@ -1,6 +1,4 @@
-//! Responsibility: deterministic regression coverage for apply-flow replay semantics.
-//! Ownership: vt-core event apply-flow correctness tests.
-//! Reason: guard parser and replay edge cases with replayable, build-gated coverage.
+//! Parser feed/apply regression tests.
 
 const std = @import("std");
 const grid = @import("../grid.zig");
@@ -91,7 +89,7 @@ test "apply flow: stray ESC in OSC dropped, byte appended" {
     try std.testing.expectEqualSlices(u8, "title", flow.events()[0].osc.payload);
 }
 
-test "replay: apply-flow clear drops pending parsed events before apply" {
+test "feed/apply: apply-flow clear drops pending parsed events before apply" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -106,7 +104,7 @@ test "replay: apply-flow clear drops pending parsed events before apply" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: apply-flow reset clears queued events and partial CSI" {
+test "feed/apply: apply-flow reset clears queued events and partial CSI" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -126,7 +124,7 @@ test "replay: apply-flow reset clears queued events and partial CSI" {
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(10, 1));
 }
 
-test "replay: apply-flow clear preserves partial CHT parser state" {
+test "feed/apply: apply-flow clear preserves partial CHT parser state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -145,7 +143,7 @@ test "replay: apply-flow clear preserves partial CHT parser state" {
     try std.testing.expect(flow.isEmpty());
 }
 
-test "replay: apply-flow clear preserves partial CBT parser state" {
+test "feed/apply: apply-flow clear preserves partial CBT parser state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -164,7 +162,7 @@ test "replay: apply-flow clear preserves partial CBT parser state" {
     try std.testing.expect(flow.isEmpty());
 }
 
-test "replay: apply-flow reset drops partial CHT parser state" {
+test "feed/apply: apply-flow reset drops partial CHT parser state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -180,7 +178,7 @@ test "replay: apply-flow reset drops partial CHT parser state" {
     try std.testing.expectEqual(@as(u21, 'w'), screen.cellAt(0, 1));
 }
 
-test "replay: apply-flow reset drops partial CBT parser state" {
+test "feed/apply: apply-flow reset drops partial CBT parser state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -198,7 +196,7 @@ test "replay: apply-flow reset drops partial CBT parser state" {
     try std.testing.expectEqual(@as(u21, 'v'), screen.cellAt(0, 17));
 }
 
-test "replay: applyToScreen drains parsed events once repeat apply is no-op" {
+test "feed/apply: applyToScreen drains parsed events once repeat apply is no-op" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -216,7 +214,7 @@ test "replay: applyToScreen drains parsed events once repeat apply is no-op" {
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
 }
 
-test "replay: CUU moves cursor up" {
+test "feed/apply: CUU moves cursor up" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -226,7 +224,7 @@ test "replay: CUU moves cursor up" {
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_row);
 }
 
-test "replay: CUD moves cursor down" {
+test "feed/apply: CUD moves cursor down" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -236,7 +234,7 @@ test "replay: CUD moves cursor down" {
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_row);
 }
 
-test "replay: CUF moves cursor forward" {
+test "feed/apply: CUF moves cursor forward" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -246,7 +244,7 @@ test "replay: CUF moves cursor forward" {
     try std.testing.expectEqual(@as(u16, 15), screen.cursor_col);
 }
 
-test "replay: CUB moves cursor back" {
+test "feed/apply: CUB moves cursor back" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -256,7 +254,7 @@ test "replay: CUB moves cursor back" {
     try std.testing.expectEqual(@as(u16, 14), screen.cursor_col);
 }
 
-test "replay: CUD alias 'e' moves cursor down" {
+test "feed/apply: CUD alias 'e' moves cursor down" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -266,7 +264,7 @@ test "replay: CUD alias 'e' moves cursor down" {
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_row);
 }
 
-test "replay: CUD alias 'e' zero param defaults to 1" {
+test "feed/apply: CUD alias 'e' zero param defaults to 1" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -276,7 +274,7 @@ test "replay: CUD alias 'e' zero param defaults to 1" {
     try std.testing.expectEqual(@as(u16, 6), screen.cursor_row);
 }
 
-test "replay: CUF alias 'a' moves cursor forward" {
+test "feed/apply: CUF alias 'a' moves cursor forward" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -286,7 +284,7 @@ test "replay: CUF alias 'a' moves cursor forward" {
     try std.testing.expectEqual(@as(u16, 15), screen.cursor_col);
 }
 
-test "replay: CUF alias 'a' zero param defaults to 1" {
+test "feed/apply: CUF alias 'a' zero param defaults to 1" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -296,7 +294,7 @@ test "replay: CUF alias 'a' zero param defaults to 1" {
     try std.testing.expectEqual(@as(u16, 11), screen.cursor_col);
 }
 
-test "replay: CHA alias backtick moves cursor to absolute column" {
+test "feed/apply: CHA alias backtick moves cursor to absolute column" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -306,7 +304,7 @@ test "replay: CHA alias backtick moves cursor to absolute column" {
     try std.testing.expectEqual(@as(u16, 6), screen.cursor_col);
 }
 
-test "replay: CHA alias backtick zero param defaults to column 0" {
+test "feed/apply: CHA alias backtick zero param defaults to column 0" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -316,7 +314,7 @@ test "replay: CHA alias backtick zero param defaults to column 0" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: CUD alias 'e' clamps at last row" {
+test "feed/apply: CUD alias 'e' clamps at last row" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -326,7 +324,7 @@ test "replay: CUD alias 'e' clamps at last row" {
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
 }
 
-test "replay: CUF alias 'a' clamps at last column" {
+test "feed/apply: CUF alias 'a' clamps at last column" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -335,7 +333,7 @@ test "replay: CUF alias 'a' clamps at last column" {
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
 }
 
-test "replay: CHA alias backtick clamps at last column" {
+test "feed/apply: CHA alias backtick clamps at last column" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -344,7 +342,7 @@ test "replay: CHA alias backtick clamps at last column" {
     try std.testing.expectEqual(@as(u16, 19), screen.cursor_col);
 }
 
-test "replay: CNL moves cursor down and resets column" {
+test "feed/apply: CNL moves cursor down and resets column" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -356,7 +354,7 @@ test "replay: CNL moves cursor down and resets column" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: CPL moves cursor up and resets column" {
+test "feed/apply: CPL moves cursor up and resets column" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -368,7 +366,7 @@ test "replay: CPL moves cursor up and resets column" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: split CNL interrupted by DECSTR bytes remains deterministic" {
+test "feed/apply: split CNL interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -385,7 +383,7 @@ test "replay: split CNL interrupted by DECSTR bytes remains deterministic" {
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
 }
 
-test "replay: split CNL after DECSTR applies from reset origin" {
+test "feed/apply: split CNL after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -401,7 +399,7 @@ test "replay: split CNL after DECSTR applies from reset origin" {
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(7, 0));
 }
 
-test "replay: split CPL interrupted by DECSTR bytes remains deterministic" {
+test "feed/apply: split CPL interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -418,7 +416,7 @@ test "replay: split CPL interrupted by DECSTR bytes remains deterministic" {
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
 }
 
-test "replay: split CPL after DECSTR applies from reset origin" {
+test "feed/apply: split CPL after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -434,7 +432,7 @@ test "replay: split CPL after DECSTR applies from reset origin" {
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 0));
 }
 
-test "replay: CHA moves cursor to absolute column" {
+test "feed/apply: CHA moves cursor to absolute column" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -446,7 +444,7 @@ test "replay: CHA moves cursor to absolute column" {
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
 }
 
-test "replay: VPA moves cursor to absolute row" {
+test "feed/apply: VPA moves cursor to absolute row" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -458,7 +456,7 @@ test "replay: VPA moves cursor to absolute row" {
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_col);
 }
 
-test "replay: VPA default param moves cursor to row zero" {
+test "feed/apply: VPA default param moves cursor to row zero" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -470,7 +468,7 @@ test "replay: VPA default param moves cursor to row zero" {
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_col);
 }
 
-test "replay: VPA clamps at last row" {
+test "feed/apply: VPA clamps at last row" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -480,7 +478,7 @@ test "replay: VPA clamps at last row" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: split VPA interrupted by DECSTR bytes remains deterministic" {
+test "feed/apply: split VPA interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -498,7 +496,7 @@ test "replay: split VPA interrupted by DECSTR bytes remains deterministic" {
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
 }
 
-test "replay: split VPA after DECSTR applies from reset origin" {
+test "feed/apply: split VPA after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -514,7 +512,7 @@ test "replay: split VPA after DECSTR applies from reset origin" {
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(6, 0));
 }
 
-test "replay: CHA default param moves cursor to column zero" {
+test "feed/apply: CHA default param moves cursor to column zero" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -526,7 +524,7 @@ test "replay: CHA default param moves cursor to column zero" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: CHA clamps at last column" {
+test "feed/apply: CHA clamps at last column" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -536,7 +534,7 @@ test "replay: CHA clamps at last column" {
     try std.testing.expectEqual(@as(u16, 19), screen.cursor_col);
 }
 
-test "replay: split CHA interrupted by DECSTR bytes remains deterministic" {
+test "feed/apply: split CHA interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -553,7 +551,7 @@ test "replay: split CHA interrupted by DECSTR bytes remains deterministic" {
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
 }
 
-test "replay: split CHA after DECSTR applies from reset origin" {
+test "feed/apply: split CHA after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -568,7 +566,7 @@ test "replay: split CHA after DECSTR applies from reset origin" {
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
 }
 
-test "replay: CUP absolute move" {
+test "feed/apply: CUP absolute move" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -578,7 +576,7 @@ test "replay: CUP absolute move" {
     try std.testing.expectEqual(@as(u16, 19), screen.cursor_col);
 }
 
-test "replay: CUP no params moves to origin" {
+test "feed/apply: CUP no params moves to origin" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -590,7 +588,7 @@ test "replay: CUP no params moves to origin" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: split CSI across multiple feeds" {
+test "feed/apply: split CSI across multiple feeds" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -603,7 +601,7 @@ test "replay: split CSI across multiple feeds" {
     try std.testing.expectEqual(@as(u16, 8), screen.cursor_row);
 }
 
-test "replay: clamping at screen boundaries" {
+test "feed/apply: clamping at screen boundaries" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -618,7 +616,7 @@ test "replay: clamping at screen boundaries" {
     try std.testing.expectEqual(@as(u16, 79), screen.cursor_col);
 }
 
-test "replay: plain text feed writes to screen cells" {
+test "feed/apply: plain text feed writes to screen cells" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -630,7 +628,7 @@ test "replay: plain text feed writes to screen cells" {
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
 }
 
-test "replay: mixed CSI cursor move then text write" {
+test "feed/apply: mixed CSI cursor move then text write" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -642,7 +640,7 @@ test "replay: mixed CSI cursor move then text write" {
     try std.testing.expectEqual(@as(u21, 'i'), screen.cellAt(1, 5));
 }
 
-test "replay: CR resets column leaving row unchanged" {
+test "feed/apply: CR resets column leaving row unchanged" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -654,7 +652,7 @@ test "replay: CR resets column leaving row unchanged" {
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 1));
 }
 
-test "replay: LF advances row" {
+test "feed/apply: LF advances row" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -666,7 +664,7 @@ test "replay: LF advances row" {
     try std.testing.expectEqual(@as(u21, 'c'), screen.cellAt(1, 2));
 }
 
-test "replay: CR+LF writes to start of next row" {
+test "feed/apply: CR+LF writes to start of next row" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -678,7 +676,7 @@ test "replay: CR+LF writes to start of next row" {
     try std.testing.expectEqual(@as(u21, 'd'), screen.cellAt(1, 0));
 }
 
-test "replay: BS moves cursor left without erasing cell" {
+test "feed/apply: BS moves cursor left without erasing cell" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -689,7 +687,7 @@ test "replay: BS moves cursor left without erasing cell" {
     try std.testing.expectEqual(@as(u21, 'c'), screen.cellAt(0, 2));
 }
 
-test "replay: CSI I advances cursor by default tab stops" {
+test "feed/apply: CSI I advances cursor by default tab stops" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -701,7 +699,7 @@ test "replay: CSI I advances cursor by default tab stops" {
     try std.testing.expectEqual(@as(u21, 'b'), screen.cellAt(0, 16));
 }
 
-test "replay: CSI Z moves cursor to previous default tab stop" {
+test "feed/apply: CSI Z moves cursor to previous default tab stop" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -713,7 +711,7 @@ test "replay: CSI Z moves cursor to previous default tab stop" {
     try std.testing.expectEqual(@as(u21, 'b'), screen.cellAt(0, 8));
 }
 
-test "replay: UTF-8 codepoint written to cell" {
+test "feed/apply: UTF-8 codepoint written to cell" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -724,7 +722,7 @@ test "replay: UTF-8 codepoint written to cell" {
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
 }
 
-test "replay: invalid UTF-8 does not corrupt cursor state" {
+test "feed/apply: invalid UTF-8 does not corrupt cursor state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -736,7 +734,7 @@ test "replay: invalid UTF-8 does not corrupt cursor state" {
     try std.testing.expectEqual(@as(u16, 10), screen.cursor_col);
 }
 
-test "replay: unsupported CSI does not alter cell content or cursor" {
+test "feed/apply: unsupported CSI does not alter cell content or cursor" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -749,7 +747,7 @@ test "replay: unsupported CSI does not alter cell content or cursor" {
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
 }
 
-test "replay: multi-line text via CR+LF sequence" {
+test "feed/apply: multi-line text via CR+LF sequence" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -763,7 +761,7 @@ test "replay: multi-line text via CR+LF sequence" {
     try std.testing.expectEqual(@as(u21, '2'), screen.cellAt(2, 3));
 }
 
-test "replay: sequence of moves composes correctly" {
+test "feed/apply: sequence of moves composes correctly" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -780,7 +778,7 @@ test "replay: sequence of moves composes correctly" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: CSI K erases from cursor to end of line" {
+test "feed/apply: CSI K erases from cursor to end of line" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -796,7 +794,7 @@ test "replay: CSI K erases from cursor to end of line" {
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
 }
 
-test "replay: CSI J erases from cursor to end of screen" {
+test "feed/apply: CSI J erases from cursor to end of screen" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -820,7 +818,7 @@ test "replay: CSI J erases from cursor to end of screen" {
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(2, 0));
 }
 
-test "replay: cursor move then CSI K erase to end of line" {
+test "feed/apply: cursor move then CSI K erase to end of line" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -836,7 +834,7 @@ test "replay: cursor move then CSI K erase to end of line" {
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 5));
 }
 
-test "replay: CSI @ inserts blanks and preserves suffix" {
+test "feed/apply: CSI @ inserts blanks and preserves suffix" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -857,7 +855,7 @@ test "replay: CSI @ inserts blanks and preserves suffix" {
     try std.testing.expectEqual(@as(u21, 'f'), screen.cellAt(0, 7));
 }
 
-test "replay: VT FF IND NEL and RI aliases" {
+test "feed/apply: VT FF IND NEL and RI aliases" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -879,7 +877,7 @@ test "replay: VT FF IND NEL and RI aliases" {
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
 }
 
-test "replay: ANSI CSI save and restore cursor aliases" {
+test "feed/apply: ANSI CSI save and restore cursor aliases" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -890,7 +888,7 @@ test "replay: ANSI CSI save and restore cursor aliases" {
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
 }
 
-test "replay: ESC c resets visible grid state" {
+test "feed/apply: ESC c resets visible grid state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -903,7 +901,7 @@ test "replay: ESC c resets visible grid state" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: DECSCUSR sets steady bar cursor" {
+test "feed/apply: DECSCUSR sets steady bar cursor" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -914,7 +912,7 @@ test "replay: DECSCUSR sets steady bar cursor" {
     try std.testing.expect(!screen.cursor_style.blink);
 }
 
-test "replay: REP repeats preceding graphic character" {
+test "feed/apply: REP repeats preceding graphic character" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -929,7 +927,7 @@ test "replay: REP repeats preceding graphic character" {
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
 }
 
-test "replay: DECSTR resets visible grid state" {
+test "feed/apply: DECSTR resets visible grid state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -945,7 +943,7 @@ test "replay: DECSTR resets visible grid state" {
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(1, 0));
 }
 
-test "replay: split CHT interrupted by DECSTR bytes remains deterministic" {
+test "feed/apply: split CHT interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -964,7 +962,7 @@ test "replay: split CHT interrupted by DECSTR bytes remains deterministic" {
     try std.testing.expect(flow.isEmpty());
 }
 
-test "replay: split CHT after DECSTR applies from reset origin" {
+test "feed/apply: split CHT after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -981,7 +979,7 @@ test "replay: split CHT after DECSTR applies from reset origin" {
     try std.testing.expect(flow.isEmpty());
 }
 
-test "replay: split CBT interrupted by DECSTR bytes remains deterministic" {
+test "feed/apply: split CBT interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -999,7 +997,7 @@ test "replay: split CBT interrupted by DECSTR bytes remains deterministic" {
     try std.testing.expect(flow.isEmpty());
 }
 
-test "replay: split CBT after DECSTR applies from reset origin" {
+test "feed/apply: split CBT after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1016,7 +1014,7 @@ test "replay: split CBT after DECSTR applies from reset origin" {
     try std.testing.expect(flow.isEmpty());
 }
 
-test "replay: DEC private cursor visibility toggles mode state" {
+test "feed/apply: DEC private cursor visibility toggles mode state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1030,7 +1028,7 @@ test "replay: DEC private cursor visibility toggles mode state" {
     try std.testing.expect(screen.cursor_visible);
 }
 
-test "replay: interrupted split private cursor mode remains deterministic" {
+test "feed/apply: interrupted split private cursor mode remains deterministic" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1049,7 +1047,7 @@ test "replay: interrupted split private cursor mode remains deterministic" {
     try std.testing.expect(flow.isEmpty());
 }
 
-test "replay: DEC private auto-wrap mode toggles wrap behavior" {
+test "feed/apply: DEC private auto-wrap mode toggles wrap behavior" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1071,7 +1069,7 @@ test "replay: DEC private auto-wrap mode toggles wrap behavior" {
     try std.testing.expectEqual(@as(u21, 'i'), screen.cellAt(1, 0));
 }
 
-test "replay: interrupted split private auto-wrap mode remains deterministic" {
+test "feed/apply: interrupted split private auto-wrap mode remains deterministic" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1090,7 +1088,7 @@ test "replay: interrupted split private auto-wrap mode remains deterministic" {
     try std.testing.expect(flow.isEmpty());
 }
 
-test "replay: existing text and cursor paths unaffected by erase additions" {
+test "feed/apply: existing text and cursor paths unaffected by erase additions" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1103,7 +1101,7 @@ test "replay: existing text and cursor paths unaffected by erase additions" {
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
 }
 
-test "replay: CUP alternate final f positions cursor" {
+test "feed/apply: CUP alternate final f positions cursor" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1113,7 +1111,7 @@ test "replay: CUP alternate final f positions cursor" {
     try std.testing.expectEqual(@as(u16, 6), screen.cursor_col);
 }
 
-test "replay: CSI J mode 2 erases full screen" {
+test "feed/apply: CSI J mode 2 erases full screen" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1131,7 +1129,7 @@ test "replay: CSI J mode 2 erases full screen" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: CSI J mode 1 erases through cursor inclusive" {
+test "feed/apply: CSI J mode 1 erases through cursor inclusive" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1153,7 +1151,7 @@ test "replay: CSI J mode 1 erases through cursor inclusive" {
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
 }
 
-test "replay: CSI K mode 1 erases line start through cursor" {
+test "feed/apply: CSI K mode 1 erases line start through cursor" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1168,7 +1166,7 @@ test "replay: CSI K mode 1 erases line start through cursor" {
     try std.testing.expectEqual(@as(u21, 'f'), screen.cellAt(0, 5));
 }
 
-test "replay: CSI K mode 2 erases entire current line" {
+test "feed/apply: CSI K mode 2 erases entire current line" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1185,7 +1183,7 @@ test "replay: CSI K mode 2 erases entire current line" {
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "replay: CSI J invalid param maps to mode 0 through end of screen" {
+test "feed/apply: CSI J invalid param maps to mode 0 through end of screen" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1202,7 +1200,7 @@ test "replay: CSI J invalid param maps to mode 0 through end of screen" {
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(1, 0));
 }
 
-test "replay: split CSI erase across parser feeds" {
+test "feed/apply: split CSI erase across parser feeds" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1218,7 +1216,7 @@ test "replay: split CSI erase across parser feeds" {
     try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 3));
 }
 
-test "replay: control BEL does not move cursor or alter cells" {
+test "feed/apply: control BEL does not move cursor or alter cells" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1612,7 +1610,7 @@ test "zero-dim: tab commands remain safe across all zero-dimension variants" {
     try std.testing.expectEqual(@as(u16, 0), screen_zero.cursor_col);
 }
 
-test "replay: clear leaves snapshot unchanged" {
+test "feed/apply: clear leaves snapshot unchanged" {
     const gpa = std.testing.allocator;
     var vt_core = try vt_mod.VtCore.initWithCells(gpa, 5, 10);
     defer vt_core.deinit();
@@ -1632,7 +1630,7 @@ test "replay: clear leaves snapshot unchanged" {
     try std.testing.expectEqual(snap_before.cursor_row, snap_after.cursor_row);
 }
 
-test "replay: reset preserves snapshot state" {
+test "feed/apply: reset preserves snapshot state" {
     const gpa = std.testing.allocator;
     var vt_core = try vt_mod.VtCore.initWithCells(gpa, 5, 10);
     defer vt_core.deinit();
@@ -1656,7 +1654,7 @@ test "replay: reset preserves snapshot state" {
     }
 }
 
-test "replay: resetScreen clears cells while preserving history" {
+test "feed/apply: resetScreen clears cells while preserving history" {
     const gpa = std.testing.allocator;
     var vt_core = try vt_mod.VtCore.initWithCellsAndHistory(gpa, 3, 5, 10);
     defer vt_core.deinit();
@@ -1684,7 +1682,7 @@ test "replay: resetScreen clears cells while preserving history" {
     }
 }
 
-test "replay: snapshot determinism across feed sequence variations" {
+test "feed/apply: snapshot determinism across feed sequence variations" {
     const gpa = std.testing.allocator;
 
     var vt_core1 = try vt_mod.VtCore.initWithCells(gpa, 10, 20);
@@ -1716,7 +1714,7 @@ test "replay: snapshot determinism across feed sequence variations" {
     }
 }
 
-test "replay: snapshot reflects mode changes" {
+test "feed/apply: snapshot reflects mode changes" {
     const gpa = std.testing.allocator;
     var vt_core = try vt_mod.VtCore.initWithCells(gpa, 5, 10);
     defer vt_core.deinit();
@@ -1740,7 +1738,7 @@ test "replay: snapshot reflects mode changes" {
     try std.testing.expectEqual(true, snap3.cursor_visible);
 }
 
-test "replay: snapshot includes active selection endpoints" {
+test "feed/apply: snapshot includes active selection endpoints" {
     const gpa = std.testing.allocator;
     var vt_core = try vt_mod.VtCore.initWithCells(gpa, 5, 10);
     defer vt_core.deinit();
@@ -1765,7 +1763,7 @@ test "replay: snapshot includes active selection endpoints" {
     }
 }
 
-test "replay: snapshot parity across direct apply flow" {
+test "feed/apply: snapshot parity across direct apply flow" {
     const gpa = std.testing.allocator;
     const test_bytes = "ABC\x1b[1;5HXY";
 
@@ -1798,7 +1796,7 @@ test "replay: snapshot parity across direct apply flow" {
     }
 }
 
-test "replay: snapshot wraparound history indices after eviction" {
+test "feed/apply: snapshot wraparound history indices after eviction" {
     const gpa = std.testing.allocator;
     var vt_core = try vt_mod.VtCore.initWithCellsAndHistory(gpa, 2, 5, 3);
     defer vt_core.deinit();
@@ -1828,7 +1826,7 @@ test "replay: snapshot wraparound history indices after eviction" {
     }
 }
 
-test "replay: prompt redraw clears stale suffix after reset history entry" {
+test "feed/apply: prompt redraw clears stale suffix after reset history entry" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1853,7 +1851,7 @@ test "replay: prompt redraw clears stale suffix after reset history entry" {
     try expectPromptLine(&screen, prompt, "ll");
 }
 
-test "replay: prompt redraw fuzz clears stale suffix across random history entries" {
+test "feed/apply: prompt redraw fuzz clears stale suffix across random history entries" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1885,7 +1883,7 @@ test "replay: prompt redraw fuzz clears stale suffix across random history entri
     }
 }
 
-test "replay: bash history redraw with DCH clears reset suffix" {
+test "feed/apply: bash history redraw with DCH clears reset suffix" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1902,7 +1900,7 @@ test "replay: bash history redraw with DCH clears reset suffix" {
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 4));
 }
 
-test "replay: neovim colored empty cells through EL and ECH" {
+test "feed/apply: neovim colored empty cells through EL and ECH" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1925,7 +1923,7 @@ test "replay: neovim colored empty cells through EL and ECH" {
     try std.testing.expectEqual(@as(u8, 52), ech_cell.attrs.bg.b);
 }
 
-test "replay: DEC special graphics renders box drawing cells" {
+test "feed/apply: DEC special graphics renders box drawing cells" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1943,7 +1941,7 @@ test "replay: DEC special graphics renders box drawing cells" {
     try std.testing.expectEqual(@as(u21, 'q'), screen.cellAt(0, 6));
 }
 
-test "replay: DEC special graphics G1 via SO SI" {
+test "feed/apply: DEC special graphics G1 via SO SI" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
@@ -1956,7 +1954,7 @@ test "replay: DEC special graphics G1 via SO SI" {
     try std.testing.expectEqual(@as(u21, 'q'), screen.cellAt(0, 1));
 }
 
-test "replay: SL SR and DECST8C execute from CSI syntax" {
+test "feed/apply: SL SR and DECST8C execute from CSI syntax" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();

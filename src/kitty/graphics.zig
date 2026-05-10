@@ -1,6 +1,4 @@
-//! Responsibility: own kitty graphics protocol state and command execution.
-//! Ownership: kitty graphics subdomain.
-//! Reason: keep graphics upload, placement, storage, and replies out of the vt-core facade.
+//! Kitty graphics protocol state and command execution.
 
 const std = @import("std");
 const interpret = @import("../interpret.zig");

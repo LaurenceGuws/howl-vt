@@ -1,6 +1,4 @@
-//! Responsibility: run deterministic M7 baseline measurements.
-//! Ownership: architect performance protocol tooling.
-//! Reason: provide reproducible local latency/throughput/allocation evidence.
+//! Deterministic M7 baseline smoke test.
 
 const std = @import("std");
 const terminal = @import("vt_core");

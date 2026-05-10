@@ -1,6 +1,4 @@
-//! Responsibility: own rectangular grid mutations.
-//! Ownership: terminal grid rectangle concern.
-//! Reason: isolate rectangular erase/fill/copy behavior from core state storage.
+//! Rectangular grid mutations.
 
 const interpret = @import("../interpret.zig");
 const style_mod = @import("style.zig");

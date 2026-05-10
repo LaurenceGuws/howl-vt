@@ -1,6 +1,4 @@
-//! Responsibility: own semantic event and owner-action payload shapes.
-//! Ownership: interpret event contract authority.
-//! Reason: keep decoded terminal meaning separate from parser syntax and state mutation owners.
+//! Semantic terminal events and owner-action payloads.
 
 pub const KittyGraphicsCommand = struct {
     action: u8,

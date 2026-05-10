@@ -1,6 +1,4 @@
-//! Responsibility: deterministic regression coverage for snapshot capture parity.
-//! Ownership: snapshot contract correctness tests.
-//! Reason: lock capture, replay, history, and selection parity behind stable fixtures.
+//! Snapshot capture regression tests.
 
 const std = @import("std");
 const vt_mod = @import("vt_core");
@@ -56,7 +54,7 @@ test "snapshot: determinism across identical state" {
     }
 }
 
-test "snapshot: split-feed replay equivalence" {
+test "snapshot: split-feed equivalence" {
     const gpa = std.testing.allocator;
 
     var vt_core_atomic = try vt_mod.VtCore.initWithCells(gpa, 5, 10);

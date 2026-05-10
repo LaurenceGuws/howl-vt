@@ -1,6 +1,4 @@
-//! Responsibility: own grid resize and reflow behavior.
-//! Ownership: terminal grid resize concern.
-//! Reason: keep size-change reflow separate from steady-state screen mutation logic.
+//! Grid resize and reflow behavior.
 
 const std = @import("std");
 const dirty = @import("dirty.zig");

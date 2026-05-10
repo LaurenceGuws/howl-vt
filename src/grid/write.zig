@@ -1,6 +1,4 @@
-//! Responsibility: own printable grid writes and repeat-preceding behavior.
-//! Ownership: terminal grid write concern.
-//! Reason: isolate wrap-pending, insert-mode, and last-graphic write behavior.
+//! Printable grid writes and repeat-preceding behavior.
 
 pub fn writeText(self: anytype, text: []const u8) void {
     for (text) |byte| writeCell(self, @intCast(byte));

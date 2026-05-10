@@ -1,6 +1,4 @@
-//! Responsibility: route screen actions to Grid mutation owners.
-//! Ownership: terminal grid screen-action dispatch concern.
-//! Reason: keep action dispatch separate from screen state fields and lifecycle.
+//! Screen-action dispatch to grid mutations.
 
 const interpret = @import("../interpret.zig");
 

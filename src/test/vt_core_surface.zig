@@ -1,6 +1,4 @@
-//! Responsibility: vt-core facade and lifecycle surface coverage.
-//! Ownership: vt-core API stability tests.
-//! Reason: keep the public VtCore surface explicit without embedding tests in the vt-core facade file.
+//! Public VtCore API and lifecycle tests.
 
 const std = @import("std");
 const vt = @import("vt_core");
@@ -12,7 +10,7 @@ const Grid = grid.Grid;
 const Selection = selection;
 const Input = input_mod;
 
-test "VtCore facade methods remain available" {
+test "VtCore public methods remain available" {
     try std.testing.expect(@hasDecl(vt.VtCore, "init"));
     try std.testing.expect(@hasDecl(vt.VtCore, "initWithCells"));
     try std.testing.expect(@hasDecl(vt.VtCore, "deinit"));
@@ -61,7 +59,7 @@ test "lifecycle extension methods stay stable" {
     _ = .{ init_cells_history_fn, selection_start_fn, selection_update_fn, selection_finish_fn, selection_clear_fn };
 }
 
-test "snapshot surface remains deterministic" {
+test "snapshot capture remains deterministic" {
     const allocator = std.testing.allocator;
     var vt_core = try vt.VtCore.initWithCells(allocator, 5, 10);
     defer vt_core.deinit();

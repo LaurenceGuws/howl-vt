@@ -1,6 +1,4 @@
-//! Responsibility: define keyboard vocabulary and encode keyboard input.
-//! Ownership: input keyboard authority.
-//! Reason: keep key/mod semantics, host metadata, and keyboard escape encoding together.
+//! Keyboard input values and escape encoding.
 
 const std = @import("std");
 

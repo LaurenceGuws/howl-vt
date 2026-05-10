@@ -1,6 +1,4 @@
-//! Responsibility: own terminal tab-stop initialization and copy rules.
-//! Ownership: terminal grid tab-stop concern.
-//! Reason: keep tab-stop defaults separate from screen mutation logic.
+//! Grid tab-stop initialization and copy rules.
 
 const std = @import("std");
 

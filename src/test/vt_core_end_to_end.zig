@@ -1,6 +1,4 @@
-//! Responsibility: end-to-end vt-core flow coverage across module boundaries.
-//! Ownership: vt-core end-to-end tests.
-//! Reason: keep host-facing byte-to-screen flows explicit and deterministic.
+//! End-to-end vt-core flow tests.
 
 const std = @import("std");
 const vt = @import("vt_core");

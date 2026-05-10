@@ -1,6 +1,4 @@
-//! Responsibility: own kitty-specific color stack and OSC 21 behavior.
-//! Ownership: kitty color subdomain.
-//! Reason: keep kitty color behavior separate from shared OSC terminal color ownership.
+//! Kitty color stack and OSC 21 behavior.
 
 const std = @import("std");
 const control = @import("../control.zig");

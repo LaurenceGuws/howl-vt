@@ -1,6 +1,4 @@
-//! Responsibility: own shared OSC terminal color state and xterm color controls.
-//! Ownership: OSC color protocol domain owner.
-//! Reason: keep non-kitty terminal color state and xterm color operations outside the kitty umbrella.
+//! OSC terminal color state and xterm color controls.
 
 const std = @import("std");
 const grid = @import("../grid.zig");

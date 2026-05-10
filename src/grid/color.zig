@@ -1,6 +1,4 @@
-//! Responsibility: define grid color values and defaults.
-//! Ownership: terminal grid color authority.
-//! Reason: keep color schema separate from cell and mutation behavior.
+//! Grid color values and defaults.
 
 pub const Color = struct {
     r: u8,

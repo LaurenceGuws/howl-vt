@@ -1,6 +1,4 @@
-//! Responsibility: decode UTF-8 incrementally for parser consumption.
-//! Ownership: parser UTF-8 utility.
-//! Reason: keep codepoint extraction deterministic and reusable.
+//! Incremental UTF-8 decoding for parser input.
 
 const std = @import("std");
 

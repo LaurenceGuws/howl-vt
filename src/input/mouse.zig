@@ -1,11 +1,9 @@
-//! Responsibility: define mouse vocabulary and encode mouse input.
-//! Ownership: input mouse authority.
-//! Reason: keep pointer-event semantics and mouse escape encoding together.
+//! Mouse input values and escape encoding.
 
 const std = @import("std");
 const keyboard = @import("keyboard.zig");
 
-/// Mouse button vocabulary.
+/// Mouse button values.
 pub const MouseButton = enum(u8) {
     none = 0,
     left = 1,
@@ -15,7 +13,7 @@ pub const MouseButton = enum(u8) {
     wheel_down = 5,
 };
 
-/// Mouse event kind vocabulary.
+/// Mouse event kinds.
 pub const MouseEventKind = enum(u8) {
     press,
     release,
@@ -71,8 +69,8 @@ pub fn encodeMouse(buf: []u8, event: MouseEvent, tracking: MouseTrackingMode, pr
     return switch (protocol) {
         .sgr => encodeSgrMouse(buf, cb, col1, @intCast(row1), event.kind == .release),
         .urxvt => encodeUrxvtMouse(buf, cb, col1, @intCast(row1)),
-        .utf8 => encodeLegacyMouse(buf, cb, col1, @intCast(row1), true),
-        .none => encodeLegacyMouse(buf, cb, col1, @intCast(row1), false),
+        .utf8 => encodeCsiMMouse(buf, cb, col1, @intCast(row1), true),
+        .none => encodeCsiMMouse(buf, cb, col1, @intCast(row1), false),
     };
 }
 
@@ -101,7 +99,7 @@ fn encodeUrxvtMouse(buf: []u8, cb: u16, col1: u32, row1: u32) []const u8 {
     return std.fmt.bufPrint(buf, "\x1b[{d};{d};{d}M", .{ cb + 32, col1, row1 }) catch buf[0..0];
 }
 
-fn encodeLegacyMouse(buf: []u8, cb: u16, col1: u32, row1: u32, utf8: bool) []const u8 {
+fn encodeCsiMMouse(buf: []u8, cb: u16, col1: u32, row1: u32, utf8: bool) []const u8 {
     if (!utf8 and (cb > 223 or col1 > 223 or row1 > 223)) return buf[0..0];
     var idx: usize = 0;
     buf[idx] = '\x1b';

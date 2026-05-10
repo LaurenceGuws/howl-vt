@@ -1,13 +1,11 @@
-//! Responsibility: collect parser callbacks into owned parsed events.
-//! Ownership: interpret parsed-event boundary.
-//! Reason: isolate parser sink mechanics from downstream action mapping.
+//! Parser callbacks collected as parsed events.
 
 const std = @import("std");
 const parser_mod = @import("../parser.zig");
 
 const ParserApi = parser_mod.Parser;
 
-/// Parsed event union.
+/// Parser output event.
 pub const Event = union(enum) {
     text: []const u8,
     codepoint: u21,
@@ -39,16 +37,15 @@ pub const OscKind = enum {
     title,
     clipboard,
     hyperlink,
-    generic,
+    other,
 };
 
-/// Owned parsed-event queue for parser sink callbacks.
+/// Arena-backed event queue for parser callbacks.
 pub const ParsedEvents = struct {
     allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
     events: std.ArrayList(Event),
 
-    /// Initialize parsed-event queue.
     pub fn init(allocator: std.mem.Allocator) ParsedEvents {
         const arena = std.heap.ArenaAllocator.init(allocator);
         return .{
@@ -58,36 +55,31 @@ pub const ParsedEvents = struct {
         };
     }
 
-    /// Release parsed-event queue storage.
     pub fn deinit(self: *ParsedEvents) void {
         self.clear();
         self.events.deinit(self.allocator);
         self.arena.deinit();
     }
 
-    /// Return queued event count.
     pub fn len(self: *const ParsedEvents) usize {
         return self.events.items.len;
     }
 
-    /// Return true when queue is empty.
     pub fn isEmpty(self: *const ParsedEvents) bool {
         return self.events.items.len == 0;
     }
 
-    /// Clear queued events and free owned payloads.
+    /// Clear queued events and arena-owned byte slices.
     pub fn clear(self: *ParsedEvents) void {
         self.events.clearRetainingCapacity();
         _ = self.arena.reset(.retain_capacity);
     }
 
-    /// Drain queued events into destination list.
     pub fn drainInto(self: *ParsedEvents, dest: *std.ArrayList(Event), dest_allocator: std.mem.Allocator) !void {
         try dest.appendSlice(dest_allocator, self.events.items);
         self.events.clearRetainingCapacity();
     }
 
-    /// Build parser sink bound to this event queue.
     pub fn toSink(self: *ParsedEvents) ParserApi.Sink {
         return .{
             .ptr = self,
@@ -185,7 +177,7 @@ fn parseOsc(data: []const u8) ParsedOsc {
     const command_text = data[0..separator];
     const payload = if (separator < data.len) data[separator + 1 ..] else "";
     const command = std.fmt.parseUnsigned(u16, command_text, 10) catch return .{
-        .kind = if (separator == data.len) .title else .generic,
+        .kind = if (separator == data.len) .title else .other,
         .command = null,
         .payload = data,
     };
@@ -194,7 +186,7 @@ fn parseOsc(data: []const u8) ParsedOsc {
             0, 1, 2 => .title,
             8 => .hyperlink,
             52 => .clipboard,
-            else => .generic,
+            else => .other,
         },
         .command = command,
         .payload = payload,
@@ -317,7 +309,7 @@ test "parsed events: parses OSC command without semicolon payload" {
     parser.handleSlice("\x1b]30001\x1b\\");
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .osc);
-    try std.testing.expectEqual(OscKind.generic, parsed_events.events.items[0].osc.kind);
+    try std.testing.expectEqual(OscKind.other, parsed_events.events.items[0].osc.kind);
     try std.testing.expectEqual(@as(?u16, 30001), parsed_events.events.items[0].osc.command);
     try std.testing.expectEqualSlices(u8, "", parsed_events.events.items[0].osc.payload);
 }

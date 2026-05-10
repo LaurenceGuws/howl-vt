@@ -1,6 +1,4 @@
-//! Responsibility: own character and column edit mutations.
-//! Ownership: terminal grid edit concern.
-//! Reason: keep insert/delete/shift mechanics separate from screen state fields.
+//! Grid character and column edit mutations.
 
 const std = @import("std");
 const cell = @import("cell.zig");

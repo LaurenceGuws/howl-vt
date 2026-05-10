@@ -1,6 +1,4 @@
-//! Responsibility: own logical-history payloads.
-//! Ownership: terminal grid scrollback/history concern.
-//! Reason: keep rewrap/history data shapes separate from screen mutation logic.
+//! Grid scrollback row storage.
 
 const std = @import("std");
 const cell = @import("cell.zig");

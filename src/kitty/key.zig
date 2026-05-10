@@ -1,6 +1,4 @@
-//! Responsibility: own kitty keyboard protocol state and reports.
-//! Ownership: kitty keyboard subdomain.
-//! Reason: keep kitty keyboard stack logic out of the vt-core facade.
+//! Kitty keyboard protocol state and reports.
 
 const std = @import("std");
 

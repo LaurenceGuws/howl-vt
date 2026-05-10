@@ -1,6 +1,4 @@
-//! Responsibility: own display, line, char, and selective erase mutations.
-//! Ownership: terminal grid erase concern.
-//! Reason: keep erase/protection behavior separate from screen state fields.
+//! Grid erase and selective-erase mutations.
 
 const cell_mod = @import("cell.zig");
 

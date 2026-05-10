@@ -1,6 +1,4 @@
-//! Responsibility: TigerBeetle-style vt-core fuzz entrypoint.
-//! Ownership: vt-core fuzz execution surface.
-//! Reason: make deterministic replay and smoke fuzzing first-class build steps.
+//! vt-core fuzz executable entrypoint.
 
 const std = @import("std");
 const protocol = @import("protocol.zig");

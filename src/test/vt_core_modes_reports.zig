@@ -1,6 +1,4 @@
-//! Responsibility: input encoding, mode tracking, and report surface coverage.
-//! Ownership: vt-core input, mode, and report behavior tests.
-//! Reason: keep host-input and host-output protocol coverage out of the main vt-core facade.
+//! Input encoding, mode tracking, and report behavior tests.
 
 const std = @import("std");
 const vt = @import("vt_core");

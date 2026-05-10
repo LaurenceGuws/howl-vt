@@ -1,6 +1,4 @@
-//! Responsibility: own kitty pointer shape protocol state and queries.
-//! Ownership: kitty pointer subdomain.
-//! Reason: keep pointer-shape parsing and stack behavior out of the vt-core facade.
+//! Kitty pointer-shape protocol state and queries.
 
 const std = @import("std");
 

@@ -1,11 +1,9 @@
-//! Responsibility: parse host-facing input tokens into input vocabulary.
-//! Ownership: input host-token parsing authority.
-//! Reason: keep platform token parsing separate from terminal escape encoding.
+//! Host input token parsing.
 
 const std = @import("std");
 const keyboard = @import("keyboard.zig");
 
-/// Convert a host key token into input key vocabulary.
+/// Convert a host key token into a terminal key.
 pub fn parseKeyToken(name: []const u8) ?keyboard.Key {
     if (std.mem.eql(u8, name, "KEYCODE_ENTER")) return keyboard.VTERM_KEY_ENTER;
     if (std.mem.eql(u8, name, "KEYCODE_TAB")) return keyboard.VTERM_KEY_TAB;

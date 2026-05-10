@@ -1,11 +1,9 @@
-//! Responsibility: deterministic regression coverage for scrollback preservation.
-//! Ownership: vt-core resize and scrollback correctness tests.
-//! Reason: guard against hidden corruption during rapid geometry churn with replayable seeds.
+//! Scrollback preservation regression tests.
 
 const std = @import("std");
 const scrollback = @import("fuzz_scrollback");
 
-test "scrollback regression: deterministic seed replay" {
+test "scrollback regression: deterministic seeded churn" {
     const seed: u64 = 0x6f686f776c5f7363;
     const a = try scrollback.runScenario(std.testing.allocator, seed, 1_500);
     const b = try scrollback.runScenario(std.testing.allocator, seed, 1_500);

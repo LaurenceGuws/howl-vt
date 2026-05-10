@@ -1,6 +1,4 @@
-//! Responsibility: mapping coverage from parsed events to terminal actions.
-//! Ownership: parser-to-action translation correctness tests.
-//! Reason: make translation defaults, aliases, and private modes explicit.
+//! Parser-event to semantic-event mapping tests.
 
 const std = @import("std");
 const interpret = @import("../interpret.zig");
@@ -1279,17 +1277,17 @@ test "actions: kitty graphics APC parses control keys and payload" {
 }
 
 test "actions: kitty shell integration OSC 133 parses mark and status" {
-    const sem = process(Event{ .osc = .{ .kind = .generic, .command = 133, .payload = "D;7", .terminator = .bel } }) orelse return error.NoEvent;
+    const sem = process(Event{ .osc = .{ .kind = .other, .command = 133, .payload = "D;7", .terminator = .bel } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u8, 'D'), sem.kitty_shell_mark.kind);
     try std.testing.expectEqual(@as(?i32, 7), sem.kitty_shell_mark.status);
 }
 
 test "actions: kitty notification OSC 99 splits metadata and payload" {
-    const sem = process(Event{ .osc = .{ .kind = .generic, .command = 99, .payload = "i=1:p=body;Hello", .terminator = .st } }) orelse return error.NoEvent;
+    const sem = process(Event{ .osc = .{ .kind = .other, .command = 99, .payload = "i=1:p=body;Hello", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("i=1:p=body", sem.kitty_notification.metadata);
     try std.testing.expectEqualStrings("Hello", sem.kitty_notification.payload);
 
-    const alias = process(Event{ .osc = .{ .kind = .generic, .command = 9, .payload = "i=2:p=body;Hi", .terminator = .st } }) orelse return error.NoEvent;
+    const alias = process(Event{ .osc = .{ .kind = .other, .command = 9, .payload = "i=2:p=body;Hi", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("i=2:p=body", alias.kitty_notification.metadata);
     try std.testing.expectEqualStrings("Hi", alias.kitty_notification.payload);
 }
@@ -1327,35 +1325,35 @@ test "actions: kitty multiple cursor query and clear mappings" {
 }
 
 test "actions: kitty pointer shape OSC 22 parses action and names" {
-    const sem = process(Event{ .osc = .{ .kind = .generic, .command = 22, .payload = ">wait,pointer", .terminator = .st } }) orelse return error.NoEvent;
+    const sem = process(Event{ .osc = .{ .kind = .other, .command = 22, .payload = ">wait,pointer", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u8, '>'), sem.kitty_pointer_shape.action);
     try std.testing.expectEqualStrings("wait,pointer", sem.kitty_pointer_shape.names);
 }
 
 test "actions: kitty color stack OSC codes map to commands" {
-    const push = process(Event{ .osc = .{ .kind = .generic, .command = 30001, .payload = "", .terminator = .st } }) orelse return error.NoEvent;
-    const pop = process(Event{ .osc = .{ .kind = .generic, .command = 30101, .payload = "", .terminator = .st } }) orelse return error.NoEvent;
+    const push = process(Event{ .osc = .{ .kind = .other, .command = 30001, .payload = "", .terminator = .st } }) orelse return error.NoEvent;
+    const pop = process(Event{ .osc = .{ .kind = .other, .command = 30101, .payload = "", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expect(push.kitty_color_stack == .push);
     try std.testing.expect(pop.kitty_color_stack == .pop);
 }
 
 test "actions: terminal color OSC commands preserve command and payload" {
-    const kitty = process(Event{ .osc = .{ .kind = .generic, .command = 21, .payload = "foreground=?", .terminator = .st } }) orelse return error.NoEvent;
+    const kitty = process(Event{ .osc = .{ .kind = .other, .command = 21, .payload = "foreground=?", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 21), kitty.color_control.command);
     try std.testing.expectEqualStrings("foreground=?", kitty.color_control.payload);
 
-    const xterm = process(Event{ .osc = .{ .kind = .generic, .command = 4, .payload = "1;#ff0000", .terminator = .st } }) orelse return error.NoEvent;
+    const xterm = process(Event{ .osc = .{ .kind = .other, .command = 4, .payload = "1;#ff0000", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 4), xterm.color_control.command);
     try std.testing.expectEqualStrings("1;#ff0000", xterm.color_control.payload);
 }
 
 test "actions: modern kitty OSC payload protocols map to host-neutral events" {
-    const clipboard = process(Event{ .osc = .{ .kind = .generic, .command = 5522, .payload = "type=write", .terminator = .st } }) orelse return error.NoEvent;
+    const clipboard = process(Event{ .osc = .{ .kind = .other, .command = 5522, .payload = "type=write", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("type=write", clipboard.clipboard_set);
 
-    const transfer = process(Event{ .osc = .{ .kind = .generic, .command = 5113, .payload = "cmd=data", .terminator = .st } }) orelse return error.NoEvent;
+    const transfer = process(Event{ .osc = .{ .kind = .other, .command = 5113, .payload = "cmd=data", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("cmd=data", transfer.kitty_file_transfer);
 
-    const size = process(Event{ .osc = .{ .kind = .generic, .command = 66, .payload = "s=2;Big", .terminator = .st } }) orelse return error.NoEvent;
+    const size = process(Event{ .osc = .{ .kind = .other, .command = 66, .payload = "s=2;Big", .terminator = .st } }) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("s=2;Big", size.kitty_text_size);
 }

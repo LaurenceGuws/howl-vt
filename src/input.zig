@@ -1,4 +1,4 @@
-//! Host input vocabulary and encoding.
+//! Host input values and encoding.
 
 const keyboard = @import("input/keyboard.zig");
 const mouse = @import("input/mouse.zig");

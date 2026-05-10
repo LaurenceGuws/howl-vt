@@ -1,6 +1,4 @@
-//! Responsibility: define grid cell values and defaults.
-//! Ownership: terminal grid cell authority.
-//! Reason: keep visible cell schema and erase defaults separate from mutation behavior.
+//! Grid cell values and defaults.
 
 const color = @import("color.zig");
 

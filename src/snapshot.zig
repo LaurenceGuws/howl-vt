@@ -48,18 +48,8 @@ pub const VtCoreSnapshot = struct {
     /// Active selection state snapshot (null if inactive).
     selection: ?Selection.TerminalSelection,
 
-    /// Capture snapshot from vt_core observable state; allocates owned buffers.
-    ///
-    /// This method extracts the observable state from a Grid and optional
-    /// selection state, allocating owned copies of cell and history buffers.
-    ///
-    /// Determinism: identical screen and selection state produce identical snapshots.
-    /// The snapshot captures only observable state; parser state, queued events,
-    /// and encode buffers are not included.
-    ///
-    /// Memory: allocated cells and history buffers are owned by the returned snapshot.
-    /// Caller must call snapshot.deinit() to release them. If allocation fails,
-    /// the error is returned and no partial allocation is left outstanding.
+    /// Capture visible grid and selection state into owned buffers.
+    /// Parser state, queued events, and encode buffers are not included.
     pub fn captureFromScreen(allocator: std.mem.Allocator, screen: *const Grid, selection: ?Selection.TerminalSelection) !VtCoreSnapshot {
         var snapshot = VtCoreSnapshot{
             .allocator = allocator,
@@ -81,7 +71,6 @@ pub const VtCoreSnapshot = struct {
             if (snapshot.history) |h| allocator.free(h);
         }
 
-        // Copy visible screen cells if present.
         if (screen.cells != null) {
             const size = @as(usize, screen.rows) * @as(usize, screen.cols);
             const owned_cells = try allocator.alloc(u21, size);
@@ -95,7 +84,6 @@ pub const VtCoreSnapshot = struct {
             snapshot.cells = owned_cells;
         }
 
-        // Copy history buffer if present.
         if (screen.history_count > 0 and screen.cols > 0) {
             const size = screen.history_count * @as(usize, screen.cols);
             const owned_history = try allocator.alloc(u21, size);
@@ -112,11 +100,7 @@ pub const VtCoreSnapshot = struct {
         return snapshot;
     }
 
-    /// Release owned cell and history buffers.
-    ///
-    /// Frees allocated buffers and clears their references. Safe to call multiple
-    /// times; subsequent calls are no-ops. Must be called exactly once when snapshot
-    /// is no longer needed.
+    /// Release owned buffers. Safe to call multiple times.
     pub fn deinit(self: *VtCoreSnapshot) void {
         if (self.cells) |c| self.allocator.free(c);
         self.cells = null;
@@ -124,28 +108,14 @@ pub const VtCoreSnapshot = struct {
         self.history = null;
     }
 
-    /// Return visible cell codepoint by row and column (read-only).
-    ///
-    /// Returns the codepoint value at the given viewport coordinates.
-    /// Returns 0 (null/empty) if row >= rows, col >= cols, or cells not configured.
-    /// Reads are deterministic and never mutate snapshot state.
+    /// Return visible cell codepoint, or 0 outside the captured grid.
     pub fn cellAt(self: *const VtCoreSnapshot, row: u16, col: u16) u21 {
         const c = self.cells orelse return 0;
         if (row >= self.rows or col >= self.cols) return 0;
         return c[@as(usize, row) * self.cols + col];
     }
 
-    /// Return history cell codepoint by recency index and column (read-only).
-    ///
-    /// Reads history in recency order: history_idx=0 is most recent row (-1 in
-    /// History Selection coordinate model), history_idx=1 is next older, etc.
-    ///
-    /// Reads the flattened history projection in recency order. Returns 0 if
-    /// history_idx >= history_count,
-    /// col >= cols, or history not configured.
-    ///
-    /// Determinism: identical history buffer and indices produce identical results.
-    /// Reads are const and never mutate snapshot state.
+    /// Return history cell codepoint by recency index, or 0 outside history.
     pub fn historyRowAt(self: *const VtCoreSnapshot, history_idx: usize, col: u16) u21 {
         const h = self.history orelse return 0;
         if (history_idx >= self.history_count or col >= self.cols) return 0;
