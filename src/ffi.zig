@@ -2,92 +2,92 @@
 //! Ownership: VT input key, modifier, and mouse constants.
 //! Reason: keep C consumers on the same backend-agnostic input contract as Zig consumers.
 
-const vt = @import("vt_core.zig");
+const input = @import("input.zig");
 
 pub fn modNone() callconv(.c) u32 {
-    return vt.Input.mod_none;
+    return input.mod_none;
 }
 
 pub fn modShift() callconv(.c) u32 {
-    return vt.Input.mod_shift;
+    return input.mod_shift;
 }
 
 pub fn modAlt() callconv(.c) u32 {
-    return vt.Input.mod_alt;
+    return input.mod_alt;
 }
 
 pub fn modCtrl() callconv(.c) u32 {
-    return vt.Input.mod_ctrl;
+    return input.mod_ctrl;
 }
 
 pub fn keyEnter() callconv(.c) u32 {
-    return vt.Input.key_enter;
+    return input.key_enter;
 }
 
 pub fn keyTab() callconv(.c) u32 {
-    return vt.Input.key_tab;
+    return input.key_tab;
 }
 
 pub fn keyBackspace() callconv(.c) u32 {
-    return vt.Input.key_backspace;
+    return input.key_backspace;
 }
 
 pub fn keyEscape() callconv(.c) u32 {
-    return vt.Input.key_escape;
+    return input.key_escape;
 }
 
 pub fn keyUp() callconv(.c) u32 {
-    return vt.Input.key_up;
+    return input.key_up;
 }
 
 pub fn keyDown() callconv(.c) u32 {
-    return vt.Input.key_down;
+    return input.key_down;
 }
 
 pub fn keyLeft() callconv(.c) u32 {
-    return vt.Input.key_left;
+    return input.key_left;
 }
 
 pub fn keyRight() callconv(.c) u32 {
-    return vt.Input.key_right;
+    return input.key_right;
 }
 
 pub fn mouseButtonNone() callconv(.c) u8 {
-    return @intFromEnum(vt.Input.mouse_button_none);
+    return @intFromEnum(input.mouse_button_none);
 }
 
 pub fn mouseButtonLeft() callconv(.c) u8 {
-    return @intFromEnum(vt.Input.mouse_button_left);
+    return @intFromEnum(input.mouse_button_left);
 }
 
 pub fn mouseButtonMiddle() callconv(.c) u8 {
-    return @intFromEnum(vt.Input.mouse_button_middle);
+    return @intFromEnum(input.mouse_button_middle);
 }
 
 pub fn mouseButtonRight() callconv(.c) u8 {
-    return @intFromEnum(vt.Input.mouse_button_right);
+    return @intFromEnum(input.mouse_button_right);
 }
 
 pub fn mouseButtonWheelUp() callconv(.c) u8 {
-    return @intFromEnum(vt.Input.mouse_button_wheel_up);
+    return @intFromEnum(input.mouse_button_wheel_up);
 }
 
 pub fn mouseButtonWheelDown() callconv(.c) u8 {
-    return @intFromEnum(vt.Input.mouse_button_wheel_down);
+    return @intFromEnum(input.mouse_button_wheel_down);
 }
 
 pub fn mousePress() callconv(.c) u8 {
-    return @intFromEnum(vt.Input.mouse_press);
+    return @intFromEnum(input.mouse_press);
 }
 
 pub fn mouseRelease() callconv(.c) u8 {
-    return @intFromEnum(vt.Input.mouse_release);
+    return @intFromEnum(input.mouse_release);
 }
 
 pub fn mouseMove() callconv(.c) u8 {
-    return @intFromEnum(vt.Input.mouse_move);
+    return @intFromEnum(input.mouse_move);
 }
 
 pub fn mouseWheel() callconv(.c) u8 {
-    return @intFromEnum(vt.Input.mouse_wheel);
+    return @intFromEnum(input.mouse_wheel);
 }
