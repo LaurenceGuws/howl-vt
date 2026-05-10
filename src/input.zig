@@ -1,5 +1,6 @@
 //! Host input values and encoding.
 
+const std = @import("std");
 const keyboard = @import("input/keyboard.zig");
 const mouse = @import("input/mouse.zig");
 const tokens = @import("input/tokens.zig");
@@ -16,6 +17,46 @@ pub const MouseEventKind = mouse.MouseEventKind;
 pub const MouseEvent = mouse.MouseEvent;
 pub const MouseTrackingMode = mouse.MouseTrackingMode;
 pub const MouseProtocol = mouse.MouseProtocol;
+
+pub const mouse_button_none: MouseButton = MouseButton.none;
+pub const mouse_button_left: MouseButton = MouseButton.left;
+pub const mouse_button_middle: MouseButton = MouseButton.middle;
+pub const mouse_button_right: MouseButton = MouseButton.right;
+pub const mouse_button_wheel_up: MouseButton = MouseButton.wheel_up;
+pub const mouse_button_wheel_down: MouseButton = MouseButton.wheel_down;
+
+pub const mouse_press: MouseEventKind = MouseEventKind.press;
+pub const mouse_release: MouseEventKind = MouseEventKind.release;
+pub const mouse_move: MouseEventKind = MouseEventKind.move;
+pub const mouse_wheel: MouseEventKind = MouseEventKind.wheel;
+
+pub const KeyEvent = struct {
+    key: Key,
+    mods: Modifier = mod_none,
+};
+
+pub const FocusEvent = enum {
+    in,
+    out,
+};
+
+pub const Event = union(enum) {
+    bytes: []const u8,
+    key: KeyEvent,
+    mouse: MouseEvent,
+    focus: FocusEvent,
+    paste: []const u8,
+};
+
+pub const Encoded = struct {
+    allocator: ?std.mem.Allocator = null,
+    bytes: []const u8 = "",
+
+    pub fn deinit(self: *Encoded) void {
+        if (self.allocator) |allocator| allocator.free(self.bytes);
+        self.* = .{};
+    }
+};
 
 pub const mod_none: Modifier = keyboard.VTERM_MOD_NONE;
 pub const mod_shift: Modifier = keyboard.VTERM_MOD_SHIFT;

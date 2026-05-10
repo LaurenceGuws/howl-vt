@@ -3,7 +3,7 @@
 const std = @import("std");
 const control = @import("control.zig");
 const grid = @import("grid.zig");
-const input = @import("input.zig");
+pub const Input = @import("input.zig");
 const interpret = @import("interpret.zig");
 const kitty = @import("kitty.zig");
 const parser = @import("parser.zig");
@@ -11,7 +11,6 @@ const selection = @import("selection.zig");
 const snapshot = @import("snapshot.zig");
 
 const GridNs = grid.Grid;
-const Input = input;
 const Interpret = interpret;
 const Osc = interpret.Osc;
 const KittyNs = kitty;
@@ -683,6 +682,32 @@ pub const VtCore = struct {
         @memcpy(self.encode.buf[0..encoded.len], encoded);
         self.encode.len = encoded.len;
         return self.encode.buf[0..encoded.len];
+    }
+
+    /// Encode one host input event for the active terminal modes.
+    pub fn encodeInput(self: *VtCore, allocator: std.mem.Allocator, event: Input.Event) !Input.Encoded {
+        return switch (event) {
+            .bytes => |bytes| .{ .bytes = bytes },
+            .key => |key| .{ .bytes = self.encodeKey(key.key, key.mods) },
+            .mouse => |mouse| .{ .bytes = self.encodeMouse(mouse) },
+            .focus => |focus| .{ .bytes = switch (focus) {
+                .in => self.encodeFocusIn(),
+                .out => self.encodeFocusOut(),
+            } },
+            .paste => |text| try self.encodePaste(allocator, text),
+        };
+    }
+
+    pub fn encodePaste(self: *VtCore, allocator: std.mem.Allocator, text: []const u8) !Input.Encoded {
+        const start = self.encodePasteStart();
+        const end = self.encodePasteEnd();
+        if (start.len == 0 and end.len == 0) return .{ .bytes = text };
+
+        const out = try allocator.alloc(u8, start.len + text.len + end.len);
+        @memcpy(out[0..start.len], start);
+        @memcpy(out[start.len .. start.len + text.len], text);
+        @memcpy(out[start.len + text.len ..], end);
+        return .{ .allocator = allocator, .bytes = out };
     }
 
     pub fn encodeFocusOut(self: *VtCore) []const u8 {
