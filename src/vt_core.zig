@@ -3,31 +3,28 @@
 //! Reason: expose one host-neutral terminal object while keeping domain internals behind sibling owners.
 
 const std = @import("std");
+const control = @import("control/control.zig");
 const grid = @import("grid/grid.zig");
 const input = @import("input/input.zig");
 const interpret = @import("interpret/interpret.zig");
 const osc = @import("interpret/actions/osc.zig");
 const kitty = @import("kitty/kitty.zig");
-const locator = @import("locator.zig");
-const osc_color = @import("osc_color.zig");
 const parser = @import("parser/parser.zig");
 const selection = @import("selection/selection.zig");
 const snapshot = @import("snapshot/snapshot.zig");
-const mode = @import("mode.zig");
-const report = @import("report.zig");
 
 const GridNs = grid.Grid;
 const Input = input;
 const Interpret = interpret;
 const Osc = osc;
 const KittyNs = kitty;
-const LocatorNs = locator;
-const OscColorNs = osc_color;
+const LocatorNs = control.Locator;
+const OscColorNs = control.OscColor;
 const ParserNs = parser.Parser;
 const Selection = selection;
 const Snapshot = snapshot;
-const TerminalModeNs = mode;
-const TerminalReportNs = report;
+const TerminalModeNs = control.Mode;
+const TerminalReportNs = control.Report;
 
 /// Grid instance owner exposed for downstream runtime/render code.
 pub const Grid = GridNs;

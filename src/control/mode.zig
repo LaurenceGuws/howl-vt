@@ -2,8 +2,8 @@
 //! Ownership: terminal mode protocol domain owner.
 //! Reason: keep DEC/ANSI mode bookkeeping out of the vt-core facade.
 
-const input_mod = @import("input/input.zig");
-const action_map = @import("interpret/actions/map.zig");
+const input_mod = @import("../input/input.zig");
+const action_map = @import("../interpret/actions/map.zig");
 
 const Input = input_mod;
 const ModeAction = action_map.ModeAction;

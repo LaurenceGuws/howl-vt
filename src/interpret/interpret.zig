@@ -9,8 +9,8 @@ const std = @import("std");
 const grid = @import("../grid/grid.zig");
 const types = @import("actions/types.zig");
 const kitty = @import("../kitty/kitty.zig");
-const locator = @import("../locator.zig");
-const osc_color = @import("../osc_color.zig");
+const locator = @import("../control/locator.zig");
+const osc_color = @import("../control/osc_color.zig");
 
 const GridNs = grid.Grid;
 const KittyNs = kitty;

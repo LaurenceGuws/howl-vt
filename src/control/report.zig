@@ -3,9 +3,9 @@
 //! Reason: keep host-output-facing report generation out of the vt-core facade.
 
 const std = @import("std");
-const grid_mod = @import("grid/grid.zig");
-const grid_types = @import("grid/types.zig");
-const interpret = @import("interpret/interpret.zig");
+const grid_mod = @import("../grid/grid.zig");
+const grid_types = @import("../grid/types.zig");
+const interpret = @import("../interpret/interpret.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
 
