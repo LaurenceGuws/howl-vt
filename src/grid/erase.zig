@@ -2,7 +2,7 @@
 //! Ownership: terminal grid erase concern.
 //! Reason: keep erase/protection behavior separate from screen state fields.
 
-const types = @import("types.zig");
+const cell_mod = @import("cell.zig");
 
 pub fn eraseDisplay(self: anytype, mode: u2) void {
     const c = self.cells orelse return;
@@ -126,7 +126,7 @@ pub fn selectiveClearRowRange(self: anytype, row: u16, start_col: u16, end_col_e
     }
 }
 
-pub fn eraseCell(self: anytype) types.Cell {
+pub fn eraseCell(self: anytype) cell_mod.Cell {
     return .{ .codepoint = 0, .attrs = self.current_attrs };
 }
 

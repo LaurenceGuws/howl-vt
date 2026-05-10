@@ -3,9 +3,9 @@
 //! Reason: keep insert/delete/shift mechanics separate from screen state fields.
 
 const std = @import("std");
-const types = @import("types.zig");
+const cell = @import("cell.zig");
 
-const Cell = types.Cell;
+const Cell = cell.Cell;
 
 pub fn insertColumns(self: anytype, count: u16) void {
     const bottom = self.scrollBottom();

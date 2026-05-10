@@ -2,12 +2,13 @@
 //! Ownership: terminal grid text-style concern.
 //! Reason: keep attribute parsing effects separate from screen mutation dispatch.
 
-const types = @import("types.zig");
+const cell_mod = @import("cell.zig");
+const color_mod = @import("color.zig");
 
-const CellAttrs = types.CellAttrs;
-const Color = types.Color;
-const default_cell_attrs = types.default_cell_attrs;
-const default_underline_color = types.default_underline_color;
+const CellAttrs = cell_mod.CellAttrs;
+const Color = color_mod.Color;
+const default_cell_attrs = cell_mod.default_cell_attrs;
+const default_underline_color = color_mod.default_underline_color;
 
 pub fn applySgr(self: anytype, params: []const i32, separators: []const u8) void {
     if (params.len == 0) {

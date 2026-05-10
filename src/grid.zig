@@ -4,6 +4,8 @@
 
 const std = @import("std");
 const interpret = @import("interpret.zig");
+const cell = @import("grid/cell.zig");
+const color = @import("grid/color.zig");
 const cursor = @import("grid/cursor.zig");
 const dirty = @import("grid/dirty.zig");
 const edit = @import("grid/edit.zig");
@@ -16,7 +18,6 @@ const resize_mod = @import("grid/resize.zig");
 const scroll = @import("grid/scroll.zig");
 const style_mod = @import("grid/style.zig");
 const tabs = @import("grid/tabs.zig");
-const types = @import("grid/types.zig");
 const write = @import("grid/write.zig");
 
 /// Semantic event alias for grid application.
@@ -26,19 +27,19 @@ const HistoryLine = history_mod.HistoryLine;
 
 /// Terminal screen state for cursor, cells, margins, and history.
 pub const Grid = struct {
-    pub const Color = types.Color;
-    pub const UnderlineStyle = types.UnderlineStyle;
-    pub const CellAttrs = types.CellAttrs;
-    pub const Cell = types.Cell;
-    pub const CursorShape = types.CursorShape;
-    pub const CursorStyle = types.CursorStyle;
-    pub const default_fg = types.default_fg;
-    pub const default_bg = types.default_bg;
-    pub const default_underline_color = types.default_underline_color;
-    pub const default_cell_attrs = types.default_cell_attrs;
-    pub const default_cell = types.default_cell;
-    pub const defaultCell = types.defaultCell;
-    pub const isCellContinuation = types.isCellContinuation;
+    pub const Color = color.Color;
+    pub const UnderlineStyle = cell.UnderlineStyle;
+    pub const CellAttrs = cell.CellAttrs;
+    pub const Cell = cell.Cell;
+    pub const CursorShape = cursor.CursorShape;
+    pub const CursorStyle = cursor.CursorStyle;
+    pub const default_fg = color.default_fg;
+    pub const default_bg = color.default_bg;
+    pub const default_underline_color = color.default_underline_color;
+    pub const default_cell_attrs = cell.default_cell_attrs;
+    pub const default_cell = cell.default_cell;
+    pub const defaultCell = cell.defaultCell;
+    pub const isCellContinuation = cell.isCellContinuation;
     pub const DirtyRows = dirty.DirtyRows;
 
     allocator: ?std.mem.Allocator,
@@ -93,7 +94,7 @@ pub const Grid = struct {
             .cursor_col = 0,
             .wrap_pending = false,
             .cursor_visible = true,
-            .cursor_style = types.default_cursor_style,
+            .cursor_style = cursor.default_cursor_style,
             .auto_wrap = true,
             .origin_mode = false,
             .insert_mode = false,
@@ -155,7 +156,7 @@ pub const Grid = struct {
             .cursor_col = 0,
             .wrap_pending = false,
             .cursor_visible = true,
-            .cursor_style = types.default_cursor_style,
+            .cursor_style = cursor.default_cursor_style,
             .auto_wrap = true,
             .origin_mode = false,
             .insert_mode = false,
@@ -226,7 +227,7 @@ pub const Grid = struct {
             .cursor_col = 0,
             .wrap_pending = false,
             .cursor_visible = true,
-            .cursor_style = types.default_cursor_style,
+            .cursor_style = cursor.default_cursor_style,
             .auto_wrap = true,
             .origin_mode = false,
             .insert_mode = false,
@@ -301,7 +302,7 @@ pub const Grid = struct {
         self.cursor_col = 0;
         self.wrap_pending = false;
         self.cursor_visible = true;
-        self.cursor_style = types.default_cursor_style;
+        self.cursor_style = cursor.default_cursor_style;
         self.auto_wrap = true;
         self.origin_mode = false;
         self.insert_mode = false;

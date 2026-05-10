@@ -2,7 +2,7 @@
 //! Ownership: terminal grid scroll concern.
 //! Reason: keep viewport movement separate from grid state storage fields.
 
-const types = @import("types.zig");
+const cell = @import("cell.zig");
 
 pub fn lineFeed(self: anytype) void {
     if (self.rows == 0) return;
@@ -35,7 +35,7 @@ pub fn scrollUp(self: anytype) void {
     self.storeHistoryRow(0);
     self.row_origin = @intCast((@as(usize, self.row_origin) + 1) % @as(usize, self.rows));
     const bottom_start = self.rowStart(self.rows - 1);
-    @memset(c[bottom_start .. bottom_start + row_len], types.default_cell);
+    @memset(c[bottom_start .. bottom_start + row_len], cell.default_cell);
     self.setRowWrapped(self.rows - 1, false);
 }
 

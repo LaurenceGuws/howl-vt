@@ -1,38 +1,10 @@
-//! Responsibility: define terminal grid value types and defaults.
-//! Ownership: grid data shape authority.
-//! Reason: keep visible cell/cursor/color schema near terminal screen state.
+//! Responsibility: define grid cell values and defaults.
+//! Ownership: terminal grid cell authority.
+//! Reason: keep visible cell schema and erase defaults separate from mutation behavior.
 
-const selection = @import("../selection.zig");
+const color = @import("color.zig");
 
-const Selection = selection;
-
-const CursorPos = struct {
-    row: usize,
-    col: usize,
-};
-
-pub const CursorShape = enum {
-    block,
-    underline,
-    bar,
-};
-
-pub const CursorStyle = struct {
-    shape: CursorShape,
-    blink: bool,
-};
-
-pub const default_cursor_style = CursorStyle{ .shape = .block, .blink = true };
-
-pub const SelectionPos = Selection.SelectionPos;
-pub const TerminalSelection = Selection.TerminalSelection;
-
-pub const Color = struct {
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8 = 255,
-};
+const Color = color.Color;
 
 pub const UnderlineStyle = enum(u3) {
     straight,
@@ -75,9 +47,9 @@ pub fn isMultiRowCellRoot(cell: Cell) bool {
     return cell.height > 1 and cell.x == 0 and cell.y == 0;
 }
 
-pub const default_fg = Color{ .r = 220, .g = 220, .b = 220 };
-pub const default_bg = Color{ .r = 24, .g = 25, .b = 33 };
-pub const default_underline_color = Color{ .r = 0, .g = 0, .b = 0, .a = 0 };
+pub const default_fg = color.default_fg;
+pub const default_bg = color.default_bg;
+pub const default_underline_color = color.default_underline_color;
 
 pub const default_cell_attrs = CellAttrs{
     .fg = default_fg,

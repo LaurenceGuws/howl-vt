@@ -4,14 +4,14 @@
 
 const std = @import("std");
 const dirty = @import("dirty.zig");
+const cell = @import("cell.zig");
 const history_mod = @import("history.zig");
 const tabs = @import("tabs.zig");
-const types = @import("types.zig");
 
-const Cell = types.Cell;
+const Cell = cell.Cell;
 const LogicalLine = history_mod.LogicalLine;
 const RewrappedRow = history_mod.RewrappedRow;
-const default_cell = types.default_cell;
+const default_cell = cell.default_cell;
 
 /// Resize visible grid storage while preserving logical scrollback lines.
 pub fn resizeWithReflow(self: anytype, allocator: std.mem.Allocator, rows: u16, cols: u16) !void {

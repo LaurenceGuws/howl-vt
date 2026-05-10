@@ -4,10 +4,10 @@
 
 const interpret = @import("../interpret.zig");
 const style_mod = @import("style.zig");
-const types = @import("types.zig");
+const cell = @import("cell.zig");
 
 const SemanticEvent = interpret.SemanticEvent;
-const Cell = types.Cell;
+const Cell = cell.Cell;
 
 pub fn changeAttrs(self: anytype, area: SemanticEvent.RectArea, attrs: []const u16, reverse: bool) void {
     const c = self.cells orelse return;

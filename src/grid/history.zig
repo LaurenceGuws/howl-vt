@@ -3,10 +3,10 @@
 //! Reason: keep rewrap/history data shapes separate from screen mutation logic.
 
 const std = @import("std");
-const types = @import("types.zig");
+const cell = @import("cell.zig");
 
-const Cell = types.Cell;
-const default_cell = types.default_cell;
+const Cell = cell.Cell;
+const default_cell = cell.default_cell;
 
 pub const LogicalLine = struct {
     cells: std.ArrayListUnmanaged(Cell) = .empty,

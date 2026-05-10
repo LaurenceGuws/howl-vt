@@ -2,6 +2,19 @@
 //! Ownership: terminal grid cursor concern.
 //! Reason: keep cursor policy separate from screen mutation dispatch.
 
+pub const CursorShape = enum {
+    block,
+    underline,
+    bar,
+};
+
+pub const CursorStyle = struct {
+    shape: CursorShape,
+    blink: bool,
+};
+
+pub const default_cursor_style = CursorStyle{ .shape = .block, .blink = true };
+
 pub fn resolveAbsoluteRow(self: anytype, row: u16) u16 {
     if (!self.origin_mode) return row;
     const bottom = if (self.rows == 0) 0 else @min(self.scroll_bottom, self.rows - 1);
