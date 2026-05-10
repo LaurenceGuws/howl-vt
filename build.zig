@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    mod.addImport("fuzz_scrollback", fuzz_scrollback_mod);
+    fuzz_scrollback_mod.addImport("vt_core", mod);
     const perf_mod = b.addModule("vt_core_perf", .{
         .root_source_file = b.path("src/vt_core.zig"),
         .target = target,
@@ -31,7 +31,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = perf_optimize,
     });
-    perf_mod.addImport("fuzz_scrollback", perf_fuzz_scrollback_mod);
+    perf_fuzz_scrollback_mod.addImport("vt_core", perf_mod);
 
     const mod_tests = b.addTest(.{
         .name = "test-unit",
@@ -73,10 +73,11 @@ pub fn build(b: *std.Build) void {
     test_regression_step.dependOn(&run_regression_tests.step);
 
     const fuzz_module = b.createModule(.{
-        .root_source_file = b.path("src/fuzz_tests.zig"),
+        .root_source_file = b.path("src/fuzz/fuzz_tests.zig"),
         .target = target,
         .optimize = optimize,
     });
+    fuzz_module.addImport("vt_core", mod);
 
     const fuzz_exe = b.addExecutable(.{
         .name = "vt_core_fuzz",

@@ -3,8 +3,8 @@
 //! Reason: make deterministic replay and smoke fuzzing first-class build steps.
 
 const std = @import("std");
-const protocol = @import("fuzz/protocol.zig");
-const scrollback = @import("fuzz/scrollback.zig");
+const protocol = @import("protocol.zig");
+const scrollback = @import("scrollback.zig");
 
 const Fuzzer = enum {
     smoke,

@@ -61,15 +61,15 @@ pub fn applyHost(vt: anytype, action: HostAction) void {
     switch (action) {
         .terminal_color_control => |cmd| {
             switch (cmd.command) {
-                21 => KittyNs.Color.handleKittyControl(vt.allocator, &vt.host.terminal_colors, &vt.host.pending_output, cmd.payload),
-                4 => OscColorNs.handleXtermPaletteControl(vt.allocator, &vt.host.terminal_colors, &vt.host.pending_output, vt.encode.buf[0..], cmd.payload),
-                10 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.terminal_colors, &vt.host.pending_output, vt.encode.buf[0..], .foreground, cmd.payload),
-                11 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.terminal_colors, &vt.host.pending_output, vt.encode.buf[0..], .background, cmd.payload),
-                12 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.terminal_colors, &vt.host.pending_output, vt.encode.buf[0..], .cursor, cmd.payload),
-                104 => OscColorNs.resetXtermPalette(&vt.host.terminal_colors, cmd.payload),
-                110 => vt.host.terminal_colors.foreground = GridNs.default_fg,
-                111 => vt.host.terminal_colors.background = GridNs.default_bg,
-                112 => vt.host.terminal_colors.cursor = null,
+                21 => KittyNs.Color.handleKittyControl(vt.allocator, &vt.host.colors, &vt.host.pending_output, cmd.payload),
+                4 => OscColorNs.handleXtermPaletteControl(vt.allocator, &vt.host.colors, &vt.host.pending_output, vt.encode.buf[0..], cmd.payload),
+                10 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.colors, &vt.host.pending_output, vt.encode.buf[0..], .foreground, cmd.payload),
+                11 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.colors, &vt.host.pending_output, vt.encode.buf[0..], .background, cmd.payload),
+                12 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.colors, &vt.host.pending_output, vt.encode.buf[0..], .cursor, cmd.payload),
+                104 => OscColorNs.resetXtermPalette(&vt.host.colors, cmd.payload),
+                110 => vt.host.colors.foreground = GridNs.default_fg,
+                111 => vt.host.colors.background = GridNs.default_bg,
+                112 => vt.host.colors.cursor = null,
                 else => {},
             }
         },

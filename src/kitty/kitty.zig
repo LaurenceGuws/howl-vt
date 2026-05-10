@@ -40,8 +40,8 @@ pub fn apply(vt: anytype, action: KittyAction) void {
         },
         .kitty_color_stack => |cmd| {
             switch (cmd) {
-                .push => Color.pushState(&vt.kitty.global.color_stack, &vt.host.terminal_colors, &vt.kitty.global.color_stack_depth),
-                .pop => Color.popState(&vt.kitty.global.color_stack, &vt.host.terminal_colors, &vt.kitty.global.color_stack_depth),
+                .push => Color.pushState(&vt.kitty.global.color_stack, &vt.host.colors, &vt.kitty.global.color_stack_depth),
+                .pop => Color.popState(&vt.kitty.global.color_stack, &vt.host.colors, &vt.kitty.global.color_stack_depth),
             }
         },
         .kitty_multiple_cursor => |cmd| switch (cmd) {

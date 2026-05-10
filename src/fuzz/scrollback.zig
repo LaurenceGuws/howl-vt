@@ -3,7 +3,7 @@
 //! Reason: keep unit regressions and fuzz executables on one shared scrollback model.
 
 const std = @import("std");
-const vt_mod = @import("../vt_core.zig");
+const vt_mod = @import("vt_core");
 
 pub const RowsMin: u16 = 1;
 pub const ColsMin: u16 = 1;

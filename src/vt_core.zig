@@ -3,33 +3,37 @@
 //! Reason: expose one host-neutral terminal object while keeping domain internals behind sibling owners.
 
 const std = @import("std");
-const grid_owner = @import("grid/grid.zig");
+const grid = @import("grid/grid.zig");
 const grid_model = @import("grid/state.zig");
-const input_mod = @import("input/input.zig");
-const interpret_owner = @import("interpret/interpret.zig");
-const osc_actions_owner = @import("interpret/osc_actions.zig");
-const kitty_owner = @import("kitty/kitty.zig");
-const locator_owner = @import("locator.zig");
-const osc_color_owner = @import("osc_color.zig");
-const selection_owner = @import("selection/selection.zig");
-const snapshot_owner = @import("snapshot/snapshot.zig");
-const terminal_mode_owner = @import("mode.zig");
-const terminal_report_owner = @import("report.zig");
+const input = @import("input/input.zig");
+const interpret = @import("interpret/interpret.zig");
+const osc_actions = @import("interpret/osc_actions.zig");
+const kitty = @import("kitty/kitty.zig");
+const locator = @import("locator.zig");
+const osc_color = @import("osc_color.zig");
+const parser = @import("parser.zig");
+const selection = @import("selection/selection.zig");
+const snapshot = @import("snapshot/snapshot.zig");
+const mode = @import("mode.zig");
+const report = @import("report.zig");
 
-const GridNs = grid_owner;
-const Input = input_mod;
-const Interpret = interpret_owner;
-const OscActions = osc_actions_owner;
-const KittyNs = kitty_owner;
-const LocatorNs = locator_owner;
-const OscColorNs = osc_color_owner;
-const Selection = selection_owner;
-const Snapshot = snapshot_owner;
-const TerminalModeNs = terminal_mode_owner;
-const TerminalReportNs = terminal_report_owner;
+const GridNs = grid;
+const Input = input;
+const Interpret = interpret;
+const OscActions = osc_actions;
+const KittyNs = kitty;
+const LocatorNs = locator;
+const OscColorNs = osc_color;
+const ParserNs = parser;
+const Selection = selection;
+const Snapshot = snapshot;
+const TerminalModeNs = mode;
+const TerminalReportNs = report;
 
 /// Explicit package-surface grid owner alias retained for downstream runtime/render code.
 pub const Grid = GridNs;
+/// Explicit package-surface parser owner alias retained for fuzz/protocol tools.
+pub const Parser = ParserNs;
 
 /// Host-neutral terminal facade.
 pub const VtCore = struct {
@@ -208,7 +212,7 @@ pub const VtCore = struct {
             payload: []u8,
         };
 
-        terminal_colors: TerminalColorState = .{},
+        colors: TerminalColorState = .{},
         pending_output: std.ArrayList(u8),
         hyperlink_targets: std.ArrayList([]u8),
         pending_clipboard: ?ClipboardRequest = null,
@@ -524,7 +528,7 @@ pub const VtCore = struct {
     }
 
     pub fn terminalColorState(self: *const VtCore) TerminalColorState {
-        return self.host.terminal_colors;
+        return self.host.colors;
     }
 
     pub fn kittyGraphicsImageCount(self: *const VtCore) usize {
