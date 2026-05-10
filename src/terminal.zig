@@ -3,7 +3,7 @@
 const std = @import("std");
 const control = @import("control.zig");
 const grid = @import("grid.zig");
-pub const Input = @import("input.zig");
+const Input = @import("input.zig");
 const interpret = @import("interpret.zig");
 const kitty = @import("kitty.zig");
 const parser = @import("parser.zig");
@@ -16,109 +16,18 @@ const Osc = interpret.Osc;
 const KittyNs = kitty;
 const LocatorNs = control.Locator;
 const OscColorNs = control.OscColor;
-const ParserNs = parser.Parser;
 const Selection = selection;
 const Snapshot = snapshot;
 const TerminalModeNs = control.Mode;
 const TerminalReportNs = control.Report;
 
-pub const Grid = GridNs;
-pub const Parser = ParserNs;
-
 /// Host-neutral terminal state and protocol engine.
 pub const VtCore = struct {
-    pub const Grid = GridNs;
-    pub const DirtyRows = GridNs.DirtyRows;
     pub const ControlSignal = enum {
         hangup,
         interrupt,
         terminate,
         resize_notify,
-    };
-
-    pub const Key = Input.Key;
-    pub const Modifier = Input.Modifier;
-    pub const MouseButton = Input.MouseButton;
-    pub const MouseEventKind = Input.MouseEventKind;
-
-    pub const mod_none: Modifier = Input.mod_none;
-    pub const mod_shift: Modifier = Input.mod_shift;
-    pub const mod_alt: Modifier = Input.mod_alt;
-    pub const mod_ctrl: Modifier = Input.mod_ctrl;
-
-    pub const key_enter: Key = Input.key_enter;
-    pub const key_tab: Key = Input.key_tab;
-    pub const key_backspace: Key = Input.key_backspace;
-    pub const key_escape: Key = Input.key_escape;
-    pub const key_up: Key = Input.key_up;
-    pub const key_down: Key = Input.key_down;
-    pub const key_left: Key = Input.key_left;
-    pub const key_right: Key = Input.key_right;
-    pub const key_insert: Key = Input.key_insert;
-    pub const key_delete: Key = Input.key_delete;
-    pub const key_home: Key = Input.key_home;
-    pub const key_end: Key = Input.key_end;
-    pub const key_pageup: Key = Input.key_pageup;
-    pub const key_pagedown: Key = Input.key_pagedown;
-    pub const key_f1: Key = Input.key_f1;
-    pub const key_f2: Key = Input.key_f2;
-    pub const key_f3: Key = Input.key_f3;
-    pub const key_f4: Key = Input.key_f4;
-    pub const key_f5: Key = Input.key_f5;
-    pub const key_f6: Key = Input.key_f6;
-    pub const key_f7: Key = Input.key_f7;
-    pub const key_f8: Key = Input.key_f8;
-    pub const key_f9: Key = Input.key_f9;
-    pub const key_f10: Key = Input.key_f10;
-    pub const key_f11: Key = Input.key_f11;
-    pub const key_f12: Key = Input.key_f12;
-    pub const key_kp_0: Key = Input.key_kp_0;
-    pub const key_kp_1: Key = Input.key_kp_1;
-    pub const key_kp_2: Key = Input.key_kp_2;
-    pub const key_kp_3: Key = Input.key_kp_3;
-    pub const key_kp_4: Key = Input.key_kp_4;
-    pub const key_kp_5: Key = Input.key_kp_5;
-    pub const key_kp_6: Key = Input.key_kp_6;
-    pub const key_kp_7: Key = Input.key_kp_7;
-    pub const key_kp_8: Key = Input.key_kp_8;
-    pub const key_kp_9: Key = Input.key_kp_9;
-    pub const key_kp_decimal: Key = Input.key_kp_decimal;
-    pub const key_kp_add: Key = Input.key_kp_add;
-    pub const key_kp_subtract: Key = Input.key_kp_subtract;
-    pub const key_kp_multiply: Key = Input.key_kp_multiply;
-    pub const key_kp_divide: Key = Input.key_kp_divide;
-    pub const key_kp_enter: Key = Input.key_kp_enter;
-
-    pub const mouse_button_none: MouseButton = Input.MouseButton.none;
-    pub const mouse_button_left: MouseButton = Input.MouseButton.left;
-    pub const mouse_button_middle: MouseButton = Input.MouseButton.middle;
-    pub const mouse_button_right: MouseButton = Input.MouseButton.right;
-    pub const mouse_button_wheel_up: MouseButton = Input.MouseButton.wheel_up;
-    pub const mouse_button_wheel_down: MouseButton = Input.MouseButton.wheel_down;
-
-    pub const mouse_press: MouseEventKind = Input.MouseEventKind.press;
-    pub const mouse_release: MouseEventKind = Input.MouseEventKind.release;
-    pub const mouse_move: MouseEventKind = Input.MouseEventKind.move;
-    pub const mouse_wheel: MouseEventKind = Input.MouseEventKind.wheel;
-
-    /// Read-only render-facing view of visible terminal state.
-    pub const RenderView = struct {
-        rows: u16,
-        cols: u16,
-        cursor_row: u16,
-        cursor_col: u16,
-        cursor_visible: bool,
-        cursor_shape: GridNs.CursorShape,
-        is_alternate_screen: bool,
-        screen: *const GridNs,
-
-        pub fn cellAt(self: RenderView, row: u16, col: u16) u21 {
-            return self.screen.cellAt(row, col);
-        }
-
-        pub fn cellInfoAt(self: RenderView, row: u16, col: u16) GridNs.Cell {
-            return self.screen.cellInfoAt(row, col);
-        }
     };
 
     pub const VisibleViewOptions = struct {
@@ -600,20 +509,6 @@ pub const VtCore = struct {
         return self.activeState();
     }
 
-    /// Return a stable render-facing snapshot view of visible state.
-    pub fn renderView(self: *const VtCore) RenderView {
-        return .{
-            .rows = self.activeState().rows,
-            .cols = self.activeState().cols,
-            .cursor_row = self.activeState().cursor_row,
-            .cursor_col = self.activeState().cursor_col,
-            .cursor_visible = self.activeState().cursor_visible,
-            .cursor_shape = self.activeState().cursor_style.shape,
-            .is_alternate_screen = self.screen_state.alt_active,
-            .screen = self.activeState(),
-        };
-    }
-
     pub fn visibleView(self: *const VtCore, options: VisibleViewOptions) VisibleView {
         const active = self.activeState();
         const history_count = if (self.screen_state.alt_active) 0 else active.historyCount();
@@ -636,7 +531,7 @@ pub const VtCore = struct {
         };
     }
 
-    pub fn peekDirtyRows(self: *const VtCore) ?DirtyRows {
+    pub fn peekDirtyRows(self: *const VtCore) ?GridNs.DirtyRows {
         return self.activeState().peekDirtyRows();
     }
 
@@ -819,12 +714,12 @@ pub const VtCore = struct {
     }
 
     /// Parse host key token into vt-core key constant.
-    pub fn parseKeyToken(name: []const u8) ?Key {
+    pub fn parseKeyToken(name: []const u8) ?Input.Key {
         return Input.Tokens.parseKeyToken(name);
     }
 
     /// Parse host modifier bitfield into vt-core modifier mask.
-    pub fn parseModifierBits(mods: i32) Modifier {
+    pub fn parseModifierBits(mods: i32) Input.Modifier {
         return Input.Tokens.parseModifierBits(mods);
     }
 

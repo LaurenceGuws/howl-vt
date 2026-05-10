@@ -190,19 +190,19 @@ test "encodeKey and encodeMouse methods are callable" {
     try std.testing.expectEqual(snap_before.selection, snap_after.selection);
 }
 
-test "VtCore exposes key and modifier constants" {
-    _ = vt.VtCore.mod_none;
-    _ = vt.VtCore.mod_shift;
-    _ = vt.VtCore.mod_alt;
-    _ = vt.VtCore.mod_ctrl;
-    _ = vt.VtCore.key_enter;
-    _ = vt.VtCore.key_tab;
-    _ = vt.VtCore.key_backspace;
-    _ = vt.VtCore.key_escape;
-    _ = vt.VtCore.key_up;
-    _ = vt.VtCore.key_down;
-    _ = vt.VtCore.key_left;
-    _ = vt.VtCore.key_right;
-    _ = vt.VtCore.key_kp_0;
-    _ = vt.VtCore.key_kp_enter;
+test "Input exposes key and modifier constants" {
+    _ = vt.Input.mod_none;
+    _ = vt.Input.mod_shift;
+    _ = vt.Input.mod_alt;
+    _ = vt.Input.mod_ctrl;
+    _ = vt.Input.key_enter;
+    _ = vt.Input.key_tab;
+    _ = vt.Input.key_backspace;
+    _ = vt.Input.key_escape;
+    _ = vt.Input.key_up;
+    _ = vt.Input.key_down;
+    _ = vt.Input.key_left;
+    _ = vt.Input.key_right;
+    _ = vt.Input.key_kp_0;
+    _ = vt.Input.key_kp_enter;
 }

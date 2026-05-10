@@ -96,7 +96,7 @@ test "mouse reporting supports legacy x10 normal utf8 and urxvt encodings" {
     var vt_core = try vt.VtCore.initWithCells(allocator, 5, 10);
     defer vt_core.deinit();
 
-    const press = Input.MouseEvent{ .kind = .press, .button = .left, .row = 2, .col = 3, .mod = vt.VtCore.mod_shift | vt.VtCore.mod_alt, .buttons_down = 1 };
+    const press = Input.MouseEvent{ .kind = .press, .button = .left, .row = 2, .col = 3, .mod = Input.mod_shift | Input.mod_alt, .buttons_down = 1 };
     const release = Input.MouseEvent{ .kind = .release, .button = .left, .row = 2, .col = 3, .mod = 0, .buttons_down = 0 };
     const wheel = Input.MouseEvent{ .kind = .wheel, .button = .wheel_down, .row = 2, .col = 3, .mod = 0, .buttons_down = 0 };
 
@@ -140,14 +140,14 @@ test "application cursor mode changes arrow key encoding" {
     var vt_core = try vt.VtCore.initWithCells(allocator, 3, 8);
     defer vt_core.deinit();
 
-    try std.testing.expectEqualStrings("\x1b[A", vt_core.encodeKey(vt.VtCore.key_up, vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("\x1b[A", vt_core.encodeKey(Input.key_up, Input.mod_none));
     vt_core.feedSlice("\x1b[?1h");
     vt_core.apply();
-    try std.testing.expectEqualStrings("\x1bOA", vt_core.encodeKey(vt.VtCore.key_up, vt.VtCore.mod_none));
-    try std.testing.expectEqualStrings("\x1b[1;5A", vt_core.encodeKey(vt.VtCore.key_up, vt.VtCore.mod_ctrl));
+    try std.testing.expectEqualStrings("\x1bOA", vt_core.encodeKey(Input.key_up, Input.mod_none));
+    try std.testing.expectEqualStrings("\x1b[1;5A", vt_core.encodeKey(Input.key_up, Input.mod_ctrl));
     vt_core.feedSlice("\x1b[?1l");
     vt_core.apply();
-    try std.testing.expectEqualStrings("\x1b[A", vt_core.encodeKey(vt.VtCore.key_up, vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("\x1b[A", vt_core.encodeKey(Input.key_up, Input.mod_none));
 }
 
 test "kitty keyboard set query push and pop flags" {
@@ -194,10 +194,10 @@ test "kitty keyboard mode switches existing keys to CSI-u family" {
 
     vt_core.feedSlice("\x1b[=1u");
     vt_core.apply();
-    try std.testing.expectEqualStrings("\x1b[27u", vt_core.encodeKey(vt.VtCore.key_escape, vt.VtCore.mod_none));
-    try std.testing.expectEqualStrings("\x1b[127;5u", vt_core.encodeKey(vt.VtCore.key_backspace, vt.VtCore.mod_ctrl));
-    try std.testing.expectEqualStrings("\x1b[1;5A", vt_core.encodeKey(vt.VtCore.key_up, vt.VtCore.mod_ctrl));
-    try std.testing.expectEqualStrings("\x1b[15~", vt_core.encodeKey(vt.VtCore.key_f5, vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("\x1b[27u", vt_core.encodeKey(Input.key_escape, Input.mod_none));
+    try std.testing.expectEqualStrings("\x1b[127;5u", vt_core.encodeKey(Input.key_backspace, Input.mod_ctrl));
+    try std.testing.expectEqualStrings("\x1b[1;5A", vt_core.encodeKey(Input.key_up, Input.mod_ctrl));
+    try std.testing.expectEqualStrings("\x1b[15~", vt_core.encodeKey(Input.key_f5, Input.mod_none));
 }
 
 test "focus reports are gated by DECSET 1004" {
@@ -254,11 +254,12 @@ test "ENQ default answerback is empty and printable space remains text" {
     vt_core.apply();
 
     try std.testing.expectEqualStrings("", vt_core.pendingOutput());
-    try std.testing.expectEqual(@as(u16, 0), vt_core.renderView().cursor_row);
-    try std.testing.expectEqual(@as(u16, 3), vt_core.renderView().cursor_col);
-    try std.testing.expectEqual(@as(u21, 'A'), vt_core.renderView().cellAt(0, 0));
-    try std.testing.expectEqual(@as(u21, ' '), vt_core.renderView().cellAt(0, 1));
-    try std.testing.expectEqual(@as(u21, 'B'), vt_core.renderView().cellAt(0, 2));
+    const view = vt_core.visibleView(.{});
+    try std.testing.expectEqual(@as(u16, 0), view.cursor_row);
+    try std.testing.expectEqual(@as(u16, 3), view.cursor_col);
+    try std.testing.expectEqual(@as(u21, 'A'), view.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, ' '), view.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'B'), view.cellAt(0, 2));
 }
 
 test "extended report queries append host output" {
@@ -297,21 +298,22 @@ test "ANSI modes affect key encoding and insert writes" {
     var vt_core = try vt.VtCore.initWithCells(allocator, 2, 4);
     defer vt_core.deinit();
 
-    try std.testing.expectEqualStrings("\r", vt_core.encodeKey(vt.VtCore.key_enter, vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("\r", vt_core.encodeKey(Input.key_enter, Input.mod_none));
     vt_core.feedSlice("\x1b[20h\x1b[2h");
     vt_core.apply();
-    try std.testing.expectEqualStrings("", vt_core.encodeKey('a', vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("", vt_core.encodeKey('a', Input.mod_none));
 
     vt_core.feedSlice("\x1b[2l");
     vt_core.apply();
-    try std.testing.expectEqualStrings("\r\n", vt_core.encodeKey(vt.VtCore.key_enter, vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("\r\n", vt_core.encodeKey(Input.key_enter, Input.mod_none));
 
     vt_core.feedSlice("ABCD\x1b[4h\x1b[1;2H!\x1b[4$p");
     vt_core.apply();
-    try std.testing.expectEqual(@as(u21, 'A'), vt_core.renderView().cellAt(0, 0));
-    try std.testing.expectEqual(@as(u21, '!'), vt_core.renderView().cellAt(0, 1));
-    try std.testing.expectEqual(@as(u21, 'B'), vt_core.renderView().cellAt(0, 2));
-    try std.testing.expectEqual(@as(u21, 'C'), vt_core.renderView().cellAt(0, 3));
+    const view = vt_core.visibleView(.{});
+    try std.testing.expectEqual(@as(u21, 'A'), view.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, '!'), view.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'B'), view.cellAt(0, 2));
+    try std.testing.expectEqual(@as(u21, 'C'), view.cellAt(0, 3));
     try std.testing.expectEqualStrings("\x1b[4;1$y", vt_core.pendingOutput());
 }
 
@@ -527,9 +529,10 @@ test "XTSAVE and XTRESTORE restore supported DEC private modes" {
     vt_core.feedSlice("\x1b[?1$p\x1b[?7$p\x1b[?25$p\x1b[?1004$p\x1b[?2004$p");
     vt_core.apply();
 
-    try std.testing.expectEqualStrings("\x1bOA", vt_core.encodeKey(vt.VtCore.key_up, vt.VtCore.mod_none));
-    try std.testing.expect(!vt_core.renderView().screen.auto_wrap);
-    try std.testing.expect(!vt_core.renderView().cursor_visible);
+    const view = vt_core.visibleView(.{});
+    try std.testing.expectEqualStrings("\x1bOA", vt_core.encodeKey(Input.key_up, Input.mod_none));
+    try std.testing.expect(!view.screen.auto_wrap);
+    try std.testing.expect(!view.cursor_visible);
     try std.testing.expectEqualStrings("\x1b[I", vt_core.encodeFocusIn());
     try std.testing.expectEqualStrings("\x1b[200~", vt_core.encodePasteStart());
     try std.testing.expectEqualStrings("\x1b[?1;1$y\x1b[?7;2$y\x1b[?25;2$y\x1b[?1004;1$y\x1b[?2004;1$y", vt_core.pendingOutput());
@@ -540,20 +543,20 @@ test "application keypad modes affect keypad encoding and DECRQM" {
     var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);
     defer vt_core.deinit();
 
-    try std.testing.expectEqualStrings("1", vt_core.encodeKey(vt.VtCore.key_kp_1, vt.VtCore.mod_none));
-    try std.testing.expectEqualStrings("\r", vt_core.encodeKey(vt.VtCore.key_kp_enter, vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("1", vt_core.encodeKey(Input.key_kp_1, Input.mod_none));
+    try std.testing.expectEqualStrings("\r", vt_core.encodeKey(Input.key_kp_enter, Input.mod_none));
 
     vt_core.feedSlice("\x1b=\x1b[?66$p");
     vt_core.apply();
     try std.testing.expect(vt_core.isApplicationKeypad());
     try std.testing.expectEqualStrings("\x1b[?66;1$y", vt_core.pendingOutput());
-    try std.testing.expectEqualStrings("\x1bOq", vt_core.encodeKey(vt.VtCore.key_kp_1, vt.VtCore.mod_none));
-    try std.testing.expectEqualStrings("\x1bOM", vt_core.encodeKey(vt.VtCore.key_kp_enter, vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("\x1bOq", vt_core.encodeKey(Input.key_kp_1, Input.mod_none));
+    try std.testing.expectEqualStrings("\x1bOM", vt_core.encodeKey(Input.key_kp_enter, Input.mod_none));
 
     vt_core.feedSlice("\x1b>");
     vt_core.apply();
     try std.testing.expect(!vt_core.isApplicationKeypad());
-    try std.testing.expectEqualStrings("1", vt_core.encodeKey(vt.VtCore.key_kp_1, vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("1", vt_core.encodeKey(Input.key_kp_1, Input.mod_none));
 }
 
 test "modifyOtherKeys set query disable and encoding" {
@@ -561,17 +564,17 @@ test "modifyOtherKeys set query disable and encoding" {
     var vt_core = try vt.VtCore.initWithCells(allocator, 4, 8);
     defer vt_core.deinit();
 
-    try std.testing.expectEqualStrings("a", vt_core.encodeKey('a', vt.VtCore.mod_alt));
+    try std.testing.expectEqualStrings("a", vt_core.encodeKey('a', Input.mod_alt));
     vt_core.feedSlice("\x1b[>4;2m\x1b[?4m");
     vt_core.apply();
     try std.testing.expectEqual(@as(i8, 2), vt_core.modifyOtherKeys());
     try std.testing.expectEqualStrings("\x1b[>4;2m", vt_core.pendingOutput());
-    try std.testing.expectEqualStrings("\x1b[27;3;97~", vt_core.encodeKey('a', vt.VtCore.mod_alt));
-    try std.testing.expectEqualStrings("a", vt_core.encodeKey('a', vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("\x1b[27;3;97~", vt_core.encodeKey('a', Input.mod_alt));
+    try std.testing.expectEqualStrings("a", vt_core.encodeKey('a', Input.mod_none));
 
     vt_core.feedSlice("\x1b[>4;3m");
     vt_core.apply();
-    try std.testing.expectEqualStrings("\x1b[27;1;97~", vt_core.encodeKey('a', vt.VtCore.mod_none));
+    try std.testing.expectEqualStrings("\x1b[27;1;97~", vt_core.encodeKey('a', Input.mod_none));
 
     vt_core.feedSlice("\x1b[>4n");
     vt_core.apply();
@@ -587,7 +590,7 @@ test "xterm key format query reset and other-key encoding" {
     vt_core.apply();
     try std.testing.expectEqual(@as(u16, 1), vt_core.keyFormatOption(4));
     try std.testing.expectEqualStrings("\x1b[>4;1f", vt_core.pendingOutput());
-    try std.testing.expectEqualStrings("\x1b[97;3u", vt_core.encodeKey('a', vt.VtCore.mod_alt));
+    try std.testing.expectEqualStrings("\x1b[97;3u", vt_core.encodeKey('a', Input.mod_alt));
 
     vt_core.feedSlice("\x1b[>4f\x1b[?4g");
     vt_core.apply();

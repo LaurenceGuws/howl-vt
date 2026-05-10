@@ -350,7 +350,7 @@ fn feedBytesToCore(core: *vt.VtCore, bytes: []const u8, mode: FeedMode, rand: st
 
 fn digestCore(core: *const vt.VtCore) VtDigest {
     var hasher = std.hash.Wyhash.init(0);
-    const view = core.renderView();
+    const view = core.visibleView(.{});
 
     hashValue(&hasher, view.rows);
     hashValue(&hasher, view.cols);
