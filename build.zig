@@ -50,6 +50,21 @@ pub fn build(b: *std.Build) void {
     test_unit_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(test_unit_step);
 
+    const ffi_mod = b.createModule(.{
+        .root_source_file = b.path("src/vt_core.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    ffi_mod.addImport("vt_core", ffi_mod);
+    const ffi_lib = b.addLibrary(.{
+        .name = "vt_core",
+        .linkage = .dynamic,
+        .root_module = ffi_mod,
+    });
+    const ffi_build_step = b.step("ffi:build", "Build the howl-vt-core C FFI library");
+    ffi_build_step.dependOn(&b.addInstallArtifact(ffi_lib, .{}).step);
+    b.installArtifact(ffi_lib);
+
     const regression_mod = b.createModule(.{
         .root_source_file = b.path("src/test/scrollback_regression.zig"),
         .target = target,
