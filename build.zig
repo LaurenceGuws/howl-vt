@@ -76,6 +76,7 @@ pub fn build(b: *std.Build) void {
     const ffi_build_step = b.step("ffi:build", "Build the howl-vt-core C FFI library");
     ffi_build_step.dependOn(&b.addInstallArtifact(ffi_lib, .{}).step);
     b.installArtifact(ffi_lib);
+    b.installFile("include/howl_vt.h", "include/howl_vt.h");
 
     const regression_mod = b.createModule(.{
         .root_source_file = b.path("src/test/scrollback_regression.zig"),
