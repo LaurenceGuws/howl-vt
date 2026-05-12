@@ -75,6 +75,17 @@ pub const ParsedEvents = struct {
         _ = self.arena.reset(.retain_capacity);
     }
 
+    pub fn dropPrefix(self: *ParsedEvents, count: usize) void {
+        if (count == 0) return;
+        if (count >= self.events.items.len) {
+            self.clear();
+            return;
+        }
+        const remaining = self.events.items.len - count;
+        std.mem.copyForwards(Event, self.events.items[0..remaining], self.events.items[count..]);
+        self.events.shrinkRetainingCapacity(remaining);
+    }
+
     pub fn drainInto(self: *ParsedEvents, dest: *std.ArrayList(Event), dest_allocator: std.mem.Allocator) !void {
         try dest.appendSlice(dest_allocator, self.events.items);
         self.events.clearRetainingCapacity();

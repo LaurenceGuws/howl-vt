@@ -23,6 +23,11 @@ const TerminalReportNs = control.Report;
 
 /// Host-neutral terminal state and protocol engine.
 pub const VtCore = struct {
+    pub const ApplySummary = struct {
+        applied: usize,
+        latest_title: ?[]const u8,
+    };
+
     pub const ControlSignal = enum {
         hangup,
         interrupt,
@@ -341,13 +346,30 @@ pub const VtCore = struct {
 
     /// Apply queued events to the screen state.
     pub fn apply(self: *VtCore) void {
-        for (self.apply_flow.events()) |ev| {
+        _ = self.applyLimit(std.math.maxInt(usize));
+    }
+
+    pub fn applyLimit(self: *VtCore, max_events: usize) ApplySummary {
+        if (max_events == 0) return .{ .applied = 0, .latest_title = null };
+
+        const count = @min(max_events, self.apply_flow.events().len);
+        if (count == 0) return .{ .applied = 0, .latest_title = null };
+
+        var latest_title: ?[]const u8 = null;
+        for (self.apply_flow.events()[0..count]) |ev| {
+            switch (ev) {
+                .osc => |osc_event| {
+                    if (osc_event.kind == .title) latest_title = osc_event.payload;
+                },
+                else => {},
+            }
             if (Interpret.process(ev)) |sem_ev| {
                 self.applySemantic(sem_ev);
             }
         }
-        self.apply_flow.clear();
+        self.apply_flow.parsed_events.dropPrefix(count);
         self.selection.clearIfInvalidatedByGrid(self.activeState());
+        return .{ .applied = count, .latest_title = latest_title };
     }
 
     /// Clear queued events without applying.
