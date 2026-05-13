@@ -30,7 +30,7 @@
 
 15. The protocol ledger must stay executable. `protocol_coverage.db` is the source of truth. `unit_test_filters` must use current test names. Notes must use current owner names. Do not leave translation work for the next protocol sprint.
 
-16. `protocol_matrix.md` and `PROTOCOL_COVERAGE_SPRINTS.md` must describe the current owner flow. Protocol work starts from syntax owner, then parser-event owner, then action owner, then grid/terminal/input consequence owner, then ledger update.
+16. `protocol_matrix.md` must describe the current owner flow. Protocol work starts from syntax owner, then parser-event owner, then action owner, then grid/terminal/input consequence owner, then ledger update.
 
 17. Every protocol slice must define behavior before editing. Decide parser acceptance, parser event shape, action meaning, state mutation, host/render observation, and test filters before widening behavior.
 

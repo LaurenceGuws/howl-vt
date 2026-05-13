@@ -7,7 +7,7 @@ Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
 
 It parses terminal input streams, shapes parser events, maps those events into terminal actions, applies actions to grid and boundary state, tracks selection and snapshots, and exposes stable render-facing and host-output-facing surfaces.
 
-Architecture drift rules: [`ARCHITECTURE_CLEANUP.md`](ARCHITECTURE_CLEANUP.md)
+Supplemental owner rules: [`ARCHITECTURE_CLEANUP.md`](ARCHITECTURE_CLEANUP.md)
 
 ## Public Surface
 - `include/howl_vt.h`: C ABI header.
