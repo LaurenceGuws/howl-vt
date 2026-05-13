@@ -7,7 +7,9 @@ Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
 
 It parses terminal input streams, shapes parser events, maps those events into terminal actions, applies actions to grid and boundary state, tracks selection and snapshots, and exposes stable render-facing and host-output-facing surfaces.
 
-Supplemental owner rules: [`ARCHITECTURE_CLEANUP.md`](ARCHITECTURE_CLEANUP.md)
+## Doc Set
+- `design.md`: owner boundary, file-level rules, and ABI contract.
+- `protocol_matrix.md`: protocol ledger summary, queries, and support table.
 
 ## Public Surface
 - `include/howl_vt.h`: C ABI header.
@@ -45,6 +47,18 @@ classDiagram
 - `Snapshot` owns exported snapshot shapes only.
 - `ParserApi` owns byte-stream parsing contracts used by interpret, tests, and fuzzing.
 - Protocol syntax, parser-event shape, action meaning, grid mutation, and terminal host consequences must stay in separate owners.
+
+## File Rules
+- `src/parser/` recognizes syntax only.
+- `src/interpret/parser_events.zig` owns parser-event buffering and transport into interpret.
+- `src/interpret/*_actions.zig` owns protocol meaning by family.
+- `src/grid/` owns grid mutation only.
+- `src/terminal/` owns host-facing consequences only.
+- `src/input/` keeps key, mouse, token, and encoding owners separate.
+- `src/terminal.zig` stays a facade owner. It does not become a dumping ground.
+- `protocol_coverage.db` is the protocol source of truth. `unit_test_filters` must stay executable.
+- New protocol work defines syntax, parser event shape, action meaning, state mutation, and proof before code lands.
+- Normal proof is focused tests plus `zig build test`.
 
 ## Lifecycle
 ```mermaid

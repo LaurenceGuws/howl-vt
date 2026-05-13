@@ -1,10 +1,12 @@
 # Protocol Matrix
 
-## Goal
-Drive `howl-vt` toward explicit xterm baseline parity and staged kitty protocol adoption.
+Owner: `howl-vt`
+
+## Purpose
+Summarize `protocol_coverage.db` for random-access protocol status and proof work.
 
 `protocol_coverage.db` is the source of truth for protocol maturity work in this repo.
-This file is a human summary of that ledger.
+This file is the human-facing summary.
 
 The stable day-to-day table is `protocols`, with human-facing protocol names,
 sequence shapes, stable unit-test filter names, and three completeness flags:
@@ -79,57 +81,11 @@ The current baseline is frozen.
 - Non-canonical source artifacts are tracked explicitly in
   `protocol_source_item_dispositions`.
 
-## Development Loop
-
-Use this loop for every protocol slice:
-
-1. Pick a narrow slice from `protocol_gaps`.
-   Group by shared parser or action-mapping work, not by document order.
-2. Read the canonical row and linked source excerpts.
-   Use `protocol_learning_inventory` to confirm exact sequence shape,
-   terminology, and nearby related rows.
-3. Define the behavioral contract before editing code.
-   Decide what the parser must accept, what parser event must exist, what
-   terminal action/state must change, and what host or render behavior must be
-   observable.
-4. Add or tighten tests first when practical.
-   Prefer targeted regression tests near the owning layer. Use the row's
-   `unit_test_filters` field to keep focused reruns easy.
-5. Implement the smallest complete change.
-   Keep syntax handling in the parser, typed event shaping in parser events,
-   protocol meaning in action mapping, and UI or host consequences at the edge.
-6. Run focused tests, then `zig build test`.
-   Do not mark a row implemented or tested until behavior and tests actually
-   land.
-7. Update `protocols` metadata.
-   Set `implemented`, `unit_tested`, `host_tested`, adjust
-   `unit_test_filters`, and tighten notes so the ledger stays executable.
-8. Repeat by tranche.
-   Prefer finishing one coherent family cleanly over scattering partial
-   support across unrelated rows.
-
-## Structure Rules
-
-Maintain these invariants while implementing:
-
-1. Parser syntax owners: recognize syntax only.
-   Do not bury protocol meaning in parse-time shape handling unless syntax
-   requires it.
-2. Parser-event owners: preserve typed protocol events.
-   This is the boundary between raw escape decoding and terminal actions.
-3. Action owners: own protocol interpretation and state transitions.
-   Mode toggles, reports, cursor movement, protection semantics, and similar
-   rules belong here.
-4. Host/render edges: stay explicit.
-   Clipboard, title, notifications, hyperlinks, mouse output, and rendering
-   side effects should remain visible at the boundary rather than leaking back
-   into parser logic.
-5. Minimality wins.
-   Prefer extending an existing protocol path over adding one-off helpers or
-   parallel state machines.
-6. Ledger accuracy matters.
-   If support is partial, keep the row partial. Do not collapse multiple wire
-   surfaces into a vague success state.
+## Update Rules
+- Keep row status exact.
+- Keep `unit_test_filters` runnable.
+- Keep notes in current owner names.
+- Do not mark a row implemented or tested before proof lands.
 
 ## Current Matrix
 
@@ -185,7 +141,7 @@ Maintain these invariants while implementing:
 | Alt-screen enter/exit and primary scrollback preservation | supported | Explicit tests exist for `1049` save/restore behavior and full-dirty transitions. |
 | Snapshot / replay determinism across chunking | supported | Unit/regression/fuzz coverage exists. |
 
-## Slice Rules
+## Proof Rules
 Every protocol slice should land with:
 1. parser coverage if new syntax is required
 2. parser-event coverage
