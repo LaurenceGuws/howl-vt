@@ -5,8 +5,7 @@ Owner: `howl-vt`
 ## Purpose
 Summarize `protocol_coverage.db` for random-access protocol status and proof work.
 
-`protocol_coverage.db` is the source of truth for protocol maturity work in this repo.
-This file is the human-facing summary.
+`protocol_coverage.db` is the source of truth. This file is the summary.
 
 The stable day-to-day table is `protocols`, with human-facing protocol names,
 sequence shapes, stable unit-test filter names, and three completeness flags:
@@ -14,7 +13,7 @@ sequence shapes, stable unit-test filter names, and three completeness flags:
 - `unit_tested`
 - `host_tested`
 
-`unit_test_filters` stores newline-delimited Zig test filter strings. It is intentionally human-curated, file-agnostic, and aimed at targeted regression runs.
+`unit_test_filters` stores newline-delimited Zig test filter strings for targeted regression runs.
 
 Source provenance remains available through:
 
@@ -32,7 +31,7 @@ Useful working views:
 - `protocol_source_audit`
 - `protocol_source_item_disposition_review`
 
-Repo-local source material now lives in `official_docs/xterm/` and `official_docs/kitty/`.
+Reference source material lives in `official_docs/xterm/` and `official_docs/kitty/`.
 
 Example query:
 ```sh
@@ -72,8 +71,6 @@ sqlite3 protocol_coverage.db \
 - Current deterministic fuzzers:
   - `src/fuzz/scrollback.zig`
   - `src/fuzz/protocol.zig`
-
-The current baseline is frozen.
 
 - `protocols` is the authoritative implementation scope.
 - Source material exists for provenance and clarification, not for ongoing
@@ -143,6 +140,7 @@ The current baseline is frozen.
 
 ## Proof Rules
 Every protocol slice should land with:
+
 1. parser coverage if new syntax is required
 2. parser-event coverage
 3. action-mapping coverage

@@ -5,10 +5,10 @@ Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
 ## Purpose
 `howl-vt` owns the host-neutral terminal model.
 
-It parses terminal input streams, shapes parser events, maps those events into terminal actions, applies actions to grid and boundary state, tracks selection and snapshots, and exposes stable render-facing and host-output-facing surfaces.
+It parses terminal input streams, maps parser events into terminal actions, applies grid state, tracks selection and snapshots, and exposes render-facing and host-output-facing surfaces.
 
 ## Doc Set
-- `design.md`: owner boundary, file-level rules, and ABI contract.
+- `design.md`: owner boundary, file rules, and ABI contract.
 - `protocol_matrix.md`: protocol ledger summary, queries, and support table.
 
 ## Public Surface
@@ -55,7 +55,7 @@ classDiagram
 - `src/grid/` owns grid mutation only.
 - `src/terminal/` owns host-facing consequences only.
 - `src/input/` keeps key, mouse, token, and encoding owners separate.
-- `src/terminal.zig` stays a facade owner. It does not become a dumping ground.
+- `src/terminal.zig` stays a facade owner.
 - `protocol_coverage.db` is the protocol source of truth. `unit_test_filters` must stay executable.
 - New protocol work defines syntax, parser event shape, action meaning, state mutation, and proof before code lands.
 - Normal proof is focused tests plus `zig build test`.
