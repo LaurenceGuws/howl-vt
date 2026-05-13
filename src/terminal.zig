@@ -40,7 +40,7 @@ pub const Terminal = struct {
     };
 
     pub const VisibleRowSource = union(enum) {
-        history: usize,
+        history: u32,
         screen: u16,
     };
 
@@ -53,18 +53,21 @@ pub const Terminal = struct {
         cursor_visible: bool,
         cursor_shape: GridNs.CursorShape,
         is_alternate_screen: bool,
-        scrollback_offset: usize,
-        history_count: usize,
-        start: usize,
+        scrollback_offset: u32,
+        history_count: u32,
+        start: u32,
         screen: *const GridNs,
 
         pub fn rowSource(self: VisibleView, row: u16) VisibleRowSource {
             if (self.rows == 0 or row >= self.rows) return .{ .screen = 0 };
-            const src_row = self.start + @as(usize, row);
+            const src_row = self.start + rowIndex(row);
+            std.debug.assert(self.start + rowIndex(self.rows) <= self.history_count + rowIndex(self.rows));
+            std.debug.assert(src_row >= self.start);
+            std.debug.assert(src_row < self.history_count + rowIndex(self.rows));
             if (src_row < self.history_count) {
                 return .{ .history = self.history_count - 1 - src_row };
             }
-            return .{ .screen = @intCast(@min(src_row - self.history_count, @as(usize, self.rows -| 1))) };
+            return .{ .screen = @intCast(@min(src_row - self.history_count, rowIndex(self.rows -| 1))) };
         }
 
         pub fn sourceCellInfoAt(self: VisibleView, source: VisibleRowSource, col: u16) GridNs.Cell {
@@ -82,9 +85,10 @@ pub const Terminal = struct {
             return @intCast(self.cellInfoAt(row, col).codepoint);
         }
 
-        pub fn rowDepth(self: VisibleView, row: u16) usize {
+        pub fn rowDepth(self: VisibleView, row: u16) u32 {
             if (self.rows == 0 or row >= self.rows) return self.scrollback_offset;
-            return self.scrollback_offset + @as(usize, self.rows - 1 - row);
+            std.debug.assert(self.scrollback_offset <= self.history_count);
+            return self.scrollback_offset + rowIndex(self.rows - 1 - row);
         }
 
         pub fn contentEndExclusive(self: VisibleView, row: u16) u16 {
@@ -196,7 +200,6 @@ pub const Terminal = struct {
 
     const EncodeScratch = struct {
         buf: [64]u8 = undefined,
-        len: usize = 0,
     };
 
     const ScreenState = struct {
@@ -241,10 +244,12 @@ pub const Terminal = struct {
                     .wrap_pending = self.primary.wrap_pending,
                     .cursor_visible = self.primary.cursor_visible,
                 };
+                std.debug.assert(self.saved_primary_cursor != null);
             }
             if (clear_alt) self.alternate.reset();
             self.alt_active = true;
             self.alternate.markAllDirty();
+            std.debug.assert(self.alt_active);
         }
 
         pub fn exitAlt(self: *ScreenState, restore_cursor: bool) void {
@@ -255,10 +260,13 @@ pub const Terminal = struct {
                     self.primary.cursor_col = @min(saved.col, self.primary.cols -| 1);
                     self.primary.wrap_pending = saved.wrap_pending;
                     self.primary.cursor_visible = saved.cursor_visible;
+                    std.debug.assert(self.primary.cursor_row < self.primary.rows or self.primary.rows == 0);
+                    std.debug.assert(self.primary.cursor_col < self.primary.cols or self.primary.cols == 0);
                 }
                 self.saved_primary_cursor = null;
             }
             self.primary.markAllDirty();
+            std.debug.assert(!self.alt_active);
         }
 
         fn deinit(self: *ScreenState, allocator: std.mem.Allocator) void {
@@ -355,6 +363,9 @@ pub const Terminal = struct {
         const count = @min(max_events, self.apply_flow.events().len);
         if (count == 0) return .{ .applied = 0, .latest_title = null };
 
+        std.debug.assert(count <= max_events);
+        std.debug.assert(count <= self.apply_flow.events().len);
+
         var latest_title: ?[]const u8 = null;
         for (self.apply_flow.events()[0..count]) |ev| {
             switch (ev) {
@@ -368,6 +379,7 @@ pub const Terminal = struct {
             }
         }
         self.apply_flow.parsed_events.dropPrefix(count);
+        std.debug.assert(self.apply_flow.events().len + count >= count);
         self.selection.clearIfInvalidatedByGrid(self.activeState());
         return .{ .applied = count, .latest_title = latest_title };
     }
@@ -533,11 +545,15 @@ pub const Terminal = struct {
 
     pub fn visibleView(self: *const Terminal, options: VisibleViewOptions) VisibleView {
         const active = self.activeState();
-        const history_count = if (self.screen_state.alt_active) 0 else active.historyCount();
-        const offset = @min(options.scrollback_offset, history_count);
-        const rows_usize = @as(usize, active.rows);
-        const total_rows = history_count + rows_usize;
-        const start = if (total_rows >= rows_usize + offset) total_rows - rows_usize - offset else 0;
+        const history_count: u32 = if (self.screen_state.alt_active) 0 else @intCast(active.historyCount());
+        const offset: u32 = @intCast(@min(options.scrollback_offset, @as(usize, history_count)));
+        const rows_count = rowIndex(active.rows);
+        const total_rows = history_count + rows_count;
+        const start = if (total_rows >= rows_count + offset) total_rows - rows_count - offset else 0;
+        std.debug.assert(offset <= history_count);
+        std.debug.assert(total_rows >= rows_count);
+        std.debug.assert(start + rows_count <= total_rows);
+        std.debug.assert(total_rows - (start + rows_count) == offset);
         return .{
             .rows = active.rows,
             .cols = active.cols,
@@ -638,17 +654,15 @@ pub const Terminal = struct {
     /// Encode logical key and modifiers.
     pub fn encodeKey(self: *Terminal, key: Input.Key, mod: Input.Modifier) []const u8 {
         if (self.modes.keyboard_action_mode) {
-            self.encode.len = 0;
             return self.encode.buf[0..0];
         }
         const encoded = Input.Keyboard.encodeKey(self.encode.buf[0..], key, mod, self.modes.application_cursor_keys, self.modes.application_keypad, self.modes.modify_other_keys, self.modes.key_format[4], self.activeKittyKeyboardFlags());
+        std.debug.assert(encoded.len <= self.encode.buf.len);
         if (self.modes.newline_mode and key == Input.key_enter and std.mem.eql(u8, encoded, "\r")) {
             self.encode.buf[0] = '\r';
             self.encode.buf[1] = '\n';
-            self.encode.len = 2;
             return self.encode.buf[0..2];
         }
-        self.encode.len = encoded.len;
         return encoded;
     }
 
@@ -677,14 +691,14 @@ pub const Terminal = struct {
     pub fn encodeMouse(self: *Terminal, event: Input.MouseEvent) []const u8 {
         LocatorNs.handleMouseEvent(&self.host.locator, self.allocator, &self.host.pending_output, self.encode.buf[0..], event);
         const encoded = Input.Mouse.encodeMouse(self.encode.buf[0..], event, self.modes.mouse_tracking, self.modes.mouse_protocol);
-        self.encode.len = encoded.len;
+        std.debug.assert(encoded.len <= self.encode.buf.len);
         return encoded;
     }
 
     pub fn encodeFocusIn(self: *Terminal) []const u8 {
         const encoded = if (self.modes.focus_reporting) "\x1b[I" else "";
         @memcpy(self.encode.buf[0..encoded.len], encoded);
-        self.encode.len = encoded.len;
+        std.debug.assert(encoded.len <= self.encode.buf.len);
         return self.encode.buf[0..encoded.len];
     }
 
@@ -708,6 +722,7 @@ pub const Terminal = struct {
         if (start.len == 0 and end.len == 0) return .{ .bytes = text };
 
         const out = try allocator.alloc(u8, start.len + text.len + end.len);
+        std.debug.assert(out.len == start.len + text.len + end.len);
         @memcpy(out[0..start.len], start);
         @memcpy(out[start.len .. start.len + text.len], text);
         @memcpy(out[start.len + text.len ..], end);
@@ -717,21 +732,21 @@ pub const Terminal = struct {
     pub fn encodeFocusOut(self: *Terminal) []const u8 {
         const encoded = if (self.modes.focus_reporting) "\x1b[O" else "";
         @memcpy(self.encode.buf[0..encoded.len], encoded);
-        self.encode.len = encoded.len;
+        std.debug.assert(encoded.len <= self.encode.buf.len);
         return self.encode.buf[0..encoded.len];
     }
 
     pub fn encodePasteStart(self: *Terminal) []const u8 {
         const encoded = if (self.modes.bracketed_paste) "\x1b[200~" else "";
         @memcpy(self.encode.buf[0..encoded.len], encoded);
-        self.encode.len = encoded.len;
+        std.debug.assert(encoded.len <= self.encode.buf.len);
         return self.encode.buf[0..encoded.len];
     }
 
     pub fn encodePasteEnd(self: *Terminal) []const u8 {
         const encoded = if (self.modes.bracketed_paste) "\x1b[201~" else "";
         @memcpy(self.encode.buf[0..encoded.len], encoded);
-        self.encode.len = encoded.len;
+        std.debug.assert(encoded.len <= self.encode.buf.len);
         return self.encode.buf[0..encoded.len];
     }
 
@@ -807,7 +822,12 @@ pub const Terminal = struct {
             Interpret.applyHost(self, action);
             return;
         }
+        std.debug.assert(Interpret.screenAction(sem_ev) != null);
         if (Interpret.screenAction(sem_ev)) |screen_ev| self.activeStateMut().applyScreen(screen_ev);
+    }
+
+    fn rowIndex(row: u16) u32 {
+        return row;
     }
 };
 
@@ -832,16 +852,16 @@ test "terminal visible view projects scrollback rows" {
     vt.apply();
 
     const live = vt.visibleView(.{});
-    try std.testing.expectEqual(@as(usize, 0), live.scrollback_offset);
+    try std.testing.expectEqual(0, live.scrollback_offset);
     try std.testing.expectEqual(@as(u21, 'b'), live.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'c'), live.cellAt(1, 0));
 
     const scrolled = vt.visibleView(.{ .scrollback_offset = 1 });
-    try std.testing.expectEqual(@as(usize, 1), scrolled.scrollback_offset);
+    try std.testing.expectEqual(1, scrolled.scrollback_offset);
     try std.testing.expectEqual(@as(u21, 'a'), scrolled.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'b'), scrolled.cellAt(1, 0));
-    try std.testing.expectEqual(@as(usize, 2), scrolled.rowDepth(0));
-    try std.testing.expectEqual(@as(usize, 1), scrolled.rowDepth(1));
+    try std.testing.expectEqual(2, scrolled.rowDepth(0));
+    try std.testing.expectEqual(1, scrolled.rowDepth(1));
 }
 
 test {
