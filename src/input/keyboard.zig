@@ -115,387 +115,24 @@ pub const VTERM_MOD_SHIFT: Modifier = 1;
 pub const VTERM_MOD_ALT: Modifier = 2;
 /// Control modifier bit.
 pub const VTERM_MOD_CTRL: Modifier = 4;
+
+const max_encoded_len: usize = 32;
+
 /// Encode one host key for the active terminal keyboard modes.
 pub fn encodeKey(buf: []u8, key: Key, mod: Modifier, application_cursor_keys: bool, application_keypad: bool, modify_other_keys: i8, format_other_keys: u16, kitty_keyboard_flags: u32) []const u8 {
+    std.debug.assert(validModifier(mod));
     if (kitty_keyboard_flags != 0) {
         if (encodeKittyKey(buf, key, mod)) |encoded| return encoded;
     }
     if (encodeKeypadKey(buf, key, application_keypad)) |encoded| return encoded;
-    var len: usize = 0;
     const shift_active = (mod & VTERM_MOD_SHIFT) != 0;
 
-    switch (key) {
-        VTERM_KEY_ENTER => {
-            buf[0] = '\r';
-            len = 1;
-        },
-        VTERM_KEY_TAB => {
-            if (shift_active) {
-                buf[0] = '\x1b';
-                buf[1] = '[';
-                buf[2] = 'Z';
-                len = 3;
-            } else {
-                buf[0] = '\t';
-                len = 1;
-            }
-        },
-        VTERM_KEY_BACKSPACE => {
-            buf[0] = '\x7f';
-            len = 1;
-        },
-        VTERM_KEY_ESCAPE => {
-            buf[0] = '\x1b';
-            len = 1;
-        },
-        VTERM_KEY_UP => {
-            buf[0] = '\x1b';
-            if (mod != VTERM_MOD_NONE) {
-                buf[1] = '[';
-                buf[2] = '1';
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = 'A';
-                len = 6;
-            } else if (application_cursor_keys) {
-                buf[1] = 'O';
-                buf[2] = 'A';
-                len = 3;
-            } else {
-                buf[1] = '[';
-                buf[2] = 'A';
-                len = 3;
-            }
-        },
-        VTERM_KEY_DOWN => {
-            buf[0] = '\x1b';
-            if (mod != VTERM_MOD_NONE) {
-                buf[1] = '[';
-                buf[2] = '1';
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = 'B';
-                len = 6;
-            } else if (application_cursor_keys) {
-                buf[1] = 'O';
-                buf[2] = 'B';
-                len = 3;
-            } else {
-                buf[1] = '[';
-                buf[2] = 'B';
-                len = 3;
-            }
-        },
-        VTERM_KEY_RIGHT => {
-            buf[0] = '\x1b';
-            if (mod != VTERM_MOD_NONE) {
-                buf[1] = '[';
-                buf[2] = '1';
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = 'C';
-                len = 6;
-            } else if (application_cursor_keys) {
-                buf[1] = 'O';
-                buf[2] = 'C';
-                len = 3;
-            } else {
-                buf[1] = '[';
-                buf[2] = 'C';
-                len = 3;
-            }
-        },
-        VTERM_KEY_LEFT => {
-            buf[0] = '\x1b';
-            if (mod != VTERM_MOD_NONE) {
-                buf[1] = '[';
-                buf[2] = '1';
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = 'D';
-                len = 6;
-            } else if (application_cursor_keys) {
-                buf[1] = 'O';
-                buf[2] = 'D';
-                len = 3;
-            } else {
-                buf[1] = '[';
-                buf[2] = 'D';
-                len = 3;
-            }
-        },
-        VTERM_KEY_HOME => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            if (mod != VTERM_MOD_NONE) {
-                buf[2] = '1';
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = 'H';
-                len = 6;
-            } else {
-                buf[2] = 'H';
-                len = 3;
-            }
-        },
-        VTERM_KEY_END => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            if (mod != VTERM_MOD_NONE) {
-                buf[2] = '1';
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = 'F';
-                len = 6;
-            } else {
-                buf[2] = 'F';
-                len = 3;
-            }
-        },
-        VTERM_KEY_INS => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '2';
-            if (mod != VTERM_MOD_NONE) {
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = '~';
-                len = 6;
-            } else {
-                buf[3] = '~';
-                len = 4;
-            }
-        },
-        VTERM_KEY_DEL => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '3';
-            if (mod != VTERM_MOD_NONE) {
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = '~';
-                len = 6;
-            } else {
-                buf[3] = '~';
-                len = 4;
-            }
-        },
-        VTERM_KEY_PAGEUP => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '5';
-            if (mod != VTERM_MOD_NONE) {
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = '~';
-                len = 6;
-            } else {
-                buf[3] = '~';
-                len = 4;
-            }
-        },
-        VTERM_KEY_PAGEDOWN => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '6';
-            if (mod != VTERM_MOD_NONE) {
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = '~';
-                len = 6;
-            } else {
-                buf[3] = '~';
-                len = 4;
-            }
-        },
-        VTERM_KEY_F1 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            if (mod != VTERM_MOD_NONE) {
-                buf[2] = '1';
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = 'P';
-                len = 6;
-            } else {
-                buf[2] = 'P';
-                len = 3;
-            }
-        },
-        VTERM_KEY_F2 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            if (mod != VTERM_MOD_NONE) {
-                buf[2] = '1';
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = 'Q';
-                len = 6;
-            } else {
-                buf[2] = 'Q';
-                len = 3;
-            }
-        },
-        VTERM_KEY_F3 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            if (mod != VTERM_MOD_NONE) {
-                buf[2] = '1';
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = 'R';
-                len = 6;
-            } else {
-                buf[2] = 'R';
-                len = 3;
-            }
-        },
-        VTERM_KEY_F4 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            if (mod != VTERM_MOD_NONE) {
-                buf[2] = '1';
-                buf[3] = ';';
-                buf[4] = '0' + (1 + mod);
-                buf[5] = 'S';
-                len = 6;
-            } else {
-                buf[2] = 'S';
-                len = 3;
-            }
-        },
-        VTERM_KEY_F5 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '1';
-            buf[3] = '5';
-            if (mod != VTERM_MOD_NONE) {
-                buf[4] = ';';
-                buf[5] = '0' + (1 + mod);
-                buf[6] = '~';
-                len = 7;
-            } else {
-                buf[4] = '~';
-                len = 5;
-            }
-        },
-        VTERM_KEY_F6 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '1';
-            buf[3] = '7';
-            if (mod != VTERM_MOD_NONE) {
-                buf[4] = ';';
-                buf[5] = '0' + (1 + mod);
-                buf[6] = '~';
-                len = 7;
-            } else {
-                buf[4] = '~';
-                len = 5;
-            }
-        },
-        VTERM_KEY_F7 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '1';
-            buf[3] = '8';
-            if (mod != VTERM_MOD_NONE) {
-                buf[4] = ';';
-                buf[5] = '0' + (1 + mod);
-                buf[6] = '~';
-                len = 7;
-            } else {
-                buf[4] = '~';
-                len = 5;
-            }
-        },
-        VTERM_KEY_F8 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '1';
-            buf[3] = '9';
-            if (mod != VTERM_MOD_NONE) {
-                buf[4] = ';';
-                buf[5] = '0' + (1 + mod);
-                buf[6] = '~';
-                len = 7;
-            } else {
-                buf[4] = '~';
-                len = 5;
-            }
-        },
-        VTERM_KEY_F9 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '2';
-            buf[3] = '0';
-            if (mod != VTERM_MOD_NONE) {
-                buf[4] = ';';
-                buf[5] = '0' + (1 + mod);
-                buf[6] = '~';
-                len = 7;
-            } else {
-                buf[4] = '~';
-                len = 5;
-            }
-        },
-        VTERM_KEY_F10 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '2';
-            buf[3] = '1';
-            if (mod != VTERM_MOD_NONE) {
-                buf[4] = ';';
-                buf[5] = '0' + (1 + mod);
-                buf[6] = '~';
-                len = 7;
-            } else {
-                buf[4] = '~';
-                len = 5;
-            }
-        },
-        VTERM_KEY_F11 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '2';
-            buf[3] = '3';
-            if (mod != VTERM_MOD_NONE) {
-                buf[4] = ';';
-                buf[5] = '0' + (1 + mod);
-                buf[6] = '~';
-                len = 7;
-            } else {
-                buf[4] = '~';
-                len = 5;
-            }
-        },
-        VTERM_KEY_F12 => {
-            buf[0] = '\x1b';
-            buf[1] = '[';
-            buf[2] = '2';
-            buf[3] = '4';
-            if (mod != VTERM_MOD_NONE) {
-                buf[4] = ';';
-                buf[5] = '0' + (1 + mod);
-                buf[6] = '~';
-                len = 7;
-            } else {
-                buf[4] = '~';
-                len = 5;
-            }
-        },
-        else => {
-            if (key > 31 and key < 127) {
-                if (encodeModifyOtherKey(buf, key, mod, modify_other_keys, format_other_keys)) |encoded| return encoded;
-                buf[0] = @intCast(key);
-                len = 1;
-            } else if (key > 127) {
-                len = std.unicode.utf8Encode(@intCast(key), buf[0..]) catch 0;
-            }
-        },
-    }
-
-    return buf[0..len];
+    if (encodeControlKey(buf, key, shift_active)) |encoded| return encoded;
+    if (encodeCursorKey(buf, key, mod, application_cursor_keys)) |encoded| return encoded;
+    if (encodeHomeEndKey(buf, key, mod)) |encoded| return encoded;
+    if (encodeTildeKey(buf, key, mod)) |encoded| return encoded;
+    if (encodeFunctionKey(buf, key, mod)) |encoded| return encoded;
+    return encodeTextKey(buf, key, mod, modify_other_keys, format_other_keys);
 }
 
 fn encodeKeypadKey(buf: []u8, key: Key, application_keypad: bool) ?[]const u8 {
@@ -520,6 +157,7 @@ fn encodeKeypadKey(buf: []u8, key: Key, application_keypad: bool) ?[]const u8 {
     };
     const ch = normal orelse return null;
     if (!application_keypad) {
+        std.debug.assert(buf.len >= 1);
         buf[0] = ch;
         return buf[0..1];
     }
@@ -542,6 +180,7 @@ fn encodeKeypadKey(buf: []u8, key: Key, application_keypad: bool) ?[]const u8 {
         VTERM_KEY_KP_ENTER => 'M',
         else => return null,
     };
+    std.debug.assert(buf.len >= 3);
     buf[0] = '\x1b';
     buf[1] = 'O';
     buf[2] = final;
@@ -551,11 +190,13 @@ fn encodeKeypadKey(buf: []u8, key: Key, application_keypad: bool) ?[]const u8 {
 fn encodeModifyOtherKey(buf: []u8, key: Key, mod: Modifier, modify_other_keys: i8, format_other_keys: u16) ?[]const u8 {
     if (modify_other_keys < 2 and !(modify_other_keys == 1 and format_other_keys == 1)) return null;
     if (mod == VTERM_MOD_NONE and modify_other_keys < 3) return null;
+    std.debug.assert(validModifier(mod));
     if (format_other_keys == 1) return std.fmt.bufPrint(buf, "\x1b[{d};{d}u", .{ key, @as(u8, 1) + mod }) catch null;
     return std.fmt.bufPrint(buf, "\x1b[27;{d};{d}~", .{ @as(u8, 1) + mod, key }) catch null;
 }
 
 fn encodeKittyKey(buf: []u8, key: Key, mod: Modifier) ?[]const u8 {
+    std.debug.assert(validModifier(mod));
     const modifier = @as(u8, 1) + mod;
     switch (key) {
         VTERM_KEY_ENTER => return csiU(buf, 13, modifier),
@@ -586,6 +227,165 @@ fn encodeKittyKey(buf: []u8, key: Key, mod: Modifier) ?[]const u8 {
         VTERM_KEY_F12 => return csiTilde(buf, 24, modifier),
         else => return null,
     }
+}
+
+fn encodeControlKey(buf: []u8, key: Key, shift_active: bool) ?[]const u8 {
+    return switch (key) {
+        VTERM_KEY_ENTER => singleByte(buf, '\r'),
+        VTERM_KEY_TAB => if (shift_active) fixed3(buf, '\x1b', '[', 'Z') else singleByte(buf, '\t'),
+        VTERM_KEY_BACKSPACE => singleByte(buf, '\x7f'),
+        VTERM_KEY_ESCAPE => singleByte(buf, '\x1b'),
+        else => null,
+    };
+}
+
+fn encodeCursorKey(buf: []u8, key: Key, mod: Modifier, application_cursor_keys: bool) ?[]const u8 {
+    const final: u8 = switch (key) {
+        VTERM_KEY_UP => 'A',
+        VTERM_KEY_DOWN => 'B',
+        VTERM_KEY_RIGHT => 'C',
+        VTERM_KEY_LEFT => 'D',
+        else => return null,
+    };
+    return if (mod != VTERM_MOD_NONE)
+        csi1ModifiedFinal(buf, final, mod)
+    else if (application_cursor_keys)
+        fixed3(buf, '\x1b', 'O', final)
+    else
+        fixed3(buf, '\x1b', '[', final);
+}
+
+fn encodeHomeEndKey(buf: []u8, key: Key, mod: Modifier) ?[]const u8 {
+    const final: u8 = switch (key) {
+        VTERM_KEY_HOME => 'H',
+        VTERM_KEY_END => 'F',
+        else => return null,
+    };
+    return if (mod != VTERM_MOD_NONE)
+        csi1ModifiedFinal(buf, final, mod)
+    else
+        fixed3(buf, '\x1b', '[', final);
+}
+
+fn encodeTildeKey(buf: []u8, key: Key, mod: Modifier) ?[]const u8 {
+    const code: u8 = switch (key) {
+        VTERM_KEY_INS => 2,
+        VTERM_KEY_DEL => 3,
+        VTERM_KEY_PAGEUP => 5,
+        VTERM_KEY_PAGEDOWN => 6,
+        VTERM_KEY_F5 => 15,
+        VTERM_KEY_F6 => 17,
+        VTERM_KEY_F7 => 18,
+        VTERM_KEY_F8 => 19,
+        VTERM_KEY_F9 => 20,
+        VTERM_KEY_F10 => 21,
+        VTERM_KEY_F11 => 23,
+        VTERM_KEY_F12 => 24,
+        else => return null,
+    };
+    return if (mod != VTERM_MOD_NONE)
+        csiTildeModified(buf, code, mod)
+    else
+        csiTildePlain(buf, code);
+}
+
+fn encodeFunctionKey(buf: []u8, key: Key, mod: Modifier) ?[]const u8 {
+    const final: u8 = switch (key) {
+        VTERM_KEY_F1 => 'P',
+        VTERM_KEY_F2 => 'Q',
+        VTERM_KEY_F3 => 'R',
+        VTERM_KEY_F4 => 'S',
+        else => return null,
+    };
+    return if (mod != VTERM_MOD_NONE)
+        csi1ModifiedFinal(buf, final, mod)
+    else
+        fixed3(buf, '\x1b', '[', final);
+}
+
+fn encodeTextKey(buf: []u8, key: Key, mod: Modifier, modify_other_keys: i8, format_other_keys: u16) []const u8 {
+    if (key > 31 and key < 127) {
+        if (encodeModifyOtherKey(buf, key, mod, modify_other_keys, format_other_keys)) |encoded| return encoded;
+        return singleByte(buf, @intCast(key)).?;
+    }
+    if (key > 127) {
+        const len = std.unicode.utf8Encode(@intCast(key), buf[0..]) catch 0;
+        std.debug.assert(len <= buf.len);
+        return buf[0..len];
+    }
+    return buf[0..0];
+}
+
+fn singleByte(buf: []u8, byte: u8) ?[]const u8 {
+    std.debug.assert(buf.len >= 1);
+    buf[0] = byte;
+    return buf[0..1];
+}
+
+fn fixed3(buf: []u8, a: u8, b: u8, c: u8) []const u8 {
+    std.debug.assert(buf.len >= 3);
+    buf[0] = a;
+    buf[1] = b;
+    buf[2] = c;
+    return buf[0..3];
+}
+
+fn csi1ModifiedFinal(buf: []u8, final: u8, mod: Modifier) []const u8 {
+    std.debug.assert(validModifier(mod));
+    std.debug.assert(buf.len >= 6);
+    buf[0] = '\x1b';
+    buf[1] = '[';
+    buf[2] = '1';
+    buf[3] = ';';
+    buf[4] = modifierParamDigit(mod);
+    buf[5] = final;
+    return buf[0..6];
+}
+
+fn csiTildePlain(buf: []u8, code: u8) []const u8 {
+    std.debug.assert(buf.len >= 5);
+    const tens = if (code >= 10) '0' + @divTrunc(code, 10) else null;
+    buf[0] = '\x1b';
+    buf[1] = '[';
+    if (tens) |digit| {
+        buf[2] = digit;
+        buf[3] = '0' + @mod(code, 10);
+        buf[4] = '~';
+        return buf[0..5];
+    }
+    buf[2] = '0' + code;
+    buf[3] = '~';
+    return buf[0..4];
+}
+
+fn csiTildeModified(buf: []u8, code: u8, mod: Modifier) []const u8 {
+    std.debug.assert(validModifier(mod));
+    std.debug.assert(buf.len >= 7);
+    const tens = if (code >= 10) '0' + @divTrunc(code, 10) else null;
+    buf[0] = '\x1b';
+    buf[1] = '[';
+    if (tens) |digit| {
+        buf[2] = digit;
+        buf[3] = '0' + @mod(code, 10);
+        buf[4] = ';';
+        buf[5] = modifierParamDigit(mod);
+        buf[6] = '~';
+        return buf[0..7];
+    }
+    buf[2] = '0' + code;
+    buf[3] = ';';
+    buf[4] = modifierParamDigit(mod);
+    buf[5] = '~';
+    return buf[0..6];
+}
+
+fn modifierParamDigit(mod: Modifier) u8 {
+    std.debug.assert(validModifier(mod));
+    return '0' + (1 + mod);
+}
+
+fn validModifier(mod: Modifier) bool {
+    return (mod & ~(VTERM_MOD_SHIFT | VTERM_MOD_ALT | VTERM_MOD_CTRL)) == 0;
 }
 
 fn csiU(buf: []u8, code: u32, modifier: u8) []const u8 {
