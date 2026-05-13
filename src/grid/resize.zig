@@ -11,36 +11,93 @@ const LogicalLine = history_mod.LogicalLine;
 const RewrappedRow = history_mod.RewrappedRow;
 const default_cell = cell.default_cell;
 
+const LogicalLinesState = struct {
+    logical_lines: std.ArrayListUnmanaged(LogicalLine) = .empty,
+    cursor_found: bool = false,
+    cursor_line_index: u32 = 0,
+    cursor_offset: u32 = 0,
+
+    fn deinit(self: *LogicalLinesState, allocator: std.mem.Allocator) void {
+        for (self.logical_lines.items) |*line| line.cells.deinit(allocator);
+        self.logical_lines.deinit(allocator);
+    }
+};
+
+const ReflowState = struct {
+    flat_rows: std.ArrayListUnmanaged(Cell) = .empty,
+    rewrapped: std.ArrayListUnmanaged(RewrappedRow) = .empty,
+    line_row_starts: std.ArrayListUnmanaged(u32) = .empty,
+    line_row_counts: std.ArrayListUnmanaged(u16) = .empty,
+    global_cursor_row: u32 = 0,
+    global_cursor_col: u16 = 0,
+    next_wrap_pending: bool = false,
+
+    fn deinit(self: *ReflowState, allocator: std.mem.Allocator) void {
+        self.flat_rows.deinit(allocator);
+        self.rewrapped.deinit(allocator);
+        self.line_row_starts.deinit(allocator);
+        self.line_row_counts.deinit(allocator);
+    }
+};
+
+const ViewportState = struct {
+    total_rows: u32,
+    visible_rows_kept: u16,
+    visible_start: u32,
+    first_visible_line: u32,
+    hidden_rows_in_first_visible_line: u16,
+};
+
+const ResizeBuffers = struct {
+    cells: ?[]Cell,
+    row_wraps: ?[]bool,
+    dirty_cols_start: ?[]u16,
+    dirty_cols_end: ?[]u16,
+    tab_stops: ?[]bool,
+};
+
 /// Resize visible grid storage while preserving logical scrollback lines.
 pub fn resizeWithReflow(self: anytype, allocator: std.mem.Allocator, rows: u16, cols: u16) !void {
-    const old_cells = self.cells;
-    const old_row_wraps = self.row_wraps;
-    const old_dirty_cols_start = self.dirty_cols_start;
-    const old_dirty_cols_end = self.dirty_cols_end;
-    const old_tab_stops = self.tab_stops;
-    const old_rows = self.rows;
-    const old_history = self.history;
-    const old_history_wraps = self.history_wraps;
+    const old = .{
+        .cells = self.cells,
+        .row_wraps = self.row_wraps,
+        .dirty_cols_start = self.dirty_cols_start,
+        .dirty_cols_end = self.dirty_cols_end,
+        .tab_stops = self.tab_stops,
+        .history = self.history,
+        .history_wraps = self.history_wraps,
+    };
 
-    var logical_lines: std.ArrayListUnmanaged(LogicalLine) = .empty;
-    defer {
-        for (logical_lines.items) |*line| line.cells.deinit(allocator);
-        logical_lines.deinit(allocator);
-    }
+    var lines = try collectLogicalLines(self, allocator, self.rows);
+    defer lines.deinit(allocator);
+
+    var reflow = try reflowLogicalLines(allocator, lines, cols);
+    defer reflow.deinit(allocator);
+
+    const viewport = projectViewport(lines.logical_lines.items.len, reflow, rows);
+    const buffers = try allocResizeBuffers(allocator, rows, cols, old.tab_stops);
+    errdefer freeResizeBuffers(allocator, buffers);
+
+    copyVisibleRows(buffers.cells, buffers.row_wraps, reflow, viewport, cols);
+    installResizeState(self, rows, cols, buffers);
+    try rebuildResizeAuthority(self, allocator, lines, reflow, viewport, cols);
+    restoreCursor(self, rows, cols, reflow, viewport);
+    freeOldStorage(allocator, old);
+}
+
+fn collectLogicalLines(self: anytype, allocator: std.mem.Allocator, old_rows: u16) !LogicalLinesState {
+    var result = LogicalLinesState{};
+    errdefer result.deinit(allocator);
 
     var current_line = try history_mod.cloneOpenHistoryAsLogicalLine(self, allocator);
     defer current_line.cells.deinit(allocator);
 
-    var cursor_line_index: usize = 0;
-    var cursor_offset: usize = 0;
-    var cursor_found = false;
-
-    var history_line_idx: usize = 0;
+    var history_line_idx: u32 = 0;
     while (history_line_idx < self.history_lines.items.len) : (history_line_idx += 1) {
         const line = history_mod.historyLineAt(self, history_line_idx);
         var copied = try history_mod.cloneHistoryLine(allocator, line.cells.items);
         copied.cursor_offset = null;
-        try logical_lines.append(allocator, copied);
+        try result.logical_lines.append(allocator, copied);
     }
 
     var row: u16 = 0;
@@ -48,157 +105,270 @@ pub fn resizeWithReflow(self: anytype, allocator: std.mem.Allocator, rows: u16, 
         try history_mod.appendSourceRowToLogicalLines(
             self,
             allocator,
-            &logical_lines,
+            &result.logical_lines,
             &current_line,
             row,
             self.cols,
-            &cursor_found,
-            &cursor_line_index,
-            &cursor_offset,
+            &result.cursor_found,
+            &result.cursor_line_index,
+            &result.cursor_offset,
         );
     }
 
-    if (current_line.cells.items.len > 0 or current_line.cursor_offset != null or logical_lines.items.len == 0) {
+    try finishLogicalLines(allocator, &result, &current_line);
+    return result;
+}
+
+fn finishLogicalLines(allocator: std.mem.Allocator, result: *LogicalLinesState, current_line: *LogicalLine) !void {
+    if (current_line.cells.items.len > 0 or current_line.cursor_offset != null or result.logical_lines.items.len == 0) {
         if (current_line.cursor_offset) |offset| {
-            cursor_found = true;
-            cursor_line_index = logical_lines.items.len;
-            cursor_offset = offset;
+            result.cursor_found = true;
+            result.cursor_line_index = @intCast(result.logical_lines.items.len);
+            result.cursor_offset = offset;
         }
-        try logical_lines.append(allocator, current_line);
-        current_line = .{};
+        try result.logical_lines.append(allocator, current_line.*);
+        current_line.* = .{};
     }
 
-    while (logical_lines.items.len > 1) {
-        const last_idx = logical_lines.items.len - 1;
-        const last = &logical_lines.items[last_idx];
+    while (result.logical_lines.items.len > 1) {
+        const last_idx = result.logical_lines.items.len - 1;
+        const last = &result.logical_lines.items[last_idx];
         if (last.cells.items.len > 0) break;
-        if (cursor_found and cursor_line_index == last_idx) break;
+        if (result.cursor_found and result.cursor_line_index == last_idx) break;
         last.cells.deinit(allocator);
-        logical_lines.items.len = last_idx;
+        result.logical_lines.items.len = last_idx;
     }
+}
 
-    var flat_rows: std.ArrayListUnmanaged(Cell) = .empty;
-    defer flat_rows.deinit(allocator);
-    var rewrapped: std.ArrayListUnmanaged(RewrappedRow) = .empty;
-    defer rewrapped.deinit(allocator);
-    var line_row_starts: std.ArrayListUnmanaged(usize) = .empty;
-    defer line_row_starts.deinit(allocator);
-    var line_row_counts: std.ArrayListUnmanaged(usize) = .empty;
-    defer line_row_counts.deinit(allocator);
+fn reflowLogicalLines(allocator: std.mem.Allocator, lines: LogicalLinesState, cols: u16) !ReflowState {
+    var result = ReflowState{};
+    errdefer result.deinit(allocator);
 
-    var global_cursor_row: usize = 0;
-    var global_cursor_col: usize = 0;
-    var next_wrap_pending = false;
-    var row_cursor_base: usize = 0;
-
-    for (logical_lines.items, 0..) |line, line_idx| {
-        const has_cursor = cursor_found and cursor_line_index == line_idx;
-        const line_cursor_offset = if (has_cursor) @min(cursor_offset, line.cells.items.len) else 0;
-        const effective_len = line.cells.items.len;
-        const row_count: usize = if (cols == 0) 0 else @max(1, std.math.divCeil(usize, effective_len, cols) catch unreachable);
-        try line_row_starts.append(allocator, rewrapped.items.len);
-        try line_row_counts.append(allocator, row_count);
-
-        if (has_cursor) {
-            if (cols == 0) {
-                global_cursor_row = 0;
-                global_cursor_col = 0;
-                next_wrap_pending = false;
-            } else if (line_cursor_offset > 0 and line_cursor_offset % cols == 0) {
-                global_cursor_row = row_cursor_base + (line_cursor_offset / cols) - 1;
-                global_cursor_col = cols - 1;
-                next_wrap_pending = true;
-            } else {
-                global_cursor_row = row_cursor_base + (line_cursor_offset / cols);
-                global_cursor_col = line_cursor_offset % cols;
-                next_wrap_pending = false;
-            }
-        }
-
-        if (cols == 0) continue;
-
-        if (row_count == 0) unreachable;
-        var row_idx: usize = 0;
-        while (row_idx < row_count) : (row_idx += 1) {
-            const start = row_idx * @as(usize, cols);
-            const end = @min(effective_len, start + @as(usize, cols));
-            try rewrapped.append(allocator, .{
-                .start = flat_rows.items.len,
-                .len = end - start,
-                .wrapped = row_idx + 1 < row_count,
-            });
-
-            var col_idx: usize = 0;
-            while (col_idx < @as(usize, cols)) : (col_idx += 1) {
-                const src_idx = start + col_idx;
-                if (src_idx < line.cells.items.len) {
-                    try flat_rows.append(allocator, line.cells.items[src_idx]);
-                } else {
-                    try flat_rows.append(allocator, default_cell);
-                }
-            }
-        }
-
+    var row_cursor_base: u32 = 0;
+    for (lines.logical_lines.items, 0..) |line, line_idx| {
+        const rewrapped_before = result.rewrapped.items.len;
+        const has_cursor = lines.cursor_found and lines.cursor_line_index == line_idx;
+        const line_cursor_offset = boundedCursorOffset(line, has_cursor, lines.cursor_offset);
+        const row_count = lineRowCount(line.cells.items.len, cols);
+        try result.line_row_starts.append(allocator, @intCast(result.rewrapped.items.len));
+        try result.line_row_counts.append(allocator, row_count);
+        updateCursor(&result, row_cursor_base, line_cursor_offset, cols, has_cursor);
+        try appendRewrappedRows(allocator, &result, line.cells.items, row_count, cols);
         row_cursor_base += row_count;
+
+        std.debug.assert(result.line_row_starts.items.len == result.line_row_counts.items.len);
+        std.debug.assert(result.rewrapped.items.len == rewrapped_before + row_count);
+        std.debug.assert(result.rewrapped.items.len == row_cursor_base);
+        std.debug.assert(result.flat_rows.items.len == result.rewrapped.items.len * colCount(cols));
     }
 
-    const total_rows = rewrapped.items.len;
-    const visible_rows_kept: usize = @min(@as(usize, rows), total_rows);
+    std.debug.assert(result.line_row_starts.items.len == lines.logical_lines.items.len);
+    std.debug.assert(result.line_row_counts.items.len == lines.logical_lines.items.len);
+    return result;
+}
+
+fn appendRewrappedRows(
+    allocator: std.mem.Allocator,
+    result: *ReflowState,
+    cells: []const Cell,
+    row_count: u16,
+    cols: u16,
+) !void {
+    if (cols == 0) return;
+    if (row_count == 0) unreachable;
+
+    const flat_rows_before = result.flat_rows.items.len;
+
+    var row_idx: u16 = 0;
+    while (row_idx < row_count) : (row_idx += 1) {
+        const start = rowStart(row_idx, cols);
+        const end = @min(cells.len, start + colCount(cols));
+        std.debug.assert(start <= end);
+        std.debug.assert(end <= cells.len);
+        try result.rewrapped.append(allocator, .{
+            .start = @intCast(result.flat_rows.items.len),
+            .len = @intCast(end - start),
+            .wrapped = row_idx + 1 < row_count,
+        });
+        try appendRowCells(allocator, &result.flat_rows, cells, start, cols);
+    }
+
+    std.debug.assert(result.flat_rows.items.len == flat_rows_before + @as(usize, row_count) * colCount(cols));
+}
+
+fn appendRowCells(
+    allocator: std.mem.Allocator,
+    flat_rows: *std.ArrayListUnmanaged(Cell),
+    cells: []const Cell,
+    start: usize,
+    cols: u16,
+) !void {
+    var col_idx: u16 = 0;
+    while (col_idx < cols) : (col_idx += 1) {
+        const src_idx = start + @as(usize, col_idx);
+        if (src_idx < cells.len) {
+            try flat_rows.append(allocator, cells[src_idx]);
+        } else {
+            try flat_rows.append(allocator, default_cell);
+        }
+    }
+}
+
+fn updateCursor(result: *ReflowState, row_cursor_base: u32, line_cursor_offset: u32, cols: u16, has_cursor: bool) void {
+    if (!has_cursor) return;
+    if (cols == 0) {
+        result.global_cursor_row = 0;
+        result.global_cursor_col = 0;
+        result.next_wrap_pending = false;
+        return;
+    }
+
+    if (lineCursorWraps(line_cursor_offset, cols)) {
+        result.global_cursor_row = row_cursor_base + @as(u32, line_cursor_offset / cols) - 1;
+        result.global_cursor_col = cols - 1;
+        result.next_wrap_pending = true;
+        return;
+    }
+
+    result.global_cursor_row = row_cursor_base + @as(u32, line_cursor_offset / cols);
+    result.global_cursor_col = @intCast(line_cursor_offset % cols);
+    result.next_wrap_pending = false;
+}
+
+fn projectViewport(logical_line_count: usize, reflow: ReflowState, rows: u16) ViewportState {
+    const total_rows: u32 = @intCast(reflow.rewrapped.items.len);
+    const visible_rows_kept: u16 = @intCast(@min(@as(u32, rows), total_rows));
     const visible_start = total_rows - visible_rows_kept;
-    const top_blank_rows: usize = 0;
-    const first_visible_line = history_mod.firstLineForRow(line_row_starts.items, line_row_counts.items, visible_start) orelse logical_lines.items.len;
-    const hidden_rows_in_first_visible_line: usize = if (first_visible_line < logical_lines.items.len)
-        visible_start - line_row_starts.items[first_visible_line]
+    const first_visible_line = history_mod.firstLineForRowBounded(
+        reflow.line_row_starts.items,
+        reflow.line_row_counts.items,
+        visible_start,
+    ) orelse @as(u32, @intCast(logical_line_count));
+    const hidden_rows_in_first_visible_line: u16 = if (first_visible_line < logical_line_count)
+        @intCast(visible_start - reflow.line_row_starts.items[listIndex(first_visible_line)])
     else
         0;
 
-    const cell_count = @as(usize, rows) * @as(usize, cols);
-    var new_cells: ?[]Cell = null;
+    std.debug.assert(visible_rows_kept <= rows);
+    std.debug.assert(visible_rows_kept <= total_rows);
+    std.debug.assert(visible_start <= total_rows);
+    std.debug.assert(visible_start + visible_rows_kept == total_rows);
+    std.debug.assert(first_visible_line <= logical_line_count);
+    if (total_rows == 0) {
+        std.debug.assert(first_visible_line == logical_line_count);
+        std.debug.assert(hidden_rows_in_first_visible_line == 0);
+    } else {
+        std.debug.assert(first_visible_line < logical_line_count);
+        std.debug.assert(reflow.line_row_starts.items[listIndex(first_visible_line)] <= visible_start);
+        std.debug.assert(hidden_rows_in_first_visible_line < reflow.line_row_counts.items[listIndex(first_visible_line)]);
+    }
+
+    return .{
+        .total_rows = total_rows,
+        .visible_rows_kept = visible_rows_kept,
+        .visible_start = visible_start,
+        .first_visible_line = first_visible_line,
+        .hidden_rows_in_first_visible_line = hidden_rows_in_first_visible_line,
+    };
+}
+
+fn allocResizeBuffers(
+    allocator: std.mem.Allocator,
+    rows: u16,
+    cols: u16,
+    old_tab_stops: ?[]bool,
+) !ResizeBuffers {
+    const cell_count = cellCount(rows, cols);
+    var cells: ?[]Cell = null;
     if (cell_count > 0) {
         const buf = try allocator.alloc(Cell, cell_count);
         @memset(buf, default_cell);
-        new_cells = buf;
+        cells = buf;
     }
-    errdefer if (new_cells) |buf| allocator.free(buf);
+    errdefer if (cells) |buf| allocator.free(buf);
 
-    var new_row_wraps: ?[]bool = null;
+    var row_wraps: ?[]bool = null;
     if (rows > 0) {
         const buf = try allocator.alloc(bool, rows);
         @memset(buf, false);
-        new_row_wraps = buf;
+        row_wraps = buf;
     }
-    errdefer if (new_row_wraps) |buf| allocator.free(buf);
-    const new_dirty_cols_start = try dirty.allocDirtyCols(allocator, rows, 0);
-    errdefer if (new_dirty_cols_start) |buf| allocator.free(buf);
-    const new_dirty_cols_end = try dirty.allocDirtyCols(allocator, rows, cols -| 1);
-    errdefer if (new_dirty_cols_end) |buf| allocator.free(buf);
-    const new_tab_stops = try tabs.allocTabStops(allocator, cols);
-    errdefer if (new_tab_stops) |buf| allocator.free(buf);
-    tabs.copyTabStops(new_tab_stops, old_tab_stops);
+    errdefer if (row_wraps) |buf| allocator.free(buf);
 
-    if (new_cells) |dst| {
-        const dst_wraps = new_row_wraps.?;
-        var src_row: usize = visible_start;
-        var view_row: usize = 0;
-        while (view_row < visible_rows_kept) : ({
-            view_row += 1;
-            src_row += 1;
-        }) {
-            const src = rewrapped.items[src_row];
-            const dst_row = top_blank_rows + view_row;
-            const dst_start = dst_row * @as(usize, cols);
-            @memcpy(dst[dst_start .. dst_start + @as(usize, cols)], flat_rows.items[src.start .. src.start + @as(usize, cols)]);
-            dst_wraps[dst_row] = src.wrapped;
-        }
+    const dirty_cols_start = try dirty.allocDirtyCols(allocator, rows, 0);
+    errdefer if (dirty_cols_start) |buf| allocator.free(buf);
+    const dirty_cols_end = try dirty.allocDirtyCols(allocator, rows, cols -| 1);
+    errdefer if (dirty_cols_end) |buf| allocator.free(buf);
+    const tab_stops = try tabs.allocTabStops(allocator, cols);
+    errdefer if (tab_stops) |buf| allocator.free(buf);
+    tabs.copyTabStops(tab_stops, old_tab_stops);
+
+    std.debug.assert((cells != null) == (cell_count > 0));
+    std.debug.assert((row_wraps != null) == (rows > 0));
+    std.debug.assert((dirty_cols_start != null) == (rows > 0));
+    std.debug.assert((dirty_cols_end != null) == (rows > 0));
+    std.debug.assert((tab_stops != null) == (cols > 0));
+    if (cells) |buf| std.debug.assert(buf.len == cell_count);
+    if (row_wraps) |buf| std.debug.assert(buf.len == rows);
+    if (dirty_cols_start) |buf| std.debug.assert(buf.len == rows);
+    if (dirty_cols_end) |buf| std.debug.assert(buf.len == rows);
+    if (tab_stops) |buf| std.debug.assert(buf.len == cols);
+
+    return .{
+        .cells = cells,
+        .row_wraps = row_wraps,
+        .dirty_cols_start = dirty_cols_start,
+        .dirty_cols_end = dirty_cols_end,
+        .tab_stops = tab_stops,
+    };
+}
+
+fn freeResizeBuffers(allocator: std.mem.Allocator, buffers: ResizeBuffers) void {
+    if (buffers.cells) |buf| allocator.free(buf);
+    if (buffers.row_wraps) |buf| allocator.free(buf);
+    if (buffers.dirty_cols_start) |buf| allocator.free(buf);
+    if (buffers.dirty_cols_end) |buf| allocator.free(buf);
+    if (buffers.tab_stops) |buf| allocator.free(buf);
+}
+
+fn copyVisibleRows(
+    new_cells: ?[]Cell,
+    new_row_wraps: ?[]bool,
+    reflow: ReflowState,
+    viewport: ViewportState,
+    cols: u16,
+) void {
+    const dst = new_cells orelse return;
+    const dst_wraps = new_row_wraps orelse return;
+
+    std.debug.assert(viewport.visible_start + viewport.visible_rows_kept <= viewport.total_rows);
+    std.debug.assert(viewport.total_rows == reflow.rewrapped.items.len);
+    std.debug.assert(dst_wraps.len >= viewport.visible_rows_kept);
+    std.debug.assert(dst.len >= cellCount(viewport.visible_rows_kept, cols));
+    std.debug.assert(reflow.flat_rows.items.len == reflow.rewrapped.items.len * colCount(cols));
+
+    var src_row = viewport.visible_start;
+    var view_row: u16 = 0;
+    while (view_row < viewport.visible_rows_kept) : (view_row += 1) {
+        const src = reflow.rewrapped.items[listIndex(src_row)];
+        const dst_start = rowStart(view_row, cols);
+        std.debug.assert(dst_start + colCount(cols) <= dst.len);
+        @memcpy(dst[dst_start .. dst_start + colCount(cols)], flatRowSlice(reflow.flat_rows.items, src, cols));
+        dst_wraps[view_row] = src.wrapped;
+        src_row += 1;
     }
 
+    std.debug.assert(src_row == viewport.visible_start + viewport.visible_rows_kept);
+}
+
+fn installResizeState(self: anytype, rows: u16, cols: u16, buffers: ResizeBuffers) void {
     self.rows = rows;
     self.cols = cols;
-    self.cells = new_cells;
-    self.row_wraps = new_row_wraps;
-    self.dirty_cols_start = new_dirty_cols_start;
-    self.dirty_cols_end = new_dirty_cols_end;
-    self.tab_stops = new_tab_stops;
+    self.cells = buffers.cells;
+    self.row_wraps = buffers.row_wraps;
+    self.dirty_cols_start = buffers.dirty_cols_start;
+    self.dirty_cols_end = buffers.dirty_cols_end;
+    self.tab_stops = buffers.tab_stops;
     self.history = null;
     self.history_wraps = null;
     self.history_count = 0;
@@ -211,37 +381,132 @@ pub fn resizeWithReflow(self: anytype, allocator: std.mem.Allocator, rows: u16, 
     self.left_margin = 0;
     self.right_margin = cols -| 1;
     self.attr_change_extent_rect = false;
-    self.dirty_rows = dirty.rowsForFull(rows, new_dirty_cols_start, new_dirty_cols_end);
+    self.dirty_rows = dirty.rowsForFull(rows, buffers.dirty_cols_start, buffers.dirty_cols_end);
+
+    std.debug.assert(self.rows == rows);
+    std.debug.assert(self.cols == cols);
+    std.debug.assert((self.cells != null) == (rows > 0 and cols > 0));
+    std.debug.assert((self.row_wraps != null) == (rows > 0));
+    std.debug.assert((self.dirty_cols_start != null) == (rows > 0));
+    std.debug.assert((self.dirty_cols_end != null) == (rows > 0));
+    std.debug.assert((self.tab_stops != null) == (cols > 0));
+    if (self.cells) |buf| std.debug.assert(buf.len == cellCount(rows, cols));
+    if (self.row_wraps) |buf| std.debug.assert(buf.len == rows);
+    if (self.dirty_cols_start) |buf| std.debug.assert(buf.len == rows);
+    if (self.dirty_cols_end) |buf| std.debug.assert(buf.len == rows);
+    if (self.tab_stops) |buf| std.debug.assert(buf.len == cols);
+    std.debug.assert(self.history == null);
+    std.debug.assert(self.history_wraps == null);
+    std.debug.assert(self.history_count == 0);
+    std.debug.assert(self.history_write_idx == 0);
+    std.debug.assert(self.row_origin == 0);
+    std.debug.assert(self.view_padding_rows == 0);
+    std.debug.assert(self.scroll_top == 0);
+    std.debug.assert(self.scroll_bottom == rows -| 1);
+    std.debug.assert(self.left_right_margin_mode == false);
+    std.debug.assert(self.left_margin == 0);
+    std.debug.assert(self.right_margin == cols -| 1);
+}
+
+fn rebuildResizeAuthority(
+    self: anytype,
+    allocator: std.mem.Allocator,
+    lines: LogicalLinesState,
+    reflow: ReflowState,
+    viewport: ViewportState,
+    cols: u16,
+) !void {
+    std.debug.assert(reflow.line_row_starts.items.len == lines.logical_lines.items.len);
+    std.debug.assert(reflow.line_row_counts.items.len == lines.logical_lines.items.len);
+    std.debug.assert(viewport.total_rows == reflow.rewrapped.items.len);
+    std.debug.assert(viewport.first_visible_line <= lines.logical_lines.items.len);
+    if (viewport.first_visible_line < lines.logical_lines.items.len) {
+        std.debug.assert(viewport.hidden_rows_in_first_visible_line < reflow.line_row_counts.items[listIndex(viewport.first_visible_line)]);
+    } else {
+        std.debug.assert(viewport.hidden_rows_in_first_visible_line == 0);
+    }
 
     try history_mod.replaceAuthority(
         self,
         allocator,
-        logical_lines.items,
-        line_row_starts.items,
-        line_row_counts.items,
-        first_visible_line,
-        hidden_rows_in_first_visible_line,
-        rewrapped.items,
+        lines.logical_lines.items,
+        reflow.line_row_starts.items,
+        reflow.line_row_counts.items,
+        viewport.first_visible_line,
+        viewport.hidden_rows_in_first_visible_line,
+        reflow.rewrapped.items,
         cols,
     );
     try history_mod.rebuildProjection(self, allocator);
+}
 
-    if (rows == 0 or cols == 0 or total_rows == 0) {
+fn restoreCursor(self: anytype, rows: u16, cols: u16, reflow: ReflowState, viewport: ViewportState) void {
+    if (rows == 0 or cols == 0 or viewport.total_rows == 0) {
         self.cursor_row = 0;
         self.cursor_col = 0;
         self.wrap_pending = false;
-    } else {
-        const clamped_cursor_row = std.math.clamp(global_cursor_row, visible_start, visible_start + visible_rows_kept - 1);
-        self.cursor_row = @intCast(top_blank_rows + (clamped_cursor_row - visible_start));
-        self.cursor_col = @intCast(@min(global_cursor_col, @as(usize, cols - 1)));
-        self.wrap_pending = next_wrap_pending and self.cursor_row < rows and self.cursor_col == cols - 1;
+        std.debug.assert(self.cursor_row == 0);
+        std.debug.assert(self.cursor_col == 0);
+        std.debug.assert(self.wrap_pending == false);
+        return;
     }
 
-    if (old_cells) |buf| allocator.free(buf);
-    if (old_row_wraps) |buf| allocator.free(buf);
-    if (old_dirty_cols_start) |buf| allocator.free(buf);
-    if (old_dirty_cols_end) |buf| allocator.free(buf);
-    if (old_tab_stops) |buf| allocator.free(buf);
-    if (old_history) |buf| allocator.free(buf);
-    if (old_history_wraps) |buf| allocator.free(buf);
+    const last_visible_row = viewport.visible_start + viewport.visible_rows_kept - 1;
+    const clamped_cursor_row = std.math.clamp(reflow.global_cursor_row, viewport.visible_start, last_visible_row);
+    self.cursor_row = @intCast(clamped_cursor_row - viewport.visible_start);
+    self.cursor_col = @min(reflow.global_cursor_col, cols - 1);
+    self.wrap_pending = reflow.next_wrap_pending and self.cursor_row < rows and self.cursor_col == cols - 1;
+
+    std.debug.assert(viewport.visible_rows_kept > 0);
+    std.debug.assert(clamped_cursor_row >= viewport.visible_start);
+    std.debug.assert(clamped_cursor_row <= last_visible_row);
+    std.debug.assert(self.cursor_row < rows);
+    std.debug.assert(self.cursor_col < cols);
+    if (self.wrap_pending) std.debug.assert(self.cursor_col == cols - 1);
+}
+
+fn freeOldStorage(allocator: std.mem.Allocator, old: anytype) void {
+    if (old.cells) |buf| allocator.free(buf);
+    if (old.row_wraps) |buf| allocator.free(buf);
+    if (old.dirty_cols_start) |buf| allocator.free(buf);
+    if (old.dirty_cols_end) |buf| allocator.free(buf);
+    if (old.tab_stops) |buf| allocator.free(buf);
+    if (old.history) |buf| allocator.free(buf);
+    if (old.history_wraps) |buf| allocator.free(buf);
+}
+
+fn boundedCursorOffset(line: LogicalLine, has_cursor: bool, cursor_offset: u32) u32 {
+    if (!has_cursor) return 0;
+    return @min(cursor_offset, @as(u32, @intCast(line.cells.items.len)));
+}
+
+fn lineCursorWraps(line_cursor_offset: u32, cols: u16) bool {
+    return line_cursor_offset > 0 and line_cursor_offset % cols == 0;
+}
+
+fn lineRowCount(cell_count: usize, cols: u16) u16 {
+    if (cols == 0) return 0;
+    return @intCast(@max(1, std.math.divCeil(usize, cell_count, cols) catch unreachable));
+}
+
+fn flatRowSlice(flat_rows: []const Cell, row: RewrappedRow, cols: u16) []const Cell {
+    const start = listIndex(row.start);
+    std.debug.assert(start + colCount(cols) <= flat_rows.len);
+    return flat_rows[start .. start + colCount(cols)];
+}
+
+fn cellCount(rows: u16, cols: u16) usize {
+    return @as(usize, rows) * @as(usize, cols);
+}
+
+fn rowStart(row: u16, cols: u16) usize {
+    return @as(usize, row) * @as(usize, cols);
+}
+
+fn colCount(cols: u16) usize {
+    return @intCast(cols);
+}
+
+fn listIndex(value: u32) usize {
+    return @intCast(value);
 }
