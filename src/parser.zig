@@ -171,146 +171,34 @@ pub const Parser = struct {
 
     /// Handle one byte of terminal input.
     pub fn handleByte(self: *Parser, byte: u8) void {
-        if (self.osc.active()) {
-            self.handleOscByte(byte);
-            return;
-        }
-        if (self.apc.active()) {
-            self.handleApcByte(byte);
-            return;
-        }
-        if (self.dcs.active()) {
-            self.handleDcsByte(byte);
-            return;
-        }
-        if (self.pm.active()) {
-            self.handlePmByte(byte);
-            return;
-        }
+        std.debug.assert(self.activeControlCount() <= 1);
+        if (self.handleActiveControlByte(byte)) return;
+
         switch (self.esc_state) {
-            .ground => {
-                if (byte == 0x1B) {
-                    self.esc_state = .esc;
-                    self.stream.reset();
-                    self.csi.reset();
-                    self.osc.reset();
-                    return;
-                }
-                if (byte == 0x0E) {
-                    self.gl_charset = self.g1_charset;
-                    self.gl_target = .g1;
-                    return;
-                }
-                if (byte == 0x0F) {
-                    self.gl_charset = self.g0_charset;
-                    self.gl_target = .g0;
-                    return;
-                }
-                if (self.gl_charset == .dec_special and byte >= 0x20 and byte <= 0x7e) {
-                    self.sink.onStreamEvent(.{ .codepoint = mapDecSpecial(byte) });
-                    return;
-                }
-                if (self.stream.feed(byte)) |event| {
-                    self.sink.onStreamEvent(event);
-                }
-            },
-            .esc => {
-                if (byte == '[') {
-                    self.esc_state = .csi;
-                    self.csi.reset();
-                } else if (byte == ']') {
-                    self.esc_state = .ground;
-                    self.osc.start();
-                    return;
-                } else if (byte == 'P') {
-                    self.esc_state = .ground;
-                    self.dcs.start();
-                    return;
-                } else if (byte == '_') {
-                    self.esc_state = .ground;
-                    self.apc.start();
-                    return;
-                } else if (byte == '^') {
-                    self.esc_state = .ground;
-                    self.pm.start();
-                    return;
-                } else if (byte == '(') {
-                    self.charset_target = .g0;
-                    self.esc_state = .charset;
-                } else if (byte == ')') {
-                    self.charset_target = .g1;
-                    self.esc_state = .charset;
-                } else {
-                    self.sink.onEscFinal(byte);
-                    self.esc_state = .ground;
-                }
-            },
-            .charset => {
-                const charset: Charset = switch (byte) {
-                    '0' => .dec_special,
-                    'B' => .ascii,
-                    else => .ascii,
-                };
-                switch (self.charset_target) {
-                    .g0 => self.g0_charset = charset,
-                    .g1 => self.g1_charset = charset,
-                }
-                if (self.charset_target == .g0) {
-                    self.gl_charset = self.g0_charset;
-                    self.gl_target = .g0;
-                }
-                self.esc_state = .ground;
-            },
-            .csi => {
-                if (self.csi.feed(byte)) |action| {
-                    self.sink.onCsi(action);
-                    self.esc_state = .ground;
-                }
-            },
+            .ground => self.handleGroundByte(byte),
+            .esc => self.handleEscByte(byte),
+            .charset => self.handleCharsetByte(byte),
+            .csi => self.handleCsiByte(byte),
         }
     }
 
     /// Handle a byte slice of terminal input.
     pub fn handleSlice(self: *Parser, bytes: []const u8) void {
-        var i: usize = 0;
-        while (i < bytes.len) {
-            if (self.osc.active()) {
-                self.handleOscByte(bytes[i]);
-                i += 1;
-                continue;
-            }
-            if (self.apc.active()) {
-                self.handleApcByte(bytes[i]);
-                i += 1;
-                continue;
-            }
-            if (self.dcs.active()) {
-                self.handleDcsByte(bytes[i]);
-                i += 1;
-                continue;
-            }
-            if (self.pm.active()) {
-                self.handlePmByte(bytes[i]);
-                i += 1;
+        var remaining = bytes;
+        while (remaining.len > 0) {
+            std.debug.assert(self.activeControlCount() <= 1);
+            if (self.handleActiveControlByte(remaining[0])) {
+                remaining = remaining[1..];
                 continue;
             }
 
-            if (self.esc_state == .ground and self.stream.decoder.needed == 0 and self.gl_charset == .ascii) {
-                const start = i;
-                // ASCII fast path batches printable bytes into one sink event.
-                while (i < bytes.len) {
-                    const b = bytes[i];
-                    if (b < 0x20 or b == 0x7f or b == 0x1b or b >= 0x80) break;
-                    i += 1;
-                }
-                if (i > start) {
-                    self.sink.onAsciiSlice(bytes[start..i]);
-                    continue;
-                }
+            if (self.takeAsciiFastPath(remaining)) |rest| {
+                remaining = rest;
+                continue;
             }
 
-            self.handleByte(bytes[i]);
-            i += 1;
+            self.handleParserByte(remaining[0]);
+            remaining = remaining[1..];
         }
     }
 
@@ -336,6 +224,163 @@ pub const Parser = struct {
         }
     }
 
+    fn handleActiveControlByte(self: *Parser, byte: u8) bool {
+        std.debug.assert(self.activeControlCount() <= 1);
+        if (self.osc.active()) {
+            self.handleOscByte(byte);
+            return true;
+        }
+        if (self.apc.active()) {
+            self.handleApcByte(byte);
+            return true;
+        }
+        if (self.dcs.active()) {
+            self.handleDcsByte(byte);
+            return true;
+        }
+        if (self.pm.active()) {
+            self.handlePmByte(byte);
+            return true;
+        }
+        return false;
+    }
+
+    fn handleParserByte(self: *Parser, byte: u8) void {
+        std.debug.assert(self.activeControlCount() == 0);
+        switch (self.esc_state) {
+            .ground => self.handleGroundByte(byte),
+            .esc => self.handleEscByte(byte),
+            .charset => self.handleCharsetByte(byte),
+            .csi => self.handleCsiByte(byte),
+        }
+    }
+
+    fn handleGroundByte(self: *Parser, byte: u8) void {
+        std.debug.assert(self.activeControlCount() == 0);
+        if (byte == 0x1B) {
+            self.startEscape();
+            return;
+        }
+        if (byte == 0x0E) {
+            self.selectGl(.g1);
+            return;
+        }
+        if (byte == 0x0F) {
+            self.selectGl(.g0);
+            return;
+        }
+        if (self.isDecSpecialGraphic(byte)) {
+            self.sink.onStreamEvent(.{ .codepoint = mapDecSpecial(byte) });
+            return;
+        }
+        if (self.stream.feed(byte)) |event| {
+            self.sink.onStreamEvent(event);
+        }
+    }
+
+    fn handleEscByte(self: *Parser, byte: u8) void {
+        switch (byte) {
+            '[' => {
+                self.esc_state = .csi;
+                self.csi.reset();
+            },
+            ']' => self.startStringControl(&self.osc),
+            'P' => self.startStringControl(&self.dcs),
+            '_' => self.startStringControl(&self.apc),
+            '^' => self.startStringControl(&self.pm),
+            '(' => self.startCharsetDesignation(.g0),
+            ')' => self.startCharsetDesignation(.g1),
+            else => {
+                self.sink.onEscFinal(byte);
+                self.esc_state = .ground;
+            },
+        }
+    }
+
+    fn handleCharsetByte(self: *Parser, byte: u8) void {
+        const charset: Charset = switch (byte) {
+            '0' => .dec_special,
+            'B' => .ascii,
+            else => .ascii,
+        };
+        switch (self.charset_target) {
+            .g0 => self.g0_charset = charset,
+            .g1 => self.g1_charset = charset,
+        }
+        if (self.charset_target == .g0) {
+            self.gl_charset = self.g0_charset;
+            self.gl_target = .g0;
+            std.debug.assert(self.gl_charset == self.g0_charset);
+            std.debug.assert(self.gl_target == .g0);
+        }
+        self.esc_state = .ground;
+    }
+
+    fn handleCsiByte(self: *Parser, byte: u8) void {
+        if (self.csi.feed(byte)) |action| {
+            self.sink.onCsi(action);
+            self.esc_state = .ground;
+        }
+    }
+
+    fn takeAsciiFastPath(self: *Parser, bytes: []const u8) ?[]const u8 {
+        if (!self.canBatchAscii()) return null;
+
+        const ascii = asciiPrefix(bytes);
+        if (ascii.len == 0) return null;
+        std.debug.assert(ascii.len <= bytes.len);
+        std.debug.assert(isAsciiPrintableSlice(ascii));
+        if (ascii.len < bytes.len) std.debug.assert(!isAsciiPrintableByte(bytes[ascii.len]));
+        self.sink.onAsciiSlice(ascii);
+        return bytes[ascii.len..];
+    }
+
+    fn canBatchAscii(self: *const Parser) bool {
+        return self.esc_state == .ground and self.stream.decoder.needed == 0 and self.gl_charset == .ascii;
+    }
+
+    fn startEscape(self: *Parser) void {
+        std.debug.assert(self.activeControlCount() == 0);
+        self.esc_state = .esc;
+        self.stream.reset();
+        self.csi.reset();
+        self.osc.reset();
+        std.debug.assert(self.esc_state == .esc);
+        std.debug.assert(!self.osc.active());
+    }
+
+    fn selectGl(self: *Parser, target: CharsetTarget) void {
+        self.gl_target = target;
+        self.gl_charset = switch (target) {
+            .g0 => self.g0_charset,
+            .g1 => self.g1_charset,
+        };
+        std.debug.assert(self.gl_charset == switch (self.gl_target) {
+            .g0 => self.g0_charset,
+            .g1 => self.g1_charset,
+        });
+    }
+
+    fn isDecSpecialGraphic(self: *const Parser, byte: u8) bool {
+        return self.gl_charset == .dec_special and byte >= 0x20 and byte <= 0x7e;
+    }
+
+    fn startStringControl(self: *Parser, control: *string_control_mod.StringControl) void {
+        std.debug.assert(self.activeControlCount() == 0);
+        self.esc_state = .ground;
+        control.start();
+        std.debug.assert(self.esc_state == .ground);
+        std.debug.assert(control.active());
+        std.debug.assert(self.activeControlCount() == 1);
+    }
+
+    fn startCharsetDesignation(self: *Parser, target: CharsetTarget) void {
+        self.charset_target = target;
+        self.esc_state = .charset;
+        std.debug.assert(self.esc_state == .charset);
+        std.debug.assert(self.charset_target == target);
+    }
+
     fn handleApcByte(self: *Parser, byte: u8) void {
         if (self.apc.feed(byte)) |_| {
             self.sink.onApc(self.apc.data());
@@ -355,6 +400,15 @@ pub const Parser = struct {
             self.sink.onPm(self.pm.data());
             self.pm.clearFinished();
         }
+    }
+
+    fn activeControlCount(self: *const Parser) u3 {
+        var count: u3 = 0;
+        if (self.osc.active()) count += 1;
+        if (self.apc.active()) count += 1;
+        if (self.dcs.active()) count += 1;
+        if (self.pm.active()) count += 1;
+        return count;
     }
 };
 
@@ -396,6 +450,27 @@ fn charsetDesignation(charset: Charset) u8 {
         .ascii => 'B',
         .dec_special => '0',
     };
+}
+
+fn asciiPrefix(bytes: []const u8) []const u8 {
+    var remaining = bytes;
+    while (remaining.len > 0) {
+        const byte = remaining[0];
+        if (byte < 0x20 or byte == 0x7f or byte == 0x1b or byte >= 0x80) break;
+        remaining = remaining[1..];
+    }
+    return bytes[0 .. bytes.len - remaining.len];
+}
+
+fn isAsciiPrintableSlice(bytes: []const u8) bool {
+    for (bytes) |byte| {
+        if (!isAsciiPrintableByte(byte)) return false;
+    }
+    return true;
+}
+
+fn isAsciiPrintableByte(byte: u8) bool {
+    return byte >= 0x20 and byte != 0x7f and byte != 0x1b and byte < 0x80;
 }
 
 const Event = union(enum) {
@@ -494,7 +569,7 @@ test "parser: mixed stream exact sequence (ASCII+CSI+ASCII)" {
     var parser = try Parser.init(gpa, harness.toSink());
     defer parser.deinit();
     parser.handleSlice("AB\x1b[31mC");
-    try std.testing.expectEqual(@as(usize, 3), harness.events.items.len);
+    try std.testing.expectEqual(3, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .ascii_slice);
     try std.testing.expect(harness.events.items[1] == .csi);
     try std.testing.expectEqual(@as(u8, 'm'), harness.events.items[1].csi.final);
@@ -511,7 +586,7 @@ test "parser: ASCII fast path preserves spaces" {
 
     parser.handleSlice("A B");
 
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .ascii_slice);
     try std.testing.expectEqualSlices(u8, "A B", harness.events.items[0].ascii_slice);
 }
@@ -523,7 +598,7 @@ test "parser: ESC final passthrough (ESC M)" {
     var parser = try Parser.init(gpa, harness.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1bM");
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .esc_final);
     try std.testing.expectEqual(@as(u8, 'M'), harness.events.items[0].esc_final);
 }
@@ -535,7 +610,7 @@ test "parser: OSC with BEL terminator" {
     var parser = try Parser.init(gpa, harness.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b]title\x07");
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .osc);
     try std.testing.expectEqual(Parser.OscTerminator.bel, harness.events.items[0].osc.term);
     try std.testing.expectEqualSlices(u8, "title", harness.events.items[0].osc.data);
@@ -548,7 +623,7 @@ test "parser: OSC with ST terminator" {
     var parser = try Parser.init(gpa, harness.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b]url\x1b\\");
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .osc);
     try std.testing.expectEqual(Parser.OscTerminator.st, harness.events.items[0].osc.term);
     try std.testing.expectEqualSlices(u8, "url", harness.events.items[0].osc.data);
@@ -561,7 +636,7 @@ test "parser: APC with ST terminator" {
     var parser = try Parser.init(gpa, harness.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b_kitty\x1b\\");
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .apc);
     try std.testing.expectEqualSlices(u8, "kitty", harness.events.items[0].apc);
 }
@@ -573,7 +648,7 @@ test "parser: DCS with ST terminator" {
     var parser = try Parser.init(gpa, harness.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1bPdata\x1b\\");
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .dcs);
     try std.testing.expectEqualSlices(u8, "data", harness.events.items[0].dcs);
 }
@@ -585,7 +660,7 @@ test "parser: PM with ST terminator" {
     var parser = try Parser.init(gpa, harness.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b^ignored\x1b\\");
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .pm);
     try std.testing.expectEqualSlices(u8, "ignored", harness.events.items[0].pm);
 }
@@ -599,7 +674,7 @@ test "parser: split input - partial UTF-8 then completion" {
     parser.handleByte(0xE2);
     parser.handleByte(0x82);
     parser.handleByte(0xAC);
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .stream_codepoint);
     try std.testing.expectEqual(@as(u21, 0x20AC), harness.events.items[0].stream_codepoint);
 }
@@ -615,7 +690,7 @@ test "parser: split input - partial CSI then final byte" {
     parser.handleByte('3');
     parser.handleByte('1');
     parser.handleByte('m');
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .csi);
     try std.testing.expectEqual(@as(u8, 'm'), harness.events.items[0].csi.final);
     try std.testing.expectEqual(@as(i32, 31), harness.events.items[0].csi.params[0]);
@@ -628,7 +703,7 @@ test "parser: stray ESC in OSC (marker dropped, byte appended)" {
     var parser = try Parser.init(gpa, harness.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b]ab\x1bcd\x1b\\");
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .osc);
     try std.testing.expectEqualSlices(u8, "abcd", harness.events.items[0].osc.data);
 }
@@ -640,7 +715,7 @@ test "parser: CSI with multiple parameters exact order" {
     var parser = try Parser.init(gpa, harness.toSink());
     defer parser.deinit();
     parser.handleSlice("\x1b[1;31;40m");
-    try std.testing.expectEqual(@as(usize, 1), harness.events.items.len);
+    try std.testing.expectEqual(1, harness.events.items.len);
     try std.testing.expect(harness.events.items[0] == .csi);
     try std.testing.expectEqual(@as(i32, 1), harness.events.items[0].csi.params[0]);
     try std.testing.expectEqual(@as(i32, 31), harness.events.items[0].csi.params[1]);
@@ -657,7 +732,7 @@ test "parser: DEC special graphics maps box drawing bytes" {
 
     parser.handleSlice("\x1b(0lqkxmj\x1b(Bq");
 
-    try std.testing.expectEqual(@as(usize, 7), harness.events.items.len);
+    try std.testing.expectEqual(7, harness.events.items.len);
     try std.testing.expectEqual(@as(u21, 0x250C), harness.events.items[0].stream_codepoint);
     try std.testing.expectEqual(@as(u21, 0x2500), harness.events.items[1].stream_codepoint);
     try std.testing.expectEqual(@as(u21, 0x2510), harness.events.items[2].stream_codepoint);
@@ -677,7 +752,7 @@ test "parser: SO SI switch G1 DEC special graphics" {
 
     parser.handleSlice("\x1b)0\x0eq\x0fq");
 
-    try std.testing.expectEqual(@as(usize, 2), harness.events.items.len);
+    try std.testing.expectEqual(2, harness.events.items.len);
     try std.testing.expectEqual(@as(u21, 0x2500), harness.events.items[0].stream_codepoint);
     try std.testing.expect(harness.events.items[1] == .ascii_slice);
     try std.testing.expectEqualSlices(u8, "q", harness.events.items[1].ascii_slice);
