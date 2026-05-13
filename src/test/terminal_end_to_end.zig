@@ -1,19 +1,19 @@
-//! End-to-end vt-core flow tests.
+//! End-to-end terminal flow tests.
 
 const std = @import("std");
-const vt = @import("vt_core");
+const vt = @import("howl_vt");
 
-test "vt-core: parser apply flow applies bytes to grid state deterministically" {
+test "terminal: parser apply flow applies bytes to grid state deterministically" {
     const allocator = std.testing.allocator;
-    var vt_core = try vt.VtCore.initWithCells(allocator, 3, 8);
-    defer vt_core.deinit();
+    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    defer terminal.deinit();
 
-    vt_core.feedSlice("ab");
-    vt_core.feedByte('c');
-    vt_core.feedSlice("\r\nxy");
-    vt_core.apply();
+    terminal.feedSlice("ab");
+    terminal.feedByte('c');
+    terminal.feedSlice("\r\nxy");
+    terminal.apply();
 
-    const s = vt_core.screen();
+    const s = terminal.screen();
     try std.testing.expectEqual(@as(u21, 'a'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'b'), s.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 'c'), s.cellAt(0, 2));

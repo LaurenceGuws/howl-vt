@@ -1,7 +1,7 @@
 //! Deterministic M7 baseline smoke test.
 
 const std = @import("std");
-const terminal = @import("vt_core");
+const terminal = @import("howl_vt");
 
 const WorkloadResult = struct {
     name: []const u8,
@@ -225,18 +225,18 @@ fn runFeedApplyWorkload(
     var i: usize = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var vt_core = try terminal.VtCore.initWithCellsAndHistory(
+        var terminal = try terminal.Terminal.initWithCellsAndHistory(
             counting.allocator(),
             rows,
             cols,
             history_capacity,
         );
-        defer vt_core.deinit();
+        defer terminal.deinit();
         counting.resetWindow();
         const start = nowNs(io);
-        vt_core.feedSlice(fixture);
-        const max_queue_depth = vt_core.queuedEventCount();
-        vt_core.apply();
+        terminal.feedSlice(fixture);
+        const max_queue_depth = terminal.queuedEventCount();
+        terminal.apply();
         const end = nowNs(io);
         observations[i] = .{
             .ns = end - start,
@@ -292,21 +292,21 @@ fn runMixedInteractiveWorkload(
     var i: usize = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var vt_core = try terminal.VtCore.initWithCellsAndHistory(
+        var terminal = try terminal.Terminal.initWithCellsAndHistory(
             counting.allocator(),
             40,
             120,
             1_000,
         );
-        defer vt_core.deinit();
+        defer terminal.deinit();
         counting.resetWindow();
         const start = nowNs(io);
         var j: usize = 0;
         var max_queue_depth: usize = 0;
         while (j < bursts_per_run) : (j += 1) {
-            vt_core.feedSlice(burst);
-            max_queue_depth = @max(max_queue_depth, vt_core.queuedEventCount());
-            vt_core.apply();
+            terminal.feedSlice(burst);
+            max_queue_depth = @max(max_queue_depth, terminal.queuedEventCount());
+            terminal.apply();
         }
         const end = nowNs(io);
         observations[i] = .{
@@ -363,20 +363,20 @@ fn runSnapshotWorkload(
     var i: usize = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var vt_core = try terminal.VtCore.initWithCellsAndHistory(
+        var terminal = try terminal.Terminal.initWithCellsAndHistory(
             counting.allocator(),
             40,
             120,
             1_000,
         );
-        defer vt_core.deinit();
-        vt_core.feedSlice(fixture);
-        vt_core.apply();
+        defer terminal.deinit();
+        terminal.feedSlice(fixture);
+        terminal.apply();
         counting.resetWindow();
         const start = nowNs(io);
         var j: usize = 0;
         while (j < snapshot_calls_per_run) : (j += 1) {
-            var snap = try vt_core.snapshot();
+            var snap = try terminal.snapshot();
             snap.deinit();
         }
         const end = nowNs(io);
@@ -438,13 +438,13 @@ fn runQueueGrowthChunkedWorkload(
     var i: usize = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var vt_core = try terminal.VtCore.initWithCellsAndHistory(
+        var terminal = try terminal.Terminal.initWithCellsAndHistory(
             counting.allocator(),
             rows,
             cols,
             history_capacity,
         );
-        defer vt_core.deinit();
+        defer terminal.deinit();
 
         counting.resetWindow();
         var offset: usize = 0;
@@ -452,11 +452,11 @@ fn runQueueGrowthChunkedWorkload(
         const start = nowNs(io);
         while (offset < fixture.len) {
             const next = @min(offset + chunk_size, fixture.len);
-            vt_core.feedSlice(fixture[offset..next]);
-            max_queue_depth = @max(max_queue_depth, vt_core.queuedEventCount());
+            terminal.feedSlice(fixture[offset..next]);
+            max_queue_depth = @max(max_queue_depth, terminal.queuedEventCount());
             offset = next;
         }
-        vt_core.apply();
+        terminal.apply();
         const end = nowNs(io);
         observations[i] = .{
             .ns = end - start,

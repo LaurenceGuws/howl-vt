@@ -22,7 +22,7 @@ const TerminalModeNs = control.Mode;
 const TerminalReportNs = control.Report;
 
 /// Host-neutral terminal state and protocol engine.
-pub const VtCore = struct {
+pub const Terminal = struct {
     pub const ApplySummary = struct {
         applied: usize,
         latest_title: ?[]const u8,
@@ -277,13 +277,13 @@ pub const VtCore = struct {
     host: HostState,
     encode: EncodeScratch = .{},
 
-    /// Initialize VtCore without cell storage.
-    pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !VtCore {
+    /// Initialize Terminal without cell storage.
+    pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
         var apply_flow = try Interpret.ApplyFlow.init(allocator);
         errdefer apply_flow.deinit();
         const state = GridNs.init(rows, cols);
         const alt_state = GridNs.init(rows, cols);
-        return VtCore{
+        return Terminal{
             .allocator = allocator,
             .apply_flow = apply_flow,
             .screen_state = ScreenState.init(state, alt_state),
@@ -292,15 +292,15 @@ pub const VtCore = struct {
         };
     }
 
-    /// Initialize VtCore with cell storage.
-    pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !VtCore {
+    /// Initialize Terminal with cell storage.
+    pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
         var apply_flow = try Interpret.ApplyFlow.init(allocator);
         errdefer apply_flow.deinit();
         var state = try GridNs.initWithCells(allocator, rows, cols);
         errdefer state.deinit(allocator);
         var alt_state = try GridNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
-        return VtCore{
+        return Terminal{
             .allocator = allocator,
             .apply_flow = apply_flow,
             .screen_state = ScreenState.init(state, alt_state),
@@ -309,15 +309,15 @@ pub const VtCore = struct {
         };
     }
 
-    /// Initialize VtCore with cell and history storage.
-    pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !VtCore {
+    /// Initialize Terminal with cell and history storage.
+    pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !Terminal {
         var apply_flow = try Interpret.ApplyFlow.init(allocator);
         errdefer apply_flow.deinit();
         var state = try GridNs.initWithCellsAndHistory(allocator, rows, cols, history_capacity);
         errdefer state.deinit(allocator);
         var alt_state = try GridNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
-        return VtCore{
+        return Terminal{
             .allocator = allocator,
             .apply_flow = apply_flow,
             .screen_state = ScreenState.init(state, alt_state),
@@ -326,8 +326,8 @@ pub const VtCore = struct {
         };
     }
 
-    /// Release VtCore resources.
-    pub fn deinit(self: *VtCore) void {
+    /// Release Terminal resources.
+    pub fn deinit(self: *Terminal) void {
         self.host.deinit(self.allocator);
         self.kitty.deinit(self.allocator);
         self.screen_state.deinit(self.allocator);
@@ -335,21 +335,21 @@ pub const VtCore = struct {
     }
 
     /// Feed one input byte into parser state.
-    pub fn feedByte(self: *VtCore, byte: u8) void {
+    pub fn feedByte(self: *Terminal, byte: u8) void {
         self.apply_flow.feedByte(byte);
     }
 
     /// Feed a byte slice into parser state.
-    pub fn feedSlice(self: *VtCore, bytes: []const u8) void {
+    pub fn feedSlice(self: *Terminal, bytes: []const u8) void {
         self.apply_flow.feedSlice(bytes);
     }
 
     /// Apply queued events to the screen state.
-    pub fn apply(self: *VtCore) void {
+    pub fn apply(self: *Terminal) void {
         _ = self.applyLimit(std.math.maxInt(usize));
     }
 
-    pub fn applyLimit(self: *VtCore, max_events: usize) ApplySummary {
+    pub fn applyLimit(self: *Terminal, max_events: usize) ApplySummary {
         if (max_events == 0) return .{ .applied = 0, .latest_title = null };
 
         const count = @min(max_events, self.apply_flow.events().len);
@@ -373,31 +373,31 @@ pub const VtCore = struct {
     }
 
     /// Clear queued events without applying.
-    pub fn clear(self: *VtCore) void {
+    pub fn clear(self: *Terminal) void {
         self.apply_flow.clear();
     }
 
-    pub fn pendingOutput(self: *const VtCore) []const u8 {
+    pub fn pendingOutput(self: *const Terminal) []const u8 {
         return self.host.pending_output.items;
     }
 
-    pub fn clearPendingOutput(self: *VtCore) void {
+    pub fn clearPendingOutput(self: *Terminal) void {
         self.host.pending_output.clearRetainingCapacity();
     }
 
-    pub fn hyperlinkUriForId(self: *const VtCore, link_id: u32) ?[]const u8 {
+    pub fn hyperlinkUriForId(self: *const Terminal, link_id: u32) ?[]const u8 {
         if (link_id == 0) return null;
         const idx = link_id - 1;
         if (idx >= self.host.hyperlink_targets.items.len) return null;
         return self.host.hyperlink_targets.items[idx];
     }
 
-    pub fn pendingClipboardSet(self: *const VtCore) ?[]const u8 {
+    pub fn pendingClipboardSet(self: *const Terminal) ?[]const u8 {
         if (self.host.pending_clipboard) |req| return req.raw;
         return null;
     }
 
-    pub fn drainPendingClipboardSet(self: *VtCore, allocator: std.mem.Allocator) !?[]u8 {
+    pub fn drainPendingClipboardSet(self: *Terminal, allocator: std.mem.Allocator) !?[]u8 {
         const pending = self.pendingClipboardSet() orelse return null;
         defer self.clearPendingClipboardSet();
         return Osc.decodeClipboardSet(allocator, pending) catch |err| switch (err) {
@@ -406,132 +406,132 @@ pub const VtCore = struct {
         };
     }
 
-    pub fn kittyClipboardMode(self: *const VtCore) bool {
+    pub fn kittyClipboardMode(self: *const Terminal) bool {
         return self.modes.kitty_clipboard;
     }
 
-    pub fn sixelDisplayMode(self: *const VtCore) bool {
+    pub fn sixelDisplayMode(self: *const Terminal) bool {
         return self.modes.sixel_display_mode;
     }
 
-    pub fn reverseWraparoundMode(self: *const VtCore) bool {
+    pub fn reverseWraparoundMode(self: *const Terminal) bool {
         return self.modes.reverse_wraparound_mode;
     }
 
-    pub fn extendedReverseWraparoundMode(self: *const VtCore) bool {
+    pub fn extendedReverseWraparoundMode(self: *const Terminal) bool {
         return self.modes.extended_reverse_wraparound_mode;
     }
 
-    pub fn mediaCopyRequest(self: *const VtCore) ?u16 {
+    pub fn mediaCopyRequest(self: *const Terminal) ?u16 {
         return self.host.media_copy_request;
     }
 
-    pub fn dcsPayloadKind(self: *const VtCore) ?Interpret.DcsPayloadKind {
+    pub fn dcsPayloadKind(self: *const Terminal) ?Interpret.DcsPayloadKind {
         if (self.host.dcs_payload) |payload| return payload.kind;
         return null;
     }
 
-    pub fn dcsPayload(self: *const VtCore) ?[]const u8 {
+    pub fn dcsPayload(self: *const Terminal) ?[]const u8 {
         if (self.host.dcs_payload) |payload| return payload.payload;
         return null;
     }
 
-    pub fn legacyControl(self: *const VtCore) ?Interpret.LegacyControlKind {
+    pub fn legacyControl(self: *const Terminal) ?Interpret.LegacyControlKind {
         return self.host.legacy_control;
     }
 
-    pub fn kittyShellMark(self: *const VtCore) KittyShellMark {
+    pub fn kittyShellMark(self: *const Terminal) KittyShellMark {
         return self.kitty.global.shell_mark;
     }
 
-    pub fn kittyNotificationCount(self: *const VtCore) usize {
+    pub fn kittyNotificationCount(self: *const Terminal) usize {
         return self.kitty.global.notifications.items.len;
     }
 
-    pub fn kittyNotificationAt(self: *const VtCore, idx: usize) ?KittyNotificationRequest {
+    pub fn kittyNotificationAt(self: *const Terminal, idx: usize) ?KittyNotificationRequest {
         if (idx >= self.kitty.global.notifications.items.len) return null;
         return self.kitty.global.notifications.items[idx];
     }
 
-    pub fn kittyFileTransferRequest(self: *const VtCore) ?[]const u8 {
+    pub fn kittyFileTransferRequest(self: *const Terminal) ?[]const u8 {
         return self.kitty.global.file_transfer_request;
     }
 
-    pub fn kittyTextSizeRequest(self: *const VtCore) ?[]const u8 {
+    pub fn kittyTextSizeRequest(self: *const Terminal) ?[]const u8 {
         return self.kitty.global.text_size_request;
     }
 
-    pub fn kittyPointerShape(self: *const VtCore) []const u8 {
+    pub fn kittyPointerShape(self: *const Terminal) []const u8 {
         return self.activeKittyScreenConst().pointer.currentName();
     }
 
-    pub fn kittyMultipleCursorCount(self: *const VtCore) u16 {
+    pub fn kittyMultipleCursorCount(self: *const Terminal) u16 {
         return self.activeKittyScreenConst().multiple_cursor_count;
     }
 
-    pub fn pointerMode(self: *const VtCore) u2 {
+    pub fn pointerMode(self: *const Terminal) u2 {
         return self.modes.pointer_mode;
     }
 
-    pub fn kittyColorStackDepth(self: *const VtCore) u16 {
+    pub fn kittyColorStackDepth(self: *const Terminal) u16 {
         return self.kitty.global.color_stack_depth;
     }
 
-    pub fn terminalColorState(self: *const VtCore) TerminalColorState {
+    pub fn terminalColorState(self: *const Terminal) TerminalColorState {
         return self.host.colors;
     }
 
-    pub fn kittyGraphicsImageCount(self: *const VtCore) usize {
+    pub fn kittyGraphicsImageCount(self: *const Terminal) usize {
         return self.kitty.global.graphics.imageCount();
     }
 
-    pub fn kittyGraphicsImageAt(self: *const VtCore, idx: usize) ?KittyGraphicsImage {
+    pub fn kittyGraphicsImageAt(self: *const Terminal, idx: usize) ?KittyGraphicsImage {
         return self.kitty.global.graphics.imageAt(idx);
     }
 
-    pub fn kittyGraphicsPlacementCount(self: *const VtCore) usize {
+    pub fn kittyGraphicsPlacementCount(self: *const Terminal) usize {
         return self.kitty.global.graphics.placementCount();
     }
 
-    pub fn kittyGraphicsPlacementAt(self: *const VtCore, idx: usize) ?KittyGraphicsPlacement {
+    pub fn kittyGraphicsPlacementAt(self: *const Terminal, idx: usize) ?KittyGraphicsPlacement {
         return self.kitty.global.graphics.placementAt(idx);
     }
 
-    pub fn kittyGraphicsFrameCount(self: *const VtCore) usize {
+    pub fn kittyGraphicsFrameCount(self: *const Terminal) usize {
         return self.kitty.global.graphics.frameCount();
     }
 
-    pub fn kittyGraphicsFrameAt(self: *const VtCore, idx: usize) ?KittyGraphicsFrame {
+    pub fn kittyGraphicsFrameAt(self: *const Terminal, idx: usize) ?KittyGraphicsFrame {
         return self.kitty.global.graphics.frameAt(idx);
     }
 
-    pub fn clearPendingClipboardSet(self: *VtCore) void {
+    pub fn clearPendingClipboardSet(self: *Terminal) void {
         if (self.host.pending_clipboard) |req| self.allocator.free(req.raw);
         self.host.pending_clipboard = null;
     }
 
     /// Reset parser state and clear queue.
-    pub fn reset(self: *VtCore) void {
+    pub fn reset(self: *Terminal) void {
         self.apply_flow.reset();
     }
 
     /// Reset visible grid state only.
-    pub fn resetScreen(self: *VtCore) void {
+    pub fn resetScreen(self: *Terminal) void {
         self.activeStateMut().reset();
     }
 
     /// Resize visible screen while preserving history ring contents.
-    pub fn resize(self: *VtCore, rows: u16, cols: u16) !void {
+    pub fn resize(self: *Terminal, rows: u16, cols: u16) !void {
         try self.screen_state.resize(self.allocator, rows, cols);
         self.selection.clearIfInvalidatedByGrid(self.activeState());
     }
 
     /// Return read-only screen state reference.
-    pub fn screen(self: *const VtCore) *const GridNs {
+    pub fn screen(self: *const Terminal) *const GridNs {
         return self.activeState();
     }
 
-    pub fn visibleView(self: *const VtCore, options: VisibleViewOptions) VisibleView {
+    pub fn visibleView(self: *const Terminal, options: VisibleViewOptions) VisibleView {
         const active = self.activeState();
         const history_count = if (self.screen_state.alt_active) 0 else active.historyCount();
         const offset = @min(options.scrollback_offset, history_count);
@@ -553,25 +553,25 @@ pub const VtCore = struct {
         };
     }
 
-    pub fn peekDirtyRows(self: *const VtCore) ?GridNs.DirtyRows {
+    pub fn peekDirtyRows(self: *const Terminal) ?GridNs.DirtyRows {
         return self.activeState().peekDirtyRows();
     }
 
-    pub fn clearDirtyRows(self: *VtCore) void {
+    pub fn clearDirtyRows(self: *Terminal) void {
         self.activeStateMut().clearDirtyRows();
     }
 
-    pub fn synchronizedOutputActive(self: *const VtCore) bool {
+    pub fn synchronizedOutputActive(self: *const Terminal) bool {
         return self.modes.synchronized_output;
     }
 
     /// Return queued event count.
-    pub fn queuedEventCount(self: *const VtCore) usize {
+    pub fn queuedEventCount(self: *const Terminal) usize {
         return self.apply_flow.len();
     }
 
     /// Return the most recent queued title-set event before apply clears the queue.
-    pub fn latestTitleSet(self: *const VtCore) ?[]const u8 {
+    pub fn latestTitleSet(self: *const Terminal) ?[]const u8 {
         var i = self.apply_flow.events().len;
         while (i > 0) {
             i -= 1;
@@ -585,58 +585,58 @@ pub const VtCore = struct {
     }
 
     /// Return history cell by recency index and column.
-    pub fn historyRowAt(self: *const VtCore, history_idx: usize, col: u16) u21 {
+    pub fn historyRowAt(self: *const Terminal, history_idx: usize, col: u16) u21 {
         if (self.screen_state.alt_active) return 0;
         return self.screen_state.primary.historyRowAt(history_idx, col);
     }
 
-    pub fn historyCellAt(self: *const VtCore, history_idx: usize, col: u16) GridNs.Cell {
+    pub fn historyCellAt(self: *const Terminal, history_idx: usize, col: u16) GridNs.Cell {
         if (self.screen_state.alt_active) return GridNs.default_cell;
         return self.screen_state.primary.historyCellAt(history_idx, col);
     }
 
     /// Return retained history row count.
-    pub fn historyCount(self: *const VtCore) usize {
+    pub fn historyCount(self: *const Terminal) usize {
         if (self.screen_state.alt_active) return 0;
         return self.screen_state.primary.historyCount();
     }
 
     /// Return configured history capacity.
-    pub fn historyCapacity(self: *const VtCore) u16 {
+    pub fn historyCapacity(self: *const Terminal) u16 {
         return self.screen_state.primary.historyCapacity();
     }
 
-    pub fn isAlternateScreen(self: *const VtCore) bool {
+    pub fn isAlternateScreen(self: *const Terminal) bool {
         return self.screen_state.alt_active;
     }
 
     /// Return active selection snapshot or null.
-    pub fn selectionState(self: *const VtCore) ?Selection.TerminalSelection {
+    pub fn selectionState(self: *const Terminal) ?Selection.TerminalSelection {
         return self.selection.state();
     }
 
     /// Start selection at row/column coordinates.
-    pub fn selectionStart(self: *VtCore, row: i32, col: u16) void {
+    pub fn selectionStart(self: *Terminal, row: i32, col: u16) void {
         self.selection.start(row, col);
     }
 
     /// Update selection end coordinates.
-    pub fn selectionUpdate(self: *VtCore, row: i32, col: u16) void {
+    pub fn selectionUpdate(self: *Terminal, row: i32, col: u16) void {
         self.selection.update(row, col);
     }
 
     /// Finish current active selection.
-    pub fn selectionFinish(self: *VtCore) void {
+    pub fn selectionFinish(self: *Terminal) void {
         self.selection.finish();
     }
 
     /// Clear current selection state.
-    pub fn selectionClear(self: *VtCore) void {
+    pub fn selectionClear(self: *Terminal) void {
         self.selection.clear();
     }
 
     /// Encode logical key and modifiers.
-    pub fn encodeKey(self: *VtCore, key: Input.Key, mod: Input.Modifier) []const u8 {
+    pub fn encodeKey(self: *Terminal, key: Input.Key, mod: Input.Modifier) []const u8 {
         if (self.modes.keyboard_action_mode) {
             self.encode.len = 0;
             return self.encode.buf[0..0];
@@ -652,36 +652,36 @@ pub const VtCore = struct {
         return encoded;
     }
 
-    pub fn kittyKeyboardFlags(self: *const VtCore) u32 {
+    pub fn kittyKeyboardFlags(self: *const Terminal) u32 {
         return self.activeKittyKeyboardFlags();
     }
 
-    pub fn isApplicationKeypad(self: *const VtCore) bool {
+    pub fn isApplicationKeypad(self: *const Terminal) bool {
         return self.modes.application_keypad;
     }
 
-    pub fn modifyOtherKeys(self: *const VtCore) i8 {
+    pub fn modifyOtherKeys(self: *const Terminal) i8 {
         return self.modes.modify_other_keys;
     }
 
-    pub fn keyFormatOption(self: *const VtCore, resource: u8) u16 {
+    pub fn keyFormatOption(self: *const Terminal, resource: u8) u16 {
         return if (self.isKeyFormatResource(resource)) self.modes.key_format[resource] else 0;
     }
 
-    pub fn isKeyFormatResource(self: *const VtCore, resource: u8) bool {
+    pub fn isKeyFormatResource(self: *const Terminal, resource: u8) bool {
         _ = self;
         return resource <= 4 or resource == 6 or resource == 7;
     }
 
     /// Encode a host mouse event for the active terminal mouse modes.
-    pub fn encodeMouse(self: *VtCore, event: Input.MouseEvent) []const u8 {
+    pub fn encodeMouse(self: *Terminal, event: Input.MouseEvent) []const u8 {
         LocatorNs.handleMouseEvent(&self.host.locator, self.allocator, &self.host.pending_output, self.encode.buf[0..], event);
         const encoded = Input.Mouse.encodeMouse(self.encode.buf[0..], event, self.modes.mouse_tracking, self.modes.mouse_protocol);
         self.encode.len = encoded.len;
         return encoded;
     }
 
-    pub fn encodeFocusIn(self: *VtCore) []const u8 {
+    pub fn encodeFocusIn(self: *Terminal) []const u8 {
         const encoded = if (self.modes.focus_reporting) "\x1b[I" else "";
         @memcpy(self.encode.buf[0..encoded.len], encoded);
         self.encode.len = encoded.len;
@@ -689,7 +689,7 @@ pub const VtCore = struct {
     }
 
     /// Encode one host input event for the active terminal modes.
-    pub fn encodeInput(self: *VtCore, allocator: std.mem.Allocator, event: Input.Event) !Input.Encoded {
+    pub fn encodeInput(self: *Terminal, allocator: std.mem.Allocator, event: Input.Event) !Input.Encoded {
         return switch (event) {
             .bytes => |bytes| .{ .bytes = bytes },
             .key => |key| .{ .bytes = self.encodeKey(key.key, key.mods) },
@@ -702,7 +702,7 @@ pub const VtCore = struct {
         };
     }
 
-    pub fn encodePaste(self: *VtCore, allocator: std.mem.Allocator, text: []const u8) !Input.Encoded {
+    pub fn encodePaste(self: *Terminal, allocator: std.mem.Allocator, text: []const u8) !Input.Encoded {
         const start = self.encodePasteStart();
         const end = self.encodePasteEnd();
         if (start.len == 0 and end.len == 0) return .{ .bytes = text };
@@ -714,33 +714,33 @@ pub const VtCore = struct {
         return .{ .allocator = allocator, .bytes = out };
     }
 
-    pub fn encodeFocusOut(self: *VtCore) []const u8 {
+    pub fn encodeFocusOut(self: *Terminal) []const u8 {
         const encoded = if (self.modes.focus_reporting) "\x1b[O" else "";
         @memcpy(self.encode.buf[0..encoded.len], encoded);
         self.encode.len = encoded.len;
         return self.encode.buf[0..encoded.len];
     }
 
-    pub fn encodePasteStart(self: *VtCore) []const u8 {
+    pub fn encodePasteStart(self: *Terminal) []const u8 {
         const encoded = if (self.modes.bracketed_paste) "\x1b[200~" else "";
         @memcpy(self.encode.buf[0..encoded.len], encoded);
         self.encode.len = encoded.len;
         return self.encode.buf[0..encoded.len];
     }
 
-    pub fn encodePasteEnd(self: *VtCore) []const u8 {
+    pub fn encodePasteEnd(self: *Terminal) []const u8 {
         const encoded = if (self.modes.bracketed_paste) "\x1b[201~" else "";
         @memcpy(self.encode.buf[0..encoded.len], encoded);
         self.encode.len = encoded.len;
         return self.encode.buf[0..encoded.len];
     }
 
-    /// Parse host key token into vt-core key constant.
+    /// Parse host key token into terminal key constant.
     pub fn parseKeyToken(name: []const u8) ?Input.Key {
         return Input.Tokens.parseKeyToken(name);
     }
 
-    /// Parse host modifier bitfield into vt-core modifier mask.
+    /// Parse host modifier bitfield into terminal modifier mask.
     pub fn parseModifierBits(mods: i32) Input.Modifier {
         return Input.Tokens.parseModifierBits(mods);
     }
@@ -754,7 +754,7 @@ pub const VtCore = struct {
 
     /// Capture visible cells, cursor, modes, history, and selection state.
     /// Parser state, queued events, and encode buffers are not included.
-    pub fn snapshot(self: *const VtCore) !Snapshot.VtCoreSnapshot {
+    pub fn snapshot(self: *const Terminal) !Snapshot.VtCoreSnapshot {
         return Snapshot.VtCoreSnapshot.captureFromScreen(
             self.allocator,
             self.activeState(),
@@ -762,35 +762,35 @@ pub const VtCore = struct {
         );
     }
 
-    fn activeState(self: *const VtCore) *const GridNs {
+    fn activeState(self: *const Terminal) *const GridNs {
         return self.screen_state.activeConst();
     }
 
-    fn activeStateMut(self: *VtCore) *GridNs {
+    fn activeStateMut(self: *Terminal) *GridNs {
         return self.screen_state.active();
     }
 
-    fn activeKittyKeyboard(self: *VtCore) *KittyKeyboardStack {
+    fn activeKittyKeyboard(self: *Terminal) *KittyKeyboardStack {
         return &self.activeKittyScreen().keyboard;
     }
 
-    fn activeKittyKeyboardConst(self: *const VtCore) *const KittyKeyboardStack {
+    fn activeKittyKeyboardConst(self: *const Terminal) *const KittyKeyboardStack {
         return &self.activeKittyScreenConst().keyboard;
     }
 
-    fn activeKittyKeyboardFlags(self: *const VtCore) u32 {
+    fn activeKittyKeyboardFlags(self: *const Terminal) u32 {
         return self.activeKittyKeyboardConst().flags;
     }
 
-    fn activeKittyScreen(self: *VtCore) *KittyScreenState {
+    fn activeKittyScreen(self: *Terminal) *KittyScreenState {
         return self.kitty.activeScreen(self.screen_state.alt_active);
     }
 
-    fn activeKittyScreenConst(self: *const VtCore) *const KittyScreenState {
+    fn activeKittyScreenConst(self: *const Terminal) *const KittyScreenState {
         return self.kitty.activeScreenConst(self.screen_state.alt_active);
     }
 
-    fn applySemantic(self: *VtCore, sem_ev: Interpret.SemanticEvent) void {
+    fn applySemantic(self: *Terminal, sem_ev: Interpret.SemanticEvent) void {
         if (Interpret.reportAction(sem_ev)) |action| {
             TerminalReportNs.apply(self, action);
             return;
@@ -811,8 +811,8 @@ pub const VtCore = struct {
     }
 };
 
-test "vt core tracks synchronized output private mode" {
-    var vt = try VtCore.init(std.testing.allocator, 2, 8);
+test "terminal tracks synchronized output private mode" {
+    var vt = try Terminal.init(std.testing.allocator, 2, 8);
     defer vt.deinit();
 
     vt.feedSlice("\x1b[?2026h");
@@ -824,8 +824,8 @@ test "vt core tracks synchronized output private mode" {
     try std.testing.expect(!vt.synchronizedOutputActive());
 }
 
-test "vt core visible view projects scrollback rows" {
-    var vt = try VtCore.initWithCellsAndHistory(std.testing.allocator, 2, 2, 4);
+test "terminal visible view projects scrollback rows" {
+    var vt = try Terminal.initWithCellsAndHistory(std.testing.allocator, 2, 2, 4);
     defer vt.deinit();
 
     vt.feedSlice("aa\r\nbb\r\ncc");
@@ -846,12 +846,12 @@ test "vt core visible view projects scrollback rows" {
 
 test {
     _ = @import("test/apply_flow_regression.zig");
-    _ = @import("test/vt_core_graphics.zig");
-    _ = @import("test/vt_core_modes_reports.zig");
-    _ = @import("test/vt_core_osc_colors.zig");
-    _ = @import("test/vt_core_surface.zig");
+    _ = @import("test/terminal_graphics.zig");
+    _ = @import("test/terminal_modes_reports.zig");
+    _ = @import("test/terminal_osc_colors.zig");
+    _ = @import("test/terminal_surface.zig");
     _ = @import("test/screen_state_behavior.zig");
     _ = @import("test/action_mapping.zig");
     _ = @import("test/snapshot_regression.zig");
-    _ = @import("test/vt_core_end_to_end.zig");
+    _ = @import("test/terminal_end_to_end.zig");
 }

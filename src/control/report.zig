@@ -12,7 +12,7 @@ const LocatorNs = locator;
 const ReportAction = Interpret.ReportAction;
 const TerminalModeNs = mode_mod;
 
-const xtversion_text = "howl-vt-core dev";
+const xtversion_text = "howl-vt dev";
 
 pub const CursorReportView = struct {
     rows: u16,

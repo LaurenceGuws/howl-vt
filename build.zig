@@ -10,45 +10,47 @@ pub fn build(b: *std.Build) void {
     const perf_optimize: std.builtin.OptimizeMode = .ReleaseFast;
     const module_options = b.addOptions();
     module_options.addOption(bool, "c_abi", false);
-    module_options.addOption(bool, "vt_core", true);
+    module_options.addOption(bool, "howl_vt", true);
     const perf_options = b.addOptions();
     perf_options.addOption(bool, "c_abi", false);
-    perf_options.addOption(bool, "vt_core", true);
+    perf_options.addOption(bool, "howl_vt", true);
     const ffi_options = b.addOptions();
     ffi_options.addOption(bool, "c_abi", true);
-    ffi_options.addOption(bool, "vt_core", true);
-    const mod = b.addModule("vt_core", .{
+    ffi_options.addOption(bool, "howl_vt", true);
+    const mod = b.addModule("howl_vt", .{
         .root_source_file = b.path("src/howl_vt.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
     mod.addOptions("vt_options", module_options);
-    mod.addImport("vt_core", mod);
+    mod.addImport("howl_vt", mod);
     const fuzz_scrollback_mod = b.createModule(.{
         .root_source_file = b.path("src/fuzz/scrollback.zig"),
         .target = target,
         .optimize = optimize,
     });
-    fuzz_scrollback_mod.addImport("vt_core", mod);
-    const perf_mod = b.addModule("vt_core_perf", .{
+    fuzz_scrollback_mod.addImport("howl_vt", mod);
+    const perf_mod = b.addModule("howl_vt_perf", .{
         .root_source_file = b.path("src/howl_vt.zig"),
         .target = target,
         .optimize = perf_optimize,
     });
     perf_mod.addOptions("vt_options", perf_options);
-    perf_mod.addImport("vt_core", perf_mod);
+    perf_mod.addImport("howl_vt", perf_mod);
     const perf_fuzz_scrollback_mod = b.createModule(.{
         .root_source_file = b.path("src/fuzz/scrollback.zig"),
         .target = target,
         .optimize = perf_optimize,
     });
-    perf_fuzz_scrollback_mod.addImport("vt_core", perf_mod);
+    perf_fuzz_scrollback_mod.addImport("howl_vt", perf_mod);
 
     const mod_tests = b.addTest(.{
         .name = "test-unit",
         .root_module = mod,
         .filters = b.args orelse &.{},
     });
+    mod_tests.use_llvm = true;
     const run_mod_tests = b.addRunArtifact(mod_tests);
     if (b.args != null) {
         run_mod_tests.has_side_effects = true;
@@ -65,15 +67,16 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/howl_vt.zig"),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
     ffi_mod.addOptions("vt_options", ffi_options);
-    ffi_mod.addImport("vt_core", ffi_mod);
+    ffi_mod.addImport("howl_vt", ffi_mod);
     const ffi_lib = b.addLibrary(.{
-        .name = "vt_core",
+        .name = "howl_vt",
         .linkage = .dynamic,
         .root_module = ffi_mod,
     });
-    const ffi_build_step = b.step("ffi:build", "Build the howl-vt-core C FFI library");
+    const ffi_build_step = b.step("ffi:build", "Build the howl-vt C FFI library");
     ffi_build_step.dependOn(&b.addInstallArtifact(ffi_lib, .{}).step);
     b.installArtifact(ffi_lib);
     b.installFile("include/howl_vt.h", "include/howl_vt.h");
@@ -90,6 +93,7 @@ pub fn build(b: *std.Build) void {
         .root_module = regression_mod,
         .filters = b.args orelse &.{},
     });
+    regression_tests.use_llvm = true;
     const run_regression_tests = b.addRunArtifact(regression_tests);
     if (b.args != null) {
         run_regression_tests.has_side_effects = true;
@@ -105,10 +109,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    fuzz_module.addImport("vt_core", mod);
+    fuzz_module.addImport("howl_vt", mod);
 
     const fuzz_exe = b.addExecutable(.{
-        .name = "vt_core_fuzz",
+        .name = "howl_vt_fuzz",
         .root_module = fuzz_module,
     });
     const fuzz_step = b.step("fuzz", "Run fuzzers");
@@ -119,17 +123,17 @@ pub fn build(b: *std.Build) void {
     fuzz_step.dependOn(&run_fuzz.step);
 
     const baseline_mod = b.createModule(.{
-        .root_source_file = b.path("src/test/vt_core_benchmark.zig"),
+        .root_source_file = b.path("src/test/terminal_benchmark.zig"),
         .target = target,
         .optimize = perf_optimize,
     });
-    baseline_mod.addImport("vt_core", perf_mod);
+    baseline_mod.addImport("howl_vt", perf_mod);
     const baseline_exe = b.addExecutable(.{
         .name = "m7_baseline",
         .root_module = baseline_mod,
     });
     const run_baseline = b.addRunArtifact(baseline_exe);
     if (b.args) |args| run_baseline.addArgs(args);
-    const baseline_step = b.step("vt-core-benchmark", "Run vt-core benchmark suite");
+    const baseline_step = b.step("terminal-benchmark", "Run terminal benchmark suite");
     baseline_step.dependOn(&run_baseline.step);
 }

@@ -1,7 +1,7 @@
 # Protocol Matrix
 
 ## Goal
-Drive `howl-vt-core` toward explicit xterm baseline parity and staged kitty protocol adoption.
+Drive `howl-vt` toward explicit xterm baseline parity and staged kitty protocol adoption.
 
 `protocol_coverage.db` is the source of truth for protocol maturity work in this repo.
 This file is a human summary of that ledger.
@@ -158,24 +158,24 @@ Maintain these invariants while implementing:
 | Visual metadata: underlines, pointer mode/shapes, notifications, multiple cursors | partial | Kitty underline SGR styles/colors, OSC 22 pointer-shape stacks/queries, OSC 9/99 notification request queueing, xterm `pointerMode`, and kitty multiple-cursor support/empty query/clear controls have host-neutral state or replies. Full extra-cursor placement/color storage and desktop/host UI effects remain open database work. |
 | Modern kitty host protocols: clipboard 5522, file transfer, text sizing, unscroll | partial | Kitty clipboard mode/query and OSC 5522 payload capture are implemented. OSC 5113 file-transfer and OSC 66 text-sizing payloads are retained host-neutrally. CSI `+ T` unscroll is parsed into scroll-down behavior. Full host clipboard/file integration, text-size rendering, and scrollback-restoring unscroll remain broader implementation work. |
 | ESC single-byte control finals | partial | Parser events preserve ESC finals; DEC save/restore cursor (`ESC 7`/`ESC 8`) is implemented, broader ESC-final semantics remain unsupported. |
-| VT52/Tektronix legacy controls | deferred | VT52 cursor/erase aliases and Tektronix plot controls are intentionally outside normal ANSI/VT100 core parity until explicit VT52/Tektronix mode ownership exists. |
+| VT52/Tektronix legacy controls | deferred | VT52 cursor/erase aliases and Tektronix plot controls are intentionally outside normal ANSI/VT100 terminal parity until explicit VT52/Tektronix mode ownership exists. |
 | Charset designation: `ESC (`, `ESC )`, DEC Special Graphics select | partial | Parser tracks G0/G1 designation and DEC Special Graphics maps through visible cells. Broader charset families remain unsupported. |
 | Shift in/out charset use: `SI`, `SO` | partial | G0/G1 GL switching is wired for the supported charset set, including DEC Special Graphics. |
 | OSC transport | partial | Parser transports OSC with BEL/ST terminators and parser events now preserve typed OSC command/payload records, including command-only OSC forms such as kitty color stack push/pop. Action/host handling is still narrow. |
 | OSC window title/icon title | partial | Parser-event handling recognizes title OSC selectors and `latestTitleSet()` exposes them, but no broader host callback surface exists yet. |
-| OSC 8 hyperlinks | partial | OSC 8 drives stable `link_id` cell metadata, `VtCore` URI lookup, render surface propagation, and Linux-host `Ctrl+left click` opening behind explicit policy. Hover polish remains pending. |
+| OSC 8 hyperlinks | partial | OSC 8 drives stable `link_id` cell metadata, `Terminal` URI lookup, render surface propagation, and Linux-host `Ctrl+left click` opening behind explicit policy. Hover polish remains pending. |
 | OSC 52 clipboard | partial | OSC 52 surfaces pending clipboard requests and Linux-host applies explicit allow/deny policy. Queries and broader selector behavior remain unsupported. |
-| OSC color queries/setters (`4`, `10`, `11`, `12`, etc.) | partial | VT-core tracks terminal foreground/background/cursor colors and a 256-color palette. Xterm `OSC 4`, `10`, `11`, `12`, `104`, `110`, `111`, and `112` set/query/reset state. Render/host consumption and the broader xterm dynamic-color family remain pending. |
+| OSC color queries/setters (`4`, `10`, `11`, `12`, etc.) | partial | terminal tracks terminal foreground/background/cursor colors and a 256-color palette. Xterm `OSC 4`, `10`, `11`, `12`, `104`, `110`, `111`, and `112` set/query/reset state. Render/host consumption and the broader xterm dynamic-color family remain pending. |
 | DCS transport | partial | Parser events preserve DCS payloads now; action mapping and host integration are still narrow. |
 | APC transport | partial | Parser events preserve APC payloads now; kitty graphics action mapping is partially implemented, but general APC host integration is still absent. |
 | Kitty colored/styled underlines | supported | CSI subparameter separators are preserved; `SGR 4:0..5`, `58`, and `59` propagate through VT state and text-scene decoration rendering. |
 | Kitty keyboard protocol | partial | Negotiation/query/push/pop for progressive flags is implemented with separate main/alternate stacks, and the current host non-text key surface emits Kitty CSI-u/functional forms when flags are active. Text-associated, alternate-key, repeat, and release reporting need richer host events. |
-| Kitty graphics protocol | partial | APC `_G` command parsing exists for core control keys, `a=q` gets an immediate conservative unsupported reply, direct `t=d` base64 uploads are assembled/stored across chunks, image ids replace prior data, image numbers allocate terminal-owned ids, placements/animation frames are tracked as metadata, and delete selectors cover ids, placement ids, cell/row/column/z intersections, ranges, and frames. Pixel decoding and render plumbing remain unsupported. |
+| Kitty graphics protocol | partial | APC `_G` command parsing exists for terminal control keys, `a=q` gets an immediate conservative unsupported reply, direct `t=d` base64 uploads are assembled/stored across chunks, image ids replace prior data, image numbers allocate terminal-owned ids, placements/animation frames are tracked as metadata, and delete selectors cover ids, placement ids, cell/row/column/z intersections, ranges, and frames. Pixel decoding and render plumbing remain unsupported. |
 | Kitty shell integration marks | partial | OSC 133 prompt/command/output marks are parsed and latest mark metadata/status is retained host-neutrally. Prompt scrollback navigation and shell integration host behavior remain pending. |
 | Kitty desktop notifications | partial | OSC 99 metadata/payload notifications are queued as host-neutral requests. Desktop display, activation/close callbacks, icon/button/sound handling, and alive polling remain pending. |
 | Kitty pointer shapes | partial | OSC 22 set/push/pop/query is parsed with separate main/alternate pointer stacks and support/current replies. Applying the shape in host UI remains unverified. |
-| Kitty OSC 21 color control | partial | `foreground`, `background`, `cursor`, `cursor_text`, selection colors, and `0..255` palette keys support set/query/reset in VT-core. Render/host consumption remains pending. |
-| Kitty color stack | partial | OSC 30001/30101 now snapshot and restore VT-core terminal color state, including dynamic colors and the ANSI palette. Render/host consumption remains pending. |
+| Kitty OSC 21 color control | partial | `foreground`, `background`, `cursor`, `cursor_text`, selection colors, and `0..255` palette keys support set/query/reset in VT terminal. Render/host consumption remains pending. |
+| Kitty color stack | partial | OSC 30001/30101 now snapshot and restore VT terminal terminal color state, including dynamic colors and the ANSI palette. Render/host consumption remains pending. |
 | Bracketed paste mode (`?2004`) | supported | Mode tracking, host paste routing, and paste wrapper emission are wired through `howl-term` and Linux-host. |
 | Focus in/out (`?1004`) | supported | Mode tracking, effective host focus routing, and focus report emission are wired through `howl-term` and Linux-host. |
 | Mouse tracking (`9/1000/1002/1003/1005/1006/1015`) | supported | X10, normal, button-event, and any-event tracking modes are distinct; legacy, UTF-8 extended, SGR, and urxvt encodings cover press/release/wheel/motion gating with modifiers and DECRQM/save/restore coverage. Host runtime verification is still broader than unit coverage. |

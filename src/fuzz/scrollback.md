@@ -1,4 +1,4 @@
-# Howl VT-Core Scrollback Fuzz Plan
+# Howl VT Terminal Scrollback Fuzz Plan
 
 ## Goal
 Prove that `resize + scroll(viewport) + zoom` cannot silently corrupt scrollback state.
@@ -39,7 +39,7 @@ Run high-frequency randomized operations for a fixed wall time per seed:
 ## Zoom Model
 Zoom is mandatory in this suite.
 
-At vt-core level, zoom is modeled as deterministic grid-density transitions that induce aggressive resize churn:
+At terminal level, zoom is modeled as deterministic grid-density transitions that induce aggressive resize churn:
 - width-dominant shrink/grow cycles,
 - height-dominant shrink/grow cycles,
 - oscillating in/out sequences,

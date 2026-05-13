@@ -1,4 +1,4 @@
-//! vt-core fuzz executable entrypoint.
+//! terminal fuzz executable entrypoint.
 
 const std = @import("std");
 const protocol = @import("protocol.zig");

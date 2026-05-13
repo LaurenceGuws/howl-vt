@@ -3,7 +3,7 @@
 const std = @import("std");
 const grid = @import("../grid.zig");
 const interpret = @import("../interpret.zig");
-const vt_mod = @import("vt_core");
+const vt_mod = @import("howl_vt");
 
 const Grid = grid.Grid;
 const Interpret = interpret;
@@ -1612,18 +1612,18 @@ test "zero-dim: tab commands remain safe across all zero-dimension variants" {
 
 test "feed/apply: clear leaves snapshot unchanged" {
     const gpa = std.testing.allocator;
-    var vt_core = try vt_mod.VtCore.initWithCells(gpa, 5, 10);
-    defer vt_core.deinit();
+    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    defer terminal.deinit();
 
-    vt_core.feedSlice("ABC");
-    vt_core.apply();
-    var snap_before = try vt_core.snapshot();
+    terminal.feedSlice("ABC");
+    terminal.apply();
+    var snap_before = try terminal.snapshot();
     defer snap_before.deinit();
 
-    vt_core.feedSlice("\x1b[H");
-    vt_core.clear();
+    terminal.feedSlice("\x1b[H");
+    terminal.clear();
 
-    var snap_after = try vt_core.snapshot();
+    var snap_after = try terminal.snapshot();
     defer snap_after.deinit();
 
     try std.testing.expectEqual(snap_before.cursor_col, snap_after.cursor_col);
@@ -1632,18 +1632,18 @@ test "feed/apply: clear leaves snapshot unchanged" {
 
 test "feed/apply: reset preserves snapshot state" {
     const gpa = std.testing.allocator;
-    var vt_core = try vt_mod.VtCore.initWithCells(gpa, 5, 10);
-    defer vt_core.deinit();
+    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    defer terminal.deinit();
 
-    vt_core.feedSlice("HELLO");
-    vt_core.apply();
-    var snap_before = try vt_core.snapshot();
+    terminal.feedSlice("HELLO");
+    terminal.apply();
+    var snap_before = try terminal.snapshot();
     defer snap_before.deinit();
 
-    vt_core.feedSlice("\x1b[H");
-    vt_core.reset();
+    terminal.feedSlice("\x1b[H");
+    terminal.reset();
 
-    var snap_after = try vt_core.snapshot();
+    var snap_after = try terminal.snapshot();
     defer snap_after.deinit();
 
     try std.testing.expectEqual(snap_before.cursor_col, snap_after.cursor_col);
@@ -1656,19 +1656,19 @@ test "feed/apply: reset preserves snapshot state" {
 
 test "feed/apply: resetScreen clears cells while preserving history" {
     const gpa = std.testing.allocator;
-    var vt_core = try vt_mod.VtCore.initWithCellsAndHistory(gpa, 3, 5, 10);
-    defer vt_core.deinit();
+    var terminal = try vt_mod.Terminal.initWithCellsAndHistory(gpa, 3, 5, 10);
+    defer terminal.deinit();
 
-    vt_core.feedSlice("LINE1\nLINE2\nLINE3\nLINE4");
-    vt_core.apply();
-    const hist_before = vt_core.historyCount();
+    terminal.feedSlice("LINE1\nLINE2\nLINE3\nLINE4");
+    terminal.apply();
+    const hist_before = terminal.historyCount();
 
-    var snap_before = try vt_core.snapshot();
+    var snap_before = try terminal.snapshot();
     defer snap_before.deinit();
 
-    vt_core.resetScreen();
+    terminal.resetScreen();
 
-    var snap_after = try vt_core.snapshot();
+    var snap_after = try terminal.snapshot();
     defer snap_after.deinit();
 
     try std.testing.expectEqual(@as(u16, 0), snap_after.cursor_row);
@@ -1685,7 +1685,7 @@ test "feed/apply: resetScreen clears cells while preserving history" {
 test "feed/apply: snapshot determinism across feed sequence variations" {
     const gpa = std.testing.allocator;
 
-    var vt_core1 = try vt_mod.VtCore.initWithCells(gpa, 10, 20);
+    var vt_core1 = try vt_mod.Terminal.initWithCells(gpa, 10, 20);
     defer vt_core1.deinit();
     vt_core1.feedSlice("\x1b[2J");
     vt_core1.feedSlice("Line1\nLine2");
@@ -1693,7 +1693,7 @@ test "feed/apply: snapshot determinism across feed sequence variations" {
     var snap1 = try vt_core1.snapshot();
     defer snap1.deinit();
 
-    var vt_core2 = try vt_mod.VtCore.initWithCells(gpa, 10, 20);
+    var vt_core2 = try vt_mod.Terminal.initWithCells(gpa, 10, 20);
     defer vt_core2.deinit();
     vt_core2.feedByte('\x1b');
     vt_core2.feedByte('[');
@@ -1716,41 +1716,41 @@ test "feed/apply: snapshot determinism across feed sequence variations" {
 
 test "feed/apply: snapshot reflects mode changes" {
     const gpa = std.testing.allocator;
-    var vt_core = try vt_mod.VtCore.initWithCells(gpa, 5, 10);
-    defer vt_core.deinit();
+    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    defer terminal.deinit();
 
-    vt_core.feedSlice("TEST");
-    vt_core.apply();
-    var snap1 = try vt_core.snapshot();
+    terminal.feedSlice("TEST");
+    terminal.apply();
+    var snap1 = try terminal.snapshot();
     defer snap1.deinit();
     try std.testing.expectEqual(true, snap1.cursor_visible);
 
-    vt_core.feedSlice("\x1b[?25l");
-    vt_core.apply();
-    var snap2 = try vt_core.snapshot();
+    terminal.feedSlice("\x1b[?25l");
+    terminal.apply();
+    var snap2 = try terminal.snapshot();
     defer snap2.deinit();
     try std.testing.expectEqual(false, snap2.cursor_visible);
 
-    vt_core.feedSlice("\x1b[?25h");
-    vt_core.apply();
-    var snap3 = try vt_core.snapshot();
+    terminal.feedSlice("\x1b[?25h");
+    terminal.apply();
+    var snap3 = try terminal.snapshot();
     defer snap3.deinit();
     try std.testing.expectEqual(true, snap3.cursor_visible);
 }
 
 test "feed/apply: snapshot includes active selection endpoints" {
     const gpa = std.testing.allocator;
-    var vt_core = try vt_mod.VtCore.initWithCells(gpa, 5, 10);
-    defer vt_core.deinit();
+    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    defer terminal.deinit();
 
-    vt_core.feedSlice("0123456789");
-    vt_core.apply();
+    terminal.feedSlice("0123456789");
+    terminal.apply();
 
-    vt_core.selectionStart(0, 2);
-    vt_core.selectionUpdate(0, 7);
-    vt_core.selectionFinish();
+    terminal.selectionStart(0, 2);
+    terminal.selectionUpdate(0, 7);
+    terminal.selectionFinish();
 
-    var snap = try vt_core.snapshot();
+    var snap = try terminal.snapshot();
     defer snap.deinit();
 
     try std.testing.expectEqual(true, snap.selection != null);
@@ -1775,12 +1775,12 @@ test "feed/apply: snapshot parity across direct apply flow" {
     flow.feedSlice(test_bytes);
     flow.applyToScreen(&screen);
 
-    var vt_core = try vt_mod.VtCore.initWithCells(gpa, 5, 10);
-    defer vt_core.deinit();
-    vt_core.feedSlice(test_bytes);
-    vt_core.apply();
+    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    defer terminal.deinit();
+    terminal.feedSlice(test_bytes);
+    terminal.apply();
 
-    var snap = try vt_core.snapshot();
+    var snap = try terminal.snapshot();
     defer snap.deinit();
 
     try std.testing.expectEqual(screen.cursor_row, snap.cursor_row);
@@ -1798,13 +1798,13 @@ test "feed/apply: snapshot parity across direct apply flow" {
 
 test "feed/apply: snapshot wraparound history indices after eviction" {
     const gpa = std.testing.allocator;
-    var vt_core = try vt_mod.VtCore.initWithCellsAndHistory(gpa, 2, 5, 3);
-    defer vt_core.deinit();
+    var terminal = try vt_mod.Terminal.initWithCellsAndHistory(gpa, 2, 5, 3);
+    defer terminal.deinit();
 
-    vt_core.feedSlice("A\r\nB\r\nC\r\nD\r\nE");
-    vt_core.apply();
+    terminal.feedSlice("A\r\nB\r\nC\r\nD\r\nE");
+    terminal.apply();
 
-    var snap = try vt_core.snapshot();
+    var snap = try terminal.snapshot();
     defer snap.deinit();
 
     try std.testing.expectEqual(@as(u16, 3), snap.history_capacity);
@@ -1821,7 +1821,7 @@ test "feed/apply: snapshot wraparound history indices after eviction" {
     while (row < snap.history_count) : (row += 1) {
         var col: u16 = 0;
         while (col < snap.cols) : (col += 1) {
-            try std.testing.expectEqual(vt_core.historyRowAt(row, col), snap.historyRowAt(row, col));
+            try std.testing.expectEqual(terminal.historyRowAt(row, col), snap.historyRowAt(row, col));
         }
     }
 }

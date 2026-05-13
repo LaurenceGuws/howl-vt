@@ -1,7 +1,7 @@
 //! Protocol/parser fuzz scenarios.
 
 const std = @import("std");
-const vt = @import("vt_core");
+const vt = @import("howl_vt");
 const Parser = vt.Parser;
 const Sink = Parser.Sink;
 const OscTerminator = Parser.OscTerminator;
@@ -203,7 +203,7 @@ pub fn runDeterminism(gpa: std.mem.Allocator, seed: u64, options: Options) !void
 
         try buildCase(gpa, &bytes, rand, options.ops_per_case);
         try assertParserDeterminism(gpa, seed, case_index, bytes.items, rand, options.max_chunk_len);
-        try assertCoreDeterminism(gpa, seed, case_index, bytes.items, rand, options.max_chunk_len);
+        try assertTerminalDeterminism(gpa, seed, case_index, bytes.items, rand, options.max_chunk_len);
     }
 }
 
@@ -259,7 +259,7 @@ fn assertParserDeterminism(
     }
 }
 
-fn assertCoreDeterminism(
+fn assertTerminalDeterminism(
     gpa: std.mem.Allocator,
     seed: u64,
     case_index: usize,
@@ -267,12 +267,12 @@ fn assertCoreDeterminism(
     rand: std.Random,
     max_chunk_len: usize,
 ) !void {
-    const whole = try runCore(gpa, bytes, .whole_slice, rand, max_chunk_len);
-    const bytewise = try runCore(gpa, bytes, .bytewise, rand, max_chunk_len);
-    const chunked = try runCore(gpa, bytes, .chunked, rand, max_chunk_len);
+    const whole = try runTerminal(gpa, bytes, .whole_slice, rand, max_chunk_len);
+    const bytewise = try runTerminal(gpa, bytes, .bytewise, rand, max_chunk_len);
+    const chunked = try runTerminal(gpa, bytes, .chunked, rand, max_chunk_len);
 
     if (!std.meta.eql(whole, bytewise) or !std.meta.eql(whole, chunked)) {
-        std.log.err("protocol core mismatch seed={} case={} bytes={} whole_hash={} bytewise_hash={} chunked_hash={}", .{
+        std.log.err("protocol terminal mismatch seed={} case={} bytes={} whole_hash={} bytewise_hash={} chunked_hash={}", .{
             seed,
             case_index,
             bytes.len,
@@ -280,7 +280,7 @@ fn assertCoreDeterminism(
             bytewise.hash,
             chunked.hash,
         });
-        return error.CoreDeterminismMismatch;
+        return error.TerminalDeterminismMismatch;
     }
 }
 
@@ -301,19 +301,19 @@ fn runParser(
     return harness;
 }
 
-fn runCore(
+fn runTerminal(
     gpa: std.mem.Allocator,
     bytes: []const u8,
     mode: FeedMode,
     rand: std.Random,
     max_chunk_len: usize,
 ) !VtDigest {
-    var core = try vt.VtCore.initWithCellsAndHistory(gpa, 24, 80, 256);
-    defer core.deinit();
+    var terminal = try vt.Terminal.initWithCellsAndHistory(gpa, 24, 80, 256);
+    defer terminal.deinit();
 
-    feedBytesToCore(&core, bytes, mode, rand, max_chunk_len);
-    core.apply();
-    return digestCore(&core);
+    feedBytesToTerminal(&terminal, bytes, mode, rand, max_chunk_len);
+    terminal.apply();
+    return digestTerminal(&terminal);
 }
 
 fn feedBytesToParser(parser: *Parser, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
@@ -332,25 +332,25 @@ fn feedBytesToParser(parser: *Parser, bytes: []const u8, mode: FeedMode, rand: s
     }
 }
 
-fn feedBytesToCore(core: *vt.VtCore, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
+fn feedBytesToTerminal(terminal: *vt.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
     switch (mode) {
-        .whole_slice => core.feedSlice(bytes),
-        .bytewise => for (bytes) |byte| core.feedByte(byte),
+        .whole_slice => terminal.feedSlice(bytes),
+        .bytewise => for (bytes) |byte| terminal.feedByte(byte),
         .chunked => {
             var offset: usize = 0;
             while (offset < bytes.len) {
                 const remaining = bytes.len - offset;
                 const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
-                core.feedSlice(bytes[offset..][0..chunk_len]);
+                terminal.feedSlice(bytes[offset..][0..chunk_len]);
                 offset += chunk_len;
             }
         },
     }
 }
 
-fn digestCore(core: *const vt.VtCore) VtDigest {
+fn digestTerminal(terminal: *const vt.Terminal) VtDigest {
     var hasher = std.hash.Wyhash.init(0);
-    const view = core.visibleView(.{});
+    const view = terminal.visibleView(.{});
 
     hashValue(&hasher, view.rows);
     hashValue(&hasher, view.cols);
@@ -368,13 +368,13 @@ fn digestCore(core: *const vt.VtCore) VtDigest {
         }
     }
 
-    const history_count = core.historyCount();
+    const history_count = terminal.historyCount();
     hashValue(&hasher, history_count);
     var history_idx: usize = 0;
     while (history_idx < history_count) : (history_idx += 1) {
         var col: u16 = 0;
         while (col < view.cols) : (col += 1) {
-            hashCell(&hasher, core.historyCellAt(history_idx, col));
+            hashCell(&hasher, terminal.historyCellAt(history_idx, col));
         }
     }
 

@@ -1,4 +1,6 @@
-//! Public howl-vt-core package surface.
+//! Responsibility: define the howl-vt root used for the C ABI and internal build wiring.
+//! Ownership: C ABI export root and internal root-module assembly.
+//! Reason: keep the public contract C-first while Zig internals remain free to change.
 
 const lib = @This();
 const std = @import("std");
@@ -12,7 +14,7 @@ pub const Grid = vt.Grid;
 pub const Parser = vt.Parser;
 pub const Snapshot = vt.Snapshot;
 pub const Selection = vt.Selection;
-pub const VtCore = vt.VtCore;
+pub const Terminal = vt.Terminal;
 
 comptime {
     if (@import("root") == lib) {
@@ -60,6 +62,23 @@ comptime {
         @export(&ffi.mouseMove, .{ .name = "howl_vt_mouse_move" });
         @export(&ffi.mouseWheel, .{ .name = "howl_vt_mouse_wheel" });
         @export(&ffi.mouseEventKindIsValid, .{ .name = "howl_vt_mouse_event_kind_is_valid" });
+        @export(&ffi.terminalInit, .{ .name = "howl_vt_terminal_init" });
+        @export(&ffi.terminalDeinit, .{ .name = "howl_vt_terminal_deinit" });
+        @export(&ffi.terminalFeed, .{ .name = "howl_vt_terminal_feed" });
+        @export(&ffi.terminalQueuedEventCount, .{ .name = "howl_vt_terminal_queued_event_count" });
+        @export(&ffi.terminalApply, .{ .name = "howl_vt_terminal_apply" });
+        @export(&ffi.terminalResize, .{ .name = "howl_vt_terminal_resize" });
+        @export(&ffi.terminalHistoryCount, .{ .name = "howl_vt_terminal_history_count" });
+        @export(&ffi.terminalIsAlternateScreen, .{ .name = "howl_vt_terminal_is_alternate_screen" });
+        @export(&ffi.terminalClearDirtyRows, .{ .name = "howl_vt_terminal_clear_dirty_rows" });
+        @export(&ffi.terminalCopyVisible, .{ .name = "howl_vt_terminal_copy_visible" });
+        @export(&ffi.terminalCopyPendingOutput, .{ .name = "howl_vt_terminal_copy_pending_output" });
+        @export(&ffi.terminalClearPendingOutput, .{ .name = "howl_vt_terminal_clear_pending_output" });
+        @export(&ffi.terminalDrainPendingClipboard, .{ .name = "howl_vt_terminal_drain_pending_clipboard" });
+        @export(&ffi.terminalEncodeKey, .{ .name = "howl_vt_terminal_encode_key" });
+        @export(&ffi.terminalEncodeFocus, .{ .name = "howl_vt_terminal_encode_focus" });
+        @export(&ffi.terminalEncodeMouse, .{ .name = "howl_vt_terminal_encode_mouse" });
+        @export(&ffi.terminalEncodePaste, .{ .name = "howl_vt_terminal_encode_paste" });
     }
 }
 

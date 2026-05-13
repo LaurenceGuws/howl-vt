@@ -1,9 +1,9 @@
 .{
-    .name = .vt_core,
+    .name = .howl_vt,
 
     .version = "0.0.0",
 
-    .fingerprint = 0x72ed77f14813384d,
+    .fingerprint = 0xaf7816cfd19f37da,
 
     .minimum_zig_version = "0.16.0",
 
