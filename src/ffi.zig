@@ -1,6 +1,3 @@
-//! Responsibility: implement the howl-vt native ABI surface.
-//! Ownership: VT terminal handles, host-facing runtime state, visible cells, and input vocabulary.
-//! Reason: keep hosts on a C ABI seam instead of Zig owner imports.
 
 const std = @import("std");
 const grid = @import("grid.zig");
