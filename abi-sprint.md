@@ -31,8 +31,11 @@ Target outcome:
   - repo-local terminal convenience getters that duplicated `visibleView` and `applyLimit` are removed
   - repo-local token parsing no longer hangs off `Terminal`
   - repo-local input namespace-bag posture is removed
-- next active smell for checkpoint 5:
-  - prove the Linux host still builds and runs on the owned VT path after the full cleanup sequence
+- checkpoint 5 is closed:
+  - Linux host builds on the cleaned VT ABI path
+  - Linux host runs on the owned VT path
+  - no stale host assumption about deleted VT symbols or old handle posture survived proof
+- no remaining ABI-sprint smells are open in `howl-vt`
 
 ## Baseline
 
@@ -122,6 +125,15 @@ Must do:
 - update `howl-linux-host` to the cleaned VT ABI as needed
 - remove stale host assumptions about deleted symbols
 - prove the host still builds and runs on the owned path
+
+## Closure
+
+This ABI sprint is closed when all five checkpoints above are accepted.
+
+Current closure state:
+
+- closed through Checkpoint 5
+- Linux host proof passed on the cleaned VT ABI path
 
 ## Proof Gates
 
