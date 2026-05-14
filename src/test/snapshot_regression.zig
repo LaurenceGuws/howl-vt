@@ -99,7 +99,7 @@ test "snapshot: history capture when history is enabled" {
     try std.testing.expectEqual(@as(u16, 3), snap.rows);
     try std.testing.expectEqual(@as(u16, 5), snap.cols);
     try std.testing.expectEqual(@as(u16, 10), snap.history_capacity);
-    try std.testing.expectEqual(snap.history_count, terminal.historyCount());
+    try std.testing.expectEqual(snap.history_count, terminal.visibleView(.{}).history_count);
 
     if (snap.history != null) {
         try std.testing.expect(snap.history.?.len > 0);
@@ -118,11 +118,11 @@ test "snapshot: historyRowAt matches terminal after wraparound" {
     var snap = try terminal.snapshot();
     defer snap.deinit();
 
-    try std.testing.expectEqual(terminal.historyCount(), snap.history_count);
+    try std.testing.expectEqual(terminal.visibleView(.{}).history_count, snap.history_count);
     try std.testing.expectEqual(terminal.historyCapacity(), snap.history_capacity);
 
     var idx: usize = 0;
-    while (idx < terminal.historyCount()) : (idx += 1) {
+    while (idx < terminal.visibleView(.{}).history_count) : (idx += 1) {
         var col: u16 = 0;
         while (col < terminal.screen().cols) : (col += 1) {
             try std.testing.expectEqual(terminal.historyRowAt(idx, col), snap.historyRowAt(idx, col));

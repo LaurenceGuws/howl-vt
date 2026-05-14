@@ -181,7 +181,7 @@ test "kitty keyboard flags stay separate across alternate screen" {
 
     terminal.feedSlice("\x1b[=1u\x1b[?1049h\x1b[=8u");
     terminal.apply();
-    try std.testing.expect(terminal.isAlternateScreen());
+    try std.testing.expect(terminal.visibleView(.{}).is_alternate_screen);
     try std.testing.expectEqual(@as(u32, 8), terminal.kittyKeyboardFlags());
     terminal.feedSlice("\x1b[?1049l");
     terminal.apply();

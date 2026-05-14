@@ -5,10 +5,6 @@ const keyboard = @import("input/keyboard.zig");
 const mouse = @import("input/mouse.zig");
 const tokens = @import("input/tokens.zig");
 
-pub const Keyboard = keyboard;
-pub const Mouse = mouse;
-pub const Tokens = tokens;
-
 pub const Key = keyboard.Key;
 pub const Modifier = keyboard.Modifier;
 

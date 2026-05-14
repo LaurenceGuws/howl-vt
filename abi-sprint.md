@@ -20,12 +20,19 @@ Target outcome:
 
 ## Current Smells
 
-- `src/howl_vt.zig` mixes ABI export root and repo-local root posture
-- `src/vt_namespace.zig` is wrapper namespace theater
-- `build.zig` preserves a fake dual-surface story with the same root used for internal and ABI shape
-- `include/howl_vt.h` is getter-heavy and validator-heavy for keys, modifiers, and mouse vocabulary
-- `HowlVtHandle` is still `uintptr_t` instead of an opaque handle contract
-- `design.md` says C ABI only, but the root/build shape still preserves Zig-shaped integration posture
+- checkpoints 1 through 3 are closed:
+  - wrapper root is deleted
+  - ABI export root is explicit
+  - header vocabulary is explicit
+  - stale getter and validator exports are gone
+  - `HowlVtHandle` is opaque-pointer-shaped
+  - Linux host consumes the sharpened VT ABI
+- checkpoint 4 is closed:
+  - repo-local terminal convenience getters that duplicated `visibleView` and `applyLimit` are removed
+  - repo-local token parsing no longer hangs off `Terminal`
+  - repo-local input namespace-bag posture is removed
+- next active smell for checkpoint 5:
+  - prove the Linux host still builds and runs on the owned VT path after the full cleanup sequence
 
 ## Baseline
 
@@ -104,6 +111,7 @@ Must do:
 - keep parser syntax, interpret meaning, grid mutation, and host consequences owner-separated
 - remove remaining public shape that suggests host-facing Zig owner access
 - tighten docs so shipped ABI and repo-local owner APIs are not mixed
+- remove repo-local convenience APIs that only restate `visibleView`, `applyLimit`, or deeper input owner modules
 
 ### Checkpoint 5
 

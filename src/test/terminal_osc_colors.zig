@@ -7,13 +7,14 @@ const grid = @import("../grid.zig");
 const Terminal = terminal_mod.Terminal;
 const Grid = grid.Grid;
 
-test "latestTitleSet returns typed OSC title payload" {
+test "applyLimit returns typed OSC title payload" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]0;My Title\x07");
-    try std.testing.expectEqualStrings("My Title", terminal.latestTitleSet().?);
+    const result = terminal.applyLimit(1);
+    try std.testing.expectEqualStrings("My Title", result.latest_title.?);
 }
 
 test "OSC 8 assigns link ids and preserves URI lookup" {

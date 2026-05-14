@@ -23,7 +23,8 @@ test "Terminal public methods remain available" {
     try std.testing.expect(@hasDecl(Terminal, "resetScreen"));
     try std.testing.expect(@hasDecl(Terminal, "resize"));
     try std.testing.expect(@hasDecl(Terminal, "screen"));
-    try std.testing.expect(@hasDecl(Terminal, "queuedEventCount"));
+    try std.testing.expect(@hasDecl(Terminal, "applyLimit"));
+    try std.testing.expect(@hasDecl(Terminal, "visibleView"));
 }
 
 test "Terminal method signatures remain host-facing" {
@@ -39,16 +40,16 @@ test "Terminal method signatures remain host-facing" {
     const reset_screen_fn: fn (*Terminal) void = Terminal.resetScreen;
     const resize_fn: fn (*Terminal, u16, u16) anyerror!void = Terminal.resize;
     const screen_fn: fn (*const Terminal) *const Grid = Terminal.screen;
-    const queue_fn: fn (*const Terminal) usize = Terminal.queuedEventCount;
-    _ = .{ init_fn, init_cells_fn, deinit_fn, feed_byte_fn, feed_slice_fn, apply_fn, clear_fn, reset_fn, reset_screen_fn, resize_fn, screen_fn, queue_fn };
+    const apply_limit_fn: fn (*Terminal, usize) Terminal.ApplySummary = Terminal.applyLimit;
+    const visible_view_fn: fn (*const Terminal, Terminal.VisibleViewOptions) Terminal.VisibleView = Terminal.visibleView;
+    _ = .{ init_fn, init_cells_fn, deinit_fn, feed_byte_fn, feed_slice_fn, apply_fn, clear_fn, reset_fn, reset_screen_fn, resize_fn, screen_fn, apply_limit_fn, visible_view_fn };
 }
 
 test "const-read history and selection accessors stay stable" {
     const history_row_fn: fn (*const Terminal, usize, u16) u21 = Terminal.historyRowAt;
-    const history_count_fn: fn (*const Terminal) usize = Terminal.historyCount;
     const history_capacity_fn: fn (*const Terminal) u16 = Terminal.historyCapacity;
     const selection_state_fn: fn (*const Terminal) ?Selection.TerminalSelection = Terminal.selectionState;
-    _ = .{ history_row_fn, history_count_fn, history_capacity_fn, selection_state_fn };
+    _ = .{ history_row_fn, history_capacity_fn, selection_state_fn };
 }
 
 test "lifecycle extension methods stay stable" {
@@ -87,11 +88,11 @@ test "resize keeps history enabled state" {
 
     terminal.feedSlice("111\n222\n333");
     terminal.apply();
-    const before = terminal.historyCount();
+    const before = terminal.visibleView(.{}).history_count;
     try terminal.resize(3, 3);
 
     try std.testing.expectEqual(@as(u16, 8), terminal.historyCapacity());
-    try std.testing.expect(terminal.historyCount() <= before);
+    try std.testing.expect(terminal.visibleView(.{}).history_count <= before);
 }
 
 test "alternate screen exit preserves primary scrollback" {
@@ -103,21 +104,21 @@ test "alternate screen exit preserves primary scrollback" {
     terminal.apply();
     var before = try terminal.snapshot();
     defer before.deinit();
-    const history_before = terminal.historyCount();
+    const history_before = terminal.visibleView(.{}).history_count;
     try std.testing.expect(history_before > 0);
 
     terminal.feedSlice("\x1b[?1049hALT!");
     terminal.apply();
-    try std.testing.expect(terminal.isAlternateScreen());
-    try std.testing.expectEqual(@as(usize, 0), terminal.historyCount());
+    try std.testing.expect(terminal.visibleView(.{}).is_alternate_screen);
+    try std.testing.expectEqual(@as(u32, 0), terminal.visibleView(.{}).history_count);
     try std.testing.expectEqual(@as(u21, 'A'), terminal.screen().cellAt(0, 0));
 
     terminal.feedSlice("\x1b[?1049l");
     terminal.apply();
     var after = try terminal.snapshot();
     defer after.deinit();
-    try std.testing.expect(!terminal.isAlternateScreen());
-    try std.testing.expectEqual(history_before, terminal.historyCount());
+    try std.testing.expect(!terminal.visibleView(.{}).is_alternate_screen);
+    try std.testing.expectEqual(history_before, terminal.visibleView(.{}).history_count);
     try std.testing.expectEqual(before.cursor_row, after.cursor_row);
     try std.testing.expectEqual(before.cursor_col, after.cursor_col);
     var row: u16 = 0;

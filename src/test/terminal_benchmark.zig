@@ -235,7 +235,7 @@ fn runFeedApplyWorkload(
         counting.resetWindow();
         const start = nowNs(io);
         terminal.feedSlice(fixture);
-        const max_queue_depth = terminal.queuedEventCount();
+        const max_queue_depth = terminal.applyLimit(0).remaining_events;
         terminal.apply();
         const end = nowNs(io);
         observations[i] = .{
@@ -305,7 +305,7 @@ fn runMixedInteractiveWorkload(
         var max_queue_depth: usize = 0;
         while (j < bursts_per_run) : (j += 1) {
             terminal.feedSlice(burst);
-            max_queue_depth = @max(max_queue_depth, terminal.queuedEventCount());
+            max_queue_depth = @max(max_queue_depth, terminal.applyLimit(0).remaining_events);
             terminal.apply();
         }
         const end = nowNs(io);
@@ -453,7 +453,7 @@ fn runQueueGrowthChunkedWorkload(
         while (offset < fixture.len) {
             const next = @min(offset + chunk_size, fixture.len);
             terminal.feedSlice(fixture[offset..next]);
-            max_queue_depth = @max(max_queue_depth, terminal.queuedEventCount());
+            max_queue_depth = @max(max_queue_depth, terminal.applyLimit(0).remaining_events);
             offset = next;
         }
         terminal.apply();

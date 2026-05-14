@@ -79,7 +79,7 @@ pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: usize) !Ru
     return .{
         .structural_hash = hashStructural(&vt),
         .logical_hash = hashLogicalContent(&vt),
-        .history_count = vt.historyCount(),
+        .history_count = vt.visibleView(.{}).history_count,
         .rows = vt.screen().rows,
         .cols = vt.screen().cols,
     };
@@ -255,7 +255,7 @@ fn hashStructural(vt: *const terminal_mod.Terminal) u64 {
     h.update(std.mem.asBytes(&s.cursor_row));
     h.update(std.mem.asBytes(&s.cursor_col));
     h.update(std.mem.asBytes(&s.wrap_pending));
-    const history_count = vt.historyCount();
+    const history_count = vt.visibleView(.{}).history_count;
     const history_capacity = vt.historyCapacity();
     h.update(std.mem.asBytes(&history_count));
     h.update(std.mem.asBytes(&history_capacity));
@@ -265,7 +265,7 @@ fn hashStructural(vt: *const terminal_mod.Terminal) u64 {
 fn hashLogicalContent(vt: *const vt_mod.Terminal) u64 {
     var h = std.hash.Wyhash.init(0x9e3779b97f4a7c15);
     const s = vt.screen();
-    const history = vt.historyCount();
+    const history = vt.visibleView(.{}).history_count;
 
     var hr: usize = 0;
     while (hr < history) : (hr += 1) {
@@ -305,7 +305,7 @@ fn canonicalLogicalStream(allocator: std.mem.Allocator, vt: *const vt_mod.Termin
     var row_buf: std.ArrayList(u21) = .empty;
     defer row_buf.deinit(allocator);
 
-    var history_idx = vt.historyCount();
+    var history_idx = vt.visibleView(.{}).history_count;
     while (history_idx > 0) {
         history_idx -= 1;
         try appendHistoryRowCanonical(allocator, &lines, &row_buf, vt, history_idx, s.cols);
@@ -410,7 +410,7 @@ fn summarizeCoreState(vt: *const vt_mod.Terminal) CoreStateSummary {
         .cursor_row = s.cursor_row,
         .cursor_col = s.cursor_col,
         .wrap_pending = s.wrap_pending,
-        .history_count = vt.historyCount(),
+        .history_count = vt.visibleView(.{}).history_count,
         .history_capacity = vt.historyCapacity(),
     };
 }

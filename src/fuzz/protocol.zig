@@ -368,7 +368,7 @@ fn digestTerminal(terminal: *const vt.Terminal) VtDigest {
         }
     }
 
-    const history_count = terminal.historyCount();
+    const history_count = terminal.visibleView(.{}).history_count;
     hashValue(&hasher, history_count);
     var history_idx: usize = 0;
     while (history_idx < history_count) : (history_idx += 1) {

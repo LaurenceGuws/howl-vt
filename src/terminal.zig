@@ -9,6 +9,8 @@ const kitty = @import("kitty.zig");
 const parser = @import("parser.zig");
 const selection = @import("selection.zig");
 const snapshot = @import("snapshot.zig");
+const keyboard = @import("input/keyboard.zig");
+const mouse = @import("input/mouse.zig");
 
 const GridNs = grid.Grid;
 const Interpret = interpret;
@@ -25,6 +27,7 @@ const TerminalReportNs = control.Report;
 pub const Terminal = struct {
     pub const ApplySummary = struct {
         applied: usize,
+        remaining_events: usize,
         latest_title: ?[]const u8,
     };
 
@@ -358,10 +361,16 @@ pub const Terminal = struct {
     }
 
     pub fn applyLimit(self: *Terminal, max_events: usize) ApplySummary {
-        if (max_events == 0) return .{ .applied = 0, .latest_title = null };
+        if (max_events == 0) {
+            return .{
+                .applied = 0,
+                .remaining_events = self.apply_flow.events().len,
+                .latest_title = null,
+            };
+        }
 
         const count = @min(max_events, self.apply_flow.events().len);
-        if (count == 0) return .{ .applied = 0, .latest_title = null };
+        if (count == 0) return .{ .applied = 0, .remaining_events = 0, .latest_title = null };
 
         std.debug.assert(count <= max_events);
         std.debug.assert(count <= self.apply_flow.events().len);
@@ -379,9 +388,10 @@ pub const Terminal = struct {
             }
         }
         self.apply_flow.parsed_events.dropPrefix(count);
-        std.debug.assert(self.apply_flow.events().len + count >= count);
+        const remaining = self.apply_flow.events().len;
+        std.debug.assert(remaining + count >= count);
         self.selection.clearIfInvalidatedByGrid(self.activeState());
-        return .{ .applied = count, .latest_title = latest_title };
+        return .{ .applied = count, .remaining_events = remaining, .latest_title = latest_title };
     }
 
     /// Clear queued events without applying.
@@ -581,25 +591,6 @@ pub const Terminal = struct {
         return self.modes.synchronized_output;
     }
 
-    /// Return queued event count.
-    pub fn queuedEventCount(self: *const Terminal) usize {
-        return self.apply_flow.len();
-    }
-
-    /// Return the most recent queued title-set event before apply clears the queue.
-    pub fn latestTitleSet(self: *const Terminal) ?[]const u8 {
-        var i = self.apply_flow.events().len;
-        while (i > 0) {
-            i -= 1;
-            const ev = self.apply_flow.events()[i];
-            switch (ev) {
-                .osc => |osc_event| if (osc_event.kind == .title) return osc_event.payload,
-                else => {},
-            }
-        }
-        return null;
-    }
-
     /// Return history cell by recency index and column.
     pub fn historyRowAt(self: *const Terminal, history_idx: usize, col: u16) u21 {
         if (self.screen_state.alt_active) return 0;
@@ -611,19 +602,9 @@ pub const Terminal = struct {
         return self.screen_state.primary.historyCellAt(history_idx, col);
     }
 
-    /// Return retained history row count.
-    pub fn historyCount(self: *const Terminal) usize {
-        if (self.screen_state.alt_active) return 0;
-        return self.screen_state.primary.historyCount();
-    }
-
     /// Return configured history capacity.
     pub fn historyCapacity(self: *const Terminal) u16 {
         return self.screen_state.primary.historyCapacity();
-    }
-
-    pub fn isAlternateScreen(self: *const Terminal) bool {
-        return self.screen_state.alt_active;
     }
 
     /// Return active selection snapshot or null.
@@ -656,7 +637,7 @@ pub const Terminal = struct {
         if (self.modes.keyboard_action_mode) {
             return self.encode.buf[0..0];
         }
-        const encoded = Input.Keyboard.encodeKey(self.encode.buf[0..], key, mod, self.modes.application_cursor_keys, self.modes.application_keypad, self.modes.modify_other_keys, self.modes.key_format[4], self.activeKittyKeyboardFlags());
+        const encoded = keyboard.encodeKey(self.encode.buf[0..], key, mod, self.modes.application_cursor_keys, self.modes.application_keypad, self.modes.modify_other_keys, self.modes.key_format[4], self.activeKittyKeyboardFlags());
         std.debug.assert(encoded.len <= self.encode.buf.len);
         if (self.modes.newline_mode and key == Input.key_enter and std.mem.eql(u8, encoded, "\r")) {
             self.encode.buf[0] = '\r';
@@ -690,7 +671,7 @@ pub const Terminal = struct {
     /// Encode a host mouse event for the active terminal mouse modes.
     pub fn encodeMouse(self: *Terminal, event: Input.MouseEvent) []const u8 {
         LocatorNs.handleMouseEvent(&self.host.locator, self.allocator, &self.host.pending_output, self.encode.buf[0..], event);
-        const encoded = Input.Mouse.encodeMouse(self.encode.buf[0..], event, self.modes.mouse_tracking, self.modes.mouse_protocol);
+        const encoded = mouse.encodeMouse(self.encode.buf[0..], event, self.modes.mouse_tracking, self.modes.mouse_protocol);
         std.debug.assert(encoded.len <= self.encode.buf.len);
         return encoded;
     }
@@ -700,20 +681,6 @@ pub const Terminal = struct {
         @memcpy(self.encode.buf[0..encoded.len], encoded);
         std.debug.assert(encoded.len <= self.encode.buf.len);
         return self.encode.buf[0..encoded.len];
-    }
-
-    /// Encode one host input event for the active terminal modes.
-    pub fn encodeInput(self: *Terminal, allocator: std.mem.Allocator, event: Input.Event) !Input.Encoded {
-        return switch (event) {
-            .bytes => |bytes| .{ .bytes = bytes },
-            .key => |key| .{ .bytes = self.encodeKey(key.key, key.mods) },
-            .mouse => |mouse| .{ .bytes = self.encodeMouse(mouse) },
-            .focus => |focus| .{ .bytes = switch (focus) {
-                .in => self.encodeFocusIn(),
-                .out => self.encodeFocusOut(),
-            } },
-            .paste => |text| try self.encodePaste(allocator, text),
-        };
     }
 
     pub fn encodePaste(self: *Terminal, allocator: std.mem.Allocator, text: []const u8) !Input.Encoded {
@@ -748,23 +715,6 @@ pub const Terminal = struct {
         @memcpy(self.encode.buf[0..encoded.len], encoded);
         std.debug.assert(encoded.len <= self.encode.buf.len);
         return self.encode.buf[0..encoded.len];
-    }
-
-    /// Parse host key token into terminal key constant.
-    pub fn parseKeyToken(name: []const u8) ?Input.Key {
-        return Input.Tokens.parseKeyToken(name);
-    }
-
-    /// Parse host modifier bitfield into terminal modifier mask.
-    pub fn parseModifierBits(mods: i32) Input.Modifier {
-        return Input.Tokens.parseModifierBits(mods);
-    }
-
-    /// Parse host control token into control signal.
-    pub fn parseControlToken(name: []const u8) ?ControlSignal {
-        if (std.mem.eql(u8, name, "interrupt")) return .interrupt;
-        if (std.mem.eql(u8, name, "terminate")) return .terminate;
-        return null;
     }
 
     /// Capture visible cells, cursor, modes, history, and selection state.

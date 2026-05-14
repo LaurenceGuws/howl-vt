@@ -1662,7 +1662,7 @@ test "feed/apply: resetScreen clears cells while preserving history" {
 
     terminal.feedSlice("LINE1\nLINE2\nLINE3\nLINE4");
     terminal.apply();
-    const hist_before = terminal.historyCount();
+    const hist_before = terminal.visibleView(.{}).history_count;
 
     var snap_before = try terminal.snapshot();
     defer snap_before.deinit();

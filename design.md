@@ -13,14 +13,17 @@ It parses terminal input streams, maps parser events into terminal actions, appl
 
 ## Public Surface
 - `include/howl_vt.h`: C ABI header.
-- `howl_vt_*` exported symbols: C ABI contract for input vocabulary and terminal runtime calls.
+- `howl_vt_*` exported symbols: C ABI contract for terminal runtime calls only.
 - The shipped embedding boundary is C ABI only.
 - `src/howl_vt.zig` is not an embedding surface. If it survives, it is repo-local only.
 - Internal workspace wiring is not a public contract and is not a preservation target.
-- Deletion targets for the current cleanup are exact:
-  - `src/vt_namespace.zig`
-  - the Zig-shaped aggregation posture in `src/howl_vt.zig`
-  - the fake dual-surface root/build posture in `build.zig`
+- Accepted cleanup result so far is exact:
+  - `src/vt_namespace.zig` is deleted
+  - `src/libhowl_vt.zig` is the explicit ABI export root
+  - `include/howl_vt.h` carries explicit vocabulary constants instead of exported getter helpers
+  - `HowlVtHandle` is an opaque pointer handle contract
+  - Linux host consumes explicit VT ABI steps only
+  - repo-local terminal and input convenience posture that mirrored deeper owners or old ABI shape is removed
 
 ```mermaid
 classDiagram
@@ -43,8 +46,7 @@ classDiagram
 ```
 
 ## Ownership Rules
-- `src/howl_vt.zig` currently mixes ABI export ownership and repo-local root posture. That mixed root
-  shape is a deletion target, not a preservation target.
+- `src/howl_vt.zig` is repo-local only. It is not a host integration surface and must not regrow one.
 - `Terminal` owns lifecycle, apply-flow orchestration, grouped screen/mode/host/kitty state, and the terminal implementation facade behind the C ABI.
 - `Input` owns key, modifier, mouse, host-token parsing, and input encoding vocabulary.
 - `Interpret` owns parser-event buffering and parser-event-to-action mapping.
@@ -125,7 +127,18 @@ sequenceDiagram
 - `howl_vt_terminal_copy_visible` is the host-visible bulk state seam for cursor, scrollback metadata, and visible cells.
 - `howl_vt_terminal_copy_pending_output`, `howl_vt_terminal_clear_pending_output`, and `howl_vt_terminal_drain_pending_clipboard` cover host-facing protocol consequences.
 - `howl_vt_terminal_encode_key`, `howl_vt_terminal_encode_focus`, `howl_vt_terminal_encode_mouse`, and `howl_vt_terminal_encode_paste` cover host input encoding against current terminal modes.
+- Header-declared key, modifier, and mouse constants are part of the shipped vocabulary contract. Getter and validator helper exports are not.
 - Zig owner names may change as long as the C ABI contract stays stable.
+
+## Repo-Local Surface
+- `src/terminal.zig` may expose owner APIs for tests, fuzzers, and internal seams only when they describe true owned state or mutation.
+- Repo-local callers should consume visible terminal state through `visibleView` instead of convenience getters that restate fields already carried there.
+- Repo-local callers should consume queued apply state through `applyLimit` instead of separate queue-depth helpers.
+- `src/input.zig` owns vocabulary types and constants. It should not act as a namespace bag for deeper owner modules.
+- Checkpoint 4 accepted result:
+  - repo-local queue, title, history, and alternate-screen convenience getters were removed in favor of `applyLimit` and `visibleView`
+  - repo-local token parsing no longer pretends to be owned by `Terminal`
+  - repo-local input namespace bag posture was removed
 
 ## Internal Invariants
 - The implementation still follows the same internal runtime invariants:

@@ -206,7 +206,7 @@ pub fn terminalApply(handle: VtHandle, max_events: usize, title_ptr: ?[*]u8, tit
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const title_out = bytesOut(title_ptr, title_cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     const result = owned.applyLimit(max_events);
-    const remaining = owned.queuedEventCount();
+    const remaining = result.remaining_events;
     if (result.latest_title) |title| {
         if (title_out.len < title.len) {
             return .{
