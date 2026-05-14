@@ -101,7 +101,7 @@ sequenceDiagram
     A-->>V: semantic action
     V->>G: apply grid-visible action
     V->>S: clearIfInvalidatedByGrid(&state)
-    V-->>Host: renderView()/screen()/historyCount()
+    V-->>Host: visibleView()/screen()
 ```
 
 ### Resize

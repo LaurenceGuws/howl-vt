@@ -115,7 +115,7 @@ sqlite3 protocol_coverage.db \
 | Charset designation: `ESC (`, `ESC )`, DEC Special Graphics select | partial | Parser tracks G0/G1 designation and DEC Special Graphics maps through visible cells. Broader charset families remain unsupported. |
 | Shift in/out charset use: `SI`, `SO` | partial | G0/G1 GL switching is wired for the supported charset set, including DEC Special Graphics. |
 | OSC transport | partial | Parser transports OSC with BEL/ST terminators and parser events now preserve typed OSC command/payload records, including command-only OSC forms such as kitty color stack push/pop. Action/host handling is still narrow. |
-| OSC window title/icon title | partial | Parser-event handling recognizes title OSC selectors and `latestTitleSet()` exposes them, but no broader host callback surface exists yet. |
+| OSC window title/icon title | partial | Parser-event handling recognizes title OSC selectors and `applyLimit(...)` reports the latest queued title payload, but no broader host callback surface exists yet. |
 | OSC 8 hyperlinks | partial | OSC 8 drives stable `link_id` cell metadata, `Terminal` URI lookup, render surface propagation, and Linux-host `Ctrl+left click` opening behind explicit policy. Hover polish remains pending. |
 | OSC 52 clipboard | partial | OSC 52 surfaces pending clipboard requests and Linux-host applies explicit allow/deny policy. Queries and broader selector behavior remain unsupported. |
 | OSC color queries/setters (`4`, `10`, `11`, `12`, etc.) | partial | terminal tracks terminal foreground/background/cursor colors and a 256-color palette. Xterm `OSC 4`, `10`, `11`, `12`, `104`, `110`, `111`, and `112` set/query/reset state. Render/host consumption and the broader xterm dynamic-color family remain pending. |
