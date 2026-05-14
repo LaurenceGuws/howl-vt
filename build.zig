@@ -1,6 +1,6 @@
-//! Responsibility: define the package build and test graph.
-//! Ownership: repository build configuration surface.
-//! Reason: keep compile/test entrypoints explicit and host-neutral.
+// This repo ships a C ABI first until further notice.
+// Keep build entrypoints aligned around the shipped header and exported symbols, not privileged Zig imports.
+// Repo-local Zig roots may exist for tests and proofs, but they are not an embedder-facing contract.
 
 const std = @import("std");
 
