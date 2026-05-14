@@ -1,10 +1,12 @@
 //! Snapshot capture regression tests.
 
 const std = @import("std");
-const vt_mod = @import("howl_vt");
+const terminal_mod = @import("../terminal.zig");
+
+const Terminal = terminal_mod.Terminal;
 test "snapshot: capture from simple text" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("HELLO");
@@ -29,14 +31,14 @@ test "snapshot: capture from simple text" {
 test "snapshot: determinism across identical state" {
     const gpa = std.testing.allocator;
 
-    var vt_core1 = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var vt_core1 = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core1.deinit();
     vt_core1.feedSlice("TEST");
     vt_core1.apply();
     var snap1 = try vt_core1.snapshot();
     defer snap1.deinit();
 
-    var vt_core2 = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var vt_core2 = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core2.deinit();
     vt_core2.feedSlice("TEST");
     vt_core2.apply();
@@ -57,14 +59,14 @@ test "snapshot: determinism across identical state" {
 test "snapshot: split-feed equivalence" {
     const gpa = std.testing.allocator;
 
-    var vt_core_atomic = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var vt_core_atomic = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core_atomic.deinit();
     vt_core_atomic.feedSlice("ABCDEFGHIJ");
     vt_core_atomic.apply();
     var snap_atomic = try vt_core_atomic.snapshot();
     defer snap_atomic.deinit();
 
-    var vt_core_chunked = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var vt_core_chunked = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core_chunked.deinit();
     vt_core_chunked.feedByte('A');
     vt_core_chunked.feedByte('B');
@@ -85,7 +87,7 @@ test "snapshot: split-feed equivalence" {
 
 test "snapshot: history capture when history is enabled" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCellsAndHistory(gpa, 3, 5, 10);
+    var terminal = try Terminal.initWithCellsAndHistory(gpa, 3, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("AAA\nBBB\nCCC\nDDD");
@@ -106,7 +108,7 @@ test "snapshot: history capture when history is enabled" {
 
 test "snapshot: historyRowAt matches terminal after wraparound" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCellsAndHistory(gpa, 2, 3, 2);
+    var terminal = try Terminal.initWithCellsAndHistory(gpa, 2, 3, 2);
     defer terminal.deinit();
 
     // Force history ring-buffer wraparound (capacity 2, scroll more than 2 rows).
@@ -130,7 +132,7 @@ test "snapshot: historyRowAt matches terminal after wraparound" {
 
 test "snapshot: selection state is included" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("HELLO");
@@ -155,7 +157,7 @@ test "snapshot: selection state is included" {
 
 test "snapshot: parity with direct screen state" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("TEST");

@@ -1,14 +1,15 @@
 //! Input encoding, mode tracking, and report behavior tests.
 
 const std = @import("std");
-const vt = @import("howl_vt");
+const terminal_mod = @import("../terminal.zig");
 const input_mod = @import("../input.zig");
 
+const Terminal = terminal_mod.Terminal;
 const Input = input_mod;
 
 test "encodeMouse returns empty output and does not mutate state" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("HELLO");
@@ -43,7 +44,7 @@ test "encodeMouse returns empty output and does not mutate state" {
 
 test "mouse reporting is gated by DECSET mouse modes and SGR protocol" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
 
     const mouse_event = Input.MouseEvent{
@@ -93,7 +94,7 @@ test "mouse reporting is gated by DECSET mouse modes and SGR protocol" {
 
 test "mouse reporting supports legacy x10 normal utf8 and urxvt encodings" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
 
     const press = Input.MouseEvent{ .kind = .press, .button = .left, .row = 2, .col = 3, .mod = Input.mod_shift | Input.mod_alt, .buttons_down = 1 };
@@ -123,7 +124,7 @@ test "mouse reporting supports legacy x10 normal utf8 and urxvt encodings" {
 
 test "mouse mode queries and save restore include extended protocols" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[?1003h\x1b[?1005h\x1b[?1003;1005s");
@@ -137,7 +138,7 @@ test "mouse mode queries and save restore include extended protocols" {
 
 test "application cursor mode changes arrow key encoding" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     try std.testing.expectEqualStrings("\x1b[A", terminal.encodeKey(Input.key_up, Input.mod_none));
@@ -152,7 +153,7 @@ test "application cursor mode changes arrow key encoding" {
 
 test "kitty keyboard set query push and pop flags" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[=5u\x1b[?u");
@@ -175,7 +176,7 @@ test "kitty keyboard set query push and pop flags" {
 
 test "kitty keyboard flags stay separate across alternate screen" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[=1u\x1b[?1049h\x1b[=8u");
@@ -189,7 +190,7 @@ test "kitty keyboard flags stay separate across alternate screen" {
 
 test "kitty keyboard mode switches existing keys to CSI-u family" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[=1u");
@@ -202,7 +203,7 @@ test "kitty keyboard mode switches existing keys to CSI-u family" {
 
 test "focus reports are gated by DECSET 1004" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     try std.testing.expectEqualStrings("", terminal.encodeFocusIn());
@@ -218,7 +219,7 @@ test "focus reports are gated by DECSET 1004" {
 
 test "bracketed paste wrappers are gated by DECSET 2004" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     try std.testing.expectEqualStrings("", terminal.encodePasteStart());
@@ -234,7 +235,7 @@ test "bracketed paste wrappers are gated by DECSET 2004" {
 
 test "report queries append pending host output" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[2;3H\x1b[5n\x1b[6n\x1b[c\x1b[>c\x1b[>0q\x1b[#S");
@@ -247,7 +248,7 @@ test "report queries append pending host output" {
 
 test "ENQ default answerback is empty and printable space remains text" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 2, 8);
+    var terminal = try Terminal.initWithCells(allocator, 2, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("A \x05B");
@@ -264,7 +265,7 @@ test "ENQ default answerback is empty and printable space remains text" {
 
 test "extended report queries append host output" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 18);
+    var terminal = try Terminal.initWithCells(allocator, 4, 18);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1bH\x1b[=c\x1b[\"v\x1b[0x\x1b[1x\x1b[2$w");
@@ -275,7 +276,7 @@ test "extended report queries append host output" {
 
 test "ANSI mode queries and XTREPORTCOLORS append host output" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[2h\x1b[4h\x1b[12h\x1b[20h\x1b]30001\x1b\\\x1b[2$p\x1b[4$p\x1b[12$p\x1b[20$p\x1b[#R");
@@ -285,7 +286,7 @@ test "ANSI mode queries and XTREPORTCOLORS append host output" {
 
 test "XTREPORTSGR reports common rectangle attrs conservatively" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 2, 4);
+    var terminal = try Terminal.initWithCells(allocator, 2, 4);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[31mAB\x1b[0mCD\x1b[1;1;1;2#|\x1b[1;1;1;4#|");
@@ -295,7 +296,7 @@ test "XTREPORTSGR reports common rectangle attrs conservatively" {
 
 test "ANSI modes affect key encoding and insert writes" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 2, 4);
+    var terminal = try Terminal.initWithCells(allocator, 2, 4);
     defer terminal.deinit();
 
     try std.testing.expectEqualStrings("\r", terminal.encodeKey(Input.key_enter, Input.mod_none));
@@ -319,7 +320,7 @@ test "ANSI modes affect key encoding and insert writes" {
 
 test "checksum extension affects rectangular checksum reply" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 2, 2);
+    var terminal = try Terminal.initWithCells(allocator, 2, 2);
     defer terminal.deinit();
 
     terminal.feedSlice("ABCD\x1b[0#y\x1b[7;1;1;1;1;2;2*y");
@@ -334,7 +335,7 @@ test "checksum extension affects rectangular checksum reply" {
 
 test "locator requests reply unavailable, then current position, then disable one-shot" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[0'|");
@@ -361,7 +362,7 @@ test "locator requests reply unavailable, then current position, then disable on
 
 test "locator button and filter events append DECLRP" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[1;0'z\x1b[1;3'*{");
@@ -383,7 +384,7 @@ test "locator button and filter events append DECLRP" {
 
 test "DECCIR reports default cursor information" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 10);
+    var terminal = try Terminal.initWithCells(allocator, 3, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[1$w");
@@ -393,7 +394,7 @@ test "DECCIR reports default cursor information" {
 
 test "DECCIR reports cursor position and rendition bits" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[3;7H\x1b[1m\x1b[4m\x1b[1$w");
@@ -403,7 +404,7 @@ test "DECCIR reports cursor position and rendition bits" {
 
 test "DECCIR reports protection origin and wrap flags" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 1, 5);
+    var terminal = try Terminal.initWithCells(allocator, 1, 5);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[1\"q\x1b[?6hABCDE\x1b[1$w");
@@ -413,7 +414,7 @@ test "DECCIR reports protection origin and wrap flags" {
 
 test "DECCIR reports charset designation and GL shift" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 10);
+    var terminal = try Terminal.initWithCells(allocator, 3, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b(0\x1b[1$w");
@@ -428,7 +429,7 @@ test "DECCIR reports charset designation and GL shift" {
 
 test "DECXCPR appends DEC cursor position report" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[3;4H\x1b[?6n");
@@ -438,7 +439,7 @@ test "DECXCPR appends DEC cursor position report" {
 
 test "DEC locator DSR replies status and type" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[?55n\x1b[?56n");
@@ -448,7 +449,7 @@ test "DEC locator DSR replies status and type" {
 
 test "DEC mode queries append DECRPM replies" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[?1004h\x1b[?2004h\x1b[?1002h\x1b[?1006h\x1b[?1004$p\x1b[?2004$p\x1b[?1002$p\x1b[?1006$p\x1b[?25$p\x1b[?9999$p");
@@ -458,7 +459,7 @@ test "DEC mode queries append DECRPM replies" {
 
 test "DECRQSS replies for owned state and invalid requests" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[2;3r\x1b[?69h\x1b[2;7s\x1b[3 q\x1b[1\"q\x1b[2*x");
@@ -473,7 +474,7 @@ test "DECRQSS replies for owned state and invalid requests" {
 
 test "DCS resource queries return conservative invalid replies" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1bP+q436F\x1b\\\x1bP+Q6E616D65\x1b\\");
@@ -484,7 +485,7 @@ test "DCS resource queries return conservative invalid replies" {
 
 test "DCS legacy payload protocols retain latest host-neutral payload" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1bP+p436F=7661\x1b\\");
@@ -505,7 +506,7 @@ test "DCS legacy payload protocols retain latest host-neutral payload" {
 
 test "legacy Tektronix C0 and ESC controls retain latest host-neutral state" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1c\x1d\x1e\x1f");
@@ -519,7 +520,7 @@ test "legacy Tektronix C0 and ESC controls retain latest host-neutral state" {
 
 test "XTSAVE and XTRESTORE restore supported DEC private modes" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[?1h\x1b[?7l\x1b[?25l\x1b[?1004h\x1b[?2004h");
@@ -540,7 +541,7 @@ test "XTSAVE and XTRESTORE restore supported DEC private modes" {
 
 test "application keypad modes affect keypad encoding and DECRQM" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     try std.testing.expectEqualStrings("1", terminal.encodeKey(Input.key_kp_1, Input.mod_none));
@@ -561,7 +562,7 @@ test "application keypad modes affect keypad encoding and DECRQM" {
 
 test "modifyOtherKeys set query disable and encoding" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     try std.testing.expectEqualStrings("a", terminal.encodeKey('a', Input.mod_alt));
@@ -583,7 +584,7 @@ test "modifyOtherKeys set query disable and encoding" {
 
 test "xterm key format query reset and other-key encoding" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[>4;1f\x1b[?4g\x1b[>4;1m");
@@ -600,7 +601,7 @@ test "xterm key format query reset and other-key encoding" {
 
 test "low priority private modes and media copy retain host-neutral state" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[?80h\x1b[?45h\x1b[?1045h\x1b[?5i");

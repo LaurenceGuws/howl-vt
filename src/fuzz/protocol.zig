@@ -1,8 +1,8 @@
 //! Protocol/parser fuzz scenarios.
 
 const std = @import("std");
-const vt = @import("howl_vt");
-const Parser = vt.Parser;
+const parser_mod = @import("../parser.zig");
+const Parser = parser_mod.Parser;
 const Sink = Parser.Sink;
 const OscTerminator = Parser.OscTerminator;
 const CsiAction = Parser.CsiAction;

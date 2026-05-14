@@ -7,47 +7,27 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const perf_optimize: std.builtin.OptimizeMode = .ReleaseFast;
     const module_options = b.addOptions();
     module_options.addOption(bool, "c_abi", false);
     module_options.addOption(bool, "howl_vt", true);
-    const perf_options = b.addOptions();
-    perf_options.addOption(bool, "c_abi", false);
-    perf_options.addOption(bool, "howl_vt", true);
     const ffi_options = b.addOptions();
     ffi_options.addOption(bool, "c_abi", true);
     ffi_options.addOption(bool, "howl_vt", true);
-    const mod = b.addModule("howl_vt", .{
+    const internal_mod = b.createModule(.{
         .root_source_file = b.path("src/howl_vt.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
-    mod.addOptions("vt_options", module_options);
-    mod.addImport("howl_vt", mod);
+    internal_mod.addOptions("vt_options", module_options);
     const fuzz_scrollback_mod = b.createModule(.{
         .root_source_file = b.path("src/fuzz/scrollback.zig"),
         .target = target,
         .optimize = optimize,
     });
-    fuzz_scrollback_mod.addImport("howl_vt", mod);
-    const perf_mod = b.addModule("howl_vt_perf", .{
-        .root_source_file = b.path("src/howl_vt.zig"),
-        .target = target,
-        .optimize = perf_optimize,
-    });
-    perf_mod.addOptions("vt_options", perf_options);
-    perf_mod.addImport("howl_vt", perf_mod);
-    const perf_fuzz_scrollback_mod = b.createModule(.{
-        .root_source_file = b.path("src/fuzz/scrollback.zig"),
-        .target = target,
-        .optimize = perf_optimize,
-    });
-    perf_fuzz_scrollback_mod.addImport("howl_vt", perf_mod);
-
     const mod_tests = b.addTest(.{
         .name = "test-unit",
-        .root_module = mod,
+        .root_module = internal_mod,
         .filters = b.args orelse &.{},
     });
     mod_tests.use_llvm = true;
@@ -64,13 +44,12 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(test_unit_step);
 
     const ffi_mod = b.createModule(.{
-        .root_source_file = b.path("src/howl_vt.zig"),
+        .root_source_file = b.path("src/libhowl_vt.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
     ffi_mod.addOptions("vt_options", ffi_options);
-    ffi_mod.addImport("howl_vt", ffi_mod);
     const ffi_lib = b.addLibrary(.{
         .name = "howl_vt",
         .linkage = .dynamic,
@@ -109,7 +88,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    fuzz_module.addImport("howl_vt", mod);
 
     const fuzz_exe = b.addExecutable(.{
         .name = "howl_vt_fuzz",
@@ -125,9 +103,8 @@ pub fn build(b: *std.Build) void {
     const baseline_mod = b.createModule(.{
         .root_source_file = b.path("src/test/terminal_benchmark.zig"),
         .target = target,
-        .optimize = perf_optimize,
+        .optimize = .ReleaseFast,
     });
-    baseline_mod.addImport("howl_vt", perf_mod);
     const baseline_exe = b.addExecutable(.{
         .name = "m7_baseline",
         .root_module = baseline_mod,

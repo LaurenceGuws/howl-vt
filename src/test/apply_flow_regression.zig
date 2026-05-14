@@ -3,11 +3,12 @@
 const std = @import("std");
 const grid = @import("../grid.zig");
 const interpret = @import("../interpret.zig");
-const vt_mod = @import("howl_vt");
+const terminal_mod = @import("../terminal.zig");
 
 const Grid = grid.Grid;
 const Interpret = interpret;
 const ApplyFlow = Interpret.ApplyFlow;
+const Terminal = terminal_mod.Terminal;
 
 fn feed(flow: *ApplyFlow, screen: *Grid, bytes: []const u8) void {
     flow.feedSlice(bytes);
@@ -1612,7 +1613,7 @@ test "zero-dim: tab commands remain safe across all zero-dimension variants" {
 
 test "feed/apply: clear leaves snapshot unchanged" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("ABC");
@@ -1632,7 +1633,7 @@ test "feed/apply: clear leaves snapshot unchanged" {
 
 test "feed/apply: reset preserves snapshot state" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("HELLO");
@@ -1656,7 +1657,7 @@ test "feed/apply: reset preserves snapshot state" {
 
 test "feed/apply: resetScreen clears cells while preserving history" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCellsAndHistory(gpa, 3, 5, 10);
+    var terminal = try Terminal.initWithCellsAndHistory(gpa, 3, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("LINE1\nLINE2\nLINE3\nLINE4");
@@ -1685,7 +1686,7 @@ test "feed/apply: resetScreen clears cells while preserving history" {
 test "feed/apply: snapshot determinism across feed sequence variations" {
     const gpa = std.testing.allocator;
 
-    var vt_core1 = try vt_mod.Terminal.initWithCells(gpa, 10, 20);
+    var vt_core1 = try Terminal.initWithCells(gpa, 10, 20);
     defer vt_core1.deinit();
     vt_core1.feedSlice("\x1b[2J");
     vt_core1.feedSlice("Line1\nLine2");
@@ -1693,7 +1694,7 @@ test "feed/apply: snapshot determinism across feed sequence variations" {
     var snap1 = try vt_core1.snapshot();
     defer snap1.deinit();
 
-    var vt_core2 = try vt_mod.Terminal.initWithCells(gpa, 10, 20);
+    var vt_core2 = try Terminal.initWithCells(gpa, 10, 20);
     defer vt_core2.deinit();
     vt_core2.feedByte('\x1b');
     vt_core2.feedByte('[');
@@ -1716,7 +1717,7 @@ test "feed/apply: snapshot determinism across feed sequence variations" {
 
 test "feed/apply: snapshot reflects mode changes" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("TEST");
@@ -1740,7 +1741,7 @@ test "feed/apply: snapshot reflects mode changes" {
 
 test "feed/apply: snapshot includes active selection endpoints" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("0123456789");
@@ -1775,7 +1776,7 @@ test "feed/apply: snapshot parity across direct apply flow" {
     flow.feedSlice(test_bytes);
     flow.applyToScreen(&screen);
 
-    var terminal = try vt_mod.Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
     terminal.feedSlice(test_bytes);
     terminal.apply();
@@ -1798,7 +1799,7 @@ test "feed/apply: snapshot parity across direct apply flow" {
 
 test "feed/apply: snapshot wraparound history indices after eviction" {
     const gpa = std.testing.allocator;
-    var terminal = try vt_mod.Terminal.initWithCellsAndHistory(gpa, 2, 5, 3);
+    var terminal = try Terminal.initWithCellsAndHistory(gpa, 2, 5, 3);
     defer terminal.deinit();
 
     terminal.feedSlice("A\r\nB\r\nC\r\nD\r\nE");

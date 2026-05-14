@@ -1,7 +1,7 @@
 //! Deterministic M7 baseline smoke test.
 
 const std = @import("std");
-const terminal = @import("howl_vt");
+const terminal_mod = @import("../terminal.zig");
 
 const WorkloadResult = struct {
     name: []const u8,
@@ -225,7 +225,7 @@ fn runFeedApplyWorkload(
     var i: usize = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var terminal = try terminal.Terminal.initWithCellsAndHistory(
+        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
             counting.allocator(),
             rows,
             cols,
@@ -292,7 +292,7 @@ fn runMixedInteractiveWorkload(
     var i: usize = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var terminal = try terminal.Terminal.initWithCellsAndHistory(
+        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
             counting.allocator(),
             40,
             120,
@@ -363,7 +363,7 @@ fn runSnapshotWorkload(
     var i: usize = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var terminal = try terminal.Terminal.initWithCellsAndHistory(
+        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
             counting.allocator(),
             40,
             120,
@@ -438,7 +438,7 @@ fn runQueueGrowthChunkedWorkload(
     var i: usize = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var terminal = try terminal.Terminal.initWithCellsAndHistory(
+        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
             counting.allocator(),
             rows,
             cols,

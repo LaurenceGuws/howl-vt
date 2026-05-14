@@ -1,11 +1,13 @@
 //! Kitty graphics behavior tests.
 
 const std = @import("std");
-const vt = @import("howl_vt");
+const terminal_mod = @import("../terminal.zig");
+
+const Terminal = terminal_mod.Terminal;
 
 test "kitty graphics query returns conservative unsupported reply" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\");
@@ -16,7 +18,7 @@ test "kitty graphics query returns conservative unsupported reply" {
 
 test "kitty graphics direct upload stores single base64 payload" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24;QUJD\x1b\\");
@@ -33,7 +35,7 @@ test "kitty graphics direct upload stores single base64 payload" {
 
 test "kitty graphics direct upload assembles chunked base64 payload" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b_Gi=9,s=2,v=1,t=d,f=24,m=1;QU\x1b\\");
@@ -49,7 +51,7 @@ test "kitty graphics direct upload assembles chunked base64 payload" {
 
 test "kitty graphics upload with same image id replaces image and placements" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
@@ -64,7 +66,7 @@ test "kitty graphics upload with same image id replaces image and placements" {
 
 test "kitty graphics place stores metadata and replies by image id" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
@@ -85,7 +87,7 @@ test "kitty graphics place stores metadata and replies by image id" {
 
 test "kitty graphics place missing image replies ENOENT" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b_Ga=p,i=404\x1b\\");
@@ -96,7 +98,7 @@ test "kitty graphics place missing image replies ENOENT" {
 
 test "kitty graphics delete by image id removes image and placements" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
@@ -110,7 +112,7 @@ test "kitty graphics delete by image id removes image and placements" {
 
 test "kitty graphics image numbers allocate ids and place newest image" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;AAAA\x1b\\");
@@ -125,7 +127,7 @@ test "kitty graphics image numbers allocate ids and place newest image" {
 
 test "kitty graphics deletion selectors remove matching placements" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 5, 16);
+    var terminal = try Terminal.initWithCells(allocator, 5, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
@@ -140,7 +142,7 @@ test "kitty graphics deletion selectors remove matching placements" {
 
 test "kitty graphics animation frame upload stores frame metadata" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");

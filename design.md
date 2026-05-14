@@ -14,7 +14,13 @@ It parses terminal input streams, maps parser events into terminal actions, appl
 ## Public Surface
 - `include/howl_vt.h`: C ABI header.
 - `howl_vt_*` exported symbols: C ABI contract for input vocabulary and terminal runtime calls.
-- No public Zig API is promised. Root Zig exports exist for internal workspace wiring only.
+- The shipped embedding boundary is C ABI only.
+- `src/howl_vt.zig` is not an embedding surface. If it survives, it is repo-local only.
+- Internal workspace wiring is not a public contract and is not a preservation target.
+- Deletion targets for the current cleanup are exact:
+  - `src/vt_namespace.zig`
+  - the Zig-shaped aggregation posture in `src/howl_vt.zig`
+  - the fake dual-surface root/build posture in `build.zig`
 
 ```mermaid
 classDiagram
@@ -37,7 +43,8 @@ classDiagram
 ```
 
 ## Ownership Rules
-- `src/howl_vt.zig` owns the C ABI export root and internal root-module assembly only.
+- `src/howl_vt.zig` currently mixes ABI export ownership and repo-local root posture. That mixed root
+  shape is a deletion target, not a preservation target.
 - `Terminal` owns lifecycle, apply-flow orchestration, grouped screen/mode/host/kitty state, and the terminal implementation facade behind the C ABI.
 - `Input` owns key, modifier, mouse, host-token parsing, and input encoding vocabulary.
 - `Interpret` owns parser-event buffering and parser-event-to-action mapping.
@@ -111,12 +118,16 @@ sequenceDiagram
 ## API Contracts
 - The public compatibility promise is the C ABI only.
 - `include/howl_vt.h` and `howl_vt_*` exported symbols define the product surface.
+- Hosts and embedders consume `howl-vt` through that header and those exported symbols only.
+- Zig root imports are not an acceptable host integration path and are not a preservation target.
 - `howl_vt_terminal_init` and `howl_vt_terminal_deinit` own opaque terminal-handle lifecycle.
 - `howl_vt_terminal_feed`, `howl_vt_terminal_apply`, and `howl_vt_terminal_resize` cover bounded parser/apply/geometry control.
 - `howl_vt_terminal_copy_visible` is the host-visible bulk state seam for cursor, scrollback metadata, and visible cells.
 - `howl_vt_terminal_copy_pending_output`, `howl_vt_terminal_clear_pending_output`, and `howl_vt_terminal_drain_pending_clipboard` cover host-facing protocol consequences.
 - `howl_vt_terminal_encode_key`, `howl_vt_terminal_encode_focus`, `howl_vt_terminal_encode_mouse`, and `howl_vt_terminal_encode_paste` cover host input encoding against current terminal modes.
 - Zig owner names may change as long as the C ABI contract stays stable.
+
+## Internal Invariants
 - The implementation still follows the same internal runtime invariants:
   - `init*` returns owned terminal state
   - `feedByte` and `feedSlice` queue parser work only

@@ -1,14 +1,15 @@
 //! OSC and terminal color protocol tests.
 
 const std = @import("std");
-const vt = @import("howl_vt");
+const terminal_mod = @import("../terminal.zig");
 const grid = @import("../grid.zig");
 
+const Terminal = terminal_mod.Terminal;
 const Grid = grid.Grid;
 
 test "latestTitleSet returns typed OSC title payload" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]0;My Title\x07");
@@ -17,7 +18,7 @@ test "latestTitleSet returns typed OSC title payload" {
 
 test "OSC 8 assigns link ids and preserves URI lookup" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]8;;https://example.com\x07abc\x1b]8;;\x07z");
@@ -36,7 +37,7 @@ test "OSC 8 assigns link ids and preserves URI lookup" {
 
 test "OSC 52 produces pending clipboard request" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]52;c;Zm9v\x07");
@@ -48,7 +49,7 @@ test "OSC 52 produces pending clipboard request" {
 
 test "OSC 52 decoded clipboard drain clears pending request" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]52;c;SG93bA==\x07");
@@ -62,7 +63,7 @@ test "OSC 52 decoded clipboard drain clears pending request" {
 
 test "OSC 52 query clipboard drain clears without request" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]52;c;?\x07");
@@ -74,7 +75,7 @@ test "OSC 52 query clipboard drain clears without request" {
 
 test "kitty clipboard OSC 5522 and mode query use host-neutral state" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[?5522h\x1b[?5522$p\x1b]5522;type=write;AAAA\x1b\\");
@@ -87,7 +88,7 @@ test "kitty clipboard OSC 5522 and mode query use host-neutral state" {
 
 test "kitty file transfer and text sizing OSC payloads are retained" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]5113;cmd=data;AAAA\x1b\\\x1b]66;s=2;Hi\x1b\\");
@@ -99,7 +100,7 @@ test "kitty file transfer and text sizing OSC payloads are retained" {
 
 test "kitty shell integration OSC 133 records latest mark" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]133;C;cmdline=ls\x07\x1b]133;D;2\x07");
@@ -113,7 +114,7 @@ test "kitty shell integration OSC 133 records latest mark" {
 
 test "kitty notification OSC 99 queues host-neutral request" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]99;i=1:d=0;Hello\x1b\\\x1b]99;i=1:p=body;World\x1b\\");
@@ -128,7 +129,7 @@ test "kitty notification OSC 99 queues host-neutral request" {
 
 test "kitty notification OSC 9 alias queues host-neutral request" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]9;i=3:p=body;Alias\x1b\\");
@@ -141,7 +142,7 @@ test "kitty notification OSC 9 alias queues host-neutral request" {
 
 test "kitty pointer shape OSC 22 maintains per-screen stack and replies to queries" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]22;pointer\x1b\\\x1b]22;>wait,crosshair\x1b\\\x1b]22;?__current__,pointer,no-such\x1b\\");
@@ -158,7 +159,7 @@ test "kitty pointer shape OSC 22 maintains per-screen stack and replies to queri
 
 test "kitty multiple cursor support clear and empty queries" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[> q\x1b[>100 q\x1b[>101 q\x1b[>0;4 q");
@@ -170,7 +171,7 @@ test "kitty multiple cursor support clear and empty queries" {
 
 test "xterm pointer mode stores bounded resource value" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     try std.testing.expectEqual(@as(u2, 1), terminal.pointerMode());
@@ -189,7 +190,7 @@ test "xterm pointer mode stores bounded resource value" {
 
 test "kitty color stack OSC 30001 and 30101 track depth" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]30001\x1b\\\x1b]30001\x1b\\\x1b]30101\x1b\\");
@@ -199,7 +200,7 @@ test "kitty color stack OSC 30001 and 30101 track depth" {
 
 test "kitty OSC 21 sets queries and resets terminal colors" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]21;foreground=#112233;background=rgb:44/55/66;cursor=\x1b\\");
@@ -220,7 +221,7 @@ test "kitty OSC 21 sets queries and resets terminal colors" {
 
 test "xterm OSC colors set query and reset palette and dynamic colors" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]4;1;#010203\x1b\\\x1b]10;#aabbcc\x1b\\\x1b]11;rgb:0d/0e/0f\x1b\\\x1b]12;red\x1b\\");
@@ -240,7 +241,7 @@ test "xterm OSC colors set query and reset palette and dynamic colors" {
 
 test "kitty color stack restores terminal color snapshots" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b]21;foreground=#010203;1=#040506\x1b\\\x1b]30001\x1b\\");

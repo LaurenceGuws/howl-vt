@@ -1,67 +1,68 @@
 //! Public Terminal API and lifecycle tests.
 
 const std = @import("std");
-const vt = @import("howl_vt");
+const terminal_mod = @import("../terminal.zig");
 const grid = @import("../grid.zig");
 const selection = @import("../selection.zig");
 const input_mod = @import("../input.zig");
 
+const Terminal = terminal_mod.Terminal;
 const Grid = grid.Grid;
 const Selection = selection;
 const Input = input_mod;
 
 test "Terminal public methods remain available" {
-    try std.testing.expect(@hasDecl(vt.Terminal, "init"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "initWithCells"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "deinit"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "feedByte"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "feedSlice"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "apply"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "clear"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "reset"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "resetScreen"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "resize"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "screen"));
-    try std.testing.expect(@hasDecl(vt.Terminal, "queuedEventCount"));
+    try std.testing.expect(@hasDecl(Terminal, "init"));
+    try std.testing.expect(@hasDecl(Terminal, "initWithCells"));
+    try std.testing.expect(@hasDecl(Terminal, "deinit"));
+    try std.testing.expect(@hasDecl(Terminal, "feedByte"));
+    try std.testing.expect(@hasDecl(Terminal, "feedSlice"));
+    try std.testing.expect(@hasDecl(Terminal, "apply"));
+    try std.testing.expect(@hasDecl(Terminal, "clear"));
+    try std.testing.expect(@hasDecl(Terminal, "reset"));
+    try std.testing.expect(@hasDecl(Terminal, "resetScreen"));
+    try std.testing.expect(@hasDecl(Terminal, "resize"));
+    try std.testing.expect(@hasDecl(Terminal, "screen"));
+    try std.testing.expect(@hasDecl(Terminal, "queuedEventCount"));
 }
 
 test "Terminal method signatures remain host-facing" {
     const Allocator = std.mem.Allocator;
-    const init_fn: fn (Allocator, u16, u16) anyerror!vt.Terminal = vt.Terminal.init;
-    const init_cells_fn: fn (Allocator, u16, u16) anyerror!vt.Terminal = vt.Terminal.initWithCells;
-    const deinit_fn: fn (*vt.Terminal) void = vt.Terminal.deinit;
-    const feed_byte_fn: fn (*vt.Terminal, u8) void = vt.Terminal.feedByte;
-    const feed_slice_fn: fn (*vt.Terminal, []const u8) void = vt.Terminal.feedSlice;
-    const apply_fn: fn (*vt.Terminal) void = vt.Terminal.apply;
-    const clear_fn: fn (*vt.Terminal) void = vt.Terminal.clear;
-    const reset_fn: fn (*vt.Terminal) void = vt.Terminal.reset;
-    const reset_screen_fn: fn (*vt.Terminal) void = vt.Terminal.resetScreen;
-    const resize_fn: fn (*vt.Terminal, u16, u16) anyerror!void = vt.Terminal.resize;
-    const screen_fn: fn (*const vt.Terminal) *const Grid = vt.Terminal.screen;
-    const queue_fn: fn (*const vt.Terminal) usize = vt.Terminal.queuedEventCount;
+    const init_fn: fn (Allocator, u16, u16) anyerror!Terminal = Terminal.init;
+    const init_cells_fn: fn (Allocator, u16, u16) anyerror!Terminal = Terminal.initWithCells;
+    const deinit_fn: fn (*Terminal) void = Terminal.deinit;
+    const feed_byte_fn: fn (*Terminal, u8) void = Terminal.feedByte;
+    const feed_slice_fn: fn (*Terminal, []const u8) void = Terminal.feedSlice;
+    const apply_fn: fn (*Terminal) void = Terminal.apply;
+    const clear_fn: fn (*Terminal) void = Terminal.clear;
+    const reset_fn: fn (*Terminal) void = Terminal.reset;
+    const reset_screen_fn: fn (*Terminal) void = Terminal.resetScreen;
+    const resize_fn: fn (*Terminal, u16, u16) anyerror!void = Terminal.resize;
+    const screen_fn: fn (*const Terminal) *const Grid = Terminal.screen;
+    const queue_fn: fn (*const Terminal) usize = Terminal.queuedEventCount;
     _ = .{ init_fn, init_cells_fn, deinit_fn, feed_byte_fn, feed_slice_fn, apply_fn, clear_fn, reset_fn, reset_screen_fn, resize_fn, screen_fn, queue_fn };
 }
 
 test "const-read history and selection accessors stay stable" {
-    const history_row_fn: fn (*const vt.Terminal, usize, u16) u21 = vt.Terminal.historyRowAt;
-    const history_count_fn: fn (*const vt.Terminal) usize = vt.Terminal.historyCount;
-    const history_capacity_fn: fn (*const vt.Terminal) u16 = vt.Terminal.historyCapacity;
-    const selection_state_fn: fn (*const vt.Terminal) ?Selection.TerminalSelection = vt.Terminal.selectionState;
+    const history_row_fn: fn (*const Terminal, usize, u16) u21 = Terminal.historyRowAt;
+    const history_count_fn: fn (*const Terminal) usize = Terminal.historyCount;
+    const history_capacity_fn: fn (*const Terminal) u16 = Terminal.historyCapacity;
+    const selection_state_fn: fn (*const Terminal) ?Selection.TerminalSelection = Terminal.selectionState;
     _ = .{ history_row_fn, history_count_fn, history_capacity_fn, selection_state_fn };
 }
 
 test "lifecycle extension methods stay stable" {
-    const init_cells_history_fn: fn (std.mem.Allocator, u16, u16, u16) anyerror!vt.Terminal = vt.Terminal.initWithCellsAndHistory;
-    const selection_start_fn: fn (*vt.Terminal, i32, u16) void = vt.Terminal.selectionStart;
-    const selection_update_fn: fn (*vt.Terminal, i32, u16) void = vt.Terminal.selectionUpdate;
-    const selection_finish_fn: fn (*vt.Terminal) void = vt.Terminal.selectionFinish;
-    const selection_clear_fn: fn (*vt.Terminal) void = vt.Terminal.selectionClear;
+    const init_cells_history_fn: fn (std.mem.Allocator, u16, u16, u16) anyerror!Terminal = Terminal.initWithCellsAndHistory;
+    const selection_start_fn: fn (*Terminal, i32, u16) void = Terminal.selectionStart;
+    const selection_update_fn: fn (*Terminal, i32, u16) void = Terminal.selectionUpdate;
+    const selection_finish_fn: fn (*Terminal) void = Terminal.selectionFinish;
+    const selection_clear_fn: fn (*Terminal) void = Terminal.selectionClear;
     _ = .{ init_cells_history_fn, selection_start_fn, selection_update_fn, selection_finish_fn, selection_clear_fn };
 }
 
 test "snapshot capture remains deterministic" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
 
     terminal.feedSlice("TEST");
@@ -81,7 +82,7 @@ test "snapshot capture remains deterministic" {
 
 test "resize keeps history enabled state" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCellsAndHistory(allocator, 1, 3, 8);
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 1, 3, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("111\n222\n333");
@@ -95,7 +96,7 @@ test "resize keeps history enabled state" {
 
 test "alternate screen exit preserves primary scrollback" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCellsAndHistory(allocator, 2, 4, 16);
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 2, 4, 16);
     defer terminal.deinit();
 
     terminal.feedSlice("AAAA\nBBBB\nCCCC\nDDDD");
@@ -130,7 +131,7 @@ test "alternate screen exit preserves primary scrollback" {
 
 test "alternate screen 1049 restores primary cursor" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
 
     terminal.feedSlice("\x1b[3;4H\x1b[?1049h\x1b[2;2H\x1b[?1049l");
@@ -141,7 +142,7 @@ test "alternate screen 1049 restores primary cursor" {
 
 test "alternate screen switches mark active viewport fully dirty" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 3, 4);
+    var terminal = try Terminal.initWithCells(allocator, 3, 4);
     defer terminal.deinit();
 
     terminal.clearDirtyRows();
@@ -165,11 +166,11 @@ test "alternate screen switches mark active viewport fully dirty" {
 
 test "encodeKey and encodeMouse methods are callable" {
     const allocator = std.testing.allocator;
-    var terminal = try vt.Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
 
-    const encode_key_fn: fn (*vt.Terminal, Input.Key, Input.Modifier) []const u8 = vt.Terminal.encodeKey;
-    const encode_mouse_fn: fn (*vt.Terminal, Input.MouseEvent) []const u8 = vt.Terminal.encodeMouse;
+    const encode_key_fn: fn (*Terminal, Input.Key, Input.Modifier) []const u8 = Terminal.encodeKey;
+    const encode_mouse_fn: fn (*Terminal, Input.MouseEvent) []const u8 = Terminal.encodeMouse;
     _ = .{ encode_key_fn, encode_mouse_fn };
 
     terminal.feedSlice("TEST");
@@ -191,18 +192,18 @@ test "encodeKey and encodeMouse methods are callable" {
 }
 
 test "Input exposes key and modifier constants" {
-    _ = vt.Input.mod_none;
-    _ = vt.Input.mod_shift;
-    _ = vt.Input.mod_alt;
-    _ = vt.Input.mod_ctrl;
-    _ = vt.Input.key_enter;
-    _ = vt.Input.key_tab;
-    _ = vt.Input.key_backspace;
-    _ = vt.Input.key_escape;
-    _ = vt.Input.key_up;
-    _ = vt.Input.key_down;
-    _ = vt.Input.key_left;
-    _ = vt.Input.key_right;
-    _ = vt.Input.key_kp_0;
-    _ = vt.Input.key_kp_enter;
+    _ = Input.mod_none;
+    _ = Input.mod_shift;
+    _ = Input.mod_alt;
+    _ = Input.mod_ctrl;
+    _ = Input.key_enter;
+    _ = Input.key_tab;
+    _ = Input.key_backspace;
+    _ = Input.key_escape;
+    _ = Input.key_up;
+    _ = Input.key_down;
+    _ = Input.key_left;
+    _ = Input.key_right;
+    _ = Input.key_kp_0;
+    _ = Input.key_kp_enter;
 }

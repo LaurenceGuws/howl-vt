@@ -1,7 +1,7 @@
 //! Scrollback fuzz scenarios.
 
 const std = @import("std");
-const vt_mod = @import("howl_vt");
+const terminal_mod = @import("../terminal.zig");
 
 pub const RowsMin: u16 = 1;
 pub const ColsMin: u16 = 1;
@@ -62,7 +62,7 @@ pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: usize) !Ru
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
 
-    var vt = try vt_mod.Terminal.initWithCellsAndHistory(allocator, 24, 80, 4096);
+    var vt = try terminal_mod.Terminal.initWithCellsAndHistory(allocator, 24, 80, 4096);
     defer vt.deinit();
 
     var i: usize = 0;
@@ -93,7 +93,7 @@ pub fn runCanonicalPreservation(
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
 
-    var vt = try vt_mod.Terminal.initWithCellsAndHistory(
+    var vt = try terminal_mod.Terminal.initWithCellsAndHistory(
         allocator,
         options.initial_rows,
         options.initial_cols,
@@ -164,7 +164,7 @@ fn pickOp(rand: std.Random) OpKind {
     return .zoom_jitter;
 }
 
-fn applyWriteBurst(vt: *vt_mod.Terminal, rand: std.Random) !void {
+fn applyWriteBurst(vt: *terminal_mod.Terminal, rand: std.Random) !void {
     const lines = rand.uintLessThan(u8, 8) + 1;
     var line_idx: u8 = 0;
     while (line_idx < lines) : (line_idx += 1) {
@@ -181,20 +181,20 @@ fn applyWriteBurst(vt: *vt_mod.Terminal, rand: std.Random) !void {
     vt.apply();
 }
 
-fn applyResize(vt: *vt_mod.Terminal, rand: std.Random) !void {
+fn applyResize(vt: *terminal_mod.Terminal, rand: std.Random) !void {
     const rows = RowsMin + rand.uintLessThan(u16, RowsMax - RowsMin + 1);
     const cols = ColsMin + rand.uintLessThan(u16, ColsMax - ColsMin + 1);
     try vt.resize(rows, cols);
 }
 
-fn applyResizeStep(vt: *vt_mod.Terminal, rand: std.Random) !ChurnStep {
+fn applyResizeStep(vt: *terminal_mod.Terminal, rand: std.Random) !ChurnStep {
     const rows = RowsMin + rand.uintLessThan(u16, RowsMax - RowsMin + 1);
     const cols = ColsMin + rand.uintLessThan(u16, ColsMax - ColsMin + 1);
     try vt.resize(rows, cols);
     return .{ .resize = .{ .rows = rows, .cols = cols } };
 }
 
-fn applyZoomJitter(vt: *vt_mod.Terminal, rand: std.Random) !void {
+fn applyZoomJitter(vt: *terminal_mod.Terminal, rand: std.Random) !void {
     const cur_rows = vt.screen().rows;
     const cur_cols = vt.screen().cols;
     const steps = rand.uintLessThan(u8, 5) + 2;
@@ -209,7 +209,7 @@ fn applyZoomJitter(vt: *vt_mod.Terminal, rand: std.Random) !void {
     try vt.resize(cur_rows, cur_cols);
 }
 
-fn applyZoomJitterStep(vt: *vt_mod.Terminal, rand: std.Random) !ChurnStep {
+fn applyZoomJitterStep(vt: *terminal_mod.Terminal, rand: std.Random) !ChurnStep {
     const cur_rows = vt.screen().rows;
     const cur_cols = vt.screen().cols;
     const steps = rand.uintLessThan(u8, 5) + 2;
@@ -239,7 +239,7 @@ fn clampDimI16(base: u16, delta: i16, min_v: u16, max_v: u16) u16 {
     return @intCast(clamped);
 }
 
-fn ensureCoreInvariants(vt: *const vt_mod.Terminal) InvariantError!void {
+fn ensureCoreInvariants(vt: *const terminal_mod.Terminal) InvariantError!void {
     const s = vt.screen();
     if (s.rows < RowsMin) return error.RowBelowMinimum;
     if (s.cols < ColsMin) return error.ColBelowMinimum;
@@ -247,7 +247,7 @@ fn ensureCoreInvariants(vt: *const vt_mod.Terminal) InvariantError!void {
     if (s.cursor_col >= s.cols) return error.CursorColOutOfBounds;
 }
 
-fn hashStructural(vt: *const vt_mod.Terminal) u64 {
+fn hashStructural(vt: *const terminal_mod.Terminal) u64 {
     var h = std.hash.Wyhash.init(0);
     const s = vt.screen();
     h.update(std.mem.asBytes(&s.rows));
