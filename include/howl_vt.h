@@ -8,7 +8,60 @@
 extern "C" {
 #endif
 
-typedef uintptr_t HowlVtHandle;
+typedef struct HowlVtTerminal HowlVtTerminal;
+typedef HowlVtTerminal *HowlVtHandle;
+
+enum {
+  HOWL_VT_MOD_NONE = 0,
+  HOWL_VT_MOD_SHIFT = 1,
+  HOWL_VT_MOD_ALT = 2,
+  HOWL_VT_MOD_CTRL = 4,
+};
+
+enum {
+  HOWL_VT_KEY_ENTER = 1,
+  HOWL_VT_KEY_TAB = 2,
+  HOWL_VT_KEY_BACKSPACE = 3,
+  HOWL_VT_KEY_ESCAPE = 4,
+  HOWL_VT_KEY_UP = 5,
+  HOWL_VT_KEY_DOWN = 6,
+  HOWL_VT_KEY_LEFT = 7,
+  HOWL_VT_KEY_RIGHT = 8,
+  HOWL_VT_KEY_INSERT = 9,
+  HOWL_VT_KEY_DELETE = 10,
+  HOWL_VT_KEY_HOME = 11,
+  HOWL_VT_KEY_END = 12,
+  HOWL_VT_KEY_PAGEUP = 13,
+  HOWL_VT_KEY_PAGEDOWN = 14,
+  HOWL_VT_KEY_F1 = 23,
+  HOWL_VT_KEY_F2 = 24,
+  HOWL_VT_KEY_F3 = 25,
+  HOWL_VT_KEY_F4 = 26,
+  HOWL_VT_KEY_F5 = 27,
+  HOWL_VT_KEY_F6 = 28,
+  HOWL_VT_KEY_F7 = 29,
+  HOWL_VT_KEY_F8 = 30,
+  HOWL_VT_KEY_F9 = 31,
+  HOWL_VT_KEY_F10 = 32,
+  HOWL_VT_KEY_F11 = 33,
+  HOWL_VT_KEY_F12 = 34,
+};
+
+typedef enum {
+  HOWL_VT_MOUSE_BUTTON_NONE = 0,
+  HOWL_VT_MOUSE_BUTTON_LEFT = 1,
+  HOWL_VT_MOUSE_BUTTON_MIDDLE = 2,
+  HOWL_VT_MOUSE_BUTTON_RIGHT = 3,
+  HOWL_VT_MOUSE_BUTTON_WHEEL_UP = 4,
+  HOWL_VT_MOUSE_BUTTON_WHEEL_DOWN = 5,
+} HowlVtMouseButton;
+
+typedef enum {
+  HOWL_VT_MOUSE_PRESS = 0,
+  HOWL_VT_MOUSE_RELEASE = 1,
+  HOWL_VT_MOUSE_MOVE = 2,
+  HOWL_VT_MOUSE_WHEEL = 3,
+} HowlVtMouseEventKind;
 
 typedef enum {
   HOWL_VT_CALL_OK = 0,
@@ -74,61 +127,11 @@ typedef struct {
   uint64_t cell_count;
 } HowlVtVisibleView;
 
-uint32_t howl_vt_mod_none(void);
-uint32_t howl_vt_mod_shift(void);
-uint32_t howl_vt_mod_alt(void);
-uint32_t howl_vt_mod_ctrl(void);
-uint8_t howl_vt_mod_is_valid(uint32_t mods);
-
-uint32_t howl_vt_key_enter(void);
-uint32_t howl_vt_key_tab(void);
-uint32_t howl_vt_key_backspace(void);
-uint32_t howl_vt_key_escape(void);
-uint32_t howl_vt_key_up(void);
-uint32_t howl_vt_key_down(void);
-uint32_t howl_vt_key_left(void);
-uint32_t howl_vt_key_right(void);
-uint32_t howl_vt_key_insert(void);
-uint32_t howl_vt_key_delete(void);
-uint32_t howl_vt_key_home(void);
-uint32_t howl_vt_key_end(void);
-uint32_t howl_vt_key_pageup(void);
-uint32_t howl_vt_key_pagedown(void);
-uint32_t howl_vt_key_f1(void);
-uint32_t howl_vt_key_f2(void);
-uint32_t howl_vt_key_f3(void);
-uint32_t howl_vt_key_f4(void);
-uint32_t howl_vt_key_f5(void);
-uint32_t howl_vt_key_f6(void);
-uint32_t howl_vt_key_f7(void);
-uint32_t howl_vt_key_f8(void);
-uint32_t howl_vt_key_f9(void);
-uint32_t howl_vt_key_f10(void);
-uint32_t howl_vt_key_f11(void);
-uint32_t howl_vt_key_f12(void);
-uint8_t howl_vt_key_is_valid(uint32_t key);
-
-uint8_t howl_vt_mouse_button_none(void);
-uint8_t howl_vt_mouse_button_left(void);
-uint8_t howl_vt_mouse_button_middle(void);
-uint8_t howl_vt_mouse_button_right(void);
-uint8_t howl_vt_mouse_button_wheel_up(void);
-uint8_t howl_vt_mouse_button_wheel_down(void);
-uint8_t howl_vt_mouse_button_is_valid(uint8_t button);
-uint8_t howl_vt_mouse_press(void);
-uint8_t howl_vt_mouse_release(void);
-uint8_t howl_vt_mouse_move(void);
-uint8_t howl_vt_mouse_wheel(void);
-uint8_t howl_vt_mouse_event_kind_is_valid(uint8_t kind);
-
 HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t history_capacity);
 void howl_vt_terminal_deinit(HowlVtHandle handle);
 int32_t howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
-uint64_t howl_vt_terminal_queued_event_count(HowlVtHandle handle);
 HowlVtApplyResult howl_vt_terminal_apply(HowlVtHandle handle, size_t max_events, uint8_t *title_ptr, size_t title_cap);
 int32_t howl_vt_terminal_resize(HowlVtHandle handle, uint16_t rows, uint16_t cols);
-uint64_t howl_vt_terminal_history_count(HowlVtHandle handle);
-uint8_t howl_vt_terminal_is_alternate_screen(HowlVtHandle handle);
 void howl_vt_terminal_clear_dirty_rows(HowlVtHandle handle);
 HowlVtVisibleView howl_vt_terminal_copy_visible(HowlVtHandle handle, size_t scrollback_offset, HowlVtCell *cells_ptr, size_t cells_cap);
 HowlVtBytesResult howl_vt_terminal_copy_pending_output(HowlVtHandle handle, uint8_t *ptr, size_t cap);

@@ -7,7 +7,8 @@ const grid = @import("grid.zig");
 const input = @import("input.zig");
 const terminal = @import("terminal.zig");
 
-pub const VtHandle = usize;
+pub const HowlVtTerminal = opaque {};
+pub const VtHandle = ?*HowlVtTerminal;
 
 pub const HowlVtCallStatus = enum(c_int) {
     ok = 0,
@@ -73,17 +74,13 @@ pub const FfiVisibleView = extern struct {
     cell_count: u64 = 0,
 };
 
-const key_min: u32 = input.key_enter;
-const key_max: u32 = input.key_f12;
-const mod_mask: u32 = input.mod_shift | input.mod_alt | input.mod_ctrl;
-
 fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
 }
 
 fn vtFromHandle(handle: VtHandle) ?*terminal.Terminal {
-    if (handle == 0) return null;
-    return @ptrFromInt(handle);
+    const owned = handle orelse return null;
+    return @ptrCast(@alignCast(owned));
 }
 
 fn bytesIn(ptr: ?[*]const u8, len: usize) ?[]const u8 {
@@ -183,207 +180,13 @@ fn decodeClipboardBytes(raw: []const u8, out: []u8) FfiBytesResult {
     };
 }
 
-pub fn modIsValid(mods: u32) callconv(.c) u8 {
-    return if ((mods & ~mod_mask) == 0) 1 else 0;
-}
-
-pub fn modNone() callconv(.c) u32 {
-    return input.mod_none;
-}
-
-pub fn modShift() callconv(.c) u32 {
-    return input.mod_shift;
-}
-
-pub fn modAlt() callconv(.c) u32 {
-    return input.mod_alt;
-}
-
-pub fn modCtrl() callconv(.c) u32 {
-    return input.mod_ctrl;
-}
-
-pub fn keyEnter() callconv(.c) u32 {
-    return input.key_enter;
-}
-
-pub fn keyTab() callconv(.c) u32 {
-    return input.key_tab;
-}
-
-pub fn keyBackspace() callconv(.c) u32 {
-    return input.key_backspace;
-}
-
-pub fn keyEscape() callconv(.c) u32 {
-    return input.key_escape;
-}
-
-pub fn keyUp() callconv(.c) u32 {
-    return input.key_up;
-}
-
-pub fn keyDown() callconv(.c) u32 {
-    return input.key_down;
-}
-
-pub fn keyLeft() callconv(.c) u32 {
-    return input.key_left;
-}
-
-pub fn keyRight() callconv(.c) u32 {
-    return input.key_right;
-}
-
-pub fn keyInsert() callconv(.c) u32 {
-    return input.key_insert;
-}
-
-pub fn keyDelete() callconv(.c) u32 {
-    return input.key_delete;
-}
-
-pub fn keyHome() callconv(.c) u32 {
-    return input.key_home;
-}
-
-pub fn keyEnd() callconv(.c) u32 {
-    return input.key_end;
-}
-
-pub fn keyPageup() callconv(.c) u32 {
-    return input.key_pageup;
-}
-
-pub fn keyPagedown() callconv(.c) u32 {
-    return input.key_pagedown;
-}
-
-pub fn keyF1() callconv(.c) u32 {
-    return input.key_f1;
-}
-
-pub fn keyF2() callconv(.c) u32 {
-    return input.key_f2;
-}
-
-pub fn keyF3() callconv(.c) u32 {
-    return input.key_f3;
-}
-
-pub fn keyF4() callconv(.c) u32 {
-    return input.key_f4;
-}
-
-pub fn keyF5() callconv(.c) u32 {
-    return input.key_f5;
-}
-
-pub fn keyF6() callconv(.c) u32 {
-    return input.key_f6;
-}
-
-pub fn keyF7() callconv(.c) u32 {
-    return input.key_f7;
-}
-
-pub fn keyF8() callconv(.c) u32 {
-    return input.key_f8;
-}
-
-pub fn keyF9() callconv(.c) u32 {
-    return input.key_f9;
-}
-
-pub fn keyF10() callconv(.c) u32 {
-    return input.key_f10;
-}
-
-pub fn keyF11() callconv(.c) u32 {
-    return input.key_f11;
-}
-
-pub fn keyF12() callconv(.c) u32 {
-    return input.key_f12;
-}
-
-pub fn keyIsValid(key: u32) callconv(.c) u8 {
-    if (key < key_min) return 0;
-    if (key > key_max) return 0;
-    return 1;
-}
-
-pub fn mouseButtonNone() callconv(.c) u8 {
-    return @intFromEnum(input.mouse_button_none);
-}
-
-pub fn mouseButtonLeft() callconv(.c) u8 {
-    return @intFromEnum(input.mouse_button_left);
-}
-
-pub fn mouseButtonMiddle() callconv(.c) u8 {
-    return @intFromEnum(input.mouse_button_middle);
-}
-
-pub fn mouseButtonRight() callconv(.c) u8 {
-    return @intFromEnum(input.mouse_button_right);
-}
-
-pub fn mouseButtonWheelUp() callconv(.c) u8 {
-    return @intFromEnum(input.mouse_button_wheel_up);
-}
-
-pub fn mouseButtonWheelDown() callconv(.c) u8 {
-    return @intFromEnum(input.mouse_button_wheel_down);
-}
-
-pub fn mousePress() callconv(.c) u8 {
-    return @intFromEnum(input.mouse_press);
-}
-
-pub fn mouseRelease() callconv(.c) u8 {
-    return @intFromEnum(input.mouse_release);
-}
-
-pub fn mouseMove() callconv(.c) u8 {
-    return @intFromEnum(input.mouse_move);
-}
-
-pub fn mouseWheel() callconv(.c) u8 {
-    return @intFromEnum(input.mouse_wheel);
-}
-
-pub fn mouseButtonIsValid(button: u8) callconv(.c) u8 {
-    return switch (button) {
-        @intFromEnum(input.mouse_button_none),
-        @intFromEnum(input.mouse_button_left),
-        @intFromEnum(input.mouse_button_middle),
-        @intFromEnum(input.mouse_button_right),
-        @intFromEnum(input.mouse_button_wheel_up),
-        @intFromEnum(input.mouse_button_wheel_down),
-        => 1,
-        else => 0,
-    };
-}
-
-pub fn mouseEventKindIsValid(kind: u8) callconv(.c) u8 {
-    return switch (kind) {
-        @intFromEnum(input.mouse_press),
-        @intFromEnum(input.mouse_release),
-        @intFromEnum(input.mouse_move),
-        @intFromEnum(input.mouse_wheel),
-        => 1,
-        else => 0,
-    };
-}
-
 pub fn terminalInit(rows: u16, cols: u16, history_capacity: u16) callconv(.c) VtHandle {
-    const owned = std.heap.c_allocator.create(terminal.Terminal) catch return 0;
+    const owned = std.heap.c_allocator.create(terminal.Terminal) catch return null;
     owned.* = terminal.Terminal.initWithCellsAndHistory(std.heap.c_allocator, rows, cols, history_capacity) catch {
         std.heap.c_allocator.destroy(owned);
-        return 0;
+        return null;
     };
-    return @intFromPtr(owned);
+    return @ptrCast(owned);
 }
 
 pub fn terminalDeinit(handle: VtHandle) callconv(.c) void {
@@ -397,11 +200,6 @@ pub fn terminalFeed(handle: VtHandle, ptr: ?[*]const u8, len: usize) callconv(.c
     const bytes = bytesIn(ptr, len) orelse return @intFromEnum(HowlVtCallStatus.invalid_argument);
     owned.feedSlice(bytes);
     return @intFromEnum(HowlVtCallStatus.ok);
-}
-
-pub fn terminalQueuedEventCount(handle: VtHandle) callconv(.c) u64 {
-    const owned = vtFromHandle(handle) orelse return 0;
-    return owned.queuedEventCount();
 }
 
 pub fn terminalApply(handle: VtHandle, max_events: usize, title_ptr: ?[*]u8, title_cap: usize) callconv(.c) FfiApplyResult {
@@ -441,16 +239,6 @@ pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
     owned.resize(rows, cols) catch return @intFromEnum(HowlVtCallStatus.failed);
     return @intFromEnum(HowlVtCallStatus.ok);
-}
-
-pub fn terminalHistoryCount(handle: VtHandle) callconv(.c) u64 {
-    const owned = vtFromHandle(handle) orelse return 0;
-    return owned.historyCount();
-}
-
-pub fn terminalIsAlternateScreen(handle: VtHandle) callconv(.c) u8 {
-    const owned = vtFromHandle(handle) orelse return 0;
-    return boolByte(owned.isAlternateScreen());
 }
 
 pub fn terminalClearDirtyRows(handle: VtHandle) callconv(.c) void {
@@ -591,37 +379,10 @@ pub fn terminalEncodePaste(handle: VtHandle, text_ptr: ?[*]const u8, text_len: u
     };
 }
 
-test "vt ffi modifier and key vocabulary proves positive and negative space" {
-    try std.testing.expectEqual(input.mod_none, modNone());
-    try std.testing.expectEqual(input.mod_shift, modShift());
-    try std.testing.expectEqual(input.mod_alt, modAlt());
-    try std.testing.expectEqual(input.mod_ctrl, modCtrl());
-    try std.testing.expectEqual(@as(u8, 1), modIsValid(input.mod_none));
-    try std.testing.expectEqual(@as(u8, 1), modIsValid(input.mod_shift | input.mod_alt | input.mod_ctrl));
-    try std.testing.expectEqual(@as(u8, 0), modIsValid(8));
-
-    try std.testing.expectEqual(input.key_insert, keyInsert());
-    try std.testing.expectEqual(input.key_delete, keyDelete());
-    try std.testing.expectEqual(input.key_f12, keyF12());
-    try std.testing.expectEqual(@as(u8, 1), keyIsValid(keyEnter()));
-    try std.testing.expectEqual(@as(u8, 1), keyIsValid(keyF12()));
-    try std.testing.expectEqual(@as(u8, 0), keyIsValid(0));
-    try std.testing.expectEqual(@as(u8, 0), keyIsValid(keyF12() + 1));
-}
-
-test "vt ffi mouse vocabulary proves positive and negative space" {
-    try std.testing.expectEqual(@intFromEnum(input.mouse_button_left), mouseButtonLeft());
-    try std.testing.expectEqual(@intFromEnum(input.mouse_wheel), mouseWheel());
-    try std.testing.expectEqual(@as(u8, 1), mouseButtonIsValid(mouseButtonWheelDown()));
-    try std.testing.expectEqual(@as(u8, 0), mouseButtonIsValid(9));
-    try std.testing.expectEqual(@as(u8, 1), mouseEventKindIsValid(mouseMove()));
-    try std.testing.expectEqual(@as(u8, 0), mouseEventKindIsValid(9));
-}
-
 test "vt ffi runtime surface covers apply encode and visible copy" {
     const handle = terminalInit(2, 4, 8);
     defer terminalDeinit(handle);
-    try std.testing.expect(handle != 0);
+    try std.testing.expect(handle != null);
 
     try std.testing.expectEqual(@as(i32, 0), terminalFeed(handle, "abc".ptr, 3));
     var title_buf: [32]u8 = undefined;
