@@ -238,7 +238,7 @@ fn genTable() Table {
         range(&result, 0x00, 0x17, source, source, .execute);
         single(&result, 0x19, source, source, .execute);
         range(&result, 0x1C, 0x1F, source, source, .execute);
-        range(&result, 0x20, 0x2F, source, source, .param);
+        range(&result, 0x20, 0x2F, source, source, .collect);
         single(&result, 0x7F, source, source, .ignore);
 
         range(&result, 0x40, 0x7E, source, .ground, .csi_dispatch);

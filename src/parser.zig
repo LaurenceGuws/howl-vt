@@ -346,6 +346,12 @@ pub const Parser = struct {
             },
             .execute => .{ .execute = byte },
             .collect => collect: {
+                if (self.state == .csi_entry and (byte == '<' or byte == '>' or byte == '=' or byte == '?')) {
+                    if (self.csi_leader == 0) self.csi_leader = byte;
+                    if (byte == '?') self.csi_private = true;
+                    break :collect null;
+                }
+
                 self.collectIntermediate(byte);
                 break :collect null;
             },
