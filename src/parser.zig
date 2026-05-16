@@ -147,7 +147,6 @@ pub const Parser = struct {
 
     /// Advance the parser by one byte and return ordered phase actions.
     pub fn next(self: *Parser, byte: u8) PhaseActions {
-        self.cleanupBorrowedPhaseState();
         std.debug.assert(self.activeControlCount() <= 1);
         if (self.state == .ground and self.utf8.needed > 0) {
             const action = self.consumeGroundByte(byte);
@@ -399,12 +398,6 @@ pub const Parser = struct {
                 else => unreachable,
             },
         };
-    }
-
-    fn cleanupBorrowedPhaseState(self: *Parser) void {
-        if (self.state != .osc_string and !self.osc.active()) {
-            self.osc.clearFinished();
-        }
     }
 
     fn isActiveState(self: *const Parser) bool {
