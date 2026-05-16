@@ -19,26 +19,41 @@ pub const HowlVtCallStatus = enum(c_int) {
 };
 
 pub const FfiColor = extern struct {
-    r: u8 = 0,
-    g: u8 = 0,
-    b: u8 = 0,
-    a: u8 = 0,
+    kind: u8 = 0,
+    value: u32 = 0,
+};
+
+pub const FfiCellFlags = extern struct {
+    continuation: u8 = 0,
+    reserved0: u8 = 0,
+    reserved1: u8 = 0,
+    reserved2: u8 = 0,
+};
+
+pub const FfiCellAttrs = extern struct {
+    bold: u8 = 0,
+    dim: u8 = 0,
+    italic: u8 = 0,
+    underline: u8 = 0,
+    underline_color_set: u8 = 0,
+    blink: u8 = 0,
+    inverse: u8 = 0,
+    invisible: u8 = 0,
+    strikethrough: u8 = 0,
 };
 
 pub const FfiCell = extern struct {
     codepoint: u32 = 0,
-    fg: FfiColor = .{},
-    bg: FfiColor = .{},
+    flags: FfiCellFlags = .{},
+    fg_color: FfiColor = .{},
+    bg_color: FfiColor = .{},
     underline_color: FfiColor = .{},
-    link_id: u32 = 0,
-    continuation: u8 = 0,
-    bold: u8 = 0,
-    blink: u8 = 0,
-    blink_fast: u8 = 0,
-    reverse: u8 = 0,
-    underline: u8 = 0,
     underline_style: u8 = 0,
     reserved0: u8 = 0,
+    reserved1: u8 = 0,
+    reserved2: u8 = 0,
+    attrs: FfiCellAttrs = .{},
+    link_id: u32 = 0,
 };
 
 pub const FfiBytesResult = extern struct {
@@ -127,23 +142,25 @@ fn bytesOut(ptr: ?[*]u8, len: usize) ?[]u8 {
 }
 
 fn colorOut(value: screen.Screen.Color) FfiColor {
-    return .{ .r = value.r, .g = value.g, .b = value.b, .a = value.a };
+    return .{ .kind = 2, .value = (@as(u32, value.r) << 16) | (@as(u32, value.g) << 8) | @as(u32, value.b) };
 }
 
 fn cellOut(value: screen.Screen.Cell) FfiCell {
     return .{
         .codepoint = value.codepoint,
-        .fg = colorOut(value.attrs.fg),
-        .bg = colorOut(value.attrs.bg),
+        .flags = .{ .continuation = boolByte(screen.Screen.isCellContinuation(value)) },
+        .fg_color = colorOut(value.attrs.fg),
+        .bg_color = colorOut(value.attrs.bg),
         .underline_color = colorOut(value.attrs.underline_color),
-        .link_id = value.attrs.link_id,
-        .continuation = boolByte(screen.Screen.isCellContinuation(value)),
-        .bold = boolByte(value.attrs.bold),
-        .blink = boolByte(value.attrs.blink),
-        .blink_fast = boolByte(value.attrs.blink_fast),
-        .reverse = boolByte(value.attrs.reverse),
-        .underline = boolByte(value.attrs.underline),
         .underline_style = @intFromEnum(value.attrs.underline_style),
+        .attrs = .{
+            .bold = boolByte(value.attrs.bold),
+            .underline = boolByte(value.attrs.underline),
+            .underline_color_set = boolByte(value.attrs.underline_color.a != 0),
+            .blink = boolByte(value.attrs.blink or value.attrs.blink_fast),
+            .inverse = boolByte(value.attrs.reverse),
+        },
+        .link_id = value.attrs.link_id,
     };
 }
 

@@ -72,26 +72,41 @@ typedef enum {
 } HowlVtCallStatus;
 
 typedef struct {
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
-  uint8_t a;
+  uint8_t continuation;
+  uint8_t reserved0;
+  uint8_t reserved1;
+  uint8_t reserved2;
+} HowlVtCellFlags;
+
+typedef struct {
+  uint8_t kind;
+  uint32_t value;
 } HowlVtColor;
 
 typedef struct {
-  uint32_t codepoint;
-  HowlVtColor fg;
-  HowlVtColor bg;
-  HowlVtColor underline_color;
-  uint32_t link_id;
-  uint8_t continuation;
   uint8_t bold;
-  uint8_t blink;
-  uint8_t blink_fast;
-  uint8_t reverse;
+  uint8_t dim;
+  uint8_t italic;
   uint8_t underline;
+  uint8_t underline_color_set;
+  uint8_t blink;
+  uint8_t inverse;
+  uint8_t invisible;
+  uint8_t strikethrough;
+} HowlVtCellAttrs;
+
+typedef struct {
+  uint32_t codepoint;
+  HowlVtCellFlags flags;
+  HowlVtColor fg_color;
+  HowlVtColor bg_color;
+  HowlVtColor underline_color;
   uint8_t underline_style;
   uint8_t reserved0;
+  uint8_t reserved1;
+  uint8_t reserved2;
+  HowlVtCellAttrs attrs;
+  uint32_t link_id;
 } HowlVtCell;
 
 typedef struct {
