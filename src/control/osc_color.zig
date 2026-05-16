@@ -1,18 +1,19 @@
 //! OSC terminal color state and xterm color controls.
 
 const std = @import("std");
-const grid = @import("../grid.zig");
+const screen_mod = @import("../screen.zig");
 
-const Grid = grid.Grid;
+const Screen = screen_mod.Screen;
+const Grid = Screen;
 
 pub const State = struct {
-    foreground: Grid.Color = Grid.default_fg,
-    background: Grid.Color = Grid.default_bg,
-    cursor: ?Grid.Color = null,
-    cursor_text: ?Grid.Color = null,
-    selection_background: ?Grid.Color = null,
-    selection_foreground: ?Grid.Color = null,
-    palette: [256]Grid.Color = defaultPalette(),
+    foreground: Screen.Color = Screen.default_fg,
+    background: Screen.Color = Screen.default_bg,
+    cursor: ?Screen.Color = null,
+    cursor_text: ?Screen.Color = null,
+    selection_background: ?Screen.Color = null,
+    selection_foreground: ?Screen.Color = null,
+    palette: [256]Screen.Color = defaultPalette(),
 };
 
 pub const SpecialKey = enum { foreground, background, cursor, cursor_text, selection_background, selection_foreground };
@@ -53,7 +54,7 @@ pub fn resetXtermPalette(colors: *State, payload: []const u8) void {
     }
 }
 
-pub fn parseColor(value: []const u8) ?Grid.Color {
+pub fn parseColor(value: []const u8) ?Screen.Color {
     const color_text = stripAlpha(std.mem.trim(u8, value, " \t\r\n"));
     if (color_text.len == 0) return null;
     if (std.mem.startsWith(u8, color_text, "#")) return parseHashColor(color_text[1..]);
@@ -66,11 +67,11 @@ pub fn parseColor(value: []const u8) ?Grid.Color {
     return null;
 }
 
-pub fn defaultPalette() [256]Grid.Color {
+pub fn defaultPalette() [256]Screen.Color {
     return buildDefaultPalette();
 }
 
-pub fn defaultPaletteColor(idx: u8) Grid.Color {
+pub fn defaultPaletteColor(idx: u8) Screen.Color {
     return paletteColor(idx);
 }
 
@@ -90,7 +91,7 @@ pub fn isKnownColorKey(key: []const u8) bool {
     return true;
 }
 
-pub fn colorForKey(colors: State, key: []const u8) ?Grid.Color {
+pub fn colorForKey(colors: State, key: []const u8) ?Screen.Color {
     if (std.fmt.parseUnsigned(u8, key, 10)) |idx| return colors.palette[idx] else |_| {}
     if (specialColorKey(key)) |special| return switch (special) {
         .foreground => colors.foreground,
@@ -103,7 +104,7 @@ pub fn colorForKey(colors: State, key: []const u8) ?Grid.Color {
     return null;
 }
 
-pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), color: Grid.Color) void {
+pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), color: Screen.Color) void {
     var buf: [32]u8 = undefined;
     const text = std.fmt.bufPrint(buf[0..], "rgb:{x:0>2}/{x:0>2}/{x:0>2}", .{ color.r, color.g, color.b }) catch return;
     output.appendSlice(allocator, text) catch {};

@@ -97,16 +97,15 @@ Status:
 
 ### Loop 3: Screen/View/History Surface Stops Using Terminal Facade
 Goal:
-- make visible state consumers depend on `screen/` and `grid/`, not `Terminal`
+- make visible state consumers depend on `screen.zig` and `screen_set.zig`, not `Terminal`
 
 Inventory groups:
 - `g005-screen-grid-view`
 - `g011-snapshot`
 
 Work:
-- expose explicit repo-local screen/view APIs
-- switch tests, fuzzers, and ABI glue to `screen/view.zig`, `screen/set.zig`,
-  `screen/snapshot.zig`, and `grid/main.zig`
+- expose explicit repo-local screen APIs
+- switch tests, fuzzers, and ABI glue to `screen.zig` and `screen_set.zig`
 - delete terminal facade methods for:
   - `screen`
   - `visibleView`
@@ -128,7 +127,7 @@ Close signal:
 
 Status:
 - done
-- visible-state, dirty-row, history, resize, and snapshot callers now use direct `screen/` owners
+- visible-state, dirty-row, history, and resize callers now use direct `screen.zig` and `screen_set.zig` owners
 - terminal screen/view/snapshot facade methods were deleted
 
 ### Loop 4: Selection Storage Becomes Screen-Local
@@ -153,7 +152,7 @@ Close signal:
 
 Status:
 - done
-- selection storage moved into `screen/set.zig`
+- selection storage moved into `screen_set.zig`
 - selection mutation/query now routes through `src/selection.zig`
 - terminal selection field and terminal selection facade methods were deleted
 

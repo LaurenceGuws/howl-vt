@@ -1,9 +1,9 @@
 //! Terminal selection state.
 
 const std = @import("std");
-const grid_mod = @import("../grid.zig");
+const screen_mod = @import("../screen.zig");
 
-const Grid = grid_mod.Grid;
+const Screen = screen_mod.Screen;
 
 /// Selection endpoint coordinate.
 pub const SelectionPos = struct {
@@ -62,10 +62,10 @@ pub const SelectionState = struct {
     }
 
     /// Clear the selection when grid changes invalidate either endpoint.
-    pub fn clearIfInvalidatedByGrid(self: *SelectionState, grid: *const Grid) void {
+    pub fn clearIfInvalidatedByGrid(self: *SelectionState, screen: *const Screen) void {
         if (!self.selection.active) return;
-        if (grid.shouldInvalidateSelectionEndpoint(self.selection.start.row) or
-            grid.shouldInvalidateSelectionEndpoint(self.selection.end.row))
+        if (screen.shouldInvalidateSelectionEndpoint(self.selection.start.row) or
+            screen.shouldInvalidateSelectionEndpoint(self.selection.end.row))
         {
             self.clear();
         }

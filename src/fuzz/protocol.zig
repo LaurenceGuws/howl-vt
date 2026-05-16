@@ -3,7 +3,7 @@
 const std = @import("std");
 const action = @import("../action.zig");
 const parser_mod = @import("../parser.zig");
-const screen_view = @import("../screen/view.zig");
+const screen_set = @import("../screen_set.zig");
 const Action = action;
 const Parser = parser_mod.Parser;
 const Sink = Parser.Sink;
@@ -353,7 +353,7 @@ fn feedBytesToTerminal(terminal: *vt.Terminal, bytes: []const u8, mode: FeedMode
 
 fn digestTerminal(terminal: *const vt.Terminal) VtDigest {
     var hasher = std.hash.Wyhash.init(0);
-    const view = screen_view.visibleView(&terminal.screen_state, .{});
+    const view = screen_set.visibleView(&terminal.screen_state, .{});
 
     hashValue(&hasher, view.rows);
     hashValue(&hasher, view.cols);
@@ -371,13 +371,13 @@ fn digestTerminal(terminal: *const vt.Terminal) VtDigest {
         }
     }
 
-    const history_count = screen_view.visibleView(&terminal.screen_state, .{}).history_count;
+    const history_count = screen_set.visibleView(&terminal.screen_state, .{}).history_count;
     hashValue(&hasher, history_count);
     var history_idx: usize = 0;
     while (history_idx < history_count) : (history_idx += 1) {
         var col: u16 = 0;
         while (col < view.cols) : (col += 1) {
-            hashCell(&hasher, screen_view.historyCellAt(&terminal.screen_state, history_idx, col));
+            hashCell(&hasher, screen_set.historyCellAt(&terminal.screen_state, history_idx, col));
         }
     }
 

@@ -4,8 +4,8 @@ const std = @import("std");
 const action_mod = @import("../action.zig");
 const host_state = @import("../host/state.zig");
 const parser_mod = @import("../parser.zig");
-const screen_snapshot = @import("../screen/snapshot.zig");
-const screen_view = @import("../screen/view.zig");
+const screen_capture = @import("screen_capture.zig");
+const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
 const terminal_mod = @import("../terminal.zig");
 const input_mod = @import("../input.zig");
@@ -42,13 +42,13 @@ fn encodePasteEnd(terminal: *Terminal) []const u8 {
     return Input.encodePasteEnd(terminal, &encode_scratch);
 }
 
-fn visibleView(terminal: *const Terminal, options: screen_view.Options) screen_view.View {
-    return screen_view.visibleView(&terminal.screen_state, options);
+fn visibleView(terminal: *const Terminal, options: screen_set.Options) screen_set.View {
+    return screen_set.visibleView(&terminal.screen_state, options);
 }
 
-fn captureSnapshot(terminal: *const Terminal) !screen_snapshot.VtCoreSnapshot {
-    return screen_snapshot.VtCoreSnapshot.captureFromScreen(
-        terminal.allocator,
+fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
+    return screen_capture.Capture.captureFromScreen(
+        terminal.parser_state.getAllocator(),
         terminal.screen_state.activeConst(),
         terminal.screen_state.activeSelectionConst().state(),
     );

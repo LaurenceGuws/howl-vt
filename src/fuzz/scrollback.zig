@@ -1,7 +1,7 @@
 //! Scrollback fuzz scenarios.
 
 const std = @import("std");
-const screen_view = @import("../screen/view.zig");
+const screen_set = @import("../screen_set.zig");
 const terminal_mod = @import("../terminal.zig");
 
 pub const RowsMin: u16 = 1;
@@ -80,7 +80,7 @@ pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: usize) !Ru
     return .{
         .structural_hash = hashStructural(&vt),
         .logical_hash = hashLogicalContent(&vt),
-        .history_count = screen_view.visibleView(&vt.screen_state, .{}).history_count,
+        .history_count = screen_set.visibleView(&vt.screen_state, .{}).history_count,
         .rows = vt.screen_state.activeConst().rows,
         .cols = vt.screen_state.activeConst().cols,
     };
@@ -126,7 +126,7 @@ pub fn runCanonicalPreservation(
     }
 
     const restore_pre_state = summarizeCoreState(&vt);
-    try vt.screen_state.resize(vt.allocator, options.initial_rows, options.initial_cols);
+    try vt.screen_state.resize(vt.parser_state.getAllocator(), options.initial_rows, options.initial_cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     const restore_step: ChurnStep = .{ .resize = .{
         .rows = options.initial_rows,
@@ -186,14 +186,14 @@ fn applyWriteBurst(vt: *terminal_mod.Terminal, rand: std.Random) !void {
 fn applyResize(vt: *terminal_mod.Terminal, rand: std.Random) !void {
     const rows = RowsMin + rand.uintLessThan(u16, RowsMax - RowsMin + 1);
     const cols = ColsMin + rand.uintLessThan(u16, ColsMax - ColsMin + 1);
-    try vt.screen_state.resize(vt.allocator, rows, cols);
+    try vt.screen_state.resize(vt.parser_state.getAllocator(), rows, cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
 }
 
 fn applyResizeStep(vt: *terminal_mod.Terminal, rand: std.Random) !ChurnStep {
     const rows = RowsMin + rand.uintLessThan(u16, RowsMax - RowsMin + 1);
     const cols = ColsMin + rand.uintLessThan(u16, ColsMax - ColsMin + 1);
-    try vt.screen_state.resize(vt.allocator, rows, cols);
+    try vt.screen_state.resize(vt.parser_state.getAllocator(), rows, cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .resize = .{ .rows = rows, .cols = cols } };
 }
@@ -208,10 +208,10 @@ fn applyZoomJitter(vt: *terminal_mod.Terminal, rand: std.Random) !void {
         const delta_cols: i16 = @as(i16, @intCast(rand.uintLessThan(u8, 19))) - 9;
         const next_rows = clampDimI16(cur_rows, delta_rows, RowsMin, RowsMax);
         const next_cols = clampDimI16(cur_cols, delta_cols, ColsMin, ColsMax);
-        try vt.screen_state.resize(vt.allocator, next_rows, next_cols);
+        try vt.screen_state.resize(vt.parser_state.getAllocator(), next_rows, next_cols);
         vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     }
-    try vt.screen_state.resize(vt.allocator, cur_rows, cur_cols);
+    try vt.screen_state.resize(vt.parser_state.getAllocator(), cur_rows, cur_cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
 }
 
@@ -227,10 +227,10 @@ fn applyZoomJitterStep(vt: *terminal_mod.Terminal, rand: std.Random) !ChurnStep 
         const delta_cols: i16 = @as(i16, @intCast(rand.uintLessThan(u8, 19))) - 9;
         end_rows = clampDimI16(cur_rows, delta_rows, RowsMin, RowsMax);
         end_cols = clampDimI16(cur_cols, delta_cols, ColsMin, ColsMax);
-        try vt.screen_state.resize(vt.allocator, end_rows, end_cols);
+        try vt.screen_state.resize(vt.parser_state.getAllocator(), end_rows, end_cols);
         vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     }
-    try vt.screen_state.resize(vt.allocator, cur_rows, cur_cols);
+    try vt.screen_state.resize(vt.parser_state.getAllocator(), cur_rows, cur_cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .zoom_jitter = .{
         .start_rows = cur_rows,
@@ -263,8 +263,8 @@ fn hashStructural(vt: *const terminal_mod.Terminal) u64 {
     h.update(std.mem.asBytes(&s.cursor_row));
     h.update(std.mem.asBytes(&s.cursor_col));
     h.update(std.mem.asBytes(&s.wrap_pending));
-    const history_count = screen_view.visibleView(&vt.screen_state, .{}).history_count;
-    const history_capacity = screen_view.historyCapacity(&vt.screen_state);
+    const history_count = screen_set.visibleView(&vt.screen_state, .{}).history_count;
+    const history_capacity = screen_set.historyCapacity(&vt.screen_state);
     h.update(std.mem.asBytes(&history_count));
     h.update(std.mem.asBytes(&history_capacity));
     return h.final();
@@ -273,13 +273,13 @@ fn hashStructural(vt: *const terminal_mod.Terminal) u64 {
 fn hashLogicalContent(vt: *const vt_mod.Terminal) u64 {
     var h = std.hash.Wyhash.init(0x9e3779b97f4a7c15);
     const s = vt.screen_state.activeConst();
-    const history = screen_view.visibleView(&vt.screen_state, .{}).history_count;
+    const history = screen_set.visibleView(&vt.screen_state, .{}).history_count;
 
     var hr: usize = 0;
     while (hr < history) : (hr += 1) {
         var col: u16 = 0;
         while (col < s.cols) : (col += 1) {
-            const cp = screen_view.historyRowAt(&vt.screen_state, hr, col);
+            const cp = screen_set.historyRowAt(&vt.screen_state, hr, col);
             h.update(std.mem.asBytes(&cp));
         }
     }
@@ -313,7 +313,7 @@ fn canonicalLogicalStream(allocator: std.mem.Allocator, vt: *const vt_mod.Termin
     var row_buf: std.ArrayList(u21) = .empty;
     defer row_buf.deinit(allocator);
 
-    var history_idx = screen_view.visibleView(&vt.screen_state, .{}).history_count;
+    var history_idx = screen_set.visibleView(&vt.screen_state, .{}).history_count;
     while (history_idx > 0) {
         history_idx -= 1;
         try appendHistoryRowCanonical(allocator, &lines, &row_buf, vt, history_idx, s.cols);
@@ -343,7 +343,7 @@ fn appendHistoryRowCanonical(
     const len = historyContentLen(s, vt, recency, cols);
     var col: u16 = 0;
     while (col < len) : (col += 1) {
-        try current_line.append(allocator, screen_view.historyRowAt(&vt.screen_state, recency, col));
+        try current_line.append(allocator, screen_set.historyRowAt(&vt.screen_state, recency, col));
     }
     if (!historyRowWrapped(s, recency)) {
         try flushLogicalRow(allocator, all_lines, current_line);
@@ -378,7 +378,7 @@ fn historyContentLen(s: anytype, vt: *const vt_mod.Terminal, recency: usize, col
     var col = cols;
     while (col > 0) {
         const idx = col - 1;
-        if (screen_view.historyRowAt(&vt.screen_state, recency, idx) != 0) return col;
+        if (screen_set.historyRowAt(&vt.screen_state, recency, idx) != 0) return col;
         col -= 1;
     }
     if (historyRowWrapped(s, recency) and cols > 0) return cols;
@@ -418,8 +418,8 @@ fn summarizeCoreState(vt: *const vt_mod.Terminal) CoreStateSummary {
         .cursor_row = s.cursor_row,
         .cursor_col = s.cursor_col,
         .wrap_pending = s.wrap_pending,
-        .history_count = screen_view.visibleView(&vt.screen_state, .{}).history_count,
-        .history_capacity = screen_view.historyCapacity(&vt.screen_state),
+        .history_count = screen_set.visibleView(&vt.screen_state, .{}).history_count,
+        .history_capacity = screen_set.historyCapacity(&vt.screen_state),
     };
 }
 

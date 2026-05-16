@@ -5,7 +5,7 @@ Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
 ## Purpose
 `howl-vt` owns the host-neutral terminal model.
 
-It parses terminal input streams, maps parser events into terminal actions, applies grid state, tracks selection and snapshots, and exposes render-facing and host-output-facing surfaces.
+It parses terminal input streams, maps parser events into terminal actions, applies screen state, tracks selection, and exposes render-facing and host-output-facing surfaces.
 
 Host wake, PTY control signals, and runtime turn ownership are not VT ownership.
 They belong to `howl-pty` or the owning host runtime.
@@ -38,9 +38,8 @@ classDiagram
     class Action
     class Dispatch
     class Screen
-    class Grid
+    class ScreenSet
     class Selection
-    class Snapshot
 
     HowlVtHeader --> HowlVtAbi
     HowlVtAbi --> Terminal
@@ -48,10 +47,9 @@ classDiagram
     Terminal --> ParserApi : feed parser work
     Terminal --> Dispatch : delegate event routing
     Dispatch --> Action : classify actions
-    Terminal --> Screen : visible screen state
-    Terminal --> Grid : screen state
+    Terminal --> Screen : mutable screen state
+    Terminal --> ScreenSet : primary/alternate composition
     Terminal --> Selection : selection state
-    Terminal --> Snapshot : exported snapshot contract
 ```
 
 ## Ownership Rules
@@ -61,15 +59,14 @@ classDiagram
 - `Action` owns terminal action vocabulary and payload types.
 - `Dispatch` owns the parent event-routing control spine.
 - `Action` also owns the parser-event and action export surface through `src/action.zig`.
-- `Screen` owns primary/alternate screen selection and visible-view contracts.
+- `Screen` owns one-screen mutable state and mutation.
+- `ScreenSet` owns primary/alternate screen selection plus visible-history projection.
 - `Host` owns host-facing consequence state and application.
 - `Kitty` owns kitty state, kitty payload parsing, and kitty consequence application.
-- `Grid` owns screen, cursor, edit, erase, scrollback, style, dirty, tab, margin, and rectangular mutation state.
-- `Grid` treats scrollback truth as logical lines; history rows exposed to hosts and snapshots are width-dependent projections.
-- `Selection` owns selection state and validity against grid mutations.
-- `Snapshot` owns exported snapshot shapes only.
+- `Screen` treats scrollback truth as logical lines; history rows exposed to hosts are width-dependent projections.
+- `Selection` owns selection state and validity against screen mutations.
 - `ParserApi` owns byte-stream parsing contracts used by action routing, tests, and fuzzing.
-- Protocol syntax, parser-event shape, action meaning, grid mutation, and terminal host consequences must stay in separate owners.
+- Protocol syntax, parser-event shape, action meaning, screen mutation, and terminal host consequences must stay in separate owners.
 - Runtime control signals and wake policy do not belong in `howl-vt`.
 
 ## File Rules
@@ -89,13 +86,13 @@ classDiagram
 - `src/kitty/apply.zig` owns kitty consequence application.
 - `src/kitty/protocol.zig` owns kitty payload parsing.
 - `src/kitty/apc.zig` owns kitty APC action routing.
-- `src/screen/` owns current screen-set and visible-view contracts.
-- `src/screen/snapshot.zig` owns the visible snapshot export contract.
+- `src/screen.zig` is the real one-screen mutable owner.
+- `src/screen_set.zig` owns primary/alternate composition and visible-history projection.
 - `src/input/encode.zig` owns input encoding logic.
 - `src/input/types.zig` owns input event and encoded-value types.
 - `src/selection.zig` owns selection state and terminal-facing selection helpers.
 - `src/selection/state.zig` owns selection state and mutation.
-- `src/grid/` owns grid mutation only.
+- `src/screen/` owns screen leaf mutation only.
 - `src/input/` keeps key, mouse, token, and encoding owners separate.
 - `src/terminal.zig` is the real terminal state owner.
 - `src/howl_vt.zig` is the curated repo-local root, in the same role Ghostty gives `src/terminal/main.zig`.
@@ -126,7 +123,7 @@ sequenceDiagram
     participant F as Interpret.ApplyFlow
     participant D as Action.Dispatch
     participant A as Action Routing
-    participant G as GridModel
+    participant G as Screen
     participant S as SelectionState
 
     Host->>V: feedSlice(bytes)
@@ -136,7 +133,7 @@ sequenceDiagram
     D->>F: events()
     D->>A: process(event)
     A-->>D: semantic action
-    D->>G: apply grid-visible action
+    D->>G: apply screen-visible action
     D->>S: clearIfInvalidatedByGrid(&state)
     V-->>Host: visibleView()/screen()
 ```
@@ -146,7 +143,7 @@ sequenceDiagram
 sequenceDiagram
     participant Host
     participant V as Terminal
-    participant G as GridModel
+    participant G as Screen
     participant S as SelectionState
 
     Host->>V: resize(rows, cols)
@@ -170,7 +167,7 @@ sequenceDiagram
 ## Repo-Local Surface
 - `src/terminal.zig` may expose temporary migration APIs for tests, fuzzers, and internal seams only when they describe true owned state or mutation.
 - Root `src/*.zig` files are now curated exports or ABI roots only.
-- Repo-local callers should consume visible terminal state through `src/screen/view.zig` and `src/screen/snapshot.zig`, not through terminal facade methods.
+- Repo-local callers should consume visible terminal state through `src/screen.zig` and `src/screen_set.zig`, not through terminal facade methods.
 - Repo-local callers should consume parser feed/reset through `src/parser.zig` and bounded apply through `src/action.zig`, not through terminal facade methods.
 - `src/input.zig` owns input vocabulary and repo-local input encoding entrypoints.
 - Repo-local callers should consume input encoding through `src/input.zig`, not through terminal facade methods.
@@ -188,7 +185,7 @@ sequenceDiagram
   - `feedByte` and `feedSlice` queue parser work only
   - `apply` mutates terminal state and resolves queued host-facing protocol output
   - `resize` preserves terminal semantics while updating visible geometry
-  - selection validity is rechecked after grid-affecting operations
+- selection validity is rechecked after screen-affecting operations
 
 ## Non-Goals
 - PTY ownership.
@@ -199,9 +196,9 @@ sequenceDiagram
 ## Change Rules
 - New visible-state concepts must have a named owner before code is added.
 - Parser syntax must not own terminal meaning.
-- Action-routing owners must not mutate grid or host state directly.
+- Action-routing owners must not mutate screen or host state directly.
 - Parent routing control flow must stay centralized in one owner.
-- Grid mutation owners must not know protocol families.
+- Screen mutation owners must not know protocol families.
 - `Terminal` boundary owners must keep host consequences explicit.
-- Hosts should depend on the C ABI, not deep parser/grid leaves.
+- Hosts should depend on the C ABI, not deep parser/screen leaves.
 - Update `protocol_coverage.db` and test filters with the same change that adds protocol behavior.

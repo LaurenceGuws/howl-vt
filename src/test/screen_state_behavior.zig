@@ -1,20 +1,21 @@
 //! Screen-state mutation behavior tests.
 
 const std = @import("std");
-const grid = @import("../grid.zig");
+const screen_mod = @import("../screen.zig");
 const action = @import("../action.zig");
 
-const Grid = grid.Grid;
+const Screen = screen_mod.Screen;
+const Grid = Screen;
 const SemanticEvent = action.SemanticEvent;
 test "screen: initial cursor at origin" {
-    const s = Grid.init(24, 80);
+    const s = Screen.init(24, 80);
     try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), s.cursor_col);
 }
 
 test "screen: reset clears cursor wrap and cells" {
     const gpa = std.testing.allocator;
-    var s = try Grid.initWithCells(gpa, 2, 5);
+    var s = try Screen.initWithCells(gpa, 2, 5);
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "abcdef" });
     try std.testing.expectEqual(@as(u21, 'a'), s.cellAt(0, 0));
@@ -27,7 +28,7 @@ test "screen: reset clears cursor wrap and cells" {
 }
 
 test "screen: cursor_visible mode toggles without moving cursor" {
-    var s = Grid.init(2, 5);
+    var s = Screen.init(2, 5);
     s.cursor_row = 1;
     s.cursor_col = 3;
     s.apply(SemanticEvent{ .cursor_visible = false });
@@ -41,7 +42,7 @@ test "screen: cursor_visible mode toggles without moving cursor" {
 }
 
 test "screen: auto_wrap mode toggles and does not move cursor" {
-    var s = Grid.init(2, 5);
+    var s = Screen.init(2, 5);
     s.cursor_row = 1;
     s.cursor_col = 4;
     s.apply(SemanticEvent{ .auto_wrap = false });
@@ -55,7 +56,7 @@ test "screen: auto_wrap mode toggles and does not move cursor" {
 }
 
 test "screen: origin mode makes cursor positioning relative to scroll region" {
-    var s = Grid.init(6, 10);
+    var s = Screen.init(6, 10);
     s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 2, .bottom = 4 } });
     s.apply(SemanticEvent{ .origin_mode = true });
     s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 1 } });
@@ -66,7 +67,7 @@ test "screen: origin mode makes cursor positioning relative to scroll region" {
 }
 
 test "screen: save and restore cursor restores position and wrap" {
-    var s = Grid.init(4, 8);
+    var s = Screen.init(4, 8);
     s.cursor_row = 1;
     s.cursor_col = 5;
     s.wrap_pending = true;
@@ -81,42 +82,42 @@ test "screen: save and restore cursor restores position and wrap" {
 }
 
 test "screen: cursor_up moves row" {
-    var s = Grid.init(24, 80);
+    var s = Screen.init(24, 80);
     s.cursor_row = 5;
     s.apply(SemanticEvent{ .cursor_up = 3 });
     try std.testing.expectEqual(@as(u16, 2), s.cursor_row);
 }
 
 test "screen: cursor_up clamped at 0" {
-    var s = Grid.init(24, 80);
+    var s = Screen.init(24, 80);
     s.cursor_row = 1;
     s.apply(SemanticEvent{ .cursor_up = 5 });
     try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
 }
 
 test "screen: cursor_down clamped at last row" {
-    var s = Grid.init(24, 80);
+    var s = Screen.init(24, 80);
     s.cursor_row = 20;
     s.apply(SemanticEvent{ .cursor_down = 10 });
     try std.testing.expectEqual(@as(u16, 23), s.cursor_row);
 }
 
 test "screen: cursor_forward clamped at last col" {
-    var s = Grid.init(24, 80);
+    var s = Screen.init(24, 80);
     s.cursor_col = 75;
     s.apply(SemanticEvent{ .cursor_forward = 10 });
     try std.testing.expectEqual(@as(u16, 79), s.cursor_col);
 }
 
 test "screen: cursor_position absolute move" {
-    var s = Grid.init(24, 80);
+    var s = Screen.init(24, 80);
     s.apply(SemanticEvent{ .cursor_position = .{ .row = 10, .col = 40 } });
     try std.testing.expectEqual(@as(u16, 10), s.cursor_row);
     try std.testing.expectEqual(@as(u16, 40), s.cursor_col);
 }
 
 test "screen: cursor_next_line moves row and resets column" {
-    var s = Grid.init(24, 80);
+    var s = Screen.init(24, 80);
     s.cursor_row = 5;
     s.cursor_col = 40;
     s.apply(SemanticEvent{ .cursor_next_line = 3 });
@@ -125,7 +126,7 @@ test "screen: cursor_next_line moves row and resets column" {
 }
 
 test "screen: cursor_prev_line moves row and resets column" {
-    var s = Grid.init(24, 80);
+    var s = Screen.init(24, 80);
     s.cursor_row = 5;
     s.cursor_col = 40;
     s.apply(SemanticEvent{ .cursor_prev_line = 3 });
@@ -152,7 +153,7 @@ test "screen: cursor_vertical_absolute updates row only" {
 }
 
 test "screen: zero rows/cols do not panic" {
-    var s = Grid.init(0, 0);
+    var s = Screen.init(0, 0);
     s.apply(SemanticEvent{ .cursor_down = 5 });
     s.apply(SemanticEvent{ .cursor_forward = 5 });
     try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
@@ -160,7 +161,7 @@ test "screen: zero rows/cols do not panic" {
 
 test "screen: write_text stores bytes in cells" {
     const gpa = std.testing.allocator;
-    var s = try Grid.initWithCells(gpa, 4, 10);
+    var s = try Screen.initWithCells(gpa, 4, 10);
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "abc" });
     try std.testing.expectEqual(@as(u21, 'a'), s.cellAt(0, 0));
@@ -170,7 +171,7 @@ test "screen: write_text stores bytes in cells" {
 
 test "screen: sgr applies ansi and 256-color attrs to written cells" {
     const gpa = std.testing.allocator;
-    var s = try Grid.initWithCells(gpa, 2, 4);
+    var s = try Screen.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
     s.apply(SemanticEvent{ .sgr = .{ .params = .{ 38, 5, 196 } ++ [_]i32{0} ** 13, .separators = [_]u8{0} ** 16, .param_count = 3 } });
@@ -200,14 +201,14 @@ test "screen: sgr reset restores default attrs for later writes" {
     const a = s.cellInfoAt(0, 0);
     const b = s.cellInfoAt(0, 1);
     try std.testing.expectEqual(@as(u8, 170), a.attrs.fg.r);
-    try std.testing.expectEqual(Grid.default_fg.r, b.attrs.fg.r);
-    try std.testing.expectEqual(Grid.default_fg.g, b.attrs.fg.g);
-    try std.testing.expectEqual(Grid.default_fg.b, b.attrs.fg.b);
+    try std.testing.expectEqual(Screen.default_fg.r, b.attrs.fg.r);
+    try std.testing.expectEqual(Screen.default_fg.g, b.attrs.fg.g);
+    try std.testing.expectEqual(Screen.default_fg.b, b.attrs.fg.b);
 }
 
 test "screen: kitty colon SGR sets underline styles without stealing semicolon params" {
     const gpa = std.testing.allocator;
-    var s = try Grid.initWithCells(gpa, 2, 4);
+    var s = try Screen.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
     var colon = [_]u8{0} ** 16;

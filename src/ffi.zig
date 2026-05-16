@@ -1,10 +1,10 @@
 
 const std = @import("std");
-const grid = @import("grid.zig");
+const screen = @import("screen.zig");
 const input = @import("input.zig");
 const parser = @import("parser.zig");
 const action = @import("action.zig");
-const screen_view = @import("screen/view.zig");
+const screen_set = @import("screen_set.zig");
 const terminal = @import("terminal.zig");
 
 pub const HowlVtTerminal = opaque {};
@@ -106,18 +106,18 @@ fn bytesOut(ptr: ?[*]u8, len: usize) ?[]u8 {
     return ptr.?[0..len];
 }
 
-fn colorOut(value: grid.Grid.Color) FfiColor {
+fn colorOut(value: screen.Screen.Color) FfiColor {
     return .{ .r = value.r, .g = value.g, .b = value.b, .a = value.a };
 }
 
-fn cellOut(value: grid.Grid.Cell) FfiCell {
+fn cellOut(value: screen.Screen.Cell) FfiCell {
     return .{
         .codepoint = value.codepoint,
         .fg = colorOut(value.attrs.fg),
         .bg = colorOut(value.attrs.bg),
         .underline_color = colorOut(value.attrs.underline_color),
         .link_id = value.attrs.link_id,
-        .continuation = boolByte(grid.Grid.isCellContinuation(value)),
+        .continuation = boolByte(screen.Screen.isCellContinuation(value)),
         .bold = boolByte(value.attrs.bold),
         .blink = boolByte(value.attrs.blink),
         .blink_fast = boolByte(value.attrs.blink_fast),
@@ -127,7 +127,7 @@ fn cellOut(value: grid.Grid.Cell) FfiCell {
     };
 }
 
-fn cursorShapeByte(shape: grid.Grid.CursorShape) u8 {
+fn cursorShapeByte(shape: screen.Screen.CursorShape) u8 {
     return @intFromEnum(shape);
 }
 
@@ -244,19 +244,19 @@ pub fn terminalApply(handle: VtHandle, max_events: usize, title_ptr: ?[*]u8, tit
 
 pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
-    owned.screen_state.resize(owned.allocator, rows, cols) catch return @intFromEnum(HowlVtCallStatus.failed);
+    owned.screen_state.resize(owned.parser_state.getAllocator(), rows, cols) catch return @intFromEnum(HowlVtCallStatus.failed);
     owned.screen_state.activeSelection().clearIfInvalidatedByGrid(owned.screen_state.activeConst());
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
 pub fn terminalClearDirtyRows(handle: VtHandle) callconv(.c) void {
     const owned = vtFromHandle(handle) orelse return;
-    screen_view.clearDirtyRows(&owned.screen_state);
+    screen_set.clearDirtyRows(&owned.screen_state);
 }
 
 pub fn terminalCopyVisible(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiCell, cells_cap: usize) callconv(.c) FfiVisibleView {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const view = screen_view.visibleView(&owned.screen_state, .{ .scrollback_offset = scrollback_offset });
+    const view = screen_set.visibleView(&owned.screen_state, .{ .scrollback_offset = scrollback_offset });
     const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
     if (cells_cap < cell_count) {
         return .{
@@ -301,7 +301,7 @@ pub fn terminalCopyVisible(handle: VtHandle, scrollback_offset: usize, cells_ptr
 
 pub fn terminalCopyDirty(handle: VtHandle, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiDirtyView {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const dirty = screen_view.peekDirtyRows(&owned.screen_state) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
+    const dirty = screen_set.peekDirtyRows(&owned.screen_state) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
     const row_count: usize = @as(usize, dirty.end_row) - @as(usize, dirty.start_row) + 1;
     if (cols_start_cap < row_count or cols_end_cap < row_count) {
         return .{

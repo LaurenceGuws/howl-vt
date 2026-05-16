@@ -6,14 +6,15 @@ const host_state = @import("../host/state.zig");
 const kitty_state = @import("../kitty/state.zig");
 const parser = @import("../parser.zig");
 const terminal_mod = @import("../terminal.zig");
-const grid = @import("../grid.zig");
+const screen_mod = @import("../screen.zig");
 
 const Action = action;
 const HostState = host_state;
 const KittyState = kitty_state;
 const Parser = parser;
 const Terminal = terminal_mod.Terminal;
-const Grid = grid.Grid;
+const Screen = screen_mod.Screen;
+const Grid = Screen;
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
     Parser.feedSlice(terminal, bytes);

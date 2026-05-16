@@ -3,8 +3,8 @@
 const std = @import("std");
 const action_mod = @import("../action.zig");
 const parser_mod = @import("../parser.zig");
-const screen_snapshot = @import("../screen/snapshot.zig");
-const screen_view = @import("../screen/view.zig");
+const screen_capture = @import("screen_capture.zig");
+const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
 const terminal_mod = @import("../terminal.zig");
 
@@ -12,16 +12,16 @@ const Terminal = terminal_mod.Terminal;
 const Action = action_mod;
 const Parser = parser_mod;
 
-fn captureSnapshot(terminal: *const Terminal) !screen_snapshot.VtCoreSnapshot {
-    return screen_snapshot.VtCoreSnapshot.captureFromScreen(
-        terminal.allocator,
+fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
+    return screen_capture.Capture.captureFromScreen(
+        terminal.parser_state.getAllocator(),
         terminal.screen_state.activeConst(),
         terminal.screen_state.activeSelectionConst().state(),
     );
 }
 
-fn visibleView(terminal: *const Terminal) screen_view.View {
-    return screen_view.visibleView(&terminal.screen_state, .{});
+fn visibleView(terminal: *const Terminal) screen_set.View {
+    return screen_set.visibleView(&terminal.screen_state, .{});
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
@@ -150,13 +150,13 @@ test "snapshot: historyRowAt matches terminal after wraparound" {
     defer snap.deinit();
 
     try std.testing.expectEqual(visibleView(&terminal).history_count, snap.history_count);
-    try std.testing.expectEqual(screen_view.historyCapacity(&terminal.screen_state), snap.history_capacity);
+    try std.testing.expectEqual(screen_set.historyCapacity(&terminal.screen_state), snap.history_capacity);
 
     var idx: usize = 0;
     while (idx < visibleView(&terminal).history_count) : (idx += 1) {
         var col: u16 = 0;
         while (col < terminal.screen_state.activeConst().cols) : (col += 1) {
-            try std.testing.expectEqual(screen_view.historyRowAt(&terminal.screen_state, idx, col), snap.historyRowAt(idx, col));
+            try std.testing.expectEqual(screen_set.historyRowAt(&terminal.screen_state, idx, col), snap.historyRowAt(idx, col));
         }
     }
 }

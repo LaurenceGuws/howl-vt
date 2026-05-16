@@ -1,14 +1,14 @@
 //! Parent-owned action routing control spine.
 
 const std = @import("std");
-const grid_mod = @import("../grid.zig");
+const screen_mod = @import("../screen.zig");
 const host = @import("../host/apply.zig");
 const action_mod = @import("../action.zig");
 const kitty = @import("../kitty.zig");
 const mode = @import("../control/mode.zig");
 const report = @import("../control/report.zig");
 
-const Grid = grid_mod.Grid;
+const Screen = screen_mod.Screen;
 
 pub const ApplySummary = struct {
     applied: usize,
@@ -43,11 +43,11 @@ pub fn applyLimit(vt: anytype, max_events: usize) ApplySummary {
     return .{ .applied = count, .remaining_events = remaining, .latest_title = latest_title };
 }
 
-pub fn applyToScreen(flow: anytype, screen: *Grid) void {
+pub fn applyToScreen(flow: anytype, screen: *Screen) void {
     _ = applyToScreenLimit(flow, screen, std.math.maxInt(usize));
 }
 
-pub fn applyToScreenLimit(flow: anytype, screen: *Grid, max_events: usize) usize {
+pub fn applyToScreenLimit(flow: anytype, screen: *Screen, max_events: usize) usize {
     if (max_events == 0) return 0;
     const count = @min(max_events, flow.events().len);
     for (flow.events()[0..count]) |ev| {

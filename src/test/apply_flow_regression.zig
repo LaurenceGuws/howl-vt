@@ -2,25 +2,26 @@
 
 const std = @import("std");
 const dispatch = @import("../action/dispatch.zig");
-const grid = @import("../grid.zig");
+const screen_mod = @import("../screen.zig");
 const action = @import("../action.zig");
-const screen_snapshot = @import("../screen/snapshot.zig");
-const screen_view = @import("../screen/view.zig");
+const screen_capture = @import("screen_capture.zig");
+const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
 const parser_mod = @import("../parser.zig");
 const action_root = @import("../action.zig");
 const terminal_mod = @import("../terminal.zig");
 
-const Grid = grid.Grid;
+const Screen = screen_mod.Screen;
+const Grid = Screen;
 const Action = action;
 const ApplyFlow = Action.ApplyFlow;
 const ActionRoot = action_root;
 const ParserRoot = parser_mod;
 const Terminal = terminal_mod.Terminal;
 
-fn captureSnapshot(terminal: *const Terminal) !screen_snapshot.VtCoreSnapshot {
-    return screen_snapshot.VtCoreSnapshot.captureFromScreen(
-        terminal.allocator,
+fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
+    return screen_capture.Capture.captureFromScreen(
+        terminal.parser_state.getAllocator(),
         terminal.screen_state.activeConst(),
         terminal.screen_state.activeSelectionConst().state(),
     );
@@ -46,18 +47,18 @@ fn reset(terminal: *Terminal) void {
     ParserRoot.reset(terminal);
 }
 
-fn feed(flow: *ApplyFlow, screen: *Grid, bytes: []const u8) void {
+fn feed(flow: *ApplyFlow, screen: *Screen, bytes: []const u8) void {
     flow.feedSlice(bytes);
     dispatch.applyToScreen(flow, screen);
 }
 
-fn repaintPromptLine(flow: *ApplyFlow, screen: *Grid, prompt: []const u8, command: []const u8) void {
+fn repaintPromptLine(flow: *ApplyFlow, screen: *Screen, prompt: []const u8, command: []const u8) void {
     feed(flow, screen, "\r\x1b[K");
     feed(flow, screen, prompt);
     feed(flow, screen, command);
 }
 
-fn expectPromptLine(screen: *Grid, prompt: []const u8, command: []const u8) !void {
+fn expectPromptLine(screen: *Screen, prompt: []const u8, command: []const u8) !void {
     const total_len = prompt.len + command.len;
     try std.testing.expect(total_len <= screen.cols);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
@@ -130,7 +131,7 @@ test "feed/apply: apply-flow clear drops pending parsed events before apply" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
-    var screen = try Grid.initWithCells(gpa, 2, 8);
+    var screen = try Screen.initWithCells(gpa, 2, 8);
     defer screen.deinit(gpa);
     flow.feedSlice("dropped");
     try std.testing.expect(flow.len() > 0);
@@ -145,7 +146,7 @@ test "feed/apply: apply-flow reset clears queued events and partial CSI" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
-    var screen = try Grid.initWithCells(gpa, 12, 40);
+    var screen = try Screen.initWithCells(gpa, 12, 40);
     defer screen.deinit(gpa);
     screen.cursor_row = 10;
     screen.cursor_col = 0;
@@ -165,7 +166,7 @@ test "feed/apply: apply-flow clear preserves partial CHT parser state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
-    var screen = try Grid.initWithCells(gpa, 2, 20);
+    var screen = try Screen.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
     flow.feedSlice("abc");
     dispatch.applyToScreen(&flow, &screen);
@@ -184,7 +185,7 @@ test "feed/apply: apply-flow clear preserves partial CBT parser state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
-    var screen = try Grid.initWithCells(gpa, 2, 20);
+    var screen = try Screen.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
     flow.feedSlice("a\x1b[2I");
     dispatch.applyToScreen(&flow, &screen);
@@ -203,7 +204,7 @@ test "feed/apply: apply-flow reset drops partial CHT parser state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
-    var screen = try Grid.initWithCells(gpa, 2, 20);
+    var screen = try Screen.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
     flow.feedSlice("\x1b[2");
     flow.reset();
@@ -219,7 +220,7 @@ test "feed/apply: apply-flow reset drops partial CBT parser state" {
     const gpa = std.testing.allocator;
     var flow = try ApplyFlow.init(gpa);
     defer flow.deinit();
-    var screen = try Grid.initWithCells(gpa, 2, 20);
+    var screen = try Screen.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
     flow.feedSlice("a\x1b[2I");
     dispatch.applyToScreen(&flow, &screen);
@@ -1698,7 +1699,7 @@ test "feed/apply: resetScreen clears cells while preserving history" {
 
     feedSlice(&terminal, "LINE1\nLINE2\nLINE3\nLINE4");
     apply(&terminal);
-    const hist_before = screen_view.visibleView(&terminal.screen_state, .{}).history_count;
+    const hist_before = screen_set.visibleView(&terminal.screen_state, .{}).history_count;
 
     var snap_before = try captureSnapshot(&terminal);
     defer snap_before.deinit();
@@ -1858,7 +1859,7 @@ test "feed/apply: snapshot wraparound history indices after eviction" {
     while (row < snap.history_count) : (row += 1) {
         var col: u16 = 0;
         while (col < snap.cols) : (col += 1) {
-            try std.testing.expectEqual(screen_view.historyRowAt(&terminal.screen_state, row, col), snap.historyRowAt(row, col));
+            try std.testing.expectEqual(screen_set.historyRowAt(&terminal.screen_state, row, col), snap.historyRowAt(row, col));
         }
     }
 }

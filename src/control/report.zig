@@ -1,13 +1,14 @@
 //! Terminal report formatting and checksums.
 
 const std = @import("std");
-const grid_mod = @import("../grid.zig");
+const screen_mod = @import("../screen.zig");
 const action_mod = @import("../action.zig");
 const input = @import("../input.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
 
-const Grid = grid_mod.Grid;
+const Screen = screen_mod.Screen;
+const Grid = Screen;
 const LocatorNs = locator;
 const ReportAction = action_mod.ReportAction;
 const TerminalModeNs = mode_mod;
@@ -29,7 +30,7 @@ pub const CharsetReportView = struct {
 
 pub const CursorInformationView = struct {
     cursor: CursorReportView,
-    current_attrs: Grid.CellAttrs,
+    current_attrs: Screen.CellAttrs,
     origin_mode: bool,
     wrap_pending: bool,
 };
@@ -43,7 +44,7 @@ pub fn apply(vt: anytype, report_action: ReportAction) void {
     const active = vt.screen_state.activeConst();
     const deccir_charset = vt.parser_state.apply_flow.deccirCharsetState();
     const ctx = Context{
-        .allocator = vt.allocator,
+        .allocator = vt.parser_state.getAllocator(),
         .pending_output = &vt.host.pending_output,
         .encode_buf = scratch.buf[0..],
         .active_screen = active,
@@ -90,7 +91,7 @@ const Context = struct {
     allocator: std.mem.Allocator,
     pending_output: *std.ArrayList(u8),
     encode_buf: []u8,
-    active_screen: *const Grid,
+    active_screen: *const Screen,
     render_view: CursorReportView,
     ansi_modes: TerminalModeNs.AnsiView,
     dec_modes: TerminalModeNs.DecView,

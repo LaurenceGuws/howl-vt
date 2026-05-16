@@ -4,15 +4,15 @@ const std = @import("std");
 const action_mod = @import("../action.zig");
 const parser_mod = @import("../parser.zig");
 const terminal_mod = @import("../terminal.zig");
-const grid = @import("../grid.zig");
-const screen_snapshot = @import("../screen/snapshot.zig");
-const screen_view = @import("../screen/view.zig");
+const screen = @import("../screen.zig");
+const screen_capture = @import("screen_capture.zig");
+const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
 const input_mod = @import("../input.zig");
 
 const Terminal = terminal_mod.Terminal;
 const Action = action_mod;
-const Grid = grid.Grid;
+const Screen = screen.Screen;
 const Selection = selection;
 const Input = input_mod;
 const Parser = parser_mod;
@@ -23,32 +23,32 @@ fn encodeKey(terminal: *Terminal, key: Input.Key, mod: Input.Modifier) []const u
     return Input.encodeKey(terminal, &encode_scratch, key, mod);
 }
 
-fn activeScreen(terminal: *const Terminal) *const Grid {
+fn activeScreen(terminal: *const Terminal) *const Screen {
     return terminal.screen_state.activeConst();
 }
 
-fn visibleView(terminal: *const Terminal, options: screen_view.Options) screen_view.View {
-    return screen_view.visibleView(&terminal.screen_state, options);
+fn visibleView(terminal: *const Terminal, options: screen_set.Options) screen_set.View {
+    return screen_set.visibleView(&terminal.screen_state, options);
 }
 
 fn historyCapacity(terminal: *const Terminal) u16 {
-    return screen_view.historyCapacity(&terminal.screen_state);
+    return screen_set.historyCapacity(&terminal.screen_state);
 }
 
 fn clearDirtyRows(terminal: *Terminal) void {
-    screen_view.clearDirtyRows(&terminal.screen_state);
+    screen_set.clearDirtyRows(&terminal.screen_state);
 }
 
-fn captureSnapshot(terminal: *const Terminal) !screen_snapshot.VtCoreSnapshot {
-    return screen_snapshot.VtCoreSnapshot.captureFromScreen(
-        terminal.allocator,
+fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
+    return screen_capture.Capture.captureFromScreen(
+        terminal.parser_state.getAllocator(),
         terminal.screen_state.activeConst(),
         terminal.screen_state.activeSelectionConst().state(),
     );
 }
 
 fn resizeTerminal(terminal: *Terminal, rows: u16, cols: u16) !void {
-    try terminal.screen_state.resize(terminal.allocator, rows, cols);
+    try terminal.screen_state.resize(terminal.parser_state.getAllocator(), rows, cols);
     terminal.screen_state.activeSelection().clearIfInvalidatedByGrid(terminal.screen_state.activeConst());
 }
 
