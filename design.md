@@ -7,6 +7,9 @@ Shared rules: [`../design/design-rules.md`](../design/design-rules.md)
 
 It parses terminal input streams, maps parser events into terminal actions, applies grid state, tracks selection and snapshots, and exposes render-facing and host-output-facing surfaces.
 
+Host wake, PTY control signals, and runtime turn ownership are not VT ownership.
+They belong to `howl-pty` or the owning host runtime.
+
 ## Doc Set
 - `design.md`: owner boundary, file rules, and ABI contract.
 - `protocol_matrix.md`: protocol ledger summary, queries, and support table.
@@ -67,6 +70,7 @@ classDiagram
 - `Snapshot` owns exported snapshot shapes only.
 - `ParserApi` owns byte-stream parsing contracts used by action routing, tests, and fuzzing.
 - Protocol syntax, parser-event shape, action meaning, grid mutation, and terminal host consequences must stay in separate owners.
+- Runtime control signals and wake policy do not belong in `howl-vt`.
 
 ## File Rules
 - `src/parser/` recognizes syntax only.
@@ -93,8 +97,9 @@ classDiagram
 - `src/selection/state.zig` owns selection state and mutation.
 - `src/grid/` owns grid mutation only.
 - `src/input/` keeps key, mouse, token, and encoding owners separate.
-- `src/terminal/main.zig` owns the temporary terminal facade implementation during the VT-core sprint.
-- `src/terminal.zig` is a curated export wrapper only.
+- `src/terminal.zig` is the real terminal state owner.
+- `src/howl_vt.zig` is the curated repo-local root, in the same role Ghostty gives `src/terminal/main.zig`.
+- `howl-vt` does not define PTY or host runtime control-signal vocabulary.
 - `protocol_coverage.db` is the protocol source of truth. `unit_test_filters` must stay executable.
 - New protocol work defines syntax, parser event shape, action meaning, state mutation, and proof before code lands.
 - Normal proof is focused tests plus `zig build test`.
@@ -165,9 +170,13 @@ sequenceDiagram
 ## Repo-Local Surface
 - `src/terminal.zig` may expose temporary migration APIs for tests, fuzzers, and internal seams only when they describe true owned state or mutation.
 - Root `src/*.zig` files are now curated exports or ABI roots only.
-- Repo-local callers should consume visible terminal state through `visibleView` instead of convenience getters that restate fields already carried there.
-- Repo-local callers should consume queued apply state through `applyLimit` instead of separate queue-depth helpers.
-- `src/input.zig` owns vocabulary types and constants. It should not act as a namespace bag for deeper owner modules.
+- Repo-local callers should consume visible terminal state through `src/screen/view.zig` and `src/screen/snapshot.zig`, not through terminal facade methods.
+- Repo-local callers should consume parser feed/reset through `src/parser.zig` and bounded apply through `src/action.zig`, not through terminal facade methods.
+- `src/input.zig` owns input vocabulary and repo-local input encoding entrypoints.
+- Repo-local callers should consume input encoding through `src/input.zig`, not through terminal facade methods.
+- Repo-local callers should consume selection mutation and selection queries through `src/selection.zig`, not through terminal facade methods.
+- Repo-local callers should consume host-facing consequence queries through `src/host/state.zig`, not through terminal facade methods.
+- Repo-local callers should consume kitty retained-state queries through `src/kitty/state.zig`, not through terminal facade methods.
 - Checkpoint 4 accepted result:
   - repo-local queue, title, history, and alternate-screen convenience getters were removed in favor of `applyLimit` and `visibleView`
   - repo-local token parsing no longer pretends to be owned by `Terminal`

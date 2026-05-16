@@ -1,0 +1,130 @@
+terminal/main.zig full remap
+
+goal
+- delete src/terminal/main.zig
+- delete src/terminal.zig
+- keep src/howl_vt.zig as curated repo-local root only
+- move every definition below to a real owner or remove it from howl-vt when it is really host/pty work
+
+syntax
+- ANN alias-or-local-type => howl-target | ghostty=<file>::<concept> | note
+- FNN field => howl-target | ghostty=<file>::<concept> | note
+- MNN method => howl-target | ghostty=<file>::<concept> | note
+- TNN test => howl-target | ghostty=<file>::<concept> | note
+
+aliases and local types
+A01 ApplySummary => src/action/dispatch.zig | ghostty=src/terminal/main.zig::re-export style | terminal must stop re-exporting it
+A02 ControlSignal => move out of howl-vt to howl-pty or host ABI vocabulary | ghostty=host/runtime boundary, not terminal module root | not VT-owned state
+A03 VisibleViewOptions => src/screen/view.zig | ghostty=src/terminal/Screen.zig + render/view readers | already screen-owned
+A04 VisibleRowSource => src/screen/view.zig | ghostty=src/terminal/Screen.zig + PageList view data | already screen-owned
+A05 VisibleView => src/screen/view.zig | ghostty=src/terminal/Screen.zig + PageList visible state | already screen-owned
+A06 KittyShellMark => src/action/vocabulary.zig for action payload, src/kitty/types.zig for retained state | ghostty=src/terminal/osc.zig::semantic_prompt plus src/terminal/kitty.zig | terminal alias must die
+A07 KittyNotificationRequest => src/kitty/types.zig | ghostty=src/terminal/osc.zig command payload owners | terminal alias must die
+A08 TerminalColorState => dedicated color owner, initially src/control/osc_color.zig, likely sharpened to src/color/ later | ghostty=src/terminal/Terminal.zig::Colors + src/terminal/osc.zig color commands | terminal alias must die
+A09 KittyGraphicsImage => src/kitty/types.zig or src/kitty/graphics.zig | ghostty=src/terminal/kitty/graphics_image.zig | terminal alias must die
+A10 KittyGraphicsPlacement => src/kitty/types.zig or src/kitty/graphics.zig | ghostty=src/terminal/kitty/graphics.zig | terminal alias must die
+A11 KittyGraphicsFrame => src/kitty/types.zig or src/kitty/graphics.zig | ghostty=src/terminal/kitty/graphics.zig | terminal alias must die
+A12 HostState => src/host/state.zig | ghostty=host consequence handling above Screen owners | terminal alias must die
+A13 KittyState => src/kitty/state.zig | ghostty=src/terminal/Screen.zig::kitty state + src/terminal/kitty/*.zig | terminal alias must die
+A14 EncodeScratch => remove from VT state; use input encoder-local buffer or explicit caller buffer | ghostty=src/terminal/c/key_encode.zig::KeyEncoderWrapper + ../../input/key_encode.zig | terminal must not own encode scratch
+A15 ScreenSet => src/screen/set.zig | ghostty=src/terminal/ScreenSet.zig | terminal alias must die
+
+fields
+F01 allocator => delete field; pass allocator explicitly to owner init/deinit paths that need it | ghostty=src/terminal/Screen.zig::alloc and ScreenSet.init/deinit | no terminal-wide allocator field should survive just to prop up a facade
+F02 apply_flow => src/parser/flow.zig and src/parser/main.zig | ghostty=src/terminal/Parser.zig + src/terminal/stream.zig | parser feed state is parser-owned
+F03 screen_state => src/screen/set.zig | ghostty=src/terminal/ScreenSet.zig | screen switching and active screen truth live here
+F04 selection => move storage under src/screen/ with mutation in src/selection/ | ghostty=src/terminal/Screen.zig::selection + src/terminal/Selection.zig | selection is screen-local, not terminal-root state
+F05 modes => dedicated mode owner, likely rename current src/control/mode.zig to explicit modes owner | ghostty=src/terminal/modes.zig::ModeState | mode storage must leave terminal facade
+F06 kitty => src/kitty/state.zig, with per-screen splits where needed | ghostty=src/terminal/Screen.zig::kitty_keyboard and kitty_images plus src/terminal/kitty/*.zig | keep kitty explicit
+F07 xtchecksum_flags => src/control/report.zig or sharper report state owner | ghostty=src/terminal/device_status.zig style report-specific state | report/query residue, not terminal-root state
+F08 host => src/host/state.zig | ghostty=host consequence path outside Screen owners | host consequence state already has a real owner
+F09 encode => remove from VT state; move to src/input/encode.zig helper-local scratch or explicit encoder object | ghostty=src/terminal/c/key_encode.zig | input encoding should not require terminal-owned scratch storage
+
+methods
+M01 init => split across owner init helpers and constructed by ffi/root state owner only | ghostty=src/terminal/Terminal.zig::init + ScreenSet.init show owner-local init, not module-root wrapper | terminal constructor must die
+M02 initWithCells => split across grid and screen init helpers | ghostty=src/terminal/ScreenSet.zig + Screen.zig init path | terminal constructor must die
+M03 initWithCellsAndHistory => split across screen/grid/history init helpers | ghostty=src/terminal/Terminal.zig::Options.max_scrollback + ScreenSet.init | terminal constructor must die
+M04 deinit => split across owner deinit helpers and ffi/root state owner only | ghostty=src/terminal/Terminal.zig::deinit + ScreenSet.deinit | terminal destructor must die
+M05 feedByte => src/parser/flow.zig or src/parser/main.zig | ghostty=src/terminal/Parser.zig::next | parser feed path
+M06 feedSlice => src/parser/flow.zig or src/parser/main.zig | ghostty=src/terminal/stream.zig | parser feed path
+M07 apply => delete terminal facade; caller uses action/dispatch directly through owner-true state root | ghostty=src/terminal/stream_readonly.zig handler turn | top-level apply turn is dispatch-owned
+M08 applyLimit => src/action/dispatch.zig | ghostty=src/terminal/stream_readonly.zig::Handler + parsed action application in Terminal methods | already dispatch-owned
+M09 clear => src/parser/flow.zig | ghostty=src/terminal/Parser.zig reset/clear style state | queue clear is parser-owned
+M10 pendingOutput => src/host/state.zig | ghostty=host/runtime consequence path, not terminal module root | already host-owned
+M11 clearPendingOutput => src/host/state.zig | ghostty=host/runtime consequence path | already host-owned
+M12 hyperlinkUriForId => move hyperlink retention under screen or dedicated hyperlink owner, not host state facade | ghostty=src/terminal/Screen.zig cursor hyperlink state + src/terminal/hyperlink.zig + page.zig hyperlink data | current host placement looks temporary
+M13 pendingClipboardSet => src/host/state.zig | ghostty=OSC clipboard command handling at stream/osc layer with host action out of terminal view | already host-owned consequence
+M14 drainPendingClipboardSet => src/host/state.zig | ghostty=host consequence path | already host-owned
+M15 kittyClipboardMode => split from host facade into explicit mode owner or kitty protocol owner | ghostty=src/terminal/osc.zig::kitty_clipboard_protocol + mode/config state | current placement is convenience residue
+M16 sixelDisplayMode => explicit mode owner | ghostty=mode/config state near terminal mode storage | terminal getter must die
+M17 reverseWraparoundMode => explicit mode owner | ghostty=src/terminal/modes.zig | terminal getter must die
+M18 extendedReverseWraparoundMode => explicit mode owner | ghostty=src/terminal/modes.zig | terminal getter must die
+M19 mediaCopyRequest => src/host/state.zig or report owner if purely query residue | ghostty=device-status/report consequence path | terminal getter must die
+M20 dcsPayloadKind => src/host/state.zig or dcs/report owner | ghostty=src/terminal/dcs.zig + stream consequence handling | terminal getter must die
+M21 dcsPayload => src/host/state.zig or dcs/report owner | ghostty=src/terminal/dcs.zig + stream consequence handling | terminal getter must die
+M22 legacyControl => src/host/state.zig or explicit report/control consequence owner | ghostty=device-status/report consequence path | terminal getter must die
+M23 kittyShellMark => src/kitty/state.zig | ghostty=src/terminal/osc.zig::semantic_prompt-like retained prompt state | already kitty-owned
+M24 kittyNotificationCount => src/kitty/state.zig | ghostty=OSC command payload/state outside terminal root | already kitty-owned
+M25 kittyNotificationAt => src/kitty/state.zig | ghostty=OSC command payload/state outside terminal root | already kitty-owned
+M26 kittyFileTransferRequest => src/kitty/state.zig | ghostty=kitty protocol-specific owner files | already kitty-owned
+M27 kittyTextSizeRequest => src/kitty/state.zig | ghostty=src/terminal/osc/parsers/kitty_text_sizing.zig | already kitty-owned
+M28 kittyPointerShape => move to dedicated mouse-shape or host consequence owner; keep kitty-specific parsing in kitty/ | ghostty=src/terminal/mouse_shape.zig + osc parser command | current kitty/state placement may be too broad
+M29 kittyMultipleCursorCount => src/kitty/state.zig | ghostty=kitty protocol-specific state | already kitty-owned
+M30 pointerMode => explicit mode owner | ghostty=src/terminal/Terminal.zig flags.mouse_event + flags.mouse_format plus modes.zig | getter should not hang off terminal facade
+M31 kittyColorStackDepth => src/kitty/state.zig or dedicated kitty/color owner | ghostty=src/terminal/kitty/color.zig | already kitty-owned
+M32 terminalColorState => dedicated color owner, surfaced to host through host consequence API if needed | ghostty=src/terminal/Terminal.zig::Colors | not terminal-facade-owned
+M33 kittyGraphicsImageCount => src/kitty/state.zig or dedicated kitty/graphics owner | ghostty=src/terminal/kitty/graphics_storage.zig | already kitty-owned
+M34 kittyGraphicsImageAt => src/kitty/state.zig or dedicated kitty/graphics owner | ghostty=src/terminal/kitty/graphics_storage.zig | already kitty-owned
+M35 kittyGraphicsPlacementCount => src/kitty/state.zig or dedicated kitty/graphics owner | ghostty=src/terminal/kitty/graphics.zig | already kitty-owned
+M36 kittyGraphicsPlacementAt => src/kitty/state.zig or dedicated kitty/graphics owner | ghostty=src/terminal/kitty/graphics.zig | already kitty-owned
+M37 kittyGraphicsFrameCount => src/kitty/state.zig or dedicated kitty/graphics owner | ghostty=src/terminal/kitty/graphics.zig | already kitty-owned
+M38 kittyGraphicsFrameAt => src/kitty/state.zig or dedicated kitty/graphics owner | ghostty=src/terminal/kitty/graphics.zig | already kitty-owned
+M39 clearPendingClipboardSet => src/host/state.zig | ghostty=host consequence path | already host-owned
+M40 reset => split into parser reset and owner resets; root caller orchestrates, terminal facade dies | ghostty=src/terminal/modes.zig::ModeState.reset + parser reset + screen reset paths | no terminal-root reset method
+M41 resetScreen => src/screen/set.zig or src/screen/view.zig active screen reset path | ghostty=src/terminal/Screen.zig reset-like state mutation | screen-owned
+M42 resize => src/screen/set.zig with selection invalidation at screen/selection seam | ghostty=src/terminal/Terminal.zig screen size fields + ScreenSet/Screen resize behavior | screen-owned, not terminal-root-owned
+M43 screen => delete facade; repo-local callers use explicit screen owner APIs | ghostty=src/terminal/ScreenSet.zig::active | current getter is convenience residue
+M44 visibleView => src/screen/view.zig | ghostty=Screen/PageList visible projection readers | already screen-owned
+M45 peekDirtyRows => src/screen/view.zig | ghostty=Screen/PageList dirty tracking | already screen-owned
+M46 clearDirtyRows => src/screen/view.zig or screen dirtiness owner | ghostty=Screen/PageList dirty tracking | already screen-owned
+M47 synchronizedOutputActive => explicit mode owner | ghostty=src/terminal/modes.zig | terminal getter must die
+M48 historyRowAt => src/screen/view.zig | ghostty=PageList/Screen scrollback projection | already screen-owned
+M49 historyCellAt => src/screen/view.zig | ghostty=PageList/Screen scrollback projection | already screen-owned
+M50 historyCapacity => src/screen/view.zig or src/screen/set.zig | ghostty=Terminal.Options.max_scrollback + PageList storage | already screen-owned
+M51 selectionState => src/selection/ with storage under src/screen/ | ghostty=src/terminal/Selection.zig + Screen.zig::selection | terminal facade must die
+M52 selectionStart => src/selection/ with storage under src/screen/ | ghostty=src/terminal/Selection.zig + Screen.zig::selection | terminal facade must die
+M53 selectionUpdate => src/selection/ with storage under src/screen/ | ghostty=src/terminal/Selection.zig + Screen.zig::selection | terminal facade must die
+M54 selectionFinish => src/selection/ with storage under src/screen/ | ghostty=src/terminal/Selection.zig + Screen.zig::selection | terminal facade must die
+M55 selectionClear => src/selection/ with storage under src/screen/ | ghostty=src/terminal/Selection.zig + Screen.zig::selection | terminal facade must die
+M56 encodeKey => move to src/input/encode.zig plus explicit encoder options surface; stop hanging it off terminal | ghostty=src/terminal/c/key_encode.zig + ../../input/key_encode.zig | input encoding is not terminal runtime ownership
+M57 kittyKeyboardFlags => src/input/encode.zig or explicit kitty key mode owner | ghostty=src/terminal/kitty/key.zig + Screen.zig::kitty_keyboard | terminal getter must die
+M58 isApplicationKeypad => explicit mode owner or input encode options surface | ghostty=src/terminal/modes.zig::keypad_keys | terminal getter must die
+M59 modifyOtherKeys => explicit mode owner or input encode options surface | ghostty=src/terminal/Terminal.zig flags.modify_other_keys_2 + modes.zig | terminal getter must die
+M60 keyFormatOption => explicit report/mode owner or input encode options surface | ghostty=key encoder options live outside terminal c root | terminal getter must die
+M61 isKeyFormatResource => move to src/input/encode.zig or report owner helper | ghostty=key encoder option validation outside terminal root | terminal helper must die
+M62 encodeMouse => move to src/input/encode.zig plus explicit mode/options input | ghostty=mouse protocol state in Terminal flags, encoding outside module root where possible | terminal method must die
+M63 encodeFocusIn => move to src/input/encode.zig | ghostty=focus event mode in modes plus encoder helpers outside terminal root | terminal method must die
+M64 encodePaste => move to src/input/encode.zig or dedicated paste owner | ghostty=src/terminal/c/paste.zig + ../../input/paste.zig | terminal method must die
+M65 encodeFocusOut => move to src/input/encode.zig | ghostty=focus event mode in modes plus encoder helpers outside terminal root | terminal method must die
+M66 encodePasteStart => move to src/input/encode.zig | ghostty=input/paste encoding helper style, not terminal root | terminal method must die
+M67 encodePasteEnd => move to src/input/encode.zig | ghostty=input/paste encoding helper style, not terminal root | terminal method must die
+M68 snapshot => src/screen/snapshot.zig | ghostty=Screen/PageList visible state readers and export helpers | already snapshot-owned
+
+tests
+T01 "terminal tracks synchronized output private mode" => move under mode/report owner tests | ghostty=modes.zig tests plus stream_readonly mode application tests | no terminal-root test should remain
+T02 "terminal visible view projects scrollback rows" => move under screen/view tests | ghostty=Screen/PageList scrollback view tests | no terminal-root test should remain
+T03 test import block => redistribute imports under the owning modules | ghostty=module-local tests plus main.zig refAllDecls style | delete terminal-root test aggregator
+
+end state summary
+- src/terminal/main.zig contributes no surviving owner
+- src/terminal.zig contributes no surviving wrapper
+- if a top-level state composer still exists after the remap, it must live under an owner-true name and contain only bounded composition, not hidden ownership
+- when unclear, prefer Ghostty's split:
+  - module root re-exports in main.zig
+  - parser state in Parser.zig
+  - screen set in ScreenSet.zig
+  - per-screen retained state in Screen.zig
+  - modes in modes.zig
+  - kitty protocol owners under kitty/
+  - OSC/DCS family parsing in dedicated protocol files
+  - input encoding outside the terminal runtime blob

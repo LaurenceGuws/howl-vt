@@ -1,18 +1,49 @@
 //! Snapshot capture regression tests.
 
 const std = @import("std");
+const action_mod = @import("../action.zig");
+const parser_mod = @import("../parser.zig");
+const screen_snapshot = @import("../screen/snapshot.zig");
+const screen_view = @import("../screen/view.zig");
+const selection = @import("../selection.zig");
 const terminal_mod = @import("../terminal.zig");
 
 const Terminal = terminal_mod.Terminal;
+const Action = action_mod;
+const Parser = parser_mod;
+
+fn captureSnapshot(terminal: *const Terminal) !screen_snapshot.VtCoreSnapshot {
+    return screen_snapshot.VtCoreSnapshot.captureFromScreen(
+        terminal.allocator,
+        terminal.screen_state.activeConst(),
+        terminal.screen_state.activeSelectionConst().state(),
+    );
+}
+
+fn visibleView(terminal: *const Terminal) screen_view.View {
+    return screen_view.visibleView(&terminal.screen_state, .{});
+}
+
+fn feedByte(terminal: *Terminal, byte: u8) void {
+    Parser.feedByte(terminal, byte);
+}
+
+fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
+    Parser.feedSlice(terminal, bytes);
+}
+
+fn apply(terminal: *Terminal) void {
+    Action.apply(terminal);
+}
 test "snapshot: capture from simple text" {
     const gpa = std.testing.allocator;
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
-    terminal.feedSlice("HELLO");
-    terminal.apply();
+    feedSlice(&terminal, "HELLO");
+    apply(&terminal);
 
-    var snap = try terminal.snapshot();
+    var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
 
     try std.testing.expectEqual(@as(u16, 5), snap.rows);
@@ -33,16 +64,16 @@ test "snapshot: determinism across identical state" {
 
     var vt_core1 = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core1.deinit();
-    vt_core1.feedSlice("TEST");
-    vt_core1.apply();
-    var snap1 = try vt_core1.snapshot();
+    feedSlice(&vt_core1, "TEST");
+    apply(&vt_core1);
+    var snap1 = try captureSnapshot(&vt_core1);
     defer snap1.deinit();
 
     var vt_core2 = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core2.deinit();
-    vt_core2.feedSlice("TEST");
-    vt_core2.apply();
-    var snap2 = try vt_core2.snapshot();
+    feedSlice(&vt_core2, "TEST");
+    apply(&vt_core2);
+    var snap2 = try captureSnapshot(&vt_core2);
     defer snap2.deinit();
 
     try std.testing.expectEqual(snap1.cursor_row, snap2.cursor_row);
@@ -61,19 +92,19 @@ test "snapshot: split-feed equivalence" {
 
     var vt_core_atomic = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core_atomic.deinit();
-    vt_core_atomic.feedSlice("ABCDEFGHIJ");
-    vt_core_atomic.apply();
-    var snap_atomic = try vt_core_atomic.snapshot();
+    feedSlice(&vt_core_atomic, "ABCDEFGHIJ");
+    apply(&vt_core_atomic);
+    var snap_atomic = try captureSnapshot(&vt_core_atomic);
     defer snap_atomic.deinit();
 
     var vt_core_chunked = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core_chunked.deinit();
-    vt_core_chunked.feedByte('A');
-    vt_core_chunked.feedByte('B');
-    vt_core_chunked.feedSlice("CD");
-    vt_core_chunked.feedSlice("EFGHIJ");
-    vt_core_chunked.apply();
-    var snap_chunked = try vt_core_chunked.snapshot();
+    feedByte(&vt_core_chunked, 'A');
+    feedByte(&vt_core_chunked, 'B');
+    feedSlice(&vt_core_chunked, "CD");
+    feedSlice(&vt_core_chunked, "EFGHIJ");
+    apply(&vt_core_chunked);
+    var snap_chunked = try captureSnapshot(&vt_core_chunked);
     defer snap_chunked.deinit();
 
     try std.testing.expectEqual(snap_atomic.cursor_col, snap_chunked.cursor_col);
@@ -90,16 +121,16 @@ test "snapshot: history capture when history is enabled" {
     var terminal = try Terminal.initWithCellsAndHistory(gpa, 3, 5, 10);
     defer terminal.deinit();
 
-    terminal.feedSlice("AAA\nBBB\nCCC\nDDD");
-    terminal.apply();
+    feedSlice(&terminal, "AAA\nBBB\nCCC\nDDD");
+    apply(&terminal);
 
-    var snap = try terminal.snapshot();
+    var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
 
     try std.testing.expectEqual(@as(u16, 3), snap.rows);
     try std.testing.expectEqual(@as(u16, 5), snap.cols);
     try std.testing.expectEqual(@as(u16, 10), snap.history_capacity);
-    try std.testing.expectEqual(snap.history_count, terminal.visibleView(.{}).history_count);
+    try std.testing.expectEqual(snap.history_count, visibleView(&terminal).history_count);
 
     if (snap.history != null) {
         try std.testing.expect(snap.history.?.len > 0);
@@ -112,20 +143,20 @@ test "snapshot: historyRowAt matches terminal after wraparound" {
     defer terminal.deinit();
 
     // Force history ring-buffer wraparound (capacity 2, scroll more than 2 rows).
-    terminal.feedSlice("111\n222\n333\n444\n555");
-    terminal.apply();
+    feedSlice(&terminal, "111\n222\n333\n444\n555");
+    apply(&terminal);
 
-    var snap = try terminal.snapshot();
+    var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
 
-    try std.testing.expectEqual(terminal.visibleView(.{}).history_count, snap.history_count);
-    try std.testing.expectEqual(terminal.historyCapacity(), snap.history_capacity);
+    try std.testing.expectEqual(visibleView(&terminal).history_count, snap.history_count);
+    try std.testing.expectEqual(screen_view.historyCapacity(&terminal.screen_state), snap.history_capacity);
 
     var idx: usize = 0;
-    while (idx < terminal.visibleView(.{}).history_count) : (idx += 1) {
+    while (idx < visibleView(&terminal).history_count) : (idx += 1) {
         var col: u16 = 0;
-        while (col < terminal.screen().cols) : (col += 1) {
-            try std.testing.expectEqual(terminal.historyRowAt(idx, col), snap.historyRowAt(idx, col));
+        while (col < terminal.screen_state.activeConst().cols) : (col += 1) {
+            try std.testing.expectEqual(screen_view.historyRowAt(&terminal.screen_state, idx, col), snap.historyRowAt(idx, col));
         }
     }
 }
@@ -135,14 +166,14 @@ test "snapshot: selection state is included" {
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
-    terminal.feedSlice("HELLO");
-    terminal.apply();
+    feedSlice(&terminal, "HELLO");
+    apply(&terminal);
 
-    terminal.selectionStart(0, 0);
-    terminal.selectionUpdate(0, 4);
-    terminal.selectionFinish();
+    selection.terminalStart(&terminal, 0, 0);
+    selection.terminalUpdate(&terminal, 0, 4);
+    selection.terminalFinish(&terminal);
 
-    var snap = try terminal.snapshot();
+    var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
 
     try std.testing.expectEqual(true, snap.selection != null);
@@ -160,13 +191,13 @@ test "snapshot: parity with direct screen state" {
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
-    terminal.feedSlice("TEST");
-    terminal.apply();
+    feedSlice(&terminal, "TEST");
+    apply(&terminal);
 
-    var snap = try terminal.snapshot();
+    var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
 
-    const screen = terminal.screen();
+    const screen = terminal.screen_state.activeConst();
     try std.testing.expectEqual(screen.rows, snap.rows);
     try std.testing.expectEqual(screen.cols, snap.cols);
     try std.testing.expectEqual(screen.cursor_row, snap.cursor_row);

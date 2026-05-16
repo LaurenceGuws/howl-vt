@@ -4,12 +4,47 @@ const std = @import("std");
 const dispatch = @import("../action/dispatch.zig");
 const grid = @import("../grid.zig");
 const action = @import("../action.zig");
+const screen_snapshot = @import("../screen/snapshot.zig");
+const screen_view = @import("../screen/view.zig");
+const selection = @import("../selection.zig");
+const parser_mod = @import("../parser.zig");
+const action_root = @import("../action.zig");
 const terminal_mod = @import("../terminal.zig");
 
 const Grid = grid.Grid;
 const Action = action;
 const ApplyFlow = Action.ApplyFlow;
+const ActionRoot = action_root;
+const ParserRoot = parser_mod;
 const Terminal = terminal_mod.Terminal;
+
+fn captureSnapshot(terminal: *const Terminal) !screen_snapshot.VtCoreSnapshot {
+    return screen_snapshot.VtCoreSnapshot.captureFromScreen(
+        terminal.allocator,
+        terminal.screen_state.activeConst(),
+        terminal.screen_state.activeSelectionConst().state(),
+    );
+}
+
+fn feedByte(terminal: *Terminal, byte: u8) void {
+    ParserRoot.feedByte(terminal, byte);
+}
+
+fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
+    ParserRoot.feedSlice(terminal, bytes);
+}
+
+fn apply(terminal: *Terminal) void {
+    ActionRoot.apply(terminal);
+}
+
+fn clear(terminal: *Terminal) void {
+    ParserRoot.clear(terminal);
+}
+
+fn reset(terminal: *Terminal) void {
+    ParserRoot.reset(terminal);
+}
 
 fn feed(flow: *ApplyFlow, screen: *Grid, bytes: []const u8) void {
     flow.feedSlice(bytes);
@@ -1617,15 +1652,15 @@ test "feed/apply: clear leaves snapshot unchanged" {
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
-    terminal.feedSlice("ABC");
-    terminal.apply();
-    var snap_before = try terminal.snapshot();
+    feedSlice(&terminal, "ABC");
+    apply(&terminal);
+    var snap_before = try captureSnapshot(&terminal);
     defer snap_before.deinit();
 
-    terminal.feedSlice("\x1b[H");
-    terminal.clear();
+    feedSlice(&terminal, "\x1b[H");
+    clear(&terminal);
 
-    var snap_after = try terminal.snapshot();
+    var snap_after = try captureSnapshot(&terminal);
     defer snap_after.deinit();
 
     try std.testing.expectEqual(snap_before.cursor_col, snap_after.cursor_col);
@@ -1637,15 +1672,15 @@ test "feed/apply: reset preserves snapshot state" {
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
-    terminal.feedSlice("HELLO");
-    terminal.apply();
-    var snap_before = try terminal.snapshot();
+    feedSlice(&terminal, "HELLO");
+    apply(&terminal);
+    var snap_before = try captureSnapshot(&terminal);
     defer snap_before.deinit();
 
-    terminal.feedSlice("\x1b[H");
-    terminal.reset();
+    feedSlice(&terminal, "\x1b[H");
+    reset(&terminal);
 
-    var snap_after = try terminal.snapshot();
+    var snap_after = try captureSnapshot(&terminal);
     defer snap_after.deinit();
 
     try std.testing.expectEqual(snap_before.cursor_col, snap_after.cursor_col);
@@ -1661,16 +1696,16 @@ test "feed/apply: resetScreen clears cells while preserving history" {
     var terminal = try Terminal.initWithCellsAndHistory(gpa, 3, 5, 10);
     defer terminal.deinit();
 
-    terminal.feedSlice("LINE1\nLINE2\nLINE3\nLINE4");
-    terminal.apply();
-    const hist_before = terminal.visibleView(.{}).history_count;
+    feedSlice(&terminal, "LINE1\nLINE2\nLINE3\nLINE4");
+    apply(&terminal);
+    const hist_before = screen_view.visibleView(&terminal.screen_state, .{}).history_count;
 
-    var snap_before = try terminal.snapshot();
+    var snap_before = try captureSnapshot(&terminal);
     defer snap_before.deinit();
 
-    terminal.resetScreen();
+    terminal.screen_state.active().reset();
 
-    var snap_after = try terminal.snapshot();
+    var snap_after = try captureSnapshot(&terminal);
     defer snap_after.deinit();
 
     try std.testing.expectEqual(@as(u16, 0), snap_after.cursor_row);
@@ -1689,23 +1724,23 @@ test "feed/apply: snapshot determinism across feed sequence variations" {
 
     var vt_core1 = try Terminal.initWithCells(gpa, 10, 20);
     defer vt_core1.deinit();
-    vt_core1.feedSlice("\x1b[2J");
-    vt_core1.feedSlice("Line1\nLine2");
-    vt_core1.apply();
-    var snap1 = try vt_core1.snapshot();
+    feedSlice(&vt_core1, "\x1b[2J");
+    feedSlice(&vt_core1, "Line1\nLine2");
+    apply(&vt_core1);
+    var snap1 = try captureSnapshot(&vt_core1);
     defer snap1.deinit();
 
     var vt_core2 = try Terminal.initWithCells(gpa, 10, 20);
     defer vt_core2.deinit();
-    vt_core2.feedByte('\x1b');
-    vt_core2.feedByte('[');
-    vt_core2.feedByte('2');
-    vt_core2.feedByte('J');
-    vt_core2.feedByte('L');
-    vt_core2.feedByte('i');
-    vt_core2.feedSlice("ne1\nLine2");
-    vt_core2.apply();
-    var snap2 = try vt_core2.snapshot();
+    feedByte(&vt_core2, '\x1b');
+    feedByte(&vt_core2, '[');
+    feedByte(&vt_core2, '2');
+    feedByte(&vt_core2, 'J');
+    feedByte(&vt_core2, 'L');
+    feedByte(&vt_core2, 'i');
+    feedSlice(&vt_core2, "ne1\nLine2");
+    apply(&vt_core2);
+    var snap2 = try captureSnapshot(&vt_core2);
     defer snap2.deinit();
 
     try std.testing.expectEqual(snap1.cursor_row, snap2.cursor_row);
@@ -1721,21 +1756,21 @@ test "feed/apply: snapshot reflects mode changes" {
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
-    terminal.feedSlice("TEST");
-    terminal.apply();
-    var snap1 = try terminal.snapshot();
+    feedSlice(&terminal, "TEST");
+    apply(&terminal);
+    var snap1 = try captureSnapshot(&terminal);
     defer snap1.deinit();
     try std.testing.expectEqual(true, snap1.cursor_visible);
 
-    terminal.feedSlice("\x1b[?25l");
-    terminal.apply();
-    var snap2 = try terminal.snapshot();
+    feedSlice(&terminal, "\x1b[?25l");
+    apply(&terminal);
+    var snap2 = try captureSnapshot(&terminal);
     defer snap2.deinit();
     try std.testing.expectEqual(false, snap2.cursor_visible);
 
-    terminal.feedSlice("\x1b[?25h");
-    terminal.apply();
-    var snap3 = try terminal.snapshot();
+    feedSlice(&terminal, "\x1b[?25h");
+    apply(&terminal);
+    var snap3 = try captureSnapshot(&terminal);
     defer snap3.deinit();
     try std.testing.expectEqual(true, snap3.cursor_visible);
 }
@@ -1745,14 +1780,14 @@ test "feed/apply: snapshot includes active selection endpoints" {
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
 
-    terminal.feedSlice("0123456789");
-    terminal.apply();
+    feedSlice(&terminal, "0123456789");
+    apply(&terminal);
 
-    terminal.selectionStart(0, 2);
-    terminal.selectionUpdate(0, 7);
-    terminal.selectionFinish();
+    selection.terminalStart(&terminal, 0, 2);
+    selection.terminalUpdate(&terminal, 0, 7);
+    selection.terminalFinish(&terminal);
 
-    var snap = try terminal.snapshot();
+    var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
 
     try std.testing.expectEqual(true, snap.selection != null);
@@ -1779,10 +1814,10 @@ test "feed/apply: snapshot parity across direct apply flow" {
 
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
-    terminal.feedSlice(test_bytes);
-    terminal.apply();
+    feedSlice(&terminal, test_bytes);
+    apply(&terminal);
 
-    var snap = try terminal.snapshot();
+    var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
 
     try std.testing.expectEqual(screen.cursor_row, snap.cursor_row);
@@ -1803,10 +1838,10 @@ test "feed/apply: snapshot wraparound history indices after eviction" {
     var terminal = try Terminal.initWithCellsAndHistory(gpa, 2, 5, 3);
     defer terminal.deinit();
 
-    terminal.feedSlice("A\r\nB\r\nC\r\nD\r\nE");
-    terminal.apply();
+    feedSlice(&terminal, "A\r\nB\r\nC\r\nD\r\nE");
+    apply(&terminal);
 
-    var snap = try terminal.snapshot();
+    var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
 
     try std.testing.expectEqual(@as(u16, 3), snap.history_capacity);
@@ -1823,7 +1858,7 @@ test "feed/apply: snapshot wraparound history indices after eviction" {
     while (row < snap.history_count) : (row += 1) {
         var col: u16 = 0;
         while (col < snap.cols) : (col += 1) {
-            try std.testing.expectEqual(terminal.historyRowAt(row, col), snap.historyRowAt(row, col));
+            try std.testing.expectEqual(screen_view.historyRowAt(&terminal.screen_state, row, col), snap.historyRowAt(row, col));
         }
     }
 }

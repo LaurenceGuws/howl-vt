@@ -1,7 +1,12 @@
 //! Deterministic M7 baseline smoke test.
 
 const std = @import("std");
+const action = @import("../action.zig");
+const parser = @import("../parser.zig");
 const terminal_mod = @import("../terminal.zig");
+
+const Action = action;
+const Parser = parser;
 
 const WorkloadResult = struct {
     name: []const u8,
@@ -234,9 +239,9 @@ fn runFeedApplyWorkload(
         defer terminal.deinit();
         counting.resetWindow();
         const start = nowNs(io);
-        terminal.feedSlice(fixture);
-        const max_queue_depth = terminal.applyLimit(0).remaining_events;
-        terminal.apply();
+        Parser.feedSlice(&terminal, fixture);
+        const max_queue_depth = Action.applyLimit(&terminal, 0).remaining_events;
+        Action.apply(&terminal);
         const end = nowNs(io);
         observations[i] = .{
             .ns = end - start,
@@ -304,9 +309,9 @@ fn runMixedInteractiveWorkload(
         var j: usize = 0;
         var max_queue_depth: usize = 0;
         while (j < bursts_per_run) : (j += 1) {
-            terminal.feedSlice(burst);
-            max_queue_depth = @max(max_queue_depth, terminal.applyLimit(0).remaining_events);
-            terminal.apply();
+            Parser.feedSlice(&terminal, burst);
+            max_queue_depth = @max(max_queue_depth, Action.applyLimit(&terminal, 0).remaining_events);
+            Action.apply(&terminal);
         }
         const end = nowNs(io);
         observations[i] = .{
@@ -370,13 +375,17 @@ fn runSnapshotWorkload(
             1_000,
         );
         defer terminal.deinit();
-        terminal.feedSlice(fixture);
-        terminal.apply();
+        Parser.feedSlice(&terminal, fixture);
+        Action.apply(&terminal);
         counting.resetWindow();
         const start = nowNs(io);
         var j: usize = 0;
         while (j < snapshot_calls_per_run) : (j += 1) {
-            var snap = try terminal.snapshot();
+            var snap = try @import("../screen/snapshot.zig").VtCoreSnapshot.captureFromScreen(
+                terminal.allocator,
+                terminal.screen_state.activeConst(),
+                terminal.screen_state.activeSelectionConst().state(),
+            );
             snap.deinit();
         }
         const end = nowNs(io);
@@ -452,11 +461,11 @@ fn runQueueGrowthChunkedWorkload(
         const start = nowNs(io);
         while (offset < fixture.len) {
             const next = @min(offset + chunk_size, fixture.len);
-            terminal.feedSlice(fixture[offset..next]);
-            max_queue_depth = @max(max_queue_depth, terminal.applyLimit(0).remaining_events);
+            Parser.feedSlice(&terminal, fixture[offset..next]);
+            max_queue_depth = @max(max_queue_depth, Action.applyLimit(&terminal, 0).remaining_events);
             offset = next;
         }
-        terminal.apply();
+        Action.apply(&terminal);
         const end = nowNs(io);
         observations[i] = .{
             .ns = end - start,

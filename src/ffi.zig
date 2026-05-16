@@ -2,6 +2,9 @@
 const std = @import("std");
 const grid = @import("grid.zig");
 const input = @import("input.zig");
+const parser = @import("parser.zig");
+const action = @import("action.zig");
+const screen_view = @import("screen/view.zig");
 const terminal = @import("terminal.zig");
 
 pub const HowlVtTerminal = opaque {};
@@ -202,14 +205,14 @@ pub fn terminalDeinit(handle: VtHandle) callconv(.c) void {
 pub fn terminalFeed(handle: VtHandle, ptr: ?[*]const u8, len: usize) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
     const bytes = bytesIn(ptr, len) orelse return @intFromEnum(HowlVtCallStatus.invalid_argument);
-    owned.feedSlice(bytes);
+    parser.feedSlice(owned, bytes);
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
 pub fn terminalApply(handle: VtHandle, max_events: usize, title_ptr: ?[*]u8, title_cap: usize) callconv(.c) FfiApplyResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const title_out = bytesOut(title_ptr, title_cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const result = owned.applyLimit(max_events);
+    const result = action.applyLimit(owned, max_events);
     const remaining = result.remaining_events;
     if (result.latest_title) |title| {
         if (title_out.len < title.len) {
@@ -241,18 +244,19 @@ pub fn terminalApply(handle: VtHandle, max_events: usize, title_ptr: ?[*]u8, tit
 
 pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
-    owned.resize(rows, cols) catch return @intFromEnum(HowlVtCallStatus.failed);
+    owned.screen_state.resize(owned.allocator, rows, cols) catch return @intFromEnum(HowlVtCallStatus.failed);
+    owned.screen_state.activeSelection().clearIfInvalidatedByGrid(owned.screen_state.activeConst());
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
 pub fn terminalClearDirtyRows(handle: VtHandle) callconv(.c) void {
     const owned = vtFromHandle(handle) orelse return;
-    owned.clearDirtyRows();
+    screen_view.clearDirtyRows(&owned.screen_state);
 }
 
 pub fn terminalCopyVisible(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiCell, cells_cap: usize) callconv(.c) FfiVisibleView {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const view = owned.visibleView(.{ .scrollback_offset = scrollback_offset });
+    const view = screen_view.visibleView(&owned.screen_state, .{ .scrollback_offset = scrollback_offset });
     const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
     if (cells_cap < cell_count) {
         return .{
@@ -297,7 +301,7 @@ pub fn terminalCopyVisible(handle: VtHandle, scrollback_offset: usize, cells_ptr
 
 pub fn terminalCopyDirty(handle: VtHandle, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiDirtyView {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const dirty = owned.peekDirtyRows() orelse return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
+    const dirty = screen_view.peekDirtyRows(&owned.screen_state) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
     const row_count: usize = @as(usize, dirty.end_row) - @as(usize, dirty.start_row) + 1;
     if (cols_start_cap < row_count or cols_end_cap < row_count) {
         return .{
@@ -324,33 +328,35 @@ pub fn terminalCopyDirty(handle: VtHandle, cols_start_ptr: ?[*]u16, cols_start_c
 pub fn terminalCopyPendingOutput(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    return copyBytes(out, owned.pendingOutput());
+    return copyBytes(out, @import("host/state.zig").pendingOutput(owned));
 }
 
 pub fn terminalClearPendingOutput(handle: VtHandle) callconv(.c) void {
     const owned = vtFromHandle(handle) orelse return;
-    owned.clearPendingOutput();
+    @import("host/state.zig").clearPendingOutput(owned);
 }
 
 pub fn terminalDrainPendingClipboard(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const raw = owned.pendingClipboardSet() orelse return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
+    const raw = @import("host/state.zig").pendingClipboardSet(owned) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
     const result = decodeClipboardBytes(raw, out);
-    if (result.status == @intFromEnum(HowlVtCallStatus.ok)) owned.clearPendingClipboardSet();
+    if (result.status == @intFromEnum(HowlVtCallStatus.ok)) @import("host/state.zig").clearPendingClipboardSet(owned);
     return result;
 }
 
 pub fn terminalEncodeKey(handle: VtHandle, key: u32, mods: u8, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    return copyBytes(out, owned.encodeKey(key, mods));
+    var scratch: input.Scratch = .{};
+    return copyBytes(out, input.encodeKey(owned, &scratch, key, mods));
 }
 
 pub fn terminalEncodeFocus(handle: VtHandle, focused: u8, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const bytes = if (focused != 0) owned.encodeFocusIn() else owned.encodeFocusOut();
+    var scratch: input.Scratch = .{};
+    const bytes = if (focused != 0) input.encodeFocusIn(owned, &scratch) else input.encodeFocusOut(owned, &scratch);
     return copyBytes(out, bytes);
 }
 
@@ -383,15 +389,17 @@ pub fn terminalEncodeMouse(
         .mod = mods,
         .buttons_down = buttons_down,
     };
-    return copyBytes(out, owned.encodeMouse(event));
+    var scratch: input.Scratch = .{};
+    return copyBytes(out, input.encodeMouse(owned, &scratch, event));
 }
 
 pub fn terminalEncodePaste(handle: VtHandle, text_ptr: ?[*]const u8, text_len: usize, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const text = bytesIn(text_ptr, text_len) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const start = owned.encodePasteStart();
-    const end = owned.encodePasteEnd();
+    var scratch: input.Scratch = .{};
+    const start = input.encodePasteStart(owned, &scratch);
+    const end = input.encodePasteEnd(owned, &scratch);
     const needed = start.len + text.len + end.len;
     if (out.len < needed) {
         return .{

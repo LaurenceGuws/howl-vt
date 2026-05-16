@@ -128,6 +128,6 @@ pub fn capture(vt: anytype) !VtCoreSnapshot {
     return VtCoreSnapshot.captureFromScreen(
         vt.allocator,
         vt.screen_state.activeConst(),
-        vt.selection.state(),
+        vt.screen_state.activeSelectionConst().state(),
     );
 }

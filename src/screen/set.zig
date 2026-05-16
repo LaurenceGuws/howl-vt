@@ -1,7 +1,9 @@
 const std = @import("std");
 const grid = @import("../grid.zig");
+const selection = @import("../selection.zig");
 
 const Grid = grid.Grid;
+const SelectionState = selection.SelectionState;
 
 pub const Set = struct {
     const CursorSnapshot = struct {
@@ -13,6 +15,8 @@ pub const Set = struct {
 
     primary: Grid,
     alternate: Grid,
+    primary_selection: SelectionState = SelectionState.init(),
+    alternate_selection: SelectionState = SelectionState.init(),
     alt_active: bool = false,
     saved_primary_cursor: ?CursorSnapshot = null,
 
@@ -26,6 +30,14 @@ pub const Set = struct {
 
     pub fn activeConst(self: *const Set) *const Grid {
         return if (self.alt_active) &self.alternate else &self.primary;
+    }
+
+    pub fn activeSelection(self: *Set) *SelectionState {
+        return if (self.alt_active) &self.alternate_selection else &self.primary_selection;
+    }
+
+    pub fn activeSelectionConst(self: *const Set) *const SelectionState {
+        return if (self.alt_active) &self.alternate_selection else &self.primary_selection;
     }
 
     pub fn reset(self: *Set) void {

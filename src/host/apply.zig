@@ -1,6 +1,7 @@
 //! Host-facing consequence application.
 
 const std = @import("std");
+const input = @import("../input.zig");
 const locator = @import("../control/locator.zig");
 const osc_color = @import("../control/osc_color.zig");
 const grid = @import("../grid.zig");
@@ -15,14 +16,15 @@ const DcsPayload = vocabulary.DcsPayload;
 const HostAction = vocabulary.HostAction;
 
 pub fn apply(vt: anytype, action: HostAction) void {
+    var scratch: input.Scratch = .{};
     switch (action) {
         .color_control => |cmd| {
             switch (cmd.command) {
                 21 => KittyNs.Color.handleKittyControl(vt.allocator, &vt.host.colors, &vt.host.pending_output, cmd.payload),
-                4 => OscColorNs.handleXtermPaletteControl(vt.allocator, &vt.host.colors, &vt.host.pending_output, vt.encode.buf[0..], cmd.payload),
-                10 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.colors, &vt.host.pending_output, vt.encode.buf[0..], .foreground, cmd.payload),
-                11 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.colors, &vt.host.pending_output, vt.encode.buf[0..], .background, cmd.payload),
-                12 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.colors, &vt.host.pending_output, vt.encode.buf[0..], .cursor, cmd.payload),
+                4 => OscColorNs.handleXtermPaletteControl(vt.allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], cmd.payload),
+                10 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], .foreground, cmd.payload),
+                11 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], .background, cmd.payload),
+                12 => OscColorNs.handleXtermSpecialColor(vt.allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], .cursor, cmd.payload),
                 104 => OscColorNs.resetXtermPalette(&vt.host.colors, cmd.payload),
                 110 => vt.host.colors.foreground = GridNs.default_fg,
                 111 => vt.host.colors.background = GridNs.default_bg,
@@ -36,7 +38,7 @@ pub fn apply(vt: anytype, action: HostAction) void {
         .locator_reporting => |cfg| LocatorNs.setReporting(&vt.host.locator, cfg.mode, cfg.unit),
         .locator_filter => |area| LocatorNs.setFilter(&vt.host.locator, area),
         .locator_events => |modes| LocatorNs.setEvents(&vt.host.locator, modes.params[0..modes.param_count]),
-        .locator_request => |param| LocatorNs.appendReportForRequest(&vt.host.locator, vt.allocator, &vt.host.pending_output, vt.encode.buf[0..], param),
+        .locator_request => |param| LocatorNs.appendReportForRequest(&vt.host.locator, vt.allocator, &vt.host.pending_output, scratch.buf[0..], param),
         .media_copy_request => |param| vt.host.media_copy_request = param,
         .dcs_payload => |payload| setDcsPayload(vt, payload),
         .legacy_control => |kind| vt.host.legacy_control = kind,

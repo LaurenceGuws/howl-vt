@@ -1,4 +1,5 @@
 const std = @import("std");
+const input = @import("../input.zig");
 const vocabulary = @import("../action/vocabulary.zig");
 const types = @import("types.zig");
 
@@ -7,11 +8,12 @@ const KittyShellMark = vocabulary.KittyShellMark;
 const KittyAction = vocabulary.KittyAction;
 
 pub fn apply(vt: anytype, action: KittyAction) void {
+    var scratch: input.Scratch = .{};
     const active_screen = vt.kitty.activeScreen(vt.screen_state.alt_active);
     const active_screen_const = vt.kitty.activeScreenConst(vt.screen_state.alt_active);
     switch (action) {
         .kitty_keyboard_set => |req| active_screen.keyboard.set(req.flags, req.mode),
-        .kitty_keyboard_query => active_screen_const.keyboard.appendReport(vt.allocator, &vt.host.pending_output, vt.encode.buf[0..]),
+        .kitty_keyboard_query => active_screen_const.keyboard.appendReport(vt.allocator, &vt.host.pending_output, scratch.buf[0..]),
         .kitty_keyboard_push => |flags| active_screen.keyboard.push(flags),
         .kitty_keyboard_pop => |count| active_screen.keyboard.pop(count),
         .kitty_shell_mark => |mark| setShellMark(vt.allocator, &vt.kitty.global.shell_mark, mark),
@@ -43,7 +45,7 @@ pub fn apply(vt: anytype, action: KittyAction) void {
             vt.kitty.global.graphics.handle(vt.allocator, .{
                 .row = cursor.cursor_row,
                 .col = cursor.cursor_col,
-            }, &vt.host.pending_output, vt.encode.buf[0..], cmd);
+            }, &vt.host.pending_output, scratch.buf[0..], cmd);
         },
     }
 }

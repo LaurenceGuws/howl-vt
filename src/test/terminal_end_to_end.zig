@@ -1,8 +1,12 @@
 //! End-to-end terminal flow tests.
 
 const std = @import("std");
+const action = @import("../action.zig");
+const parser = @import("../parser.zig");
 const terminal_mod = @import("../terminal.zig");
 
+const Action = action;
+const Parser = parser;
 const Terminal = terminal_mod.Terminal;
 
 test "terminal: parser apply flow applies bytes to grid state deterministically" {
@@ -10,12 +14,12 @@ test "terminal: parser apply flow applies bytes to grid state deterministically"
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
-    terminal.feedSlice("ab");
-    terminal.feedByte('c');
-    terminal.feedSlice("\r\nxy");
-    terminal.apply();
+    Parser.feedSlice(&terminal, "ab");
+    Parser.feedByte(&terminal, 'c');
+    Parser.feedSlice(&terminal, "\r\nxy");
+    Action.apply(&terminal);
 
-    const s = terminal.screen();
+    const s = terminal.screen_state.activeConst();
     try std.testing.expectEqual(@as(u21, 'a'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'b'), s.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 'c'), s.cellAt(0, 2));

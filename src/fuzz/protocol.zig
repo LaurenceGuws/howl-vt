@@ -1,7 +1,10 @@
 //! Protocol/parser fuzz scenarios.
 
 const std = @import("std");
+const action = @import("../action.zig");
 const parser_mod = @import("../parser.zig");
+const screen_view = @import("../screen/view.zig");
+const Action = action;
 const Parser = parser_mod.Parser;
 const Sink = Parser.Sink;
 const OscTerminator = Parser.OscTerminator;
@@ -312,7 +315,7 @@ fn runTerminal(
     defer terminal.deinit();
 
     feedBytesToTerminal(&terminal, bytes, mode, rand, max_chunk_len);
-    terminal.apply();
+    Action.apply(&terminal);
     return digestTerminal(&terminal);
 }
 
@@ -334,14 +337,14 @@ fn feedBytesToParser(parser: *Parser, bytes: []const u8, mode: FeedMode, rand: s
 
 fn feedBytesToTerminal(terminal: *vt.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
     switch (mode) {
-        .whole_slice => terminal.feedSlice(bytes),
-        .bytewise => for (bytes) |byte| terminal.feedByte(byte),
+        .whole_slice => parser_mod.feedSlice(terminal, bytes),
+        .bytewise => for (bytes) |byte| parser_mod.feedByte(terminal, byte),
         .chunked => {
             var offset: usize = 0;
             while (offset < bytes.len) {
                 const remaining = bytes.len - offset;
                 const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
-                terminal.feedSlice(bytes[offset..][0..chunk_len]);
+                parser_mod.feedSlice(terminal, bytes[offset..][0..chunk_len]);
                 offset += chunk_len;
             }
         },
@@ -350,7 +353,7 @@ fn feedBytesToTerminal(terminal: *vt.Terminal, bytes: []const u8, mode: FeedMode
 
 fn digestTerminal(terminal: *const vt.Terminal) VtDigest {
     var hasher = std.hash.Wyhash.init(0);
-    const view = terminal.visibleView(.{});
+    const view = screen_view.visibleView(&terminal.screen_state, .{});
 
     hashValue(&hasher, view.rows);
     hashValue(&hasher, view.cols);
@@ -368,13 +371,13 @@ fn digestTerminal(terminal: *const vt.Terminal) VtDigest {
         }
     }
 
-    const history_count = terminal.visibleView(.{}).history_count;
+    const history_count = screen_view.visibleView(&terminal.screen_state, .{}).history_count;
     hashValue(&hasher, history_count);
     var history_idx: usize = 0;
     while (history_idx < history_count) : (history_idx += 1) {
         var col: u16 = 0;
         while (col < view.cols) : (col += 1) {
-            hashCell(&hasher, terminal.historyCellAt(history_idx, col));
+            hashCell(&hasher, screen_view.historyCellAt(&terminal.screen_state, history_idx, col));
         }
     }
 

@@ -33,6 +33,34 @@ pub const Event = events.Event;
 pub const ParsedEvents = events.ParsedEvents;
 pub const ApplyFlow = @import("flow.zig").ApplyFlow;
 
+pub const State = struct {
+    apply_flow: ApplyFlow,
+
+    pub fn init(allocator: std.mem.Allocator) !State {
+        return .{ .apply_flow = try ApplyFlow.init(allocator) };
+    }
+
+    pub fn deinit(self: *State) void {
+        self.apply_flow.deinit();
+    }
+};
+
+pub fn feedByte(vt: anytype, byte: u8) void {
+    vt.parser_state.apply_flow.feedByte(byte);
+}
+
+pub fn feedSlice(vt: anytype, bytes: []const u8) void {
+    vt.parser_state.apply_flow.feedSlice(bytes);
+}
+
+pub fn clear(vt: anytype) void {
+    vt.parser_state.apply_flow.clear();
+}
+
+pub fn reset(vt: anytype) void {
+    vt.parser_state.apply_flow.reset();
+}
+
 /// Stateful parser for terminal input streams.
 pub const Parser = struct {
     /// Stream event payload.

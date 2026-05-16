@@ -1,0 +1,329 @@
+{
+  "source_file": "src/terminal/main.zig",
+  "mapping_target": {
+    "ghostty_terminal_owner": "src/terminal/Terminal.zig",
+    "howl_terminal_owner": "src/terminal.zig",
+    "ghostty_curated_root": "src/terminal/main.zig",
+    "howl_curated_root": "src/howl_vt.zig"
+  },
+  "coverage_rule": "Every named declaration matched by `rg -n \"^\\s*(pub const|const)\\s+[A-Za-z_][A-Za-z0-9_]*\\s*=|^\\s*[A-Za-z_][A-Za-z0-9_]*:\\s|^\\s*pub fn\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\(|^test\\b\" src/terminal/main.zig` is listed exactly once. Extra enum-member rows are included on purpose for ControlSignal.",
+  "groups": [
+    {
+      "id": "g001-std-support",
+      "howl_target": "support-only; no owner move needed",
+      "ghostty_refs": [],
+      "symbols": [
+        { "line": 3, "kind": "import", "symbol": "std" }
+      ]
+    },
+    {
+      "id": "g002-action-dispatch",
+      "howl_target": "src/action/dispatch.zig",
+      "ghostty_refs": [
+        { "path": "src/terminal/stream.zig", "anchor": "pub const Action = union(Key) {" },
+        { "path": "src/terminal/stream_readonly.zig", "anchor": "pub const Handler = struct {" }
+      ],
+      "symbols": [
+        { "line": 4, "kind": "import", "symbol": "dispatch" },
+        { "line": 13, "kind": "import", "symbol": "action" },
+        { "line": 29, "kind": "nested_alias", "symbol": "ApplySummary" },
+        { "line": 135, "kind": "method", "symbol": "apply" },
+        { "line": 139, "kind": "method", "symbol": "applyLimit" }
+      ]
+    },
+    {
+      "id": "g003-mode-owner",
+      "howl_target": "src/control/mode.zig",
+      "ghostty_refs": [
+        { "path": "src/terminal/modes.zig", "anchor": "pub const ModeState = struct {" },
+        { "path": "src/terminal/modes.zig", "anchor": ".{ .name = \"reverse_wrap\", .value = 45 }," },
+        { "path": "src/terminal/modes.zig", "anchor": ".{ .name = \"keypad_keys\", .value = 66 }," },
+        { "path": "src/terminal/modes.zig", "anchor": ".{ .name = \"focus_event\", .value = 1004 }," }
+      ],
+      "symbols": [
+        { "line": 5, "kind": "import", "symbol": "mode" },
+        { "line": 25, "kind": "top_alias", "symbol": "TerminalModeNs" },
+        { "line": 61, "kind": "field", "symbol": "modes" },
+        { "line": 172, "kind": "method", "symbol": "sixelDisplayMode" },
+        { "line": 176, "kind": "method", "symbol": "reverseWraparoundMode" },
+        { "line": 180, "kind": "method", "symbol": "extendedReverseWraparoundMode" },
+        { "line": 228, "kind": "method", "symbol": "pointerMode" },
+        { "line": 301, "kind": "method", "symbol": "synchronizedOutputActive" }
+      ]
+    },
+    {
+      "id": "g004-dynamic-colors",
+      "howl_target": "src/control/osc_color.zig",
+      "ghostty_refs": [
+        { "path": "src/terminal/Terminal.zig", "anchor": "colors: Colors," },
+        { "path": "src/terminal/osc.zig", "anchor": "color_operation: struct {" }
+      ],
+      "symbols": [
+        { "line": 6, "kind": "import", "symbol": "osc_color" },
+        { "line": 24, "kind": "top_alias", "symbol": "OscColorNs" },
+        { "line": 44, "kind": "nested_alias", "symbol": "TerminalColorState" },
+        { "line": 236, "kind": "method", "symbol": "terminalColorState" }
+      ]
+    },
+    {
+      "id": "g006-host-consequences",
+      "howl_target": "src/host/state.zig",
+      "ghostty_refs": [
+        { "path": "src/terminal/stream.zig", "anchor": "report_pwd: ReportPwd," },
+        { "path": "src/terminal/stream.zig", "anchor": "clipboard_contents: ClipboardContents," },
+        { "path": "src/terminal/stream.zig", "anchor": "window_title: WindowTitle," },
+        { "path": "src/terminal/osc.zig", "anchor": "clipboard_contents: struct {" },
+        { "path": "src/terminal/osc.zig", "anchor": "report_pwd: struct {" }
+      ],
+      "symbols": [
+        { "line": 8, "kind": "import", "symbol": "host_state" },
+        { "line": 48, "kind": "nested_alias", "symbol": "HostState" },
+        { "line": 64, "kind": "field", "symbol": "host" },
+        { "line": 63, "kind": "field", "symbol": "xtchecksum_flags" },
+        { "line": 148, "kind": "method", "symbol": "pendingOutput" },
+        { "line": 152, "kind": "method", "symbol": "clearPendingOutput" },
+        { "line": 160, "kind": "method", "symbol": "pendingClipboardSet" },
+        { "line": 164, "kind": "method", "symbol": "drainPendingClipboardSet" },
+        { "line": 184, "kind": "method", "symbol": "mediaCopyRequest" },
+        { "line": 188, "kind": "method", "symbol": "dcsPayloadKind" },
+        { "line": 192, "kind": "method", "symbol": "dcsPayload" },
+        { "line": 196, "kind": "method", "symbol": "legacyControl" },
+        { "line": 264, "kind": "method", "symbol": "clearPendingClipboardSet" }
+      ]
+    },
+    {
+      "id": "g007-screen-hyperlinks",
+      "howl_target": "new explicit screen/hyperlink owner under src/screen/ or src/host/ if retained only as a host-facing lookup",
+      "ghostty_refs": [
+        { "path": "src/terminal/Screen.zig", "anchor": "hyperlink: ?*hyperlink.Hyperlink = null," },
+        { "path": "src/terminal/Screen.zig", "anchor": "pub fn startHyperlink(" },
+        { "path": "src/terminal/Screen.zig", "anchor": "pub fn endHyperlink(self: *Screen) void {" }
+      ],
+      "symbols": [
+        { "line": 156, "kind": "method", "symbol": "hyperlinkUriForId" }
+      ]
+    },
+    {
+      "id": "g008-kitty-state",
+      "howl_target": "src/kitty/state.zig",
+      "ghostty_refs": [
+        { "path": "src/terminal/kitty.zig", "anchor": "pub const KeyFlagStack = key.FlagStack;" },
+        { "path": "src/terminal/Screen.zig", "anchor": "kitty_keyboard: kitty.KeyFlagStack = .{}," },
+        { "path": "src/terminal/Screen.zig", "anchor": "kitty_images: if (build_options.kitty_graphics)" },
+        { "path": "src/terminal/kitty/color.zig", "anchor": "pub const OSC = struct {" }
+      ],
+      "symbols": [
+        { "line": 9, "kind": "import", "symbol": "kitty_state" },
+        { "line": 14, "kind": "import", "symbol": "kitty" },
+        { "line": 21, "kind": "top_alias", "symbol": "KittyNs" },
+        { "line": 42, "kind": "nested_alias", "symbol": "KittyShellMark" },
+        { "line": 45, "kind": "nested_alias", "symbol": "KittyGraphicsImage" },
+        { "line": 46, "kind": "nested_alias", "symbol": "KittyGraphicsPlacement" },
+        { "line": 47, "kind": "nested_alias", "symbol": "KittyGraphicsFrame" },
+        { "line": 49, "kind": "nested_alias", "symbol": "KittyState" },
+        { "line": 62, "kind": "field", "symbol": "kitty" },
+        { "line": 200, "kind": "method", "symbol": "kittyShellMark" },
+        { "line": 212, "kind": "method", "symbol": "kittyFileTransferRequest" },
+        { "line": 216, "kind": "method", "symbol": "kittyTextSizeRequest" },
+        { "line": 220, "kind": "method", "symbol": "kittyPointerShape" },
+        { "line": 224, "kind": "method", "symbol": "kittyMultipleCursorCount" },
+        { "line": 232, "kind": "method", "symbol": "kittyColorStackDepth" },
+        { "line": 240, "kind": "method", "symbol": "kittyGraphicsImageCount" },
+        { "line": 244, "kind": "method", "symbol": "kittyGraphicsImageAt" },
+        { "line": 248, "kind": "method", "symbol": "kittyGraphicsPlacementCount" },
+        { "line": 252, "kind": "method", "symbol": "kittyGraphicsPlacementAt" },
+        { "line": 256, "kind": "method", "symbol": "kittyGraphicsFrameCount" },
+        { "line": 260, "kind": "method", "symbol": "kittyGraphicsFrameAt" }
+      ]
+    },
+    {
+      "id": "g009-kitty-osc-consequences",
+      "howl_target": "src/kitty/state.zig plus explicit host consequence queues where the protocol demands host action",
+      "ghostty_refs": [
+        { "path": "src/terminal/osc.zig", "anchor": "show_desktop_notification: struct {" },
+        { "path": "src/terminal/osc.zig", "anchor": "kitty_text_sizing: parsers.kitty_text_sizing.OSC," },
+        { "path": "src/terminal/osc.zig", "anchor": "semantic_prompt: SemanticPrompt," }
+      ],
+      "symbols": [
+        { "line": 43, "kind": "nested_alias", "symbol": "KittyNotificationRequest" },
+        { "line": 204, "kind": "method", "symbol": "kittyNotificationCount" },
+        { "line": 208, "kind": "method", "symbol": "kittyNotificationAt" }
+      ]
+    },
+    {
+      "id": "g013-parser-flow",
+      "howl_target": "src/parser/flow.zig + src/parser/main.zig",
+      "ghostty_refs": [
+        { "path": "src/terminal/Parser.zig", "anchor": "const Parser = @This();" },
+        { "path": "src/terminal/stream.zig", "anchor": "pub const Action = union(Key) {" }
+      ],
+      "symbols": [
+        { "line": 57, "kind": "field", "symbol": "allocator" },
+        { "line": 58, "kind": "field", "symbol": "apply_flow" },
+        { "line": 68, "kind": "method", "symbol": "init" },
+        { "line": 83, "kind": "method", "symbol": "initWithCells" },
+        { "line": 100, "kind": "method", "symbol": "initWithCellsAndHistory" },
+        { "line": 117, "kind": "method", "symbol": "deinit" },
+        { "line": 125, "kind": "method", "symbol": "feedByte" },
+        { "line": 130, "kind": "method", "symbol": "feedSlice" },
+        { "line": 144, "kind": "method", "symbol": "clear" },
+        { "line": 269, "kind": "method", "symbol": "reset" }
+      ]
+    },
+    {
+      "id": "g014-dcs-and-status",
+      "howl_target": "src/host/state.zig plus sharper DCS/report owners as follow-up",
+      "ghostty_refs": [
+        { "path": "src/terminal/dcs.zig", "anchor": "pub const Handler = struct {" },
+        { "path": "src/terminal/dcs.zig", "anchor": "pub const Command = union(enum) {" },
+        { "path": "src/terminal/device_status.zig", "anchor": "pub const Request = dsr_enum: {" }
+      ],
+      "symbols": [
+        { "line": 20, "kind": "top_alias", "symbol": "Action" }
+      ]
+    },
+    {
+      "id": "g015-terminal-root-deletion",
+      "howl_target": "delete src/terminal/main.zig; any surviving public repo-local root stays in src/howl_vt.zig only",
+      "ghostty_refs": [
+        { "path": "src/terminal/main.zig", "anchor": "pub const Terminal = @import(\"Terminal.zig\");" },
+        { "path": "src/terminal/Terminal.zig", "anchor": "const Terminal = @This();" }
+      ],
+      "symbols": [
+        { "line": 28, "kind": "type", "symbol": "Terminal" }
+      ]
+    },
+    {
+      "id": "g017-kitty-clipboard-mode",
+      "howl_target": "src/kitty/ or src/host/ depending on whether this remains retained VT state or only host consequence state",
+      "ghostty_refs": [
+        { "path": "src/terminal/osc.zig", "anchor": "kitty_clipboard_protocol: KittyClipboardProtocol," }
+      ],
+      "symbols": [
+        { "line": 168, "kind": "method", "symbol": "kittyClipboardMode" }
+      ]
+    },
+    {
+      "id": "g018-terminal-tests",
+      "howl_target": "redistribute to owning modules; no terminal-root test aggregator survives",
+      "ghostty_refs": [
+        { "path": "src/terminal/main.zig", "anchor": "@import(\"std\").testing.refAllDecls(@This());" }
+      ],
+      "symbols": [
+        { "line": 403, "kind": "test", "symbol": "test_terminal_tracks_synchronized_output_private_mode" },
+        { "line": 423, "kind": "test_local_alias", "symbol": "live" },
+        { "line": 428, "kind": "test_local_alias", "symbol": "scrolled" },
+        { "line": 436, "kind": "test", "symbol": "test_import_block" }
+      ]
+    }
+  ],
+  "completed_groups": [
+    {
+      "id": "g016-runtime-signals-move-up",
+      "result": "done",
+      "note": "ControlSignal had no live callers and was deleted from howl-vt. Runtime control signals stay with howl-pty or the owning host runtime.",
+      "symbols": [
+        { "line": 31, "kind": "nested_type", "symbol": "ControlSignal" },
+        { "line": 32, "kind": "enum_member", "symbol": "ControlSignal.hangup" },
+        { "line": 33, "kind": "enum_member", "symbol": "ControlSignal.interrupt" },
+        { "line": 34, "kind": "enum_member", "symbol": "ControlSignal.terminate" },
+        { "line": 35, "kind": "enum_member", "symbol": "ControlSignal.resize_notify" }
+      ]
+    },
+    {
+      "id": "g012-input-encoding",
+      "result": "done",
+      "note": "Input encoding moved to explicit src/input APIs with caller-owned scratch. Terminal encode methods and encode scratch storage were deleted.",
+      "ghostty_refs": [
+        { "path": "src/terminal/c/key_encode.zig", "anchor": "pub const Encoder = ?*KeyEncoderWrapper;" },
+        { "path": "src/terminal/c/paste.zig", "anchor": "pub fn is_safe(data: ?[*]const u8, len: usize) callconv(.c) bool {" }
+      ],
+      "symbols": [
+        { "line": 12, "kind": "import", "symbol": "Input" },
+        { "line": 17, "kind": "import", "symbol": "input_encode" },
+        { "line": 51, "kind": "nested_type", "symbol": "EncodeScratch" },
+        { "line": 52, "kind": "nested_field", "symbol": "EncodeScratch.buf" },
+        { "line": 65, "kind": "field", "symbol": "encode" },
+        { "line": 345, "kind": "method", "symbol": "encodeKey" },
+        { "line": 349, "kind": "method", "symbol": "kittyKeyboardFlags" },
+        { "line": 353, "kind": "method", "symbol": "isApplicationKeypad" },
+        { "line": 357, "kind": "method", "symbol": "modifyOtherKeys" },
+        { "line": 361, "kind": "method", "symbol": "keyFormatOption" },
+        { "line": 365, "kind": "method", "symbol": "isKeyFormatResource" },
+        { "line": 371, "kind": "method", "symbol": "encodeMouse" },
+        { "line": 375, "kind": "method", "symbol": "encodeFocusIn" },
+        { "line": 379, "kind": "method", "symbol": "encodePaste" },
+        { "line": 383, "kind": "method", "symbol": "encodeFocusOut" },
+        { "line": 387, "kind": "method", "symbol": "encodePasteStart" },
+        { "line": 391, "kind": "method", "symbol": "encodePasteEnd" }
+      ]
+    },
+    {
+      "id": "g005-screen-grid-view",
+      "result": "done",
+      "note": "Visible view, history access, dirty-row access, resetScreen, and resize callers now use direct screen owners. Terminal screen/view facade methods were deleted.",
+      "ghostty_refs": [
+        { "path": "src/terminal/ScreenSet.zig", "anchor": "const ScreenSet = @This();" },
+        { "path": "src/terminal/Screen.zig", "anchor": "const Screen = @This();" },
+        { "path": "src/terminal/PageList.zig", "anchor": "const PageList = @This();" },
+        { "path": "src/terminal/PageList.zig", "anchor": "pub fn resize(self: *PageList, opts: Resize) Allocator.Error!void {" }
+      ],
+      "symbols": [
+        { "line": 7, "kind": "import", "symbol": "grid" },
+        { "line": 10, "kind": "import", "symbol": "screen_set" },
+        { "line": 11, "kind": "import", "symbol": "screen_view" },
+        { "line": 19, "kind": "top_alias", "symbol": "GridNs" },
+        { "line": 38, "kind": "nested_alias", "symbol": "VisibleViewOptions" },
+        { "line": 39, "kind": "nested_alias", "symbol": "VisibleRowSource" },
+        { "line": 40, "kind": "nested_alias", "symbol": "VisibleView" },
+        { "line": 55, "kind": "nested_alias", "symbol": "ScreenSet" },
+        { "line": 59, "kind": "field", "symbol": "screen_state" },
+        { "line": 71, "kind": "method_local_alias", "symbol": "state" },
+        { "line": 72, "kind": "method_local_alias", "symbol": "alt_state" },
+        { "line": 274, "kind": "method", "symbol": "resetScreen" },
+        { "line": 279, "kind": "method", "symbol": "resize" },
+        { "line": 285, "kind": "method", "symbol": "screen" },
+        { "line": 289, "kind": "method", "symbol": "visibleView" },
+        { "line": 293, "kind": "method", "symbol": "peekDirtyRows" },
+        { "line": 297, "kind": "method", "symbol": "clearDirtyRows" },
+        { "line": 306, "kind": "method", "symbol": "historyRowAt" },
+        { "line": 310, "kind": "method", "symbol": "historyCellAt" },
+        { "line": 315, "kind": "method", "symbol": "historyCapacity" },
+        { "line": 416, "kind": "test", "symbol": "test_terminal_visible_view_projects_scrollback_rows" }
+      ]
+    },
+    {
+      "id": "g011-snapshot",
+      "result": "done",
+      "note": "Snapshot callers now use direct screen snapshot capture. Terminal snapshot facade method was deleted.",
+      "ghostty_refs": [
+        { "path": "src/terminal/Screen.zig", "anchor": "const Screen = @This();" },
+        { "path": "src/terminal/PageList.zig", "anchor": "const PageList = @This();" }
+      ],
+      "symbols": [
+        { "line": 16, "kind": "import", "symbol": "snapshot" },
+        { "line": 23, "kind": "top_alias", "symbol": "Snapshot" },
+        { "line": 397, "kind": "method", "symbol": "snapshot" }
+      ]
+    },
+    {
+      "id": "g010-selection",
+      "result": "done",
+      "note": "Selection storage moved into screen state. Selection mutation/query stays under src/selection/, and terminal selection facade methods were deleted.",
+      "ghostty_refs": [
+        { "path": "src/terminal/Selection.zig", "anchor": "const Selection = @This();" },
+        { "path": "src/terminal/Screen.zig", "anchor": "selection: ?Selection = null," }
+      ],
+      "symbols": [
+        { "line": 15, "kind": "import", "symbol": "selection" },
+        { "line": 22, "kind": "top_alias", "symbol": "Selection" },
+        { "line": 60, "kind": "field", "symbol": "selection" },
+        { "line": 320, "kind": "method", "symbol": "selectionState" },
+        { "line": 325, "kind": "method", "symbol": "selectionStart" },
+        { "line": 330, "kind": "method", "symbol": "selectionUpdate" },
+        { "line": 335, "kind": "method", "symbol": "selectionFinish" },
+        { "line": 340, "kind": "method", "symbol": "selectionClear" }
+      ]
+    }
+  ]
+}

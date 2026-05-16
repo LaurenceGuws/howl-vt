@@ -1,4 +1,5 @@
 const types = @import("input/types.zig");
+const encode = @import("input/encode.zig");
 
 pub const Key = types.Key;
 pub const Modifier = types.Modifier;
@@ -25,6 +26,7 @@ pub const KeyEvent = types.KeyEvent;
 pub const FocusEvent = types.FocusEvent;
 pub const Event = types.Event;
 pub const Encoded = types.Encoded;
+pub const Scratch = encode.Scratch;
 
 pub const mod_none = types.mod_none;
 pub const mod_shift = types.mod_shift;
@@ -73,3 +75,16 @@ pub const key_kp_subtract = types.key_kp_subtract;
 pub const key_kp_multiply = types.key_kp_multiply;
 pub const key_kp_divide = types.key_kp_divide;
 pub const key_kp_enter = types.key_kp_enter;
+
+pub const encodeKey = encode.encodeKey;
+pub const encodeMouse = encode.encodeMouse;
+pub const encodeFocusIn = encode.encodeFocusIn;
+pub const encodeFocusOut = encode.encodeFocusOut;
+pub const encodePaste = encode.encodePaste;
+pub const encodePasteStart = encode.encodePasteStart;
+pub const encodePasteEnd = encode.encodePasteEnd;
+pub const kittyKeyboardFlags = encode.kittyKeyboardFlags;
+pub const keyFormatOption = encode.keyFormatOption;
+pub const isApplicationKeypad = encode.isApplicationKeypad;
+pub const modifyOtherKeys = encode.modifyOtherKeys;
+pub const isKeyFormatResource = encode.isKeyFormatResource;

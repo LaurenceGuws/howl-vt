@@ -79,23 +79,23 @@ pub const SelectionState = struct {
 };
 
 pub fn terminalState(vt: anytype) ?TerminalSelection {
-    return vt.selection.state();
+    return vt.screen_state.activeSelectionConst().state();
 }
 
 pub fn terminalStart(vt: anytype, row: i32, col: u16) void {
-    vt.selection.start(row, col);
+    vt.screen_state.activeSelection().start(row, col);
 }
 
 pub fn terminalUpdate(vt: anytype, row: i32, col: u16) void {
-    vt.selection.update(row, col);
+    vt.screen_state.activeSelection().update(row, col);
 }
 
 pub fn terminalFinish(vt: anytype) void {
-    vt.selection.finish();
+    vt.screen_state.activeSelection().finish();
 }
 
 pub fn terminalClear(vt: anytype) void {
-    vt.selection.clear();
+    vt.screen_state.activeSelection().clear();
 }
 
 test "selection: start in viewport coordinates" {

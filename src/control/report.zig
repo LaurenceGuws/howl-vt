@@ -3,6 +3,7 @@
 const std = @import("std");
 const grid_mod = @import("../grid.zig");
 const action_mod = @import("../action.zig");
+const input = @import("../input.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
 
@@ -38,12 +39,13 @@ pub const RectChecksumRequest = struct {
 };
 
 pub fn apply(vt: anytype, report_action: ReportAction) void {
+    var scratch: input.Scratch = .{};
     const active = vt.screen_state.activeConst();
-    const deccir_charset = vt.apply_flow.deccirCharsetState();
+    const deccir_charset = vt.parser_state.apply_flow.deccirCharsetState();
     const ctx = Context{
         .allocator = vt.allocator,
         .pending_output = &vt.host.pending_output,
-        .encode_buf = vt.encode.buf[0..],
+        .encode_buf = scratch.buf[0..],
         .active_screen = active,
         .render_view = .{
             .rows = active.rows,
