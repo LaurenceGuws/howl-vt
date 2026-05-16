@@ -88,8 +88,6 @@ pub const Parser = struct {
     csi_params: [csi_max_params]i32,
     csi_separators: [csi_max_params]u8,
     csi_count: u8,
-    csi_leader: u8,
-    csi_private: bool,
     intermediates: [csi_max_intermediates]u8,
     intermediates_len: u8,
     csi_in_param: bool,
@@ -119,8 +117,6 @@ pub const Parser = struct {
             .csi_params = [_]i32{0} ** csi_max_params,
             .csi_separators = [_]u8{0} ** csi_max_params,
             .csi_count = 0,
-            .csi_leader = 0,
-            .csi_private = false,
             .intermediates = [_]u8{0} ** csi_max_intermediates,
             .intermediates_len = 0,
             .csi_in_param = false,
@@ -374,12 +370,6 @@ pub const Parser = struct {
             },
             .execute => .{ .execute = byte },
             .collect => collect: {
-                if (self.state == .csi_entry and (byte == '<' or byte == '>' or byte == '=' or byte == '?')) {
-                    if (self.csi_leader == 0) self.csi_leader = byte;
-                    if (byte == '?') self.csi_private = true;
-                    break :collect null;
-                }
-
                 self.collect(byte);
                 break :collect null;
             },
@@ -478,8 +468,6 @@ pub const Parser = struct {
         self.csi_params[0] = 0;
         self.csi_count = 0;
         self.csi_separators[0] = 0;
-        self.csi_leader = 0;
-        self.csi_private = false;
         self.intermediates_len = 0;
         self.csi_in_param = false;
     }
@@ -522,6 +510,26 @@ pub const Parser = struct {
         std.debug.assert(byte >= 0x40);
         std.debug.assert(byte <= 0x7E);
 
+        var leader: u8 = 0;
+        var private = false;
+        var intermediates = self.intermediates;
+        var intermediates_len = self.intermediates_len;
+        if (intermediates_len > 0) {
+            switch (intermediates[0]) {
+                '<', '>', '=', '?' => {
+                    leader = intermediates[0];
+                    private = leader == '?';
+                    intermediates_len -= 1;
+
+                    var i: u8 = 0;
+                    while (i < intermediates_len) : (i += 1) {
+                        intermediates[i] = intermediates[i + 1];
+                    }
+                },
+                else => {},
+            }
+        }
+
         var final_count = self.csi_count;
         if (self.csi_in_param) final_count += 1;
         const action = CsiActionData{
@@ -529,10 +537,10 @@ pub const Parser = struct {
             .params = self.csi_params,
             .separators = self.csi_separators,
             .count = final_count,
-            .leader = self.csi_leader,
-            .private = self.csi_private,
-            .intermediates = self.intermediates,
-            .intermediates_len = self.intermediates_len,
+            .leader = leader,
+            .private = private,
+            .intermediates = intermediates,
+            .intermediates_len = intermediates_len,
         };
         self.clear();
         return .{ .csi_dispatch = action };
