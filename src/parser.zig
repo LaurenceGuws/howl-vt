@@ -168,8 +168,17 @@ pub const Parser = struct {
 
         const transition = parse_table.table[byte][@intFromEnum(self.state)];
         if (self.isActiveState()) {
-            const dcs_escaping = self.state == .dcs_passthrough and self.dcs.escaping();
-            if (byte != 0x1B and !dcs_escaping and (transition.state != self.state or transition.action != .none)) {
+            const active_escaping = switch (self.state) {
+                .osc_string => self.osc.escaping(),
+                .dcs_passthrough => self.dcs.escaping(),
+                .sos_pm_apc_string => switch (self.sosPmApcKind()) {
+                    .apc => self.apc.escaping(),
+                    .pm => self.pm.escaping(),
+                    .dcs => unreachable,
+                },
+                else => false,
+            };
+            if (byte != 0x1B and !active_escaping and (transition.state != self.state or transition.action != .none)) {
                 const transition_action = self.doAction(transition.action, byte);
                 const next_state = transition.state;
                 const current_state = self.state;
@@ -182,19 +191,20 @@ pub const Parser = struct {
             const sos_kind = if (current_state == .sos_pm_apc_string) self.sosPmApcKind() else null;
             const active: Active = switch (self.state) {
                 .osc_string => osc: {
-                    if (self.osc.feed(byte)) |result| {
-                        break :osc switch (result) {
-                            .put => .{ .action = @as(?Action, null), .next_state = ParseState.osc_string },
-                            .finish => |finish| {
-                                self.osc_finish_term = switch (finish) {
-                                    .bel => .bel,
-                                    .st => .st,
-                                };
-                                break :osc .{ .action = @as(?Action, null), .next_state = ParseState.ground };
-                            },
-                        };
-                    }
-                    break :osc .{ .action = @as(?Action, null), .next_state = ParseState.osc_string };
+                    const result = self.osc.feed(byte) orelse break :osc .{
+                        .action = @as(?Action, null),
+                        .next_state = ParseState.osc_string,
+                    };
+                    break :osc switch (result) {
+                        .put => .{ .action = @as(?Action, null), .next_state = ParseState.osc_string },
+                        .finish => |finish| {
+                            self.osc_finish_term = switch (finish) {
+                                .bel => .bel,
+                                .st => .st,
+                            };
+                            break :osc .{ .action = @as(?Action, null), .next_state = ParseState.ground };
+                        },
+                    };
                 },
                 .dcs_passthrough => dcs: {
                     const result = self.dcs.feed(byte) orelse break :dcs .{
@@ -208,22 +218,24 @@ pub const Parser = struct {
                 },
                 .sos_pm_apc_string => switch (self.sosPmApcKind()) {
                     .apc => apc: {
-                        if (self.apc.feed(byte)) |result| {
-                            break :apc switch (result) {
-                                .put => |payload_byte| .{ .action = .{ .apc_put = payload_byte }, .next_state = ParseState.sos_pm_apc_string },
-                                .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
-                            };
-                        }
-                        break :apc .{ .action = @as(?Action, null), .next_state = ParseState.sos_pm_apc_string };
+                        const result = self.apc.feed(byte) orelse break :apc .{
+                            .action = @as(?Action, null),
+                            .next_state = ParseState.sos_pm_apc_string,
+                        };
+                        break :apc switch (result) {
+                            .put => |payload_byte| .{ .action = .{ .apc_put = payload_byte }, .next_state = ParseState.sos_pm_apc_string },
+                            .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
+                        };
                     },
                     .pm => pm: {
-                        if (self.pm.feed(byte)) |result| {
-                            break :pm switch (result) {
-                                .put => |payload_byte| .{ .action = .{ .pm_put = payload_byte }, .next_state = ParseState.sos_pm_apc_string },
-                                .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
-                            };
-                        }
-                        break :pm .{ .action = @as(?Action, null), .next_state = ParseState.sos_pm_apc_string };
+                        const result = self.pm.feed(byte) orelse break :pm .{
+                            .action = @as(?Action, null),
+                            .next_state = ParseState.sos_pm_apc_string,
+                        };
+                        break :pm switch (result) {
+                            .put => |payload_byte| .{ .action = .{ .pm_put = payload_byte }, .next_state = ParseState.sos_pm_apc_string },
+                            .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
+                        };
                     },
                     .dcs => unreachable,
                 },
@@ -367,11 +379,37 @@ pub const Parser = struct {
                 break :esc_dispatch esc;
             },
             .csi_dispatch => self.consumeCsiDispatch(byte),
+            .osc_put => osc_put: {
+                const result = self.osc.feed(byte) orelse break :osc_put null;
+                break :osc_put switch (result) {
+                    .put => null,
+                    .finish => unreachable,
+                };
+            },
             .put => put: {
                 const result = self.dcs.feed(byte) orelse break :put null;
                 break :put switch (result) {
                     .put => |payload_byte| .{ .dcs_put = payload_byte },
                     .finish => unreachable,
+                };
+            },
+            .buffered_put => buffered_put: {
+                break :buffered_put switch (self.sosPmApcKind()) {
+                    .apc => apc: {
+                        const result = self.apc.feed(byte) orelse break :apc null;
+                        break :apc switch (result) {
+                            .put => |payload_byte| .{ .apc_put = payload_byte },
+                            .finish => unreachable,
+                        };
+                    },
+                    .pm => pm: {
+                        const result = self.pm.feed(byte) orelse break :pm null;
+                        break :pm switch (result) {
+                            .put => |payload_byte| .{ .pm_put = payload_byte },
+                            .finish => unreachable,
+                        };
+                    },
+                    .dcs => unreachable,
                 };
             },
             .param => switch (self.state) {
