@@ -21,6 +21,7 @@ pub const ParseState = enum {
 
 pub const TransitionAction = enum {
     none,
+    print,
     ground,
     execute,
     collect,
@@ -97,7 +98,8 @@ fn genTable() Table {
         range(&result, 0x00, 0x17, .ground, .ground, .execute);
         single(&result, 0x19, .ground, .ground, .execute);
         range(&result, 0x1C, 0x1F, .ground, .ground, .execute);
-        range(&result, 0x20, 0xFF, .ground, .ground, .ground);
+        range(&result, 0x20, 0x7F, .ground, .ground, .print);
+        range(&result, 0x80, 0xFF, .ground, .ground, .ground);
     }
 
     // escape_intermediate

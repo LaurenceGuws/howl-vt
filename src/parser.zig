@@ -353,6 +353,7 @@ pub const Parser = struct {
     fn doAction(self: *Parser, action: TransitionAction, byte: u8) ?Action {
         return switch (action) {
             .none => null,
+            .print => .{ .print = byte },
             .ground => ground: {
                 if (self.consumeGroundByte(byte)) |action_result| break :ground action_result;
                 break :ground null;
