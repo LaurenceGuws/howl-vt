@@ -354,34 +354,22 @@ pub const Parser = struct {
             },
             .csi_dispatch => self.consumeCsiDispatch(byte),
             .osc_put => osc_put: {
-                const result = self.osc.feed(byte) orelse break :osc_put null;
-                break :osc_put switch (result) {
-                    .put => null,
-                    .finish => unreachable,
-                };
+                _ = self.bufferedPut(&self.osc, byte);
+                break :osc_put null;
             },
             .put => put: {
-                const result = self.dcs.feed(byte) orelse break :put null;
-                break :put switch (result) {
-                    .put => |payload_byte| .{ .dcs_put = payload_byte },
-                    .finish => unreachable,
-                };
+                const payload_byte = self.bufferedPut(&self.dcs, byte) orelse break :put null;
+                break :put .{ .dcs_put = payload_byte };
             },
             .apc_put => apc_put: {
                 break :apc_put switch (self.sosPmApcKind()) {
                     .apc => apc: {
-                        const result = self.apc.feed(byte) orelse break :apc null;
-                        break :apc switch (result) {
-                            .put => |payload_byte| .{ .apc_put = payload_byte },
-                            .finish => unreachable,
-                        };
+                        const payload_byte = self.bufferedPut(&self.apc, byte) orelse break :apc null;
+                        break :apc .{ .apc_put = payload_byte };
                     },
                     .pm => pm: {
-                        const result = self.pm.feed(byte) orelse break :pm null;
-                        break :pm switch (result) {
-                            .put => |payload_byte| .{ .pm_put = payload_byte },
-                            .finish => unreachable,
-                        };
+                        const payload_byte = self.bufferedPut(&self.pm, byte) orelse break :pm null;
+                        break :pm .{ .pm_put = payload_byte };
                     },
                     .dcs => unreachable,
                 };
@@ -397,6 +385,15 @@ pub const Parser = struct {
                 },
                 else => unreachable,
             },
+        };
+    }
+
+    fn bufferedPut(self: *Parser, control: *string_control_mod.StringControl, byte: u8) ?u8 {
+        _ = self;
+        const result = control.feed(byte) orelse return null;
+        return switch (result) {
+            .put => |payload_byte| payload_byte,
+            .finish => unreachable,
         };
     }
 
