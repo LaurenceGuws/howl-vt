@@ -253,7 +253,7 @@ pub const Parser = struct {
         return self.buildPhases(current_state, next_state, transition_action, byte, null);
     }
 
-    fn collectIntermediate(self: *Parser, byte: u8) void {
+    fn collect(self: *Parser, byte: u8) void {
         if (self.intermediates_len >= self.intermediates.len) return;
         self.intermediates[self.intermediates_len] = byte;
         self.intermediates_len += 1;
@@ -365,7 +365,7 @@ pub const Parser = struct {
                     break :collect null;
                 }
 
-                self.collectIntermediate(byte);
+                self.collect(byte);
                 break :collect null;
             },
             .ignore => null,
