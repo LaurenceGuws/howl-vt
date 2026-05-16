@@ -127,6 +127,13 @@ typedef struct {
   uint64_t cell_count;
 } HowlVtVisibleView;
 
+typedef struct {
+  int32_t status;
+  uint16_t start_row;
+  uint16_t end_row;
+  uint64_t needed;
+} HowlVtDirtyView;
+
 HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t history_capacity);
 void howl_vt_terminal_deinit(HowlVtHandle handle);
 int32_t howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
@@ -134,6 +141,7 @@ HowlVtApplyResult howl_vt_terminal_apply(HowlVtHandle handle, size_t max_events,
 int32_t howl_vt_terminal_resize(HowlVtHandle handle, uint16_t rows, uint16_t cols);
 void howl_vt_terminal_clear_dirty_rows(HowlVtHandle handle);
 HowlVtVisibleView howl_vt_terminal_copy_visible(HowlVtHandle handle, size_t scrollback_offset, HowlVtCell *cells_ptr, size_t cells_cap);
+HowlVtDirtyView howl_vt_terminal_copy_dirty(HowlVtHandle handle, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 HowlVtBytesResult howl_vt_terminal_copy_pending_output(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 void howl_vt_terminal_clear_pending_output(HowlVtHandle handle);
 HowlVtBytesResult howl_vt_terminal_drain_pending_clipboard(HowlVtHandle handle, uint8_t *ptr, size_t cap);

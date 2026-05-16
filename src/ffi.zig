@@ -71,6 +71,13 @@ pub const FfiVisibleView = extern struct {
     cell_count: u64 = 0,
 };
 
+pub const FfiDirtyView = extern struct {
+    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
+    start_row: u16 = 0,
+    end_row: u16 = 0,
+    needed: u64 = 0,
+};
+
 fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
 }
@@ -285,6 +292,32 @@ pub fn terminalCopyVisible(handle: VtHandle, scrollback_offset: usize, cells_ptr
         .scrollback_offset = view.scrollback_offset,
         .start = view.start,
         .cell_count = cell_count,
+    };
+}
+
+pub fn terminalCopyDirty(handle: VtHandle, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiDirtyView {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const dirty = owned.peekDirtyRows() orelse return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
+    const row_count: usize = @as(usize, dirty.end_row) - @as(usize, dirty.start_row) + 1;
+    if (cols_start_cap < row_count or cols_end_cap < row_count) {
+        return .{
+            .status = @intFromEnum(HowlVtCallStatus.short_buffer),
+            .start_row = dirty.start_row,
+            .end_row = dirty.end_row,
+            .needed = row_count,
+        };
+    }
+    const cols_start = if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const cols_end = if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const start_idx: usize = dirty.start_row;
+    const end_idx: usize = dirty.end_row + 1;
+    @memcpy(cols_start[0..row_count], dirty.dirty_cols_start[start_idx..end_idx]);
+    @memcpy(cols_end[0..row_count], dirty.dirty_cols_end[start_idx..end_idx]);
+    return .{
+        .status = @intFromEnum(HowlVtCallStatus.ok),
+        .start_row = dirty.start_row,
+        .end_row = dirty.end_row,
+        .needed = row_count,
     };
 }
 
