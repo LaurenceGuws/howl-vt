@@ -8,10 +8,28 @@ const ParserApi = parser_mod.Parser;
 
 const Event = parsed_events_mod.Event;
 
+pub const State = struct {
+    apply_flow: ApplyFlow,
+
+    pub fn getAllocator(self: *const State) std.mem.Allocator {
+        return self.apply_flow.allocator;
+    }
+
+    pub fn init(allocator: std.mem.Allocator) !State {
+        return .{ .apply_flow = try ApplyFlow.init(allocator) };
+    }
+
+    pub fn deinit(self: *State) void {
+        self.apply_flow.deinit();
+    }
+};
+
 /// Stateful parser-to-screen feed path.
 pub const ApplyFlow = struct {
     allocator: std.mem.Allocator,
     parsed_events: *parsed_events_mod.ParsedEvents,
+    parser_action_arena: std.heap.ArenaAllocator,
+    parser_actions: std.ArrayList(parser_mod.Action),
     parser: ParserApi,
 
     pub fn init(allocator: std.mem.Allocator) !ApplyFlow {
@@ -21,22 +39,38 @@ pub const ApplyFlow = struct {
             parsed_events.deinit();
             allocator.destroy(parsed_events);
         }
-        const p = try ParserApi.init(allocator, parsed_events.toSink());
-        return .{ .allocator = allocator, .parsed_events = parsed_events, .parser = p };
+        const p = try ParserApi.init(allocator);
+        var parser_actions = try std.ArrayList(parser_mod.Action).initCapacity(allocator, 16);
+        errdefer parser_actions.deinit(allocator);
+        return .{
+            .allocator = allocator,
+            .parsed_events = parsed_events,
+            .parser_action_arena = std.heap.ArenaAllocator.init(allocator),
+            .parser_actions = parser_actions,
+            .parser = p,
+        };
     }
 
     pub fn deinit(self: *ApplyFlow) void {
+        self.parser_actions.deinit(self.allocator);
+        self.parser_action_arena.deinit();
         self.parser.deinit();
         self.parsed_events.deinit();
         self.allocator.destroy(self.parsed_events);
     }
 
     pub fn feedByte(self: *ApplyFlow, byte: u8) void {
-        self.parser.handleByte(byte);
+        self.clearParserActions();
+        appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, self.parser.next(byte));
+        self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
     pub fn feedSlice(self: *ApplyFlow, bytes: []const u8) void {
-        self.parser.handleSlice(bytes);
+        self.clearParserActions();
+        for (bytes) |byte| {
+            appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, self.parser.next(byte));
+        }
+        self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
     pub fn events(self: *const ApplyFlow) []const Event {
@@ -57,12 +91,59 @@ pub const ApplyFlow = struct {
     }
 
     pub fn reset(self: *ApplyFlow) void {
-        self.parsed_events.clear();
+        self.parsed_events.resetState();
         self.parser.reset();
     }
 
-    pub fn deccirCharsetState(self: *const ApplyFlow) @TypeOf(self.parser.deccirCharsetState()) {
-        return self.parser.deccirCharsetState();
+    pub fn deccirCharsetState(self: *const ApplyFlow) @TypeOf(self.parsed_events.deccirCharsetState()) {
+        return self.parsed_events.deccirCharsetState();
+    }
+
+    fn clearParserActions(self: *ApplyFlow) void {
+        self.parser_actions.clearRetainingCapacity();
+        _ = self.parser_action_arena.reset(.retain_capacity);
     }
 
 };
+
+pub fn feedByte(vt: anytype, byte: u8) void {
+    vt.parser_state.apply_flow.feedByte(byte);
+}
+
+pub fn feedSlice(vt: anytype, bytes: []const u8) void {
+    vt.parser_state.apply_flow.feedSlice(bytes);
+}
+
+pub fn clear(vt: anytype) void {
+    vt.parser_state.apply_flow.clear();
+}
+
+pub fn reset(vt: anytype) void {
+    vt.parser_state.apply_flow.reset();
+}
+
+pub fn appendOwnedPhases(
+    allocator: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    actions: *std.ArrayList(parser_mod.Action),
+    phases: parser_mod.PhaseActions,
+) void {
+    for (phases) |phase| {
+        if (phase) |action| appendOwnedAction(allocator, arena, actions, action);
+    }
+}
+
+fn appendOwnedAction(
+    allocator: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    actions: *std.ArrayList(parser_mod.Action),
+    action: parser_mod.Action,
+) void {
+    switch (action) {
+        .osc_dispatch => |osc| {
+            const owned = arena.dupe(u8, osc.data) catch return;
+            actions.append(allocator, .{ .osc_dispatch = .{ .data = owned, .term = osc.term } }) catch {};
+        },
+        else => actions.append(allocator, action) catch {},
+    }
+}

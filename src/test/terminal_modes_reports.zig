@@ -3,7 +3,7 @@
 const std = @import("std");
 const action_mod = @import("../action.zig");
 const host_state = @import("../host/state.zig");
-const parser_mod = @import("../parser.zig");
+const parser_flow = @import("../parser/flow.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
@@ -14,7 +14,6 @@ const Terminal = terminal_mod.Terminal;
 const Action = action_mod;
 const HostState = host_state;
 const Input = input_mod;
-const Parser = parser_mod;
 
 var encode_scratch: Input.Scratch = .{};
 
@@ -55,7 +54,7 @@ fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    Parser.feedSlice(terminal, bytes);
+    parser_flow.feedSlice(terminal, bytes);
 }
 
 fn apply(terminal: *Terminal) void {

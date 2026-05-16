@@ -68,7 +68,59 @@ fn makePrivateStyleChange(final: u8, params_in: []const i32) Event {
 }
 
 fn makeEscFinal(final: u8) Event {
-    return Event{ .esc_final = final };
+    return Event{ .esc_dispatch = .{
+        .final = final,
+        .intermediates = [_]u8{0} ** 4,
+        .intermediates_len = 0,
+    } };
+}
+
+fn makeDcs(payload: []const u8) Event {
+    var params = [_]i32{0} ** 16;
+    var intermediates = [_]u8{0} ** 4;
+    var param_count: u8 = 0;
+    var in_param = false;
+    var payload_start: usize = 0;
+
+    while (payload_start < payload.len) : (payload_start += 1) {
+        const byte = payload[payload_start];
+        if (byte >= '0' and byte <= '9') {
+            params[param_count] = params[param_count] * 10 + @as(i32, byte - '0');
+            in_param = true;
+            continue;
+        }
+        if (byte == ';' or byte == ':') {
+            param_count += 1;
+            in_param = false;
+            continue;
+        }
+        if (byte >= 0x20 and byte <= 0x2F) {
+            intermediates[@min(@as(usize, param_count), intermediates.len - 1)] = byte;
+            continue;
+        }
+        if (byte >= 0x40 and byte <= 0x7E) {
+            if (in_param) param_count += 1;
+            return Event{ .dcs = .{
+                .body = payload,
+                .payload = payload[payload_start + 1 ..],
+                .final = byte,
+                .params = params,
+                .param_count = param_count,
+                .intermediates = intermediates,
+                .intermediates_len = if (intermediates[0] == 0) 0 else 1,
+            } };
+        }
+    }
+
+    return Event{ .dcs = .{
+        .body = payload,
+        .payload = payload,
+        .final = 0,
+        .params = params,
+        .param_count = param_count,
+        .intermediates = intermediates,
+        .intermediates_len = 0,
+    } };
 }
 
 test "actions: CUU explicit count" {
@@ -582,7 +634,7 @@ test "actions: OSC 52 maps to clipboard set" {
 test "actions: APC PM and unsupported ESC transport return null" {
     try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "kitty" }));
     try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .pm = "ignored" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .esc_final = 'z' }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(makeEscFinal('z')));
 }
 
 test "actions: legacy Tektronix C0 controls map host-neutral state" {
@@ -593,35 +645,35 @@ test "actions: legacy Tektronix C0 controls map host-neutral state" {
 }
 
 test "actions: low legacy ESC controls map host-neutral state" {
-    try std.testing.expect(process(Event{ .esc_final = 0x17 }).?.legacy_control == .tek_copy);
-    try std.testing.expect(process(Event{ .esc_final = 0x1C }).?.legacy_control == .tek_special_point_plot);
+    try std.testing.expect(process(makeEscFinal(0x17)).?.legacy_control == .tek_copy);
+    try std.testing.expect(process(makeEscFinal(0x1C)).?.legacy_control == .tek_special_point_plot);
     try std.testing.expect(process(makeEscFinal('l')).?.legacy_control == .hp_memory_lock);
     try std.testing.expect(process(makeEscFinal('s')).?.legacy_control == .tek_write_thru_short_dashed);
 }
 
 test "actions: DCS DECRQSS maps request payload" {
-    const sem = process(Event{ .dcs = "$q q" }) orelse return error.NoEvent;
+    const sem = process(makeDcs("$q q")) orelse return error.NoEvent;
     try std.testing.expectEqualStrings(" q", sem.dcs_request_status);
 }
 
 test "actions: DCS resource queries map request payloads" {
-    const termcap = process(Event{ .dcs = "+q436F" }) orelse return error.NoEvent;
+    const termcap = process(makeDcs("+q436F")) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("436F", termcap.dcs_request_termcap);
 
-    const resource = process(Event{ .dcs = "+Q6E616D65" }) orelse return error.NoEvent;
+    const resource = process(makeDcs("+Q6E616D65")) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("6E616D65", resource.dcs_request_resource);
 }
 
 test "actions: DCS legacy payload protocols classify host-neutral payloads" {
-    const termcap = process(Event{ .dcs = "+p436F=7661" }) orelse return error.NoEvent;
+    const termcap = process(makeDcs("+p436F=7661")) orelse return error.NoEvent;
     try std.testing.expect(termcap.dcs_payload.kind == .xtsettcap);
     try std.testing.expectEqualStrings("436F=7661", termcap.dcs_payload.payload);
 
-    try std.testing.expect(process(Event{ .dcs = "0;0;0qdata" }).?.dcs_payload.kind == .sixel);
-    try std.testing.expect(process(Event{ .dcs = "1pdraw" }).?.dcs_payload.kind == .regis);
-    try std.testing.expect(process(Event{ .dcs = "1$tstate" }).?.dcs_payload.kind == .decrsps);
-    try std.testing.expect(process(Event{ .dcs = "0;1|keys" }).?.dcs_payload.kind == .decudk);
-    try std.testing.expect(process(Event{ .dcs = "0!uA" }).?.dcs_payload.kind == .decaupss);
+    try std.testing.expect(process(makeDcs("0;0;0qdata")).?.dcs_payload.kind == .sixel);
+    try std.testing.expect(process(makeDcs("1pdraw")).?.dcs_payload.kind == .regis);
+    try std.testing.expect(process(makeDcs("1$tstate")).?.dcs_payload.kind == .decrsps);
+    try std.testing.expect(process(makeDcs("0;1|keys")).?.dcs_payload.kind == .decudk);
+    try std.testing.expect(process(makeDcs("0!uA")).?.dcs_payload.kind == .decaupss);
 }
 
 test "actions: DEC save and restore cursor from ESC finals" {

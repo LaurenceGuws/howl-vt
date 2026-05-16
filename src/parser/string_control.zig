@@ -8,6 +8,11 @@ pub const Finish = enum {
     st,
 };
 
+pub const FeedResult = union(enum) {
+    put: u8,
+    finish: Finish,
+};
+
 const State = enum {
     idle,
     payload,
@@ -57,31 +62,31 @@ pub const StringControl = struct {
         self.buffer.clearRetainingCapacity();
     }
 
-    pub fn feed(self: *StringControl, byte: u8) ?Finish {
+    pub fn feed(self: *StringControl, byte: u8) ?FeedResult {
         switch (self.state) {
             .idle => return null,
             .payload => {
                 if (self.bel_terminates and byte == 0x07) {
                     self.state = .idle;
-                    return .bel;
+                    return .{ .finish = .bel };
                 }
                 if (byte == 0x1B) {
                     self.state = .esc;
                     return null;
                 }
                 self.append(byte);
-                return null;
+                return .{ .put = byte };
             },
             .esc => {
                 if (byte == '\\') {
                     self.state = .idle;
-                    return .st;
+                    return .{ .finish = .st };
                 }
 
                 // Stray ESC marker is dropped; following byte stays payload.
                 self.state = .payload;
                 self.append(byte);
-                return null;
+                return .{ .put = byte };
             },
         }
     }

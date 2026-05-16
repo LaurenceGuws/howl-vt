@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const action_mod = @import("../action.zig");
-const parser_mod = @import("../parser.zig");
+const parser_flow = @import("../parser/flow.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
@@ -10,8 +10,6 @@ const terminal_mod = @import("../terminal.zig");
 
 const Terminal = terminal_mod.Terminal;
 const Action = action_mod;
-const Parser = parser_mod;
-
 fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
     return screen_capture.Capture.captureFromScreen(
         terminal.parser_state.getAllocator(),
@@ -25,11 +23,11 @@ fn visibleView(terminal: *const Terminal) screen_set.View {
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
-    Parser.feedByte(terminal, byte);
+    parser_flow.feedByte(terminal, byte);
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    Parser.feedSlice(terminal, bytes);
+    parser_flow.feedSlice(terminal, bytes);
 }
 
 fn apply(terminal: *Terminal) void {

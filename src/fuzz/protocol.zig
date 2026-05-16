@@ -3,13 +3,12 @@
 const std = @import("std");
 const action = @import("../action.zig");
 const parser_mod = @import("../parser.zig");
+const parser_flow = @import("../parser/flow.zig");
 const screen_set = @import("../screen_set.zig");
 const Action = action;
 const Parser = parser_mod.Parser;
-const Sink = Parser.Sink;
-const OscTerminator = Parser.OscTerminator;
-const CsiAction = Parser.CsiAction;
-const StreamEvent = Parser.StreamEvent;
+const OscTerminator = parser_mod.OscTerminator;
+const CsiAction = parser_mod.CsiAction;
 const xterm_ctlseqs = @embedFile("assets/xterm-ctlseqs.ms");
 
 pub const Options = struct {
@@ -31,33 +30,38 @@ const OpKind = enum {
     dcs,
     apc,
     pm,
-    esc_final,
+    esc_dispatch,
     utf8,
     control,
 };
 
 const Event = union(enum) {
-    stream_codepoint: u21,
-    stream_control: u8,
-    stream_invalid,
-    ascii_slice: []u8,
+    print: u21,
+    execute: u8,
+    invalid,
     csi: struct {
         final: u8,
         leader: u8,
         private: bool,
-        params: [Parser.max_params]i32,
+        params: [parser_mod.max_params]i32,
         count: u8,
-        intermediates: [Parser.max_intermediates]u8,
+        intermediates: [parser_mod.max_intermediates]u8,
         intermediates_len: u8,
     },
     osc: struct {
         data: []u8,
         term: OscTerminator,
     },
-    apc: []u8,
-    dcs: []u8,
-    pm: []u8,
-    esc_final: u8,
+    apc_start,
+    apc_put: u8,
+    apc_end,
+    dcs_hook: parser_mod.DcsHook,
+    dcs_put: u8,
+    dcs_unhook,
+    pm_start,
+    pm_put: u8,
+    pm_end,
+    esc_dispatch: parser_mod.EscAction,
 };
 
 const Harness = struct {
@@ -74,49 +78,34 @@ const Harness = struct {
     fn deinit(self: *Harness) void {
         for (self.events.items) |event| {
             switch (event) {
-                .ascii_slice => |bytes| self.allocator.free(bytes),
                 .osc => |osc| self.allocator.free(osc.data),
-                .apc => |bytes| self.allocator.free(bytes),
-                .dcs => |bytes| self.allocator.free(bytes),
-                .pm => |bytes| self.allocator.free(bytes),
                 else => {},
             }
         }
         self.events.deinit(self.allocator);
     }
 
-    fn toSink(self: *Harness) Sink {
-        return .{
-            .ptr = self,
-            .onStreamEventFn = onStreamEvent,
-            .onAsciiSliceFn = onAsciiSlice,
-            .onCsiFn = onCsi,
-            .onOscFn = onOsc,
-            .onApcFn = onApc,
-            .onDcsFn = onDcs,
-            .onPmFn = onPm,
-            .onEscFinalFn = onEscFinal,
+    fn appendActions(self: *Harness, actions: []const parser_mod.Action) void {
+        for (actions) |action| switch (action) {
+            .print => |cp| self.events.append(self.allocator, Event{ .print = cp }) catch {},
+            .execute => |ctrl| self.events.append(self.allocator, Event{ .execute = ctrl }) catch {},
+            .invalid => self.events.append(self.allocator, .invalid) catch {},
+            .csi_dispatch => |csi| self.appendCsi(csi),
+            .osc_dispatch => |osc| self.appendOsc(osc.data, osc.term),
+            .apc_start => self.events.append(self.allocator, .apc_start) catch {},
+            .apc_put => |byte| self.events.append(self.allocator, Event{ .apc_put = byte }) catch {},
+            .apc_end => self.events.append(self.allocator, .apc_end) catch {},
+            .dcs_hook => |hook| self.events.append(self.allocator, Event{ .dcs_hook = hook }) catch {},
+            .dcs_put => |byte| self.events.append(self.allocator, Event{ .dcs_put = byte }) catch {},
+            .dcs_unhook => self.events.append(self.allocator, .dcs_unhook) catch {},
+            .pm_start => self.events.append(self.allocator, .pm_start) catch {},
+            .pm_put => |byte| self.events.append(self.allocator, Event{ .pm_put = byte }) catch {},
+            .pm_end => self.events.append(self.allocator, .pm_end) catch {},
+            .esc_dispatch => |esc| self.events.append(self.allocator, Event{ .esc_dispatch = esc }) catch {},
         };
     }
 
-    fn onStreamEvent(ptr: *anyopaque, event: StreamEvent) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const owned = switch (event) {
-            .codepoint => |cp| Event{ .stream_codepoint = cp },
-            .control => |ctrl| Event{ .stream_control = ctrl },
-            .invalid => Event.stream_invalid,
-        };
-        self.events.append(self.allocator, owned) catch {};
-    }
-
-    fn onAsciiSlice(ptr: *anyopaque, bytes: []const u8) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const owned = self.allocator.dupe(u8, bytes) catch return;
-        self.events.append(self.allocator, Event{ .ascii_slice = owned }) catch {};
-    }
-
-    fn onCsi(ptr: *anyopaque, action: CsiAction) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
+    fn appendCsi(self: *Harness, action: CsiAction) void {
         self.events.append(self.allocator, Event{ .csi = .{
             .final = action.final,
             .leader = action.leader,
@@ -128,8 +117,7 @@ const Harness = struct {
         } }) catch {};
     }
 
-    fn onOsc(ptr: *anyopaque, data: []const u8, term: OscTerminator) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
+    fn appendOsc(self: *Harness, data: []const u8, term: OscTerminator) void {
         const owned = self.allocator.dupe(u8, data) catch return;
         self.events.append(self.allocator, Event{ .osc = .{
             .data = owned,
@@ -137,28 +125,6 @@ const Harness = struct {
         } }) catch {};
     }
 
-    fn onApc(ptr: *anyopaque, data: []const u8) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const owned = self.allocator.dupe(u8, data) catch return;
-        self.events.append(self.allocator, Event{ .apc = owned }) catch {};
-    }
-
-    fn onDcs(ptr: *anyopaque, data: []const u8) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const owned = self.allocator.dupe(u8, data) catch return;
-        self.events.append(self.allocator, Event{ .dcs = owned }) catch {};
-    }
-
-    fn onPm(ptr: *anyopaque, data: []const u8) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const owned = self.allocator.dupe(u8, data) catch return;
-        self.events.append(self.allocator, Event{ .pm = owned }) catch {};
-    }
-
-    fn onEscFinal(ptr: *anyopaque, byte: u8) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        self.events.append(self.allocator, Event{ .esc_final = byte }) catch {};
-    }
 };
 
 const VtDigest = struct {
@@ -174,6 +140,34 @@ const VtDigest = struct {
 const EventDigest = struct {
     hash: u64,
     token_count: usize,
+};
+
+const ParserOutput = struct {
+    allocator: std.mem.Allocator,
+    arena: std.heap.ArenaAllocator,
+    actions: std.ArrayList(parser_mod.Action),
+
+    fn init(allocator: std.mem.Allocator) !ParserOutput {
+        return .{
+            .allocator = allocator,
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .actions = try std.ArrayList(parser_mod.Action).initCapacity(allocator, 16),
+        };
+    }
+
+    fn deinit(self: *ParserOutput, allocator: std.mem.Allocator) void {
+        self.actions.deinit(allocator);
+        self.arena.deinit();
+    }
+
+    fn clear(self: *ParserOutput) void {
+        self.actions.clearRetainingCapacity();
+        _ = self.arena.reset(.retain_capacity);
+    }
+
+    fn appendPhases(self: *ParserOutput, phases: parser_mod.PhaseActions) void {
+        parser_flow.appendOwnedPhases(self.allocator, self.arena.allocator(), &self.actions, phases);
+    }
 };
 
 pub fn defaultOptions(events_max: ?usize) Options {
@@ -223,7 +217,7 @@ fn buildCase(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.
             .dcs => try appendStringCommand(allocator, bytes, rand, 'P'),
             .apc => try appendStringCommand(allocator, bytes, rand, '_'),
             .pm => try appendStringCommand(allocator, bytes, rand, '^'),
-            .esc_final => try appendEscFinal(allocator, bytes, rand),
+            .esc_dispatch => try appendEscFinal(allocator, bytes, rand),
             .utf8 => try appendUtf8Burst(allocator, bytes, rand),
             .control => try appendControlBurst(allocator, bytes, rand),
         }
@@ -297,10 +291,12 @@ fn runParser(
     var harness = Harness.init(gpa);
     errdefer harness.deinit();
 
-    var parser = try Parser.init(gpa, harness.toSink());
+    var parser = try Parser.init(gpa);
     defer parser.deinit();
+    var output = try ParserOutput.init(gpa);
+    defer output.deinit(gpa);
 
-    feedBytesToParser(&parser, bytes, mode, rand, max_chunk_len);
+    feedBytesToParser(&parser, &output, &harness, bytes, mode, rand, max_chunk_len);
     return harness;
 }
 
@@ -319,16 +315,26 @@ fn runTerminal(
     return digestTerminal(&terminal);
 }
 
-fn feedBytesToParser(parser: *Parser, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
+fn feedBytesToParser(parser: *Parser, output: *ParserOutput, harness: *Harness, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
     switch (mode) {
-        .whole_slice => parser.handleSlice(bytes),
-        .bytewise => for (bytes) |byte| parser.handleByte(byte),
+        .whole_slice => {
+            output.clear();
+            for (bytes) |byte| output.appendPhases(parser.next(byte));
+            harness.appendActions(output.actions.items);
+        },
+        .bytewise => for (bytes) |byte| {
+            output.clear();
+            output.appendPhases(parser.next(byte));
+            harness.appendActions(output.actions.items);
+        },
         .chunked => {
             var offset: usize = 0;
             while (offset < bytes.len) {
                 const remaining = bytes.len - offset;
                 const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
-                parser.handleSlice(bytes[offset..][0..chunk_len]);
+                output.clear();
+                for (bytes[offset..][0..chunk_len]) |byte| output.appendPhases(parser.next(byte));
+                harness.appendActions(output.actions.items);
                 offset += chunk_len;
             }
         },
@@ -337,14 +343,14 @@ fn feedBytesToParser(parser: *Parser, bytes: []const u8, mode: FeedMode, rand: s
 
 fn feedBytesToTerminal(terminal: *vt.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
     switch (mode) {
-        .whole_slice => parser_mod.feedSlice(terminal, bytes),
-        .bytewise => for (bytes) |byte| parser_mod.feedByte(terminal, byte),
+        .whole_slice => parser_flow.feedSlice(terminal, bytes),
+        .bytewise => for (bytes) |byte| parser_flow.feedByte(terminal, byte),
         .chunked => {
             var offset: usize = 0;
             while (offset < bytes.len) {
                 const remaining = bytes.len - offset;
                 const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
-                parser_mod.feedSlice(terminal, bytes[offset..][0..chunk_len]);
+                parser_flow.feedSlice(terminal, bytes[offset..][0..chunk_len]);
                 offset += chunk_len;
             }
         },
@@ -537,26 +543,19 @@ fn digestEvents(events: []const Event) EventDigest {
 
     for (events) |event| {
         switch (event) {
-            .stream_codepoint => |cp| {
+            .print => |cp| {
                 hashValue(&hasher, @as(u8, 1));
                 hashValue(&hasher, cp);
                 token_count += 1;
             },
-            .stream_control => |ctrl| {
+            .execute => |ctrl| {
                 hashValue(&hasher, @as(u8, 2));
                 hashValue(&hasher, ctrl);
                 token_count += 1;
             },
-            .stream_invalid => {
+            .invalid => {
                 hashValue(&hasher, @as(u8, 3));
                 token_count += 1;
-            },
-            .ascii_slice => |bytes| {
-                for (bytes) |byte| {
-                    hashValue(&hasher, @as(u8, 1));
-                    hashValue(&hasher, @as(u21, byte));
-                    token_count += 1;
-                }
             },
             .csi => |csi| {
                 hashValue(&hasher, @as(u8, 4));
@@ -576,28 +575,56 @@ fn digestEvents(events: []const Event) EventDigest {
                 hasher.update(osc.data);
                 token_count += 1;
             },
-            .apc => |bytes| {
+            .apc_start => {
                 hashValue(&hasher, @as(u8, 6));
-                hashValue(&hasher, bytes.len);
-                hasher.update(bytes);
                 token_count += 1;
             },
-            .dcs => |bytes| {
+            .apc_put => |byte| {
                 hashValue(&hasher, @as(u8, 7));
-                hashValue(&hasher, bytes.len);
-                hasher.update(bytes);
-                token_count += 1;
-            },
-            .pm => |bytes| {
-                hashValue(&hasher, @as(u8, 8));
-                hashValue(&hasher, bytes.len);
-                hasher.update(bytes);
-                token_count += 1;
-            },
-            .esc_final => |byte| {
-                hashValue(&hasher, @as(u8, 9));
-                hashValue(&hasher, @as(u8, 8));
                 hashValue(&hasher, byte);
+                token_count += 1;
+            },
+            .apc_end => {
+                hashValue(&hasher, @as(u8, 8));
+                token_count += 1;
+            },
+            .dcs_hook => |hook| {
+                hashValue(&hasher, @as(u8, 9));
+                hashValue(&hasher, hook.final);
+                hashValue(&hasher, hook.count);
+                hashValue(&hasher, hook.intermediates_len);
+                for (hook.params) |param| hashValue(&hasher, param);
+                for (hook.intermediates) |byte| hashValue(&hasher, byte);
+                token_count += 1;
+            },
+            .dcs_put => |byte| {
+                hashValue(&hasher, @as(u8, 10));
+                hashValue(&hasher, byte);
+                token_count += 1;
+            },
+            .dcs_unhook => {
+                hashValue(&hasher, @as(u8, 11));
+                token_count += 1;
+            },
+            .pm_start => {
+                hashValue(&hasher, @as(u8, 12));
+                token_count += 1;
+            },
+            .pm_put => |byte| {
+                hashValue(&hasher, @as(u8, 13));
+                hashValue(&hasher, byte);
+                token_count += 1;
+            },
+            .pm_end => {
+                hashValue(&hasher, @as(u8, 14));
+                token_count += 1;
+            },
+            .esc_dispatch => |esc| {
+                hashValue(&hasher, @as(u8, 15));
+                hashValue(&hasher, @as(u8, 8));
+                hashValue(&hasher, esc.final);
+                hashValue(&hasher, esc.intermediates_len);
+                for (esc.intermediates) |byte| hashValue(&hasher, byte);
                 token_count += 1;
             },
         }

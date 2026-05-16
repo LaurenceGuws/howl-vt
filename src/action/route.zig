@@ -35,7 +35,7 @@ pub fn process(event: Event) ?SemanticEvent {
         .codepoint => |cp| return SemanticEvent{ .write_codepoint = cp },
         .control => |c| return c0.process(c),
         .osc => |osc_event| return osc.process(osc_event.kind, osc_event.command, osc_event.payload),
-        .esc_final => |final| return esc.process(final),
+        .esc_dispatch => |esc_dispatch| return esc.process(esc_dispatch.final),
         .apc => |apc_data| return apc.process(apc_data),
         .dcs => |dcs_data| return dcs.process(dcs_data),
         .pm, .invalid_sequence => return null,

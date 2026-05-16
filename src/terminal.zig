@@ -5,17 +5,16 @@ const host_state = @import("host/state.zig");
 const kitty_state = @import("kitty/state.zig");
 const screen_set = @import("screen_set.zig");
 const action = @import("action.zig");
-const parser = @import("parser.zig");
+const parser_flow = @import("parser/flow.zig");
 
 const ScreenNs = screen.Screen;
-const ParserApi = parser;
 const TerminalModeNs = mode;
 
 /// Host-neutral terminal state and protocol engine.
 pub const Terminal = struct {
     const HostState = host_state.State;
     const KittyState = kitty_state.State;
-    const ParserState = ParserApi.State;
+    const ParserState = parser_flow.State;
 
     const ScreenSet = screen_set.Set;
 
@@ -84,11 +83,11 @@ test "terminal tracks synchronized output private mode" {
     var vt = try Terminal.init(std.testing.allocator, 2, 8);
     defer vt.deinit();
 
-    ParserApi.feedSlice(&vt, "\x1b[?2026h");
+    parser_flow.feedSlice(&vt, "\x1b[?2026h");
     action.apply(&vt);
     try std.testing.expect(vt.modes.synchronized_output);
 
-    ParserApi.feedSlice(&vt, "\x1b[?2026l");
+    parser_flow.feedSlice(&vt, "\x1b[?2026l");
     action.apply(&vt);
     try std.testing.expect(!vt.modes.synchronized_output);
 }
@@ -97,7 +96,7 @@ test "terminal visible view projects scrollback rows" {
     var vt = try Terminal.initWithCellsAndHistory(std.testing.allocator, 2, 2, 4);
     defer vt.deinit();
 
-    ParserApi.feedSlice(&vt, "aa\r\nbb\r\ncc");
+    parser_flow.feedSlice(&vt, "aa\r\nbb\r\ncc");
     action.apply(&vt);
 
     const live = screen_set.visibleView(&vt.screen_state, .{});

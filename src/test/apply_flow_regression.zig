@@ -7,7 +7,7 @@ const action = @import("../action.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
-const parser_mod = @import("../parser.zig");
+const parser_flow = @import("../parser/flow.zig");
 const action_root = @import("../action.zig");
 const terminal_mod = @import("../terminal.zig");
 
@@ -16,7 +16,6 @@ const Grid = Screen;
 const Action = action;
 const ApplyFlow = Action.ApplyFlow;
 const ActionRoot = action_root;
-const ParserRoot = parser_mod;
 const Terminal = terminal_mod.Terminal;
 
 fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
@@ -28,11 +27,11 @@ fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
-    ParserRoot.feedByte(terminal, byte);
+    parser_flow.feedByte(terminal, byte);
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    ParserRoot.feedSlice(terminal, bytes);
+    parser_flow.feedSlice(terminal, bytes);
 }
 
 fn apply(terminal: *Terminal) void {
@@ -40,11 +39,11 @@ fn apply(terminal: *Terminal) void {
 }
 
 fn clear(terminal: *Terminal) void {
-    ParserRoot.clear(terminal);
+    parser_flow.clear(terminal);
 }
 
 fn reset(terminal: *Terminal) void {
-    ParserRoot.reset(terminal);
+    parser_flow.reset(terminal);
 }
 
 fn feed(flow: *ApplyFlow, screen: *Screen, bytes: []const u8) void {
@@ -416,9 +415,9 @@ test "feed/apply: split CNL interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("Ex");
     dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
-    try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
-    try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 3));
-    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
+    try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
+    try std.testing.expectEqual(@as(u21, 'E'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 1));
 }
 
 test "feed/apply: split CNL after DECSTR applies from reset origin" {
@@ -449,9 +448,9 @@ test "feed/apply: split CPL interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("Fx");
     dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
-    try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
-    try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 3));
-    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
+    try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
+    try std.testing.expectEqual(@as(u21, 'F'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 1));
 }
 
 test "feed/apply: split CPL after DECSTR applies from reset origin" {
@@ -528,10 +527,9 @@ test "feed/apply: split VPA interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("dx");
     dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
-    try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
-    try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
-    try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 3));
-    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
+    try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
+    try std.testing.expectEqual(@as(u21, 'd'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 1));
 }
 
 test "feed/apply: split VPA after DECSTR applies from reset origin" {
@@ -583,10 +581,9 @@ test "feed/apply: split CHA interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("Gx");
     dispatch.applyToScreen(&flow, &screen);
-    try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
-    try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
-    try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 3));
-    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
+    try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
+    try std.testing.expectEqual(@as(u21, 'G'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 1));
 }
 
 test "feed/apply: split CHA after DECSTR applies from reset origin" {
@@ -993,10 +990,9 @@ test "feed/apply: split CHT interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("Ix");
     dispatch.applyToScreen(&flow, &screen);
-    try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
-    try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
-    try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 3));
-    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
+    try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
+    try std.testing.expectEqual(@as(u21, 'I'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 1));
     try std.testing.expect(flow.isEmpty());
 }
 
@@ -1029,9 +1025,9 @@ test "feed/apply: split CBT interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("Zy");
     dispatch.applyToScreen(&flow, &screen);
-    try std.testing.expectEqual(@as(u16, 19), screen.cursor_col);
-    try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
-    try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 19));
+    try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
+    try std.testing.expectEqual(@as(u21, 'Z'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 1));
     try std.testing.expect(flow.isEmpty());
 }
 
@@ -1079,9 +1075,9 @@ test "feed/apply: interrupted split private cursor mode remains deterministic" {
     flow.feedSlice("5l");
     dispatch.applyToScreen(&flow, &screen);
     try std.testing.expect(screen.cursor_visible);
-    try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
-    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 0));
-    try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
+    try std.testing.expectEqual(@as(u21, '5'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 1));
     try std.testing.expect(flow.isEmpty());
 }
 
@@ -1120,9 +1116,9 @@ test "feed/apply: interrupted split private auto-wrap mode remains deterministic
     flow.feedSlice("7l");
     dispatch.applyToScreen(&flow, &screen);
     try std.testing.expect(screen.auto_wrap);
-    try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
-    try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 0));
-    try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
+    try std.testing.expectEqual(@as(u21, '7'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 1));
     try std.testing.expect(flow.isEmpty());
 }
 

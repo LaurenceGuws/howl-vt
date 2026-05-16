@@ -1,26 +1,20 @@
 //! VT byte-stream parser.
 
 const std = @import("std");
-const stream_mod = @import("parser/stream.zig");
-const csi_mod = @import("parser/csi.zig");
-const events = @import("parser/events.zig");
+const parse_table = @import("parser/parse_table.zig");
 const string_control_mod = @import("parser/string_control.zig");
+const utf8_mod = @import("parser/utf8.zig");
 
-const EscState = enum {
-    ground,
-    esc,
+const ParseState = parse_table.ParseState;
+const TransitionAction = parse_table.TransitionAction;
+const ParamKind = enum {
     csi,
-    charset,
+    dcs,
 };
-
-const Charset = enum {
-    ascii,
-    dec_special,
-};
-
-const CharsetTarget = enum {
-    g0,
-    g1,
+const BufferedControlKind = enum {
+    dcs,
+    apc,
+    pm,
 };
 
 pub const DeccirCharsetState = struct {
@@ -29,133 +23,88 @@ pub const DeccirCharsetState = struct {
     gl_index: u8,
 };
 
-pub const Event = events.Event;
-pub const ParsedEvents = events.ParsedEvents;
-pub const ApplyFlow = @import("parser/flow.zig").ApplyFlow;
+const csi_max_params: usize = 16;
+const csi_max_intermediates: usize = 4;
 
-pub const State = struct {
-    apply_flow: ApplyFlow,
+pub const max_params = csi_max_params;
+pub const max_intermediates = csi_max_intermediates;
 
-    pub fn getAllocator(self: *const State) std.mem.Allocator {
-        return self.apply_flow.allocator;
-    }
-
-    pub fn init(allocator: std.mem.Allocator) !State {
-        return .{ .apply_flow = try ApplyFlow.init(allocator) };
-    }
-
-    pub fn deinit(self: *State) void {
-        self.apply_flow.deinit();
-    }
+pub const OscTerminator = enum {
+    bel,
+    st,
 };
 
-pub fn feedByte(vt: anytype, byte: u8) void {
-    vt.parser_state.apply_flow.feedByte(byte);
-}
+pub const EscAction = struct {
+    final: u8,
+    intermediates: [csi_max_intermediates]u8,
+    intermediates_len: u8,
+};
 
-pub fn feedSlice(vt: anytype, bytes: []const u8) void {
-    vt.parser_state.apply_flow.feedSlice(bytes);
-}
+pub const DcsHook = struct {
+    final: u8,
+    params: [csi_max_params]i32,
+    count: u8,
+    intermediates: [csi_max_intermediates]u8,
+    intermediates_len: u8,
+};
 
-pub fn clear(vt: anytype) void {
-    vt.parser_state.apply_flow.clear();
-}
+const CsiActionData = struct {
+    final: u8,
+    params: [csi_max_params]i32,
+    separators: [csi_max_params]u8,
+    count: u8,
+    leader: u8,
+    private: bool,
+    intermediates: [csi_max_intermediates]u8,
+    intermediates_len: u8,
+};
 
-pub fn reset(vt: anytype) void {
-    vt.parser_state.apply_flow.reset();
-}
+pub const CsiAction = CsiActionData;
+
+pub const Action = union(enum) {
+    print: u21,
+    execute: u8,
+    invalid,
+    csi_dispatch: CsiAction,
+    osc_dispatch: struct { data: []const u8, term: OscTerminator },
+    apc_start,
+    apc_put: u8,
+    apc_end,
+    dcs_hook: DcsHook,
+    dcs_put: u8,
+    dcs_unhook,
+    pm_start,
+    pm_put: u8,
+    pm_end,
+    esc_dispatch: EscAction,
+};
+
+pub const PhaseActions = [3]?Action;
 
 /// Stateful parser for terminal input streams.
 pub const Parser = struct {
-    /// Stream event payload.
-    pub const StreamEvent = stream_mod.StreamEvent;
-    /// CSI action payload.
-    pub const CsiAction = csi_mod.CsiAction;
-    /// Maximum supported CSI parameter count.
-    pub const max_params = csi_mod.max_params;
-    /// Maximum supported CSI intermediate count.
-    pub const max_intermediates = csi_mod.max_intermediates;
-
-    /// OSC termination style.
-    pub const OscTerminator = enum {
-        bel,
-        st,
-    };
-
-    /// Parser sink callback interface.
-    pub const Sink = struct {
-        ptr: *anyopaque,
-        onStreamEventFn: *const fn (*anyopaque, StreamEvent) void,
-        onAsciiSliceFn: *const fn (*anyopaque, []const u8) void,
-        onCsiFn: *const fn (*anyopaque, CsiAction) void,
-        onOscFn: *const fn (*anyopaque, []const u8, OscTerminator) void,
-        onApcFn: *const fn (*anyopaque, []const u8) void,
-        onDcsFn: *const fn (*anyopaque, []const u8) void,
-        onPmFn: *const fn (*anyopaque, []const u8) void,
-        onEscFinalFn: *const fn (*anyopaque, u8) void,
-
-        /// Emit stream event callback.
-        pub fn onStreamEvent(self: Sink, event: StreamEvent) void {
-            self.onStreamEventFn(self.ptr, event);
-        }
-
-        /// Emit ASCII slice callback.
-        pub fn onAsciiSlice(self: Sink, bytes: []const u8) void {
-            self.onAsciiSliceFn(self.ptr, bytes);
-        }
-
-        /// Emit CSI callback.
-        pub fn onCsi(self: Sink, action: CsiAction) void {
-            self.onCsiFn(self.ptr, action);
-        }
-
-        /// Emit OSC callback.
-        pub fn onOsc(self: Sink, data: []const u8, terminator: OscTerminator) void {
-            self.onOscFn(self.ptr, data, terminator);
-        }
-
-        /// Emit APC callback.
-        pub fn onApc(self: Sink, data: []const u8) void {
-            self.onApcFn(self.ptr, data);
-        }
-
-        /// Emit DCS callback.
-        pub fn onDcs(self: Sink, data: []const u8) void {
-            self.onDcsFn(self.ptr, data);
-        }
-
-        /// Emit PM callback.
-        pub fn onPm(self: Sink, data: []const u8) void {
-            self.onPmFn(self.ptr, data);
-        }
-
-        /// Emit ESC-final callback.
-        pub fn onEscFinal(self: Sink, byte: u8) void {
-            self.onEscFinalFn(self.ptr, byte);
-        }
-    };
-
-    allocator: std.mem.Allocator,
-    sink: Sink,
-    stream: stream_mod.Stream,
-    esc_state: EscState,
-    csi: csi_mod.CsiParser,
+    utf8: utf8_mod.Utf8Decoder,
+    state: ParseState,
+    csi_params: [csi_max_params]i32,
+    csi_separators: [csi_max_params]u8,
+    csi_count: u8,
+    csi_leader: u8,
+    csi_private: bool,
+    intermediates: [csi_max_intermediates]u8,
+    intermediates_len: u8,
+    csi_in_param: bool,
+    osc_finish_term: ?OscTerminator,
     osc: string_control_mod.StringControl,
     apc: string_control_mod.StringControl,
     dcs: string_control_mod.StringControl,
     pm: string_control_mod.StringControl,
-    g0_charset: Charset,
-    g1_charset: Charset,
-    gl_charset: Charset,
-    gl_target: CharsetTarget,
-    charset_target: CharsetTarget,
 
     /// Initialize parser state and owned buffers.
-    pub fn init(allocator: std.mem.Allocator, sink: Sink) !Parser {
+    pub fn init(allocator: std.mem.Allocator) !Parser {
         var osc = try string_control_mod.StringControl.init(allocator, 256, 4096, true);
         errdefer osc.deinit();
 
-        var apc = try string_control_mod.StringControl.init(allocator, 256, 1024 * 1024, true);
+        var apc = try string_control_mod.StringControl.init(allocator, 256, 1024 * 1024, false);
         errdefer apc.deinit();
 
         var dcs = try string_control_mod.StringControl.init(allocator, 256, 4096, false);
@@ -165,20 +114,21 @@ pub const Parser = struct {
         errdefer pm.deinit();
 
         return .{
-            .allocator = allocator,
-            .sink = sink,
-            .stream = .{},
-            .esc_state = .ground,
-            .csi = .{},
+            .utf8 = .{},
+            .state = .ground,
+            .csi_params = [_]i32{0} ** csi_max_params,
+            .csi_separators = [_]u8{0} ** csi_max_params,
+            .csi_count = 0,
+            .csi_leader = 0,
+            .csi_private = false,
+            .intermediates = [_]u8{0} ** csi_max_intermediates,
+            .intermediates_len = 0,
+            .csi_in_param = false,
+            .osc_finish_term = null,
             .osc = osc,
             .apc = apc,
             .dcs = dcs,
             .pm = pm,
-            .g0_charset = .ascii,
-            .g1_charset = .ascii,
-            .gl_charset = .ascii,
-            .gl_target = .g0,
-            .charset_target = .g0,
         };
     }
 
@@ -192,251 +142,260 @@ pub const Parser = struct {
 
     /// Reset parser state and transient buffers.
     pub fn reset(self: *Parser) void {
-        self.stream.reset();
-        self.csi.reset();
-        self.esc_state = .ground;
-        self.g0_charset = .ascii;
-        self.g1_charset = .ascii;
-        self.gl_charset = .ascii;
-        self.gl_target = .g0;
-        self.charset_target = .g0;
+        self.utf8.reset();
+        self.clear();
+        self.state = .ground;
+        self.osc_finish_term = null;
         self.osc.reset();
         self.apc.reset();
         self.dcs.reset();
         self.pm.reset();
     }
 
-    /// Handle one byte of terminal input.
-    pub fn handleByte(self: *Parser, byte: u8) void {
+    /// Advance the parser by one byte and return ordered phase actions.
+    pub fn next(self: *Parser, byte: u8) PhaseActions {
+        self.cleanupBorrowedPhaseState();
+        const Active = struct {
+            action: ?Action = null,
+            next_state: ParseState,
+        };
+
         std.debug.assert(self.activeControlCount() <= 1);
-        if (self.handleActiveControlByte(byte)) return;
-
-        switch (self.esc_state) {
-            .ground => self.handleGroundByte(byte),
-            .esc => self.handleEscByte(byte),
-            .charset => self.handleCharsetByte(byte),
-            .csi => self.handleCsiByte(byte),
+        if (self.state == .ground and self.utf8.needed > 0) {
+            const action = self.consumeGroundByte(byte);
+            return .{ null, action, null };
         }
-    }
 
-    /// Handle a byte slice of terminal input.
-    pub fn handleSlice(self: *Parser, bytes: []const u8) void {
-        var remaining = bytes;
-        while (remaining.len > 0) {
-            std.debug.assert(self.activeControlCount() <= 1);
-            if (self.handleActiveControlByte(remaining[0])) {
-                remaining = remaining[1..];
-                continue;
+        const transition = parse_table.table[byte][@intFromEnum(self.state)];
+        if (self.isActiveState()) {
+            if (byte != 0x1B and (transition.state != self.state or transition.action != .none)) {
+                const transition_action = self.doAction(transition.action, byte);
+                const next_state = transition.state;
+                const current_state = self.state;
+                defer self.state = next_state;
+
+                return self.buildPhases(current_state, next_state, transition_action, byte, null);
             }
 
-            if (self.takeAsciiFastPath(remaining)) |rest| {
-                remaining = rest;
-                continue;
-            }
-
-            self.handleParserByte(remaining[0]);
-            remaining = remaining[1..];
+            const current_state = self.state;
+            const sos_kind = if (current_state == .sos_pm_apc_string) self.sosPmApcKind() else null;
+            const active: Active = switch (self.state) {
+                .osc_string => osc: {
+                    if (self.osc.feed(byte)) |result| {
+                        break :osc switch (result) {
+                            .put => .{ .action = @as(?Action, null), .next_state = ParseState.osc_string },
+                            .finish => |finish| {
+                                self.osc_finish_term = switch (finish) {
+                                    .bel => .bel,
+                                    .st => .st,
+                                };
+                                break :osc .{ .action = @as(?Action, null), .next_state = ParseState.ground };
+                            },
+                        };
+                    }
+                    break :osc .{ .action = @as(?Action, null), .next_state = ParseState.osc_string };
+                },
+                .dcs_passthrough => dcs: {
+                    if (byte == 0x7F) break :dcs .{ .action = @as(?Action, null), .next_state = ParseState.dcs_passthrough };
+                    if (self.dcs.feed(byte)) |result| {
+                        break :dcs switch (result) {
+                            .put => |payload_byte| .{ .action = .{ .dcs_put = payload_byte }, .next_state = ParseState.dcs_passthrough },
+                            .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
+                        };
+                    }
+                    break :dcs .{ .action = @as(?Action, null), .next_state = ParseState.dcs_passthrough };
+                },
+                .sos_pm_apc_string => switch (self.sosPmApcKind()) {
+                    .apc => apc: {
+                        if (self.apc.feed(byte)) |result| {
+                            break :apc switch (result) {
+                                .put => |payload_byte| .{ .action = .{ .apc_put = payload_byte }, .next_state = ParseState.sos_pm_apc_string },
+                                .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
+                            };
+                        }
+                        break :apc .{ .action = @as(?Action, null), .next_state = ParseState.sos_pm_apc_string };
+                    },
+                    .pm => pm: {
+                        if (self.pm.feed(byte)) |result| {
+                            break :pm switch (result) {
+                                .put => |payload_byte| .{ .action = .{ .pm_put = payload_byte }, .next_state = ParseState.sos_pm_apc_string },
+                                .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
+                            };
+                        }
+                        break :pm .{ .action = @as(?Action, null), .next_state = ParseState.sos_pm_apc_string };
+                    },
+                    .dcs => unreachable,
+                },
+                else => unreachable,
+            };
+            defer self.state = active.next_state;
+            return self.buildPhases(current_state, active.next_state, active.action, byte, sos_kind);
         }
+
+        const transition_action = self.doAction(transition.action, byte);
+        const next_state = transition.state;
+        const current_state = self.state;
+        defer self.state = next_state;
+
+        return self.buildPhases(current_state, next_state, transition_action, byte, null);
     }
 
-    pub fn deccirCharsetState(self: *const Parser) DeccirCharsetState {
+    fn collectIntermediate(self: *Parser, byte: u8) void {
+        if (self.intermediates_len >= self.intermediates.len) return;
+        self.intermediates[self.intermediates_len] = byte;
+        self.intermediates_len += 1;
+    }
+
+    fn buildPhases(self: *Parser, current_state: ParseState, next_state: ParseState, transition_action: ?Action, byte: u8, sos_kind: ?BufferedControlKind) PhaseActions {
         return .{
-            .g0_designation = charsetDesignation(self.g0_charset),
-            .g1_designation = charsetDesignation(self.g1_charset),
-            .gl_index = switch (self.gl_target) {
-                .g0 => 0,
-                .g1 => 1,
+            if (current_state == next_state) null else switch (current_state) {
+                .osc_string => exit: {
+                    const term = self.osc_finish_term orelse break :exit null;
+                    break :exit .{ .osc_dispatch = .{ .data = self.osc.data(), .term = term } };
+                },
+                .dcs_passthrough => dcs: {
+                    self.dcs.clearFinished();
+                    break :dcs .dcs_unhook;
+                },
+                .sos_pm_apc_string => exit: {
+                    break :exit switch (sos_kind orelse self.sosPmApcKind()) {
+                        .apc => apc: {
+                            self.apc.clearFinished();
+                            break :apc .apc_end;
+                        },
+                        .pm => pm: {
+                            self.pm.clearFinished();
+                            break :pm .pm_end;
+                        },
+                        .dcs => unreachable,
+                    };
+                },
+                else => null,
+            },
+            transition_action,
+            if (current_state == next_state) null else switch (next_state) {
+                .escape, .csi_entry, .dcs_entry => entry: {
+                    if (next_state == .escape) {
+                        std.debug.assert(self.activeControlCount() <= 1);
+                        self.utf8.reset();
+                        self.osc.reset();
+                        self.apc.reset();
+                        self.dcs.reset();
+                        self.pm.reset();
+                        self.clear();
+                        std.debug.assert(self.activeControlCount() == 0);
+                    } else {
+                        self.clear();
+                    }
+                    break :entry null;
+                },
+                .osc_string => entry: {
+                    std.debug.assert(self.activeControlCount() == 0);
+                    self.osc.start();
+                    std.debug.assert(self.osc.active());
+                    std.debug.assert(self.activeControlCount() == 1);
+                    break :entry null;
+                },
+                .dcs_passthrough => entry: {
+                    std.debug.assert(self.activeControlCount() == 0);
+                    self.dcs.start();
+                    std.debug.assert(self.dcs.active());
+                    std.debug.assert(self.activeControlCount() == 1);
+                    var final_count = self.csi_count;
+                    if (self.csi_in_param) final_count += 1;
+                    const hook = DcsHook{
+                        .final = byte,
+                        .params = self.csi_params,
+                        .count = final_count,
+                        .intermediates = self.intermediates,
+                        .intermediates_len = self.intermediates_len,
+                    };
+                    self.clear();
+                    break :entry .{ .dcs_hook = hook };
+                },
+                .sos_pm_apc_string => entry: {
+                    break :entry switch (byte) {
+                        '_', 0x9F => apc: {
+                            std.debug.assert(self.activeControlCount() == 0);
+                            self.apc.start();
+                            std.debug.assert(self.apc.active());
+                            std.debug.assert(self.activeControlCount() == 1);
+                            break :apc .apc_start;
+                        },
+                        '^', 0x98, 0x9E => pm: {
+                            std.debug.assert(self.activeControlCount() == 0);
+                            self.pm.start();
+                            std.debug.assert(self.pm.active());
+                            std.debug.assert(self.activeControlCount() == 1);
+                            break :pm .pm_start;
+                        },
+                        else => unreachable,
+                    };
+                },
+                else => null,
             },
         };
     }
 
-    fn handleOscByte(self: *Parser, byte: u8) void {
-        if (self.osc.feed(byte)) |finish| {
-            const terminator: OscTerminator = switch (finish) {
-                .bel => .bel,
-                .st => .st,
-            };
-            self.sink.onOsc(self.osc.data(), terminator);
+    fn doAction(self: *Parser, action: TransitionAction, byte: u8) ?Action {
+        return switch (action) {
+            .none => null,
+            .ground => ground: {
+                if (self.consumeGroundByte(byte)) |action_result| break :ground action_result;
+                break :ground null;
+            },
+            .execute => .{ .execute = byte },
+            .collect => collect: {
+                self.collectIntermediate(byte);
+                break :collect null;
+            },
+            .ignore => null,
+            .esc_dispatch => esc_dispatch: {
+                const esc: Action = .{ .esc_dispatch = .{
+                    .final = byte,
+                    .intermediates = self.intermediates,
+                    .intermediates_len = self.intermediates_len,
+                } };
+                self.clear();
+                break :esc_dispatch esc;
+            },
+            .csi_dispatch => self.consumeCsiDispatch(byte),
+            .param => switch (self.state) {
+                .csi_entry, .csi_param => csi: {
+                    self.feedParamByte(.csi, byte);
+                    break :csi null;
+                },
+                .dcs_entry, .dcs_param => dcs: {
+                    self.feedParamByte(.dcs, byte);
+                    break :dcs null;
+                },
+                else => unreachable,
+            },
+        };
+    }
+
+    fn cleanupBorrowedPhaseState(self: *Parser) void {
+        if (self.osc_finish_term != null and self.state != .osc_string) {
+            self.osc_finish_term = null;
             self.osc.clearFinished();
         }
     }
 
-    fn handleActiveControlByte(self: *Parser, byte: u8) bool {
-        std.debug.assert(self.activeControlCount() <= 1);
-        if (self.osc.active()) {
-            self.handleOscByte(byte);
-            return true;
-        }
+    fn isActiveState(self: *const Parser) bool {
+        return switch (self.state) {
+            .osc_string, .dcs_passthrough, .sos_pm_apc_string => true,
+            else => false,
+        };
+    }
+
+    fn sosPmApcKind(self: *const Parser) BufferedControlKind {
         if (self.apc.active()) {
-            self.handleApcByte(byte);
-            return true;
+            std.debug.assert(!self.pm.active());
+            return .apc;
         }
-        if (self.dcs.active()) {
-            self.handleDcsByte(byte);
-            return true;
-        }
-        if (self.pm.active()) {
-            self.handlePmByte(byte);
-            return true;
-        }
-        return false;
-    }
 
-    fn handleParserByte(self: *Parser, byte: u8) void {
-        std.debug.assert(self.activeControlCount() == 0);
-        switch (self.esc_state) {
-            .ground => self.handleGroundByte(byte),
-            .esc => self.handleEscByte(byte),
-            .charset => self.handleCharsetByte(byte),
-            .csi => self.handleCsiByte(byte),
-        }
-    }
-
-    fn handleGroundByte(self: *Parser, byte: u8) void {
-        std.debug.assert(self.activeControlCount() == 0);
-        if (byte == 0x1B) {
-            self.startEscape();
-            return;
-        }
-        if (byte == 0x0E) {
-            self.selectGl(.g1);
-            return;
-        }
-        if (byte == 0x0F) {
-            self.selectGl(.g0);
-            return;
-        }
-        if (self.isDecSpecialGraphic(byte)) {
-            self.sink.onStreamEvent(.{ .codepoint = mapDecSpecial(byte) });
-            return;
-        }
-        if (self.stream.feed(byte)) |event| {
-            self.sink.onStreamEvent(event);
-        }
-    }
-
-    fn handleEscByte(self: *Parser, byte: u8) void {
-        switch (byte) {
-            '[' => {
-                self.esc_state = .csi;
-                self.csi.reset();
-            },
-            ']' => self.startStringControl(&self.osc),
-            'P' => self.startStringControl(&self.dcs),
-            '_' => self.startStringControl(&self.apc),
-            '^' => self.startStringControl(&self.pm),
-            '(' => self.startCharsetDesignation(.g0),
-            ')' => self.startCharsetDesignation(.g1),
-            else => {
-                self.sink.onEscFinal(byte);
-                self.esc_state = .ground;
-            },
-        }
-    }
-
-    fn handleCharsetByte(self: *Parser, byte: u8) void {
-        const charset: Charset = switch (byte) {
-            '0' => .dec_special,
-            'B' => .ascii,
-            else => .ascii,
-        };
-        switch (self.charset_target) {
-            .g0 => self.g0_charset = charset,
-            .g1 => self.g1_charset = charset,
-        }
-        if (self.charset_target == .g0) {
-            self.gl_charset = self.g0_charset;
-            self.gl_target = .g0;
-            std.debug.assert(self.gl_charset == self.g0_charset);
-            std.debug.assert(self.gl_target == .g0);
-        }
-        self.esc_state = .ground;
-    }
-
-    fn handleCsiByte(self: *Parser, byte: u8) void {
-        if (self.csi.feed(byte)) |action| {
-            self.sink.onCsi(action);
-            self.esc_state = .ground;
-        }
-    }
-
-    fn takeAsciiFastPath(self: *Parser, bytes: []const u8) ?[]const u8 {
-        if (!self.canBatchAscii()) return null;
-
-        const ascii = asciiPrefix(bytes);
-        if (ascii.len == 0) return null;
-        std.debug.assert(ascii.len <= bytes.len);
-        std.debug.assert(isAsciiPrintableSlice(ascii));
-        if (ascii.len < bytes.len) std.debug.assert(!isAsciiPrintableByte(bytes[ascii.len]));
-        self.sink.onAsciiSlice(ascii);
-        return bytes[ascii.len..];
-    }
-
-    fn canBatchAscii(self: *const Parser) bool {
-        return self.esc_state == .ground and self.stream.decoder.needed == 0 and self.gl_charset == .ascii;
-    }
-
-    fn startEscape(self: *Parser) void {
-        std.debug.assert(self.activeControlCount() == 0);
-        self.esc_state = .esc;
-        self.stream.reset();
-        self.csi.reset();
-        self.osc.reset();
-        std.debug.assert(self.esc_state == .esc);
-        std.debug.assert(!self.osc.active());
-    }
-
-    fn selectGl(self: *Parser, target: CharsetTarget) void {
-        self.gl_target = target;
-        self.gl_charset = switch (target) {
-            .g0 => self.g0_charset,
-            .g1 => self.g1_charset,
-        };
-        std.debug.assert(self.gl_charset == switch (self.gl_target) {
-            .g0 => self.g0_charset,
-            .g1 => self.g1_charset,
-        });
-    }
-
-    fn isDecSpecialGraphic(self: *const Parser, byte: u8) bool {
-        return self.gl_charset == .dec_special and byte >= 0x20 and byte <= 0x7e;
-    }
-
-    fn startStringControl(self: *Parser, control: *string_control_mod.StringControl) void {
-        std.debug.assert(self.activeControlCount() == 0);
-        self.esc_state = .ground;
-        control.start();
-        std.debug.assert(self.esc_state == .ground);
-        std.debug.assert(control.active());
-        std.debug.assert(self.activeControlCount() == 1);
-    }
-
-    fn startCharsetDesignation(self: *Parser, target: CharsetTarget) void {
-        self.charset_target = target;
-        self.esc_state = .charset;
-        std.debug.assert(self.esc_state == .charset);
-        std.debug.assert(self.charset_target == target);
-    }
-
-    fn handleApcByte(self: *Parser, byte: u8) void {
-        if (self.apc.feed(byte)) |_| {
-            self.sink.onApc(self.apc.data());
-            self.apc.clearFinished();
-        }
-    }
-
-    fn handleDcsByte(self: *Parser, byte: u8) void {
-        if (self.dcs.feed(byte)) |_| {
-            self.sink.onDcs(self.dcs.data());
-            self.dcs.clearFinished();
-        }
-    }
-
-    fn handlePmByte(self: *Parser, byte: u8) void {
-        if (self.pm.feed(byte)) |_| {
-            self.sink.onPm(self.pm.data());
-            self.pm.clearFinished();
-        }
+        std.debug.assert(self.pm.active());
+        return .pm;
     }
 
     fn activeControlCount(self: *const Parser) u3 {
@@ -447,350 +406,87 @@ pub const Parser = struct {
         if (self.pm.active()) count += 1;
         return count;
     }
-};
 
-fn mapDecSpecial(byte: u8) u21 {
-    return switch (byte) {
-        '`' => 0x25C6, // ◆
-        'a' => 0x2592, // ▒
-        'f' => 0x00B0, // °
-        'g' => 0x00B1, // ±
-        'h' => 0x2424, // ␤
-        'i' => 0x240B, // ␋
-        'j' => 0x2518, // ┘
-        'k' => 0x2510, // ┐
-        'l' => 0x250C, // ┌
-        'm' => 0x2514, // └
-        'n' => 0x253C, // ┼
-        'o' => 0x23BA, // ⎺
-        'p' => 0x23BB, // ⎻
-        'q' => 0x2500, // ─
-        'r' => 0x23BC, // ⎼
-        's' => 0x23BD, // ⎽
-        't' => 0x251C, // ├
-        'u' => 0x2524, // ┤
-        'v' => 0x2534, // ┴
-        'w' => 0x252C, // ┬
-        'x' => 0x2502, // │
-        'y' => 0x2264, // ≤
-        'z' => 0x2265, // ≥
-        '{' => 0x03C0, // π
-        '|' => 0x2260, // ≠
-        '}' => 0x00A3, // £
-        '~' => 0x00B7, // ·
-        else => byte,
-    };
-}
-
-fn charsetDesignation(charset: Charset) u8 {
-    return switch (charset) {
-        .ascii => 'B',
-        .dec_special => '0',
-    };
-}
-
-fn asciiPrefix(bytes: []const u8) []const u8 {
-    var remaining = bytes;
-    while (remaining.len > 0) {
-        const byte = remaining[0];
-        if (byte < 0x20 or byte == 0x7f or byte == 0x1b or byte >= 0x80) break;
-        remaining = remaining[1..];
-    }
-    return bytes[0 .. bytes.len - remaining.len];
-}
-
-fn isAsciiPrintableSlice(bytes: []const u8) bool {
-    for (bytes) |byte| {
-        if (!isAsciiPrintableByte(byte)) return false;
-    }
-    return true;
-}
-
-fn isAsciiPrintableByte(byte: u8) bool {
-    return byte >= 0x20 and byte != 0x7f and byte != 0x1b and byte < 0x80;
-}
-
-const HarnessEvent = union(enum) {
-    stream_codepoint: u21,
-    stream_control: u8,
-    stream_invalid,
-    ascii_slice: []const u8,
-    csi: struct { final: u8, params: [16]i32, count: u8 },
-    osc: struct { data: []const u8, term: Parser.OscTerminator },
-    apc: []const u8,
-    dcs: []const u8,
-    pm: []const u8,
-    esc_final: u8,
-};
-
-const Harness = struct {
-    allocator: std.mem.Allocator,
-    events: std.ArrayList(HarnessEvent),
-
-    fn init(allocator: std.mem.Allocator) Harness {
-        return .{ .allocator = allocator, .events = std.ArrayList(HarnessEvent).initCapacity(allocator, 16) catch unreachable };
+    fn clear(self: *Parser) void {
+        self.csi_params[0] = 0;
+        self.csi_count = 0;
+        self.csi_separators[0] = 0;
+        self.csi_leader = 0;
+        self.csi_private = false;
+        self.intermediates_len = 0;
+        self.csi_in_param = false;
     }
 
-    fn deinit(self: *Harness) void {
-        for (self.events.items) |event| {
-            switch (event) {
-                .ascii_slice => |data| self.allocator.free(data),
-                .osc => |osc_ev| self.allocator.free(osc_ev.data),
-                .apc => |data| self.allocator.free(data),
-                .dcs => |data| self.allocator.free(data),
-                .pm => |data| self.allocator.free(data),
-                else => {},
-            }
-        }
-        self.events.deinit(self.allocator);
-    }
-
-    fn toSink(self: *Harness) Parser.Sink {
-        return .{ .ptr = self, .onStreamEventFn = onStreamEvent, .onAsciiSliceFn = onAsciiSlice, .onCsiFn = onCsi, .onOscFn = onOsc, .onApcFn = onApc, .onDcsFn = onDcs, .onPmFn = onPm, .onEscFinalFn = onEscFinal };
-    }
-
-    fn onStreamEvent(ptr: *anyopaque, event: Parser.StreamEvent) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const ev = switch (event) {
-            .codepoint => |cp| HarnessEvent{ .stream_codepoint = cp },
-            .control => |ctrl| HarnessEvent{ .stream_control = ctrl },
-            .invalid => HarnessEvent.stream_invalid,
+    fn consumeGroundByte(self: *Parser, byte: u8) ?Action {
+        return switch (self.utf8.feed(byte)) {
+            .codepoint => |cp| .{ .print = cp },
+            .invalid => .invalid,
+            .incomplete => null,
         };
-        self.events.append(self.allocator, ev) catch {};
     }
 
-    fn onAsciiSlice(ptr: *anyopaque, bytes: []const u8) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const owned = self.allocator.dupe(u8, bytes) catch return;
-        self.events.append(self.allocator, HarnessEvent{ .ascii_slice = owned }) catch {};
+    fn feedParamByte(self: *Parser, comptime kind: ParamKind, byte: u8) void {
+        if (byte == ';' or byte == ':') {
+            if (self.csi_count < self.csi_params.len) {
+                self.csi_count += 1;
+                if (self.csi_count < self.csi_params.len) {
+                    self.csi_params[self.csi_count] = 0;
+                    if (kind == .csi) self.csi_separators[self.csi_count] = byte;
+                }
+            }
+            self.csi_in_param = false;
+            return;
+        }
+
+        if (byte >= '0' and byte <= '9') {
+            const digit: i32 = @intCast(byte - '0');
+            if (self.csi_count >= self.csi_params.len) return;
+            if (!self.csi_in_param) {
+                self.csi_params[self.csi_count] = digit;
+                self.csi_in_param = true;
+            } else {
+                self.csi_params[self.csi_count] = self.csi_params[self.csi_count] * 10 + digit;
+            }
+            return;
+        }
     }
 
-    fn onCsi(ptr: *anyopaque, action: Parser.CsiAction) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        self.events.append(self.allocator, HarnessEvent{ .csi = .{ .final = action.final, .params = action.params, .count = action.count } }) catch {};
+    fn consumeCsiDispatch(self: *Parser, byte: u8) ?Action {
+        std.debug.assert(byte >= 0x40);
+        std.debug.assert(byte <= 0x7E);
+
+        var final_count = self.csi_count;
+        if (self.csi_in_param) final_count += 1;
+        const action = CsiActionData{
+            .final = byte,
+            .params = self.csi_params,
+            .separators = self.csi_separators,
+            .count = final_count,
+            .leader = self.csi_leader,
+            .private = self.csi_private,
+            .intermediates = self.intermediates,
+            .intermediates_len = self.intermediates_len,
+        };
+        self.clear();
+        return .{ .csi_dispatch = action };
     }
 
-    fn onOsc(ptr: *anyopaque, data: []const u8, term: Parser.OscTerminator) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const owned = self.allocator.dupe(u8, data) catch return;
-        self.events.append(self.allocator, HarnessEvent{ .osc = .{ .data = owned, .term = term } }) catch {};
-    }
+    fn consumeCsiByte(self: *Parser, byte: u8) ?Action {
+        if (byte == '<' or byte == '>' or byte == '=' or byte == '?') {
+            if (self.csi_leader == 0) self.csi_leader = byte;
+            if (byte == '?') self.csi_private = true;
+            return null;
+        }
 
-    fn onApc(ptr: *anyopaque, data: []const u8) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const owned = self.allocator.dupe(u8, data) catch return;
-        self.events.append(self.allocator, HarnessEvent{ .apc = owned }) catch {};
-    }
+        if (byte == ';' or byte == ':' or (byte >= '0' and byte <= '9')) {
+            self.feedParamByte(.csi, byte);
+            return null;
+        }
 
-    fn onDcs(ptr: *anyopaque, data: []const u8) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const owned = self.allocator.dupe(u8, data) catch return;
-        self.events.append(self.allocator, HarnessEvent{ .dcs = owned }) catch {};
-    }
+        if (byte >= 0x20 and byte <= 0x2F) {
+            self.collectIntermediate(byte);
+        }
 
-    fn onPm(ptr: *anyopaque, data: []const u8) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        const owned = self.allocator.dupe(u8, data) catch return;
-        self.events.append(self.allocator, HarnessEvent{ .pm = owned }) catch {};
-    }
-
-    fn onEscFinal(ptr: *anyopaque, byte: u8) void {
-        const self: *Harness = @ptrCast(@alignCast(ptr));
-        self.events.append(self.allocator, HarnessEvent{ .esc_final = byte }) catch {};
+        return null;
     }
 };
-test "parser: mixed stream exact sequence (ASCII+CSI+ASCII)" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleSlice("AB\x1b[31mC");
-    try std.testing.expectEqual(3, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .ascii_slice);
-    try std.testing.expect(harness.events.items[1] == .csi);
-    try std.testing.expectEqual(@as(u8, 'm'), harness.events.items[1].csi.final);
-    try std.testing.expectEqual(@as(i32, 31), harness.events.items[1].csi.params[0]);
-    try std.testing.expect(harness.events.items[2] == .ascii_slice);
-}
-
-test "parser: ASCII fast path preserves spaces" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-
-    parser.handleSlice("A B");
-
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .ascii_slice);
-    try std.testing.expectEqualSlices(u8, "A B", harness.events.items[0].ascii_slice);
-}
-
-test "parser: ESC final passthrough (ESC M)" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleSlice("\x1bM");
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .esc_final);
-    try std.testing.expectEqual(@as(u8, 'M'), harness.events.items[0].esc_final);
-}
-
-test "parser: OSC with BEL terminator" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleSlice("\x1b]title\x07");
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .osc);
-    try std.testing.expectEqual(Parser.OscTerminator.bel, harness.events.items[0].osc.term);
-    try std.testing.expectEqualSlices(u8, "title", harness.events.items[0].osc.data);
-}
-
-test "parser: OSC with ST terminator" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleSlice("\x1b]url\x1b\\");
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .osc);
-    try std.testing.expectEqual(Parser.OscTerminator.st, harness.events.items[0].osc.term);
-    try std.testing.expectEqualSlices(u8, "url", harness.events.items[0].osc.data);
-}
-
-test "parser: APC with ST terminator" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleSlice("\x1b_kitty\x1b\\");
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .apc);
-    try std.testing.expectEqualSlices(u8, "kitty", harness.events.items[0].apc);
-}
-
-test "parser: DCS with ST terminator" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleSlice("\x1bPdata\x1b\\");
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .dcs);
-    try std.testing.expectEqualSlices(u8, "data", harness.events.items[0].dcs);
-}
-
-test "parser: PM with ST terminator" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleSlice("\x1b^ignored\x1b\\");
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .pm);
-    try std.testing.expectEqualSlices(u8, "ignored", harness.events.items[0].pm);
-}
-
-test "parser: split input - partial UTF-8 then completion" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleByte(0xE2);
-    parser.handleByte(0x82);
-    parser.handleByte(0xAC);
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .stream_codepoint);
-    try std.testing.expectEqual(@as(u21, 0x20AC), harness.events.items[0].stream_codepoint);
-}
-
-test "parser: split input - partial CSI then final byte" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleByte(0x1B);
-    parser.handleByte('[');
-    parser.handleByte('3');
-    parser.handleByte('1');
-    parser.handleByte('m');
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .csi);
-    try std.testing.expectEqual(@as(u8, 'm'), harness.events.items[0].csi.final);
-    try std.testing.expectEqual(@as(i32, 31), harness.events.items[0].csi.params[0]);
-}
-
-test "parser: stray ESC in OSC (marker dropped, byte appended)" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleSlice("\x1b]ab\x1bcd\x1b\\");
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .osc);
-    try std.testing.expectEqualSlices(u8, "abcd", harness.events.items[0].osc.data);
-}
-
-test "parser: CSI with multiple parameters exact order" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-    parser.handleSlice("\x1b[1;31;40m");
-    try std.testing.expectEqual(1, harness.events.items.len);
-    try std.testing.expect(harness.events.items[0] == .csi);
-    try std.testing.expectEqual(@as(i32, 1), harness.events.items[0].csi.params[0]);
-    try std.testing.expectEqual(@as(i32, 31), harness.events.items[0].csi.params[1]);
-    try std.testing.expectEqual(@as(i32, 40), harness.events.items[0].csi.params[2]);
-    try std.testing.expectEqual(@as(u8, 3), harness.events.items[0].csi.count);
-}
-
-test "parser: DEC special graphics maps box drawing bytes" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-
-    parser.handleSlice("\x1b(0lqkxmj\x1b(Bq");
-
-    try std.testing.expectEqual(7, harness.events.items.len);
-    try std.testing.expectEqual(@as(u21, 0x250C), harness.events.items[0].stream_codepoint);
-    try std.testing.expectEqual(@as(u21, 0x2500), harness.events.items[1].stream_codepoint);
-    try std.testing.expectEqual(@as(u21, 0x2510), harness.events.items[2].stream_codepoint);
-    try std.testing.expectEqual(@as(u21, 0x2502), harness.events.items[3].stream_codepoint);
-    try std.testing.expectEqual(@as(u21, 0x2514), harness.events.items[4].stream_codepoint);
-    try std.testing.expectEqual(@as(u21, 0x2518), harness.events.items[5].stream_codepoint);
-    try std.testing.expect(harness.events.items[6] == .ascii_slice);
-    try std.testing.expectEqualSlices(u8, "q", harness.events.items[6].ascii_slice);
-}
-
-test "parser: SO SI switch G1 DEC special graphics" {
-    const gpa = std.testing.allocator;
-    var harness = Harness.init(gpa);
-    defer harness.deinit();
-    var parser = try Parser.init(gpa, harness.toSink());
-    defer parser.deinit();
-
-    parser.handleSlice("\x1b)0\x0eq\x0fq");
-
-    try std.testing.expectEqual(2, harness.events.items.len);
-    try std.testing.expectEqual(@as(u21, 0x2500), harness.events.items[0].stream_codepoint);
-    try std.testing.expect(harness.events.items[1] == .ascii_slice);
-    try std.testing.expectEqualSlices(u8, "q", harness.events.items[1].ascii_slice);
-}

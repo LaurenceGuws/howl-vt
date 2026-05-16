@@ -2,12 +2,12 @@
 
 const std = @import("std");
 const events = @import("../action/vocabulary.zig");
-const parsed_events = @import("../parser/events.zig");
+const osc_parse = @import("osc_parse.zig");
 const kitty = @import("../kitty/protocol.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
-pub fn process(kind: parsed_events.OscKind, command: ?u16, payload: []const u8) ?SemanticEvent {
+pub fn process(kind: osc_parse.Kind, command: ?u16, payload: []const u8) ?SemanticEvent {
     if (command) |cmd| switch (cmd) {
         22 => return SemanticEvent{ .kitty_pointer_shape = kitty.parsePointerShape(payload) },
         4, 10, 11, 12, 21, 104, 110, 111, 112 => return SemanticEvent{ .color_control = .{ .command = cmd, .payload = payload } },

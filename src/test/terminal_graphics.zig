@@ -4,17 +4,16 @@ const std = @import("std");
 const action = @import("../action.zig");
 const host_state = @import("../host/state.zig");
 const kitty_state = @import("../kitty/state.zig");
-const parser = @import("../parser.zig");
+const parser_flow = @import("../parser/flow.zig");
 const terminal_mod = @import("../terminal.zig");
 
 const Action = action;
 const HostState = host_state;
 const KittyState = kitty_state;
-const Parser = parser;
 const Terminal = terminal_mod.Terminal;
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    Parser.feedSlice(terminal, bytes);
+    parser_flow.feedSlice(terminal, bytes);
 }
 
 fn apply(terminal: *Terminal) void {

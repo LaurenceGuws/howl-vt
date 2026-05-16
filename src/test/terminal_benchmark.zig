@@ -2,11 +2,10 @@
 
 const std = @import("std");
 const action = @import("../action.zig");
-const parser = @import("../parser.zig");
+const parser_flow = @import("../parser/flow.zig");
 const terminal_mod = @import("../terminal.zig");
 
 const Action = action;
-const Parser = parser;
 
 const WorkloadResult = struct {
     name: []const u8,
@@ -239,7 +238,7 @@ fn runFeedApplyWorkload(
         defer terminal.deinit();
         counting.resetWindow();
         const start = nowNs(io);
-        Parser.feedSlice(&terminal, fixture);
+        parser_flow.feedSlice(&terminal, fixture);
         const max_queue_depth = Action.applyLimit(&terminal, 0).remaining_events;
         Action.apply(&terminal);
         const end = nowNs(io);
@@ -309,7 +308,7 @@ fn runMixedInteractiveWorkload(
         var j: usize = 0;
         var max_queue_depth: usize = 0;
         while (j < bursts_per_run) : (j += 1) {
-            Parser.feedSlice(&terminal, burst);
+            parser_flow.feedSlice(&terminal, burst);
             max_queue_depth = @max(max_queue_depth, Action.applyLimit(&terminal, 0).remaining_events);
             Action.apply(&terminal);
         }
@@ -375,7 +374,7 @@ fn runSnapshotWorkload(
             1_000,
         );
         defer terminal.deinit();
-        Parser.feedSlice(&terminal, fixture);
+        parser_flow.feedSlice(&terminal, fixture);
         Action.apply(&terminal);
         counting.resetWindow();
         const start = nowNs(io);
@@ -461,7 +460,7 @@ fn runQueueGrowthChunkedWorkload(
         const start = nowNs(io);
         while (offset < fixture.len) {
             const next = @min(offset + chunk_size, fixture.len);
-            Parser.feedSlice(&terminal, fixture[offset..next]);
+            parser_flow.feedSlice(&terminal, fixture[offset..next]);
             max_queue_depth = @max(max_queue_depth, Action.applyLimit(&terminal, 0).remaining_events);
             offset = next;
         }

@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const action_mod = @import("../action.zig");
-const parser_mod = @import("../parser.zig");
+const parser_flow = @import("../parser/flow.zig");
 const terminal_mod = @import("../terminal.zig");
 const screen = @import("../screen.zig");
 const screen_capture = @import("screen_capture.zig");
@@ -15,7 +15,6 @@ const Action = action_mod;
 const Screen = screen.Screen;
 const Selection = selection;
 const Input = input_mod;
-const Parser = parser_mod;
 
 var encode_scratch: Input.Scratch = .{};
 
@@ -73,11 +72,11 @@ fn selectionClear(terminal: *Terminal) void {
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
-    Parser.feedByte(terminal, byte);
+    parser_flow.feedByte(terminal, byte);
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    Parser.feedSlice(terminal, bytes);
+    parser_flow.feedSlice(terminal, bytes);
 }
 
 fn apply(terminal: *Terminal) void {
@@ -85,11 +84,11 @@ fn apply(terminal: *Terminal) void {
 }
 
 fn clear(terminal: *Terminal) void {
-    Parser.clear(terminal);
+    parser_flow.clear(terminal);
 }
 
 fn reset(terminal: *Terminal) void {
-    Parser.reset(terminal);
+    parser_flow.reset(terminal);
 }
 
 fn applyLimit(terminal: *Terminal, max_events: usize) Action.ApplySummary {
