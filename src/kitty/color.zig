@@ -1,9 +1,9 @@
 //! Kitty color stack and OSC 21 behavior.
 
 const std = @import("std");
-const control = @import("../control.zig");
+const osc_color = @import("../control/osc_color.zig");
 
-const OscColor = control.OscColor;
+const OscColor = osc_color;
 
 pub const State = OscColor.State;
 

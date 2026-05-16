@@ -1,4 +1,25 @@
 
+pub const locator = @import("control/locator.zig");
+pub const mode = @import("control/mode.zig");
+pub const osc_color = @import("control/osc_color.zig");
+pub const report = @import("control/report.zig");
+pub const ffi = @import("ffi.zig");
+pub const grid = @import("grid.zig");
+pub const input = @import("input.zig");
+pub const action = @import("action.zig");
+pub const kitty = @import("kitty.zig");
+pub const parser = @import("parser.zig");
+pub const selection = @import("selection.zig");
+pub const terminal = @import("terminal.zig");
+
+pub const Grid = grid.Grid;
+pub const Input = input;
+pub const Action = action;
+pub const Kitty = kitty;
+pub const Parser = parser.Parser;
+pub const Selection = selection;
+pub const Terminal = terminal.Terminal;
+
 test {
     _ = @import("test/action_mapping.zig");
     _ = @import("test/apply_flow_regression.zig");

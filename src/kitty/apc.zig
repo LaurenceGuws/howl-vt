@@ -1,7 +1,7 @@
 //! APC semantic event mapping.
 
-const events = @import("../event.zig");
-const kitty = @import("kitty.zig");
+const events = @import("../action/vocabulary.zig");
+const kitty = @import("protocol.zig");
 
 const SemanticEvent = events.SemanticEvent;
 

@@ -1,103 +1,75 @@
-//! Host input values and encoding.
+const types = @import("input/types.zig");
 
-const std = @import("std");
-const keyboard = @import("input/keyboard.zig");
-const mouse = @import("input/mouse.zig");
-const tokens = @import("input/tokens.zig");
+pub const Key = types.Key;
+pub const Modifier = types.Modifier;
 
-pub const Key = keyboard.Key;
-pub const Modifier = keyboard.Modifier;
+pub const MouseButton = types.MouseButton;
+pub const MouseEventKind = types.MouseEventKind;
+pub const MouseEvent = types.MouseEvent;
+pub const MouseTrackingMode = types.MouseTrackingMode;
+pub const MouseProtocol = types.MouseProtocol;
 
-pub const MouseButton = mouse.MouseButton;
-pub const MouseEventKind = mouse.MouseEventKind;
-pub const MouseEvent = mouse.MouseEvent;
-pub const MouseTrackingMode = mouse.MouseTrackingMode;
-pub const MouseProtocol = mouse.MouseProtocol;
+pub const mouse_button_none = types.mouse_button_none;
+pub const mouse_button_left = types.mouse_button_left;
+pub const mouse_button_middle = types.mouse_button_middle;
+pub const mouse_button_right = types.mouse_button_right;
+pub const mouse_button_wheel_up = types.mouse_button_wheel_up;
+pub const mouse_button_wheel_down = types.mouse_button_wheel_down;
 
-pub const mouse_button_none: MouseButton = MouseButton.none;
-pub const mouse_button_left: MouseButton = MouseButton.left;
-pub const mouse_button_middle: MouseButton = MouseButton.middle;
-pub const mouse_button_right: MouseButton = MouseButton.right;
-pub const mouse_button_wheel_up: MouseButton = MouseButton.wheel_up;
-pub const mouse_button_wheel_down: MouseButton = MouseButton.wheel_down;
+pub const mouse_press = types.mouse_press;
+pub const mouse_release = types.mouse_release;
+pub const mouse_move = types.mouse_move;
+pub const mouse_wheel = types.mouse_wheel;
 
-pub const mouse_press: MouseEventKind = MouseEventKind.press;
-pub const mouse_release: MouseEventKind = MouseEventKind.release;
-pub const mouse_move: MouseEventKind = MouseEventKind.move;
-pub const mouse_wheel: MouseEventKind = MouseEventKind.wheel;
+pub const KeyEvent = types.KeyEvent;
+pub const FocusEvent = types.FocusEvent;
+pub const Event = types.Event;
+pub const Encoded = types.Encoded;
 
-pub const KeyEvent = struct {
-    key: Key,
-    mods: Modifier = mod_none,
-};
+pub const mod_none = types.mod_none;
+pub const mod_shift = types.mod_shift;
+pub const mod_alt = types.mod_alt;
+pub const mod_ctrl = types.mod_ctrl;
 
-pub const FocusEvent = enum {
-    in,
-    out,
-};
-
-pub const Event = union(enum) {
-    bytes: []const u8,
-    key: KeyEvent,
-    mouse: MouseEvent,
-    focus: FocusEvent,
-    paste: []const u8,
-};
-
-pub const Encoded = struct {
-    allocator: ?std.mem.Allocator = null,
-    bytes: []const u8 = "",
-
-    pub fn deinit(self: *Encoded) void {
-        if (self.allocator) |allocator| allocator.free(self.bytes);
-        self.* = .{};
-    }
-};
-
-pub const mod_none: Modifier = keyboard.VTERM_MOD_NONE;
-pub const mod_shift: Modifier = keyboard.VTERM_MOD_SHIFT;
-pub const mod_alt: Modifier = keyboard.VTERM_MOD_ALT;
-pub const mod_ctrl: Modifier = keyboard.VTERM_MOD_CTRL;
-
-pub const key_enter: Key = keyboard.VTERM_KEY_ENTER;
-pub const key_tab: Key = keyboard.VTERM_KEY_TAB;
-pub const key_backspace: Key = keyboard.VTERM_KEY_BACKSPACE;
-pub const key_escape: Key = keyboard.VTERM_KEY_ESCAPE;
-pub const key_up: Key = keyboard.VTERM_KEY_UP;
-pub const key_down: Key = keyboard.VTERM_KEY_DOWN;
-pub const key_left: Key = keyboard.VTERM_KEY_LEFT;
-pub const key_right: Key = keyboard.VTERM_KEY_RIGHT;
-pub const key_insert: Key = keyboard.VTERM_KEY_INS;
-pub const key_delete: Key = keyboard.VTERM_KEY_DEL;
-pub const key_home: Key = keyboard.VTERM_KEY_HOME;
-pub const key_end: Key = keyboard.VTERM_KEY_END;
-pub const key_pageup: Key = keyboard.VTERM_KEY_PAGEUP;
-pub const key_pagedown: Key = keyboard.VTERM_KEY_PAGEDOWN;
-pub const key_f1: Key = keyboard.VTERM_KEY_F1;
-pub const key_f2: Key = keyboard.VTERM_KEY_F2;
-pub const key_f3: Key = keyboard.VTERM_KEY_F3;
-pub const key_f4: Key = keyboard.VTERM_KEY_F4;
-pub const key_f5: Key = keyboard.VTERM_KEY_F5;
-pub const key_f6: Key = keyboard.VTERM_KEY_F6;
-pub const key_f7: Key = keyboard.VTERM_KEY_F7;
-pub const key_f8: Key = keyboard.VTERM_KEY_F8;
-pub const key_f9: Key = keyboard.VTERM_KEY_F9;
-pub const key_f10: Key = keyboard.VTERM_KEY_F10;
-pub const key_f11: Key = keyboard.VTERM_KEY_F11;
-pub const key_f12: Key = keyboard.VTERM_KEY_F12;
-pub const key_kp_0: Key = keyboard.VTERM_KEY_KP_0;
-pub const key_kp_1: Key = keyboard.VTERM_KEY_KP_1;
-pub const key_kp_2: Key = keyboard.VTERM_KEY_KP_2;
-pub const key_kp_3: Key = keyboard.VTERM_KEY_KP_3;
-pub const key_kp_4: Key = keyboard.VTERM_KEY_KP_4;
-pub const key_kp_5: Key = keyboard.VTERM_KEY_KP_5;
-pub const key_kp_6: Key = keyboard.VTERM_KEY_KP_6;
-pub const key_kp_7: Key = keyboard.VTERM_KEY_KP_7;
-pub const key_kp_8: Key = keyboard.VTERM_KEY_KP_8;
-pub const key_kp_9: Key = keyboard.VTERM_KEY_KP_9;
-pub const key_kp_decimal: Key = keyboard.VTERM_KEY_KP_DECIMAL;
-pub const key_kp_add: Key = keyboard.VTERM_KEY_KP_ADD;
-pub const key_kp_subtract: Key = keyboard.VTERM_KEY_KP_SUBTRACT;
-pub const key_kp_multiply: Key = keyboard.VTERM_KEY_KP_MULTIPLY;
-pub const key_kp_divide: Key = keyboard.VTERM_KEY_KP_DIVIDE;
-pub const key_kp_enter: Key = keyboard.VTERM_KEY_KP_ENTER;
+pub const key_enter = types.key_enter;
+pub const key_tab = types.key_tab;
+pub const key_backspace = types.key_backspace;
+pub const key_escape = types.key_escape;
+pub const key_up = types.key_up;
+pub const key_down = types.key_down;
+pub const key_left = types.key_left;
+pub const key_right = types.key_right;
+pub const key_insert = types.key_insert;
+pub const key_delete = types.key_delete;
+pub const key_home = types.key_home;
+pub const key_end = types.key_end;
+pub const key_pageup = types.key_pageup;
+pub const key_pagedown = types.key_pagedown;
+pub const key_f1 = types.key_f1;
+pub const key_f2 = types.key_f2;
+pub const key_f3 = types.key_f3;
+pub const key_f4 = types.key_f4;
+pub const key_f5 = types.key_f5;
+pub const key_f6 = types.key_f6;
+pub const key_f7 = types.key_f7;
+pub const key_f8 = types.key_f8;
+pub const key_f9 = types.key_f9;
+pub const key_f10 = types.key_f10;
+pub const key_f11 = types.key_f11;
+pub const key_f12 = types.key_f12;
+pub const key_kp_0 = types.key_kp_0;
+pub const key_kp_1 = types.key_kp_1;
+pub const key_kp_2 = types.key_kp_2;
+pub const key_kp_3 = types.key_kp_3;
+pub const key_kp_4 = types.key_kp_4;
+pub const key_kp_5 = types.key_kp_5;
+pub const key_kp_6 = types.key_kp_6;
+pub const key_kp_7 = types.key_kp_7;
+pub const key_kp_8 = types.key_kp_8;
+pub const key_kp_9 = types.key_kp_9;
+pub const key_kp_decimal = types.key_kp_decimal;
+pub const key_kp_add = types.key_kp_add;
+pub const key_kp_subtract = types.key_kp_subtract;
+pub const key_kp_multiply = types.key_kp_multiply;
+pub const key_kp_divide = types.key_kp_divide;
+pub const key_kp_enter = types.key_kp_enter;

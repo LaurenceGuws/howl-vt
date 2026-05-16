@@ -1,9 +1,9 @@
 //! OSC semantic event mapping.
 
 const std = @import("std");
-const events = @import("../event.zig");
-const parsed_events = @import("../parsed_events.zig");
-const kitty = @import("kitty.zig");
+const events = @import("../action/vocabulary.zig");
+const parsed_events = @import("../parser/events.zig");
+const kitty = @import("../kitty/protocol.zig");
 
 const SemanticEvent = events.SemanticEvent;
 

@@ -2,14 +2,13 @@
 
 const std = @import("std");
 const grid_mod = @import("../grid.zig");
-const interpret = @import("../interpret.zig");
+const action_mod = @import("../action.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
 
 const Grid = grid_mod.Grid;
-const Interpret = interpret;
 const LocatorNs = locator;
-const ReportAction = Interpret.ReportAction;
+const ReportAction = action_mod.ReportAction;
 const TerminalModeNs = mode_mod;
 
 const xtversion_text = "howl-vt dev";
@@ -38,7 +37,7 @@ pub const RectChecksumRequest = struct {
     request_id: u16,
 };
 
-pub fn apply(vt: anytype, action: ReportAction) void {
+pub fn apply(vt: anytype, report_action: ReportAction) void {
     const active = vt.screen_state.activeConst();
     const deccir_charset = vt.apply_flow.deccirCharsetState();
     const ctx = Context{
@@ -82,7 +81,7 @@ pub fn apply(vt: anytype, action: ReportAction) void {
         },
         .color_stack_depth = vt.kitty.global.color_stack.len,
     };
-    applyWithContext(ctx, action);
+    applyWithContext(ctx, report_action);
 }
 
 const Context = struct {
@@ -100,8 +99,8 @@ const Context = struct {
     color_stack_depth: u8,
 };
 
-fn applyWithContext(ctx: Context, action: ReportAction) void {
-    switch (action) {
+fn applyWithContext(ctx: Context, report_action: ReportAction) void {
+    switch (report_action) {
         .ansi_mode_query => |mode| appendAnsiModeReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, mode, TerminalModeNs.ansiModeStateForView(ctx.ansi_modes, mode)),
         .modify_other_keys_query => appendModifyOtherKeysReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.modify_other_keys),
         .key_format_query => |resource| if (isKeyFormatResource(resource)) appendKeyFormatReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, resource, ctx.key_format[resource]),
@@ -305,7 +304,7 @@ pub fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.Array
     output.appendSlice(allocator, text) catch {};
 }
 
-pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid, area: Interpret.SemanticEvent.RectArea) void {
+pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid, area: action_mod.SemanticEvent.RectArea) void {
     const common = commonAttrsForRect(screen, area) orelse {
         output.appendSlice(allocator, "\x1b[0m") catch {};
         return;
@@ -326,7 +325,7 @@ pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output
     output.appendSlice(allocator, "m") catch {};
 }
 
-pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: Interpret.SemanticEvent.RectArea) u16 {
+pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: action_mod.SemanticEvent.RectArea) u16 {
     if (page != 1) return 0;
     const bounds = screen.rectBoundsForReport(area) orelse return 0;
     var sum: u16 = 0;
@@ -363,7 +362,7 @@ const CommonAttrs = struct {
     bg: Grid.Color,
 };
 
-fn commonAttrsForRect(screen: *const Grid, area: Interpret.SemanticEvent.RectArea) ?CommonAttrs {
+fn commonAttrsForRect(screen: *const Grid, area: action_mod.SemanticEvent.RectArea) ?CommonAttrs {
     const bounds = screen.rectBoundsForReport(area) orelse return null;
     const first_cell = screen.cellInfoAt(bounds.top, bounds.left);
     var common = CommonAttrs{

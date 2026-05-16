@@ -1,45 +1,20 @@
-//! Parser events to semantic events and owner actions.
+//! Host-facing consequence application.
 
-const parsed_events = @import("interpret/parsed_events.zig");
-const action_map = @import("interpret/actions/map.zig");
-const apply_flow = @import("interpret/apply_flow.zig");
-const event = @import("interpret/event.zig");
 const std = @import("std");
-const control = @import("control.zig");
-const grid = @import("grid.zig");
-const kitty = @import("kitty.zig");
+const locator = @import("../control/locator.zig");
+const osc_color = @import("../control/osc_color.zig");
+const grid = @import("../grid.zig");
+const kitty = @import("../kitty.zig");
+const vocabulary = @import("../action/vocabulary.zig");
 
 const GridNs = grid.Grid;
 const KittyNs = kitty;
-const LocatorNs = control.Locator;
-const OscColorNs = control.OscColor;
-const DcsPayload = event.DcsPayload;
+const LocatorNs = locator;
+const OscColorNs = osc_color;
+const DcsPayload = vocabulary.DcsPayload;
+const HostAction = vocabulary.HostAction;
 
-pub const Event = parsed_events.Event;
-pub const ParsedEvents = parsed_events.ParsedEvents;
-pub const SemanticEvent = action_map.SemanticEvent;
-pub const ScreenAction = action_map.ScreenAction;
-pub const ReportAction = action_map.ReportAction;
-pub const ModeAction = action_map.ModeAction;
-pub const KittyAction = action_map.KittyAction;
-pub const HostAction = action_map.HostAction;
-pub const DcsPayloadKind = action_map.DcsPayloadKind;
-pub const KittyGraphicsCommand = event.KittyGraphicsCommand;
-pub const KittyNotificationCommand = event.KittyNotificationCommand;
-pub const KittyShellMark = event.KittyShellMark;
-pub const LegacyControlKind = action_map.LegacyControlKind;
-pub const EscAction = action_map.EscAction;
-pub const ApplyFlow = apply_flow.ApplyFlow;
-pub const Osc = @import("interpret/actions/osc.zig");
-
-pub const process = action_map.process;
-pub const screenAction = action_map.screenAction;
-pub const reportAction = action_map.reportAction;
-pub const modeAction = action_map.modeAction;
-pub const kittyAction = action_map.kittyAction;
-pub const hostAction = action_map.hostAction;
-
-pub fn applyHost(vt: anytype, action: HostAction) void {
+pub fn apply(vt: anytype, action: HostAction) void {
     switch (action) {
         .color_control => |cmd| {
             switch (cmd.command) {

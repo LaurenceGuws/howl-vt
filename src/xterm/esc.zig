@@ -12,7 +12,7 @@ pub const EscAction = union(enum) {
     application_keypad: bool,
 };
 
-const events = @import("../event.zig");
+const events = @import("../action/vocabulary.zig");
 const SemanticEvent = events.SemanticEvent;
 
 pub fn action(final: u8) ?EscAction {

@@ -1,8 +1,8 @@
 //! Read-only terminal snapshots.
 
 const std = @import("std");
-const selection_mod = @import("selection.zig");
-const grid_mod = @import("grid.zig");
+const selection_mod = @import("../selection.zig");
+const grid_mod = @import("../grid.zig");
 
 const Selection = selection_mod;
 const Grid = grid_mod.Grid;
@@ -123,3 +123,11 @@ pub const VtCoreSnapshot = struct {
         return h[logical_slot * @as(usize, self.cols) + @as(usize, col)];
     }
 };
+
+pub fn capture(vt: anytype) !VtCoreSnapshot {
+    return VtCoreSnapshot.captureFromScreen(
+        vt.allocator,
+        vt.screen_state.activeConst(),
+        vt.selection.state(),
+    );
+}

@@ -2,10 +2,10 @@
 
 const std = @import("std");
 const input_mod = @import("../input.zig");
-const interpret = @import("../interpret.zig");
+const action_mod = @import("../action.zig");
 
 const Input = input_mod;
-const Interpret = interpret;
+const Action = action_mod;
 
 pub const ReportingMode = enum(u2) {
     disabled,
@@ -42,7 +42,7 @@ pub fn setReporting(state: *State, mode: u16, unit: u16) void {
     state.coordinate_unit = unit;
 }
 
-pub fn setFilter(state: *State, area: Interpret.SemanticEvent.OptionalRectArea) void {
+pub fn setFilter(state: *State, area: Action.SemanticEvent.OptionalRectArea) void {
     const row = state.last_row orelse 0;
     const col = state.last_col orelse 0;
     const top = area.top orelse row;

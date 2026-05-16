@@ -1,7 +1,7 @@
 //! CSI parameter normalization.
 
 const std = @import("std");
-const events = @import("../event.zig");
+const events = @import("../../action/vocabulary.zig");
 
 const SemanticEvent = events.SemanticEvent;
 

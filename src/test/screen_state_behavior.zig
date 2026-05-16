@@ -2,10 +2,10 @@
 
 const std = @import("std");
 const grid = @import("../grid.zig");
-const interpret = @import("../interpret.zig");
+const action = @import("../action.zig");
 
 const Grid = grid.Grid;
-const SemanticEvent = interpret.SemanticEvent;
+const SemanticEvent = action.SemanticEvent;
 test "screen: initial cursor at origin" {
     const s = Grid.init(24, 80);
     try std.testing.expectEqual(@as(u16, 0), s.cursor_row);

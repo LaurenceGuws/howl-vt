@@ -1,18 +1,19 @@
 //! Parser feed/apply regression tests.
 
 const std = @import("std");
+const dispatch = @import("../action/dispatch.zig");
 const grid = @import("../grid.zig");
-const interpret = @import("../interpret.zig");
+const action = @import("../action.zig");
 const terminal_mod = @import("../terminal.zig");
 
 const Grid = grid.Grid;
-const Interpret = interpret;
-const ApplyFlow = Interpret.ApplyFlow;
+const Action = action;
+const ApplyFlow = Action.ApplyFlow;
 const Terminal = terminal_mod.Terminal;
 
 fn feed(flow: *ApplyFlow, screen: *Grid, bytes: []const u8) void {
     flow.feedSlice(bytes);
-    flow.applyToScreen(screen);
+    dispatch.applyToScreen(flow, screen);
 }
 
 fn repaintPromptLine(flow: *ApplyFlow, screen: *Grid, prompt: []const u8, command: []const u8) void {
@@ -100,7 +101,7 @@ test "feed/apply: apply-flow clear drops pending parsed events before apply" {
     try std.testing.expect(flow.len() > 0);
     flow.clear();
     try std.testing.expect(flow.isEmpty());
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
@@ -118,7 +119,7 @@ test "feed/apply: apply-flow reset clears queued events and partial CSI" {
     flow.reset();
     try std.testing.expect(flow.isEmpty());
     flow.feedSlice("A");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 10), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'A'), screen.cellAt(10, 0));
@@ -132,13 +133,13 @@ test "feed/apply: apply-flow clear preserves partial CHT parser state" {
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
     flow.feedSlice("abc");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_col);
     flow.feedSlice("\x1b[2");
     flow.clear();
     try std.testing.expect(flow.isEmpty());
     flow.feedSlice("Ix");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 17), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 16));
     try std.testing.expect(flow.isEmpty());
@@ -151,13 +152,13 @@ test "feed/apply: apply-flow clear preserves partial CBT parser state" {
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
     flow.feedSlice("a\x1b[2I");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 16), screen.cursor_col);
     flow.feedSlice("\x1b[2");
     flow.clear();
     try std.testing.expect(flow.isEmpty());
     flow.feedSlice("Zy");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 0));
     try std.testing.expect(flow.isEmpty());
@@ -173,7 +174,7 @@ test "feed/apply: apply-flow reset drops partial CHT parser state" {
     flow.reset();
     try std.testing.expect(flow.isEmpty());
     flow.feedSlice("Iw");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'I'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'w'), screen.cellAt(0, 1));
@@ -186,13 +187,13 @@ test "feed/apply: apply-flow reset drops partial CBT parser state" {
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
     flow.feedSlice("a\x1b[2I");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 16), screen.cursor_col);
     flow.feedSlice("\x1b[2");
     flow.reset();
     try std.testing.expect(flow.isEmpty());
     flow.feedSlice("Zv");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 18), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'v'), screen.cellAt(0, 17));
 }
@@ -204,13 +205,13 @@ test "feed/apply: applyToScreen drains parsed events once repeat apply is no-op"
     var screen = try Grid.initWithCells(gpa, 2, 8);
     defer screen.deinit(gpa);
     flow.feedSlice("\x1b[4C");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
     try std.testing.expect(flow.isEmpty());
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
     flow.feedSlice("z");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u21, 'z'), screen.cellAt(0, 4));
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
 }
@@ -377,7 +378,7 @@ test "feed/apply: split CNL interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("\x1b[7");
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("Ex");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 3));
@@ -394,7 +395,7 @@ test "feed/apply: split CNL after DECSTR applies from reset origin" {
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("\x1b[7");
     flow.feedSlice("Ex");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(7, 0));
@@ -410,7 +411,7 @@ test "feed/apply: split CPL interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("\x1b[7");
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("Fx");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 3));
@@ -427,7 +428,7 @@ test "feed/apply: split CPL after DECSTR applies from reset origin" {
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("\x1b[7");
     flow.feedSlice("Fx");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 0));
@@ -489,7 +490,7 @@ test "feed/apply: split VPA interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("\x1b[7");
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("dx");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
@@ -507,7 +508,7 @@ test "feed/apply: split VPA after DECSTR applies from reset origin" {
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("\x1b[7");
     flow.feedSlice("dx");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 6), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(6, 0));
@@ -545,7 +546,7 @@ test "feed/apply: split CHA interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("\x1b[7");
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("Gx");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 3));
@@ -562,7 +563,7 @@ test "feed/apply: split CHA after DECSTR applies from reset origin" {
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("\x1b[7");
     flow.feedSlice("Gx");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
 }
@@ -598,7 +599,7 @@ test "feed/apply: split CSI across multiple feeds" {
     flow.feedSlice("\x1b[");
     flow.feedSlice("2");
     flow.feedSlice("A");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 8), screen.cursor_row);
 }
 
@@ -955,7 +956,7 @@ test "feed/apply: split CHT interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("\x1b[2");
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("Ix");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, '!'), screen.cellAt(0, 3));
@@ -974,7 +975,7 @@ test "feed/apply: split CHT after DECSTR applies from reset origin" {
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("\x1b[2");
     flow.feedSlice("Ix");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 17), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 16));
     try std.testing.expect(flow.isEmpty());
@@ -991,7 +992,7 @@ test "feed/apply: split CBT interrupted by DECSTR bytes remains deterministic" {
     flow.feedSlice("\x1b[2");
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("Zy");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 19), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 19));
@@ -1009,7 +1010,7 @@ test "feed/apply: split CBT after DECSTR applies from reset origin" {
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("\x1b[2");
     flow.feedSlice("Zy");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 0));
     try std.testing.expect(flow.isEmpty());
@@ -1040,7 +1041,7 @@ test "feed/apply: interrupted split private cursor mode remains deterministic" {
     flow.feedSlice("\x1b[?2");
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("5l");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expect(screen.cursor_visible);
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 0));
@@ -1081,7 +1082,7 @@ test "feed/apply: interrupted split private auto-wrap mode remains deterministic
     flow.feedSlice("\x1b[?");
     flow.feedSlice("\x1b[!p");
     flow.feedSlice("7l");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expect(screen.auto_wrap);
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 0));
@@ -1211,7 +1212,7 @@ test "feed/apply: split CSI erase across parser feeds" {
     screen.cursor_col = 2;
     flow.feedSlice("\x1b[");
     flow.feedSlice("1K");
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 2));
     try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 3));
@@ -1425,11 +1426,11 @@ test "edge: zero-dimension apply-flow clear and reset are safe" {
     flow.feedSlice("test\x1b[5A");
     flow.clear();
     try std.testing.expect(flow.isEmpty());
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
     flow.feedSlice("more\x1b[1B");
     flow.reset();
     try std.testing.expect(flow.isEmpty());
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
 }
 
 test "zero-dim: rows=0, cols=8: cursor moves saturate, text/erase are safe no-ops" {
@@ -1774,7 +1775,7 @@ test "feed/apply: snapshot parity across direct apply flow" {
     defer screen.deinit(gpa);
 
     flow.feedSlice(test_bytes);
-    flow.applyToScreen(&screen);
+    dispatch.applyToScreen(&flow, &screen);
 
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();

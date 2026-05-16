@@ -1,12 +1,12 @@
 //! Parser-event to semantic-event mapping tests.
 
 const std = @import("std");
-const interpret = @import("../interpret.zig");
+const action = @import("../action.zig");
 
-const Interpret = interpret;
-const Event = Interpret.Event;
-const SemanticEvent = Interpret.SemanticEvent;
-const process = Interpret.process;
+const Action = action;
+const Event = Action.Event;
+const SemanticEvent = Action.SemanticEvent;
+const process = Action.process;
 fn makeStyleChange(final: u8, p0: i32, p1: i32, count: u8) Event {
     var params = [_]i32{0} ** 16;
     params[0] = p0;

@@ -1,6 +1,6 @@
 //! Plain CSI semantic event mapping.
 
-const events = @import("../event.zig");
+const events = @import("../../action/vocabulary.zig");
 const params_mod = @import("params.zig");
 
 const SemanticEvent = events.SemanticEvent;

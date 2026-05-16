@@ -1,8 +1,8 @@
 //! Screen-action dispatch to grid mutations.
 
-const interpret = @import("../interpret.zig");
+const action = @import("../action.zig");
 
-const ScreenAction = interpret.ScreenAction;
+const ScreenAction = action.ScreenAction;
 
 pub fn applyScreen(self: anytype, event: ScreenAction) void {
     switch (event) {

@@ -1,15 +1,15 @@
-//! Kitty semantic event payload parsing.
+//! Kitty protocol payload parsing.
 
 const std = @import("std");
-const events = @import("../event.zig");
+const vocabulary = @import("../action/vocabulary.zig");
 
-pub fn parseGraphics(data: []const u8) ?events.KittyGraphicsCommand {
+pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
     if (data.len == 0 or data[0] != 'G') return null;
     const body = data[1..];
     const separator = std.mem.indexOfScalar(u8, body, ';') orelse body.len;
     const control = body[0..separator];
     const payload = if (separator < body.len) body[separator + 1 ..] else "";
-    var cmd = events.KittyGraphicsCommand{
+    var cmd = vocabulary.KittyGraphicsCommand{
         .action = 't',
         .image_id = 0,
         .image_number = 0,
@@ -63,7 +63,7 @@ pub fn parseGraphics(data: []const u8) ?events.KittyGraphicsCommand {
     return cmd;
 }
 
-pub fn parseShellMark(payload: []const u8) ?events.KittyShellMark {
+pub fn parseShellMark(payload: []const u8) ?vocabulary.KittyShellMark {
     if (payload.len == 0) return null;
     const separator = std.mem.indexOfScalar(u8, payload, ';') orelse payload.len;
     const kind = payload[0];
@@ -72,7 +72,7 @@ pub fn parseShellMark(payload: []const u8) ?events.KittyShellMark {
     return .{ .kind = kind, .status = status, .metadata = metadata };
 }
 
-pub fn parseNotification(payload: []const u8) ?events.KittyNotificationCommand {
+pub fn parseNotification(payload: []const u8) ?vocabulary.KittyNotificationCommand {
     const separator = std.mem.indexOfScalar(u8, payload, ';') orelse return null;
     return .{
         .metadata = payload[0..separator],
@@ -80,7 +80,7 @@ pub fn parseNotification(payload: []const u8) ?events.KittyNotificationCommand {
     };
 }
 
-pub fn parsePointerShape(payload: []const u8) events.KittyPointerShapeCommand {
+pub fn parsePointerShape(payload: []const u8) vocabulary.KittyPointerShapeCommand {
     if (payload.len == 0) return .{ .action = '=', .names = "" };
     const action = switch (payload[0]) {
         '=', '>', '<', '?' => payload[0],

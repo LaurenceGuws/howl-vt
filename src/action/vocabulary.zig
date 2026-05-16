@@ -1,4 +1,4 @@
-//! Semantic terminal events and owner-action payloads.
+//! Terminal action vocabulary and payload types.
 
 pub const KittyGraphicsCommand = struct {
     action: u8,
@@ -310,10 +310,7 @@ pub const ScreenAction = union(enum) {
     delete_chars: u16,
     scroll_up_lines: u16,
     scroll_down_lines: u16,
-    set_scroll_region: struct {
-        top: u16,
-        bottom: ?u16,
-    },
+    set_scroll_region: struct { top: u16, bottom: ?u16 },
     reset_screen,
     erase_display: u2,
     erase_line: u2,

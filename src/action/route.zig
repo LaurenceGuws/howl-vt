@@ -1,14 +1,13 @@
 //! Parser event to semantic event mapping.
 
-const events = @import("../event.zig");
-const apc = @import("apc.zig");
-const parsed_events = @import("../parsed_events.zig");
-const c0 = @import("c0.zig");
-const csi = @import("csi.zig");
-const dcs = @import("dcs.zig");
-const esc = @import("esc.zig");
-const kitty = @import("kitty.zig");
-const osc = @import("osc.zig");
+const events = @import("vocabulary.zig");
+const apc = @import("../kitty/apc.zig");
+const parsed_events = @import("../parser/events.zig");
+const c0 = @import("../xterm/c0.zig");
+const csi = @import("../xterm/csi.zig");
+const dcs = @import("../xterm/dcs.zig");
+const esc = @import("../xterm/esc.zig");
+const osc = @import("../xterm/osc.zig");
 
 /// Parsed-event alias for action mapping.
 const Event = parsed_events.Event;

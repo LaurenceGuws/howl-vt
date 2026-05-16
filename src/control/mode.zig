@@ -1,13 +1,35 @@
 //! Terminal mode state and save/restore.
 
 const input_mod = @import("../input.zig");
-const interpret = @import("../interpret.zig");
+const action_mod = @import("../action.zig");
 
 const Input = input_mod;
-const ModeAction = interpret.ModeAction;
+const ModeAction = action_mod.ModeAction;
 
-pub fn apply(vt: anytype, action: ModeAction) void {
-    switch (action) {
+pub const State = struct {
+    keyboard_action_mode: bool = false,
+    application_cursor_keys: bool = false,
+    application_keypad: bool = false,
+    send_receive_mode: bool = false,
+    newline_mode: bool = false,
+    modify_other_keys: i8 = 0,
+    key_format: [8]u16 = [_]u16{0} ** 8,
+    focus_reporting: bool = false,
+    bracketed_paste: bool = false,
+    synchronized_output: bool = false,
+    kitty_clipboard: bool = false,
+    sixel_display_mode: bool = false,
+    reverse_wraparound_mode: bool = false,
+    extended_reverse_wraparound_mode: bool = false,
+    mouse_tracking: Input.MouseTrackingMode = .off,
+    mouse_protocol: Input.MouseProtocol = .none,
+    pointer_mode: u2 = 1,
+    saved_dec_modes: [16]SavedDecMode = [_]SavedDecMode{.{ .mode = 0, .state = 0 }} ** 16,
+    saved_dec_mode_count: u8 = 0,
+};
+
+pub fn apply(vt: anytype, mode_action: ModeAction) void {
+    switch (mode_action) {
         .enter_alt_screen => |opts| enterAltScreen(vt, opts.clear, opts.save_cursor),
         .exit_alt_screen => |opts| exitAltScreen(vt, opts.restore_cursor),
         .application_cursor_keys => |enabled| vt.modes.application_cursor_keys = enabled,

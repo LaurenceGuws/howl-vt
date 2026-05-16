@@ -1,12 +1,9 @@
 //! Parser feed, parsed-event queue, and screen apply flow.
 
 const std = @import("std");
-const grid_mod = @import("../grid.zig");
 const parser_mod = @import("../parser.zig");
-const parsed_events_mod = @import("parsed_events.zig");
-const action_map = @import("actions/map.zig");
+const parsed_events_mod = @import("events.zig");
 
-const Grid = grid_mod.Grid;
 const ParserApi = parser_mod.Parser;
 
 const Event = parsed_events_mod.Event;
@@ -68,29 +65,4 @@ pub const ApplyFlow = struct {
         return self.parser.deccirCharsetState();
     }
 
-    pub fn applyToScreen(self: *ApplyFlow, screen: *Grid) void {
-        for (self.parsed_events.events.items) |ev| {
-            if (action_map.process(ev)) |sem_ev| {
-                if (action_map.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
-            }
-        }
-        self.parsed_events.clear();
-    }
-
-    pub fn applyToScreenLimit(self: *ApplyFlow, screen: *Grid, max_events: usize) usize {
-        if (max_events == 0) return 0;
-        const count = @min(max_events, self.parsed_events.events.items.len);
-        for (self.parsed_events.events.items[0..count]) |ev| {
-            if (action_map.process(ev)) |sem_ev| {
-                if (action_map.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
-            }
-        }
-        self.parsed_events.dropPrefix(count);
-        return count;
-    }
 };
-
-fn feed(flow: *ApplyFlow, screen: *Grid, bytes: []const u8) void {
-    flow.feedSlice(bytes);
-    flow.applyToScreen(screen);
-}

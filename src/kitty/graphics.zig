@@ -1,9 +1,9 @@
 //! Kitty graphics protocol state and command execution.
 
 const std = @import("std");
-const interpret = @import("../interpret.zig");
+const vocabulary = @import("../action/vocabulary.zig");
 
-const KittyGraphicsCommand = interpret.KittyGraphicsCommand;
+const KittyGraphicsCommand = vocabulary.KittyGraphicsCommand;
 
 pub const RenderCursorView = struct {
     row: u16,

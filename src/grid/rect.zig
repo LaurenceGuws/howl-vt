@@ -1,10 +1,10 @@
 //! Rectangular grid mutations.
 
-const interpret = @import("../interpret.zig");
+const action = @import("../action.zig");
 const style_mod = @import("style.zig");
 const cell = @import("cell.zig");
 
-const SemanticEvent = interpret.SemanticEvent;
+const SemanticEvent = action.SemanticEvent;
 const Cell = cell.Cell;
 
 pub fn changeAttrs(self: anytype, area: SemanticEvent.RectArea, attrs: []const u16, reverse: bool) void {

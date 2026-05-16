@@ -7,7 +7,7 @@ pub const C0Action = enum {
     horizontal_tab,
 };
 
-const events = @import("../event.zig");
+const events = @import("../action/vocabulary.zig");
 const SemanticEvent = events.SemanticEvent;
 
 pub fn action(control: u8) ?C0Action {
