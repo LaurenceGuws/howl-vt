@@ -171,13 +171,7 @@ pub const Parser = struct {
         const current_state = self.state;
         const sos_kind = if (current_state == .sos_pm_apc_string) self.sosPmApcKind() else null;
 
-        if (byte == 0x9C) {
-            self.finishActiveSt(current_state, sos_kind);
-            defer self.state = .ground;
-            return self.buildPhases(current_state, .ground, null, byte, sos_kind);
-        }
-
-        if (byte != 0x1B and !self.activeEscaping(current_state, sos_kind) and (transition.state != current_state or transition.action != .none)) {
+        if (byte != 0x1B and byte != 0x9C and !self.activeEscaping(current_state, sos_kind) and (transition.state != current_state or transition.action != .none)) {
             const transition_action = self.doAction(transition.action, byte);
             defer self.state = transition.state;
             return self.buildPhases(current_state, transition.state, transition_action, byte, null);
@@ -199,19 +193,6 @@ pub const Parser = struct {
             },
             else => false,
         };
-    }
-
-    fn finishActiveSt(self: *Parser, current_state: ParseState, sos_kind: ?BufferedControlKind) void {
-        switch (current_state) {
-            .osc_string => self.osc.finishSt(),
-            .dcs_passthrough => self.dcs.finishSt(),
-            .sos_pm_apc_string => switch (sos_kind.?) {
-                .apc => self.apc.finishSt(),
-                .pm => self.pm.finishSt(),
-                .dcs => unreachable,
-            },
-            else => unreachable,
-        }
     }
 
     fn feedActiveByte(self: *Parser, current_state: ParseState, sos_kind: ?BufferedControlKind, byte: u8) struct { ParseState, ?Action } {
