@@ -170,20 +170,7 @@ pub const Parser = struct {
     fn nextActive(self: *Parser, byte: u8, transition: parse_table.Transition) PhaseActions {
         const current_state = self.state;
         const sos_kind = if (current_state == .sos_pm_apc_string) self.sosPmApcKind() else null;
-
-        if (byte != 0x1B and byte != 0x9C and !self.activeEscaping(current_state, sos_kind) and (transition.state != current_state or transition.action != .none)) {
-            const transition_action = self.doAction(transition.action, byte);
-            defer self.state = transition.state;
-            return self.buildPhases(current_state, transition.state, transition_action, byte, null);
-        }
-
-        const next_state, const action = self.feedActiveByte(current_state, sos_kind, byte);
-        defer self.state = next_state;
-        return self.buildPhases(current_state, next_state, action, byte, sos_kind);
-    }
-
-    fn activeEscaping(self: *const Parser, current_state: ParseState, sos_kind: ?BufferedControlKind) bool {
-        return switch (current_state) {
+        const finishing_escape = byte == '\\' and switch (current_state) {
             .osc_string => self.osc.escaping(),
             .dcs_passthrough => self.dcs.escaping(),
             .sos_pm_apc_string => switch (sos_kind.?) {
@@ -193,6 +180,16 @@ pub const Parser = struct {
             },
             else => false,
         };
+
+        if (byte != 0x1B and byte != 0x9C and !finishing_escape and (transition.state != current_state or transition.action != .none)) {
+            const transition_action = self.doAction(transition.action, byte);
+            defer self.state = transition.state;
+            return self.buildPhases(current_state, transition.state, transition_action, byte, null);
+        }
+
+        const next_state, const action = self.feedActiveByte(current_state, sos_kind, byte);
+        defer self.state = next_state;
+        return self.buildPhases(current_state, next_state, action, byte, sos_kind);
     }
 
     fn feedActiveByte(self: *Parser, current_state: ParseState, sos_kind: ?BufferedControlKind, byte: u8) struct { ParseState, ?Action } {
