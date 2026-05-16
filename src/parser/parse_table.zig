@@ -27,6 +27,7 @@ pub const TransitionAction = enum {
     ignore,
     esc_dispatch,
     csi_dispatch,
+    put,
     param,
 };
 
@@ -197,10 +198,10 @@ fn genTable() Table {
     // dcs_passthrough
     {
         const source = ParseState.dcs_passthrough;
-        range(&result, 0x00, 0x17, source, source, .none);
-        single(&result, 0x19, source, source, .none);
-        range(&result, 0x1C, 0x1F, source, source, .none);
-        range(&result, 0x20, 0xFF, source, source, .none);
+        range(&result, 0x00, 0x17, source, source, .put);
+        single(&result, 0x19, source, source, .put);
+        range(&result, 0x1C, 0x1F, source, source, .put);
+        range(&result, 0x20, 0x7E, source, source, .put);
         single(&result, 0x7F, source, source, .ignore);
     }
 

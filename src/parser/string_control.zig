@@ -54,6 +54,10 @@ pub const StringControl = struct {
         return self.state != .idle;
     }
 
+    pub fn escaping(self: *const StringControl) bool {
+        return self.state == .esc;
+    }
+
     pub fn data(self: *const StringControl) []const u8 {
         return self.buffer.items;
     }

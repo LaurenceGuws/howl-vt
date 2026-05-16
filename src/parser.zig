@@ -168,7 +168,8 @@ pub const Parser = struct {
 
         const transition = parse_table.table[byte][@intFromEnum(self.state)];
         if (self.isActiveState()) {
-            if (byte != 0x1B and (transition.state != self.state or transition.action != .none)) {
+            const dcs_escaping = self.state == .dcs_passthrough and self.dcs.escaping();
+            if (byte != 0x1B and !dcs_escaping and (transition.state != self.state or transition.action != .none)) {
                 const transition_action = self.doAction(transition.action, byte);
                 const next_state = transition.state;
                 const current_state = self.state;
@@ -196,14 +197,14 @@ pub const Parser = struct {
                     break :osc .{ .action = @as(?Action, null), .next_state = ParseState.osc_string };
                 },
                 .dcs_passthrough => dcs: {
-                    if (byte == 0x7F) break :dcs .{ .action = @as(?Action, null), .next_state = ParseState.dcs_passthrough };
-                    if (self.dcs.feed(byte)) |result| {
-                        break :dcs switch (result) {
-                            .put => |payload_byte| .{ .action = .{ .dcs_put = payload_byte }, .next_state = ParseState.dcs_passthrough },
-                            .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
-                        };
-                    }
-                    break :dcs .{ .action = @as(?Action, null), .next_state = ParseState.dcs_passthrough };
+                    const result = self.dcs.feed(byte) orelse break :dcs .{
+                        .action = @as(?Action, null),
+                        .next_state = ParseState.dcs_passthrough,
+                    };
+                    break :dcs switch (result) {
+                        .put => |payload_byte| .{ .action = .{ .dcs_put = payload_byte }, .next_state = ParseState.dcs_passthrough },
+                        .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
+                    };
                 },
                 .sos_pm_apc_string => switch (self.sosPmApcKind()) {
                     .apc => apc: {
@@ -366,6 +367,13 @@ pub const Parser = struct {
                 break :esc_dispatch esc;
             },
             .csi_dispatch => self.consumeCsiDispatch(byte),
+            .put => put: {
+                const result = self.dcs.feed(byte) orelse break :put null;
+                break :put switch (result) {
+                    .put => |payload_byte| .{ .dcs_put = payload_byte },
+                    .finish => unreachable,
+                };
+            },
             .param => switch (self.state) {
                 .csi_entry, .csi_param => csi: {
                     self.feedParamByte(.csi, byte);
