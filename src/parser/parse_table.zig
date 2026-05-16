@@ -300,10 +300,6 @@ fn range(t: *OptionalTable, from: u8, to: u8, s0: ParseState, s1: ParseState, a:
     }
 }
 
-fn set(t: *OptionalTable, c: u8, s0: ParseState, s1: ParseState, a: TransitionAction) void {
-    single(t, c, s0, s1, a);
-}
-
 fn transition(state: ParseState, action: TransitionAction) Transition {
     return .{ .state = state, .action = action };
 }

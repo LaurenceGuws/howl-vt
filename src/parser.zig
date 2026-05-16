@@ -523,22 +523,4 @@ pub const Parser = struct {
         return .{ .csi_dispatch = action };
     }
 
-    fn consumeCsiByte(self: *Parser, byte: u8) ?Action {
-        if (byte == '<' or byte == '>' or byte == '=' or byte == '?') {
-            if (self.csi_leader == 0) self.csi_leader = byte;
-            if (byte == '?') self.csi_private = true;
-            return null;
-        }
-
-        if (byte == ';' or byte == ':' or (byte >= '0' and byte <= '9')) {
-            self.feedParamByte(.csi, byte);
-            return null;
-        }
-
-        if (byte >= 0x20 and byte <= 0x2F) {
-            self.collectIntermediate(byte);
-        }
-
-        return null;
-    }
 };
