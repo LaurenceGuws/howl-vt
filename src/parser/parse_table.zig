@@ -29,7 +29,7 @@ pub const TransitionAction = enum {
     csi_dispatch,
     osc_put,
     put,
-    buffered_put,
+    apc_put,
     param,
 };
 
@@ -114,10 +114,10 @@ fn genTable() Table {
     // sos_pm_apc_string
     {
         const source = ParseState.sos_pm_apc_string;
-        range(&result, 0x00, 0x17, source, source, .buffered_put);
-        single(&result, 0x19, source, source, .buffered_put);
-        range(&result, 0x1C, 0x1F, source, source, .buffered_put);
-        range(&result, 0x20, 0x7F, source, source, .buffered_put);
+        range(&result, 0x00, 0x17, source, source, .apc_put);
+        single(&result, 0x19, source, source, .apc_put);
+        range(&result, 0x1C, 0x1F, source, source, .apc_put);
+        range(&result, 0x20, 0x7F, source, source, .apc_put);
     }
 
     // escape

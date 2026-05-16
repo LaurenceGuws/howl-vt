@@ -393,8 +393,8 @@ pub const Parser = struct {
                     .finish => unreachable,
                 };
             },
-            .buffered_put => buffered_put: {
-                break :buffered_put switch (self.sosPmApcKind()) {
+            .apc_put => apc_put: {
+                break :apc_put switch (self.sosPmApcKind()) {
                     .apc => apc: {
                         const result = self.apc.feed(byte) orelse break :apc null;
                         break :apc switch (result) {
