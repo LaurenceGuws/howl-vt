@@ -155,11 +155,6 @@ pub const Parser = struct {
     /// Advance the parser by one byte and return ordered phase actions.
     pub fn next(self: *Parser, byte: u8) PhaseActions {
         self.cleanupBorrowedPhaseState();
-        const Active = struct {
-            action: ?Action = null,
-            next_state: ParseState,
-        };
-
         std.debug.assert(self.activeControlCount() <= 1);
         if (self.state == .ground and self.utf8.needed > 0) {
             const action = self.consumeGroundByte(byte);
@@ -168,103 +163,7 @@ pub const Parser = struct {
 
         const transition = parse_table.table[byte][@intFromEnum(self.state)];
         if (self.isActiveState()) {
-            if (byte == 0x9C) {
-                const current_state = self.state;
-                const sos_kind = if (current_state == .sos_pm_apc_string) self.sosPmApcKind() else null;
-                defer self.state = .ground;
-
-                switch (current_state) {
-                    .osc_string => {
-                        self.osc.finishSt();
-                        self.osc_finish_term = .st;
-                    },
-                    .dcs_passthrough => self.dcs.finishSt(),
-                    .sos_pm_apc_string => switch (sos_kind.?) {
-                        .apc => self.apc.finishSt(),
-                        .pm => self.pm.finishSt(),
-                        .dcs => unreachable,
-                    },
-                    else => unreachable,
-                }
-
-                return self.buildPhases(current_state, .ground, null, byte, sos_kind);
-            }
-
-            const active_escaping = switch (self.state) {
-                .osc_string => self.osc.escaping(),
-                .dcs_passthrough => self.dcs.escaping(),
-                .sos_pm_apc_string => switch (self.sosPmApcKind()) {
-                    .apc => self.apc.escaping(),
-                    .pm => self.pm.escaping(),
-                    .dcs => unreachable,
-                },
-                else => false,
-            };
-            if (byte != 0x1B and !active_escaping and (transition.state != self.state or transition.action != .none)) {
-                const transition_action = self.doAction(transition.action, byte);
-                const next_state = transition.state;
-                const current_state = self.state;
-                defer self.state = next_state;
-
-                return self.buildPhases(current_state, next_state, transition_action, byte, null);
-            }
-
-            const current_state = self.state;
-            const sos_kind = if (current_state == .sos_pm_apc_string) self.sosPmApcKind() else null;
-            const active: Active = switch (self.state) {
-                .osc_string => osc: {
-                    const result = self.osc.feed(byte) orelse break :osc .{
-                        .action = @as(?Action, null),
-                        .next_state = ParseState.osc_string,
-                    };
-                    break :osc switch (result) {
-                        .put => .{ .action = @as(?Action, null), .next_state = ParseState.osc_string },
-                        .finish => |finish| {
-                            self.osc_finish_term = switch (finish) {
-                                .bel => .bel,
-                                .st => .st,
-                            };
-                            break :osc .{ .action = @as(?Action, null), .next_state = ParseState.ground };
-                        },
-                    };
-                },
-                .dcs_passthrough => dcs: {
-                    const result = self.dcs.feed(byte) orelse break :dcs .{
-                        .action = @as(?Action, null),
-                        .next_state = ParseState.dcs_passthrough,
-                    };
-                    break :dcs switch (result) {
-                        .put => |payload_byte| .{ .action = .{ .dcs_put = payload_byte }, .next_state = ParseState.dcs_passthrough },
-                        .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
-                    };
-                },
-                .sos_pm_apc_string => switch (self.sosPmApcKind()) {
-                    .apc => apc: {
-                        const result = self.apc.feed(byte) orelse break :apc .{
-                            .action = @as(?Action, null),
-                            .next_state = ParseState.sos_pm_apc_string,
-                        };
-                        break :apc switch (result) {
-                            .put => |payload_byte| .{ .action = .{ .apc_put = payload_byte }, .next_state = ParseState.sos_pm_apc_string },
-                            .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
-                        };
-                    },
-                    .pm => pm: {
-                        const result = self.pm.feed(byte) orelse break :pm .{
-                            .action = @as(?Action, null),
-                            .next_state = ParseState.sos_pm_apc_string,
-                        };
-                        break :pm switch (result) {
-                            .put => |payload_byte| .{ .action = .{ .pm_put = payload_byte }, .next_state = ParseState.sos_pm_apc_string },
-                            .finish => .{ .action = @as(?Action, null), .next_state = ParseState.ground },
-                        };
-                    },
-                    .dcs => unreachable,
-                },
-                else => unreachable,
-            };
-            defer self.state = active.next_state;
-            return self.buildPhases(current_state, active.next_state, active.action, byte, sos_kind);
+            return self.nextActive(byte, transition);
         }
 
         const transition_action = self.doAction(transition.action, byte);
@@ -273,6 +172,99 @@ pub const Parser = struct {
         defer self.state = next_state;
 
         return self.buildPhases(current_state, next_state, transition_action, byte, null);
+    }
+
+    fn nextActive(self: *Parser, byte: u8, transition: parse_table.Transition) PhaseActions {
+        const current_state = self.state;
+        const sos_kind = if (current_state == .sos_pm_apc_string) self.sosPmApcKind() else null;
+
+        if (byte == 0x9C) {
+            self.finishActiveSt(current_state, sos_kind);
+            defer self.state = .ground;
+            return self.buildPhases(current_state, .ground, null, byte, sos_kind);
+        }
+
+        if (byte != 0x1B and !self.activeEscaping(current_state, sos_kind) and (transition.state != current_state or transition.action != .none)) {
+            const transition_action = self.doAction(transition.action, byte);
+            defer self.state = transition.state;
+            return self.buildPhases(current_state, transition.state, transition_action, byte, null);
+        }
+
+        const next_state, const action = self.feedActiveByte(current_state, sos_kind, byte);
+        defer self.state = next_state;
+        return self.buildPhases(current_state, next_state, action, byte, sos_kind);
+    }
+
+    fn activeEscaping(self: *const Parser, current_state: ParseState, sos_kind: ?BufferedControlKind) bool {
+        return switch (current_state) {
+            .osc_string => self.osc.escaping(),
+            .dcs_passthrough => self.dcs.escaping(),
+            .sos_pm_apc_string => switch (sos_kind.?) {
+                .apc => self.apc.escaping(),
+                .pm => self.pm.escaping(),
+                .dcs => unreachable,
+            },
+            else => false,
+        };
+    }
+
+    fn finishActiveSt(self: *Parser, current_state: ParseState, sos_kind: ?BufferedControlKind) void {
+        switch (current_state) {
+            .osc_string => {
+                self.osc.finishSt();
+                self.osc_finish_term = .st;
+            },
+            .dcs_passthrough => self.dcs.finishSt(),
+            .sos_pm_apc_string => switch (sos_kind.?) {
+                .apc => self.apc.finishSt(),
+                .pm => self.pm.finishSt(),
+                .dcs => unreachable,
+            },
+            else => unreachable,
+        }
+    }
+
+    fn feedActiveByte(self: *Parser, current_state: ParseState, sos_kind: ?BufferedControlKind, byte: u8) struct { ParseState, ?Action } {
+        return switch (current_state) {
+            .osc_string => osc: {
+                const result = self.osc.feed(byte) orelse break :osc .{ .osc_string, null };
+                break :osc switch (result) {
+                    .put => .{ .osc_string, null },
+                    .finish => |finish| done: {
+                        self.osc_finish_term = switch (finish) {
+                            .bel => .bel,
+                            .st => .st,
+                        };
+                        break :done .{ .ground, null };
+                    },
+                };
+            },
+            .dcs_passthrough => dcs: {
+                const result = self.dcs.feed(byte) orelse break :dcs .{ .dcs_passthrough, null };
+                break :dcs switch (result) {
+                    .put => |payload_byte| .{ .dcs_passthrough, .{ .dcs_put = payload_byte } },
+                    .finish => .{ .ground, null },
+                };
+            },
+            .sos_pm_apc_string => switch (sos_kind.?) {
+                .apc => apc: {
+                    const result = self.apc.feed(byte) orelse break :apc .{ .sos_pm_apc_string, null };
+                    break :apc switch (result) {
+                        .put => |payload_byte| .{ .sos_pm_apc_string, .{ .apc_put = payload_byte } },
+                        .finish => .{ .ground, null },
+                    };
+                },
+                .pm => pm: {
+                    const result = self.pm.feed(byte) orelse break :pm .{ .sos_pm_apc_string, null };
+                    break :pm switch (result) {
+                        .put => |payload_byte| .{ .sos_pm_apc_string, .{ .pm_put = payload_byte } },
+                        .finish => .{ .ground, null },
+                    };
+                },
+                .dcs => unreachable,
+            },
+            else => unreachable,
+        };
     }
 
     fn collect(self: *Parser, byte: u8) void {
