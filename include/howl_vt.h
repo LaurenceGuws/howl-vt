@@ -134,12 +134,33 @@ typedef struct {
   uint64_t needed;
 } HowlVtDirtyView;
 
+typedef struct {
+  int32_t status;
+  uint16_t rows;
+  uint16_t cols;
+  uint16_t cursor_row;
+  uint16_t cursor_col;
+  uint8_t cursor_visible;
+  uint8_t cursor_shape;
+  uint8_t is_alternate_screen;
+  uint8_t reserved0;
+  uint64_t history_count;
+  uint64_t scrollback_offset;
+  uint64_t start;
+  uint64_t cell_count;
+  uint16_t dirty_start_row;
+  uint16_t dirty_end_row;
+  uint32_t reserved1;
+  uint64_t dirty_needed;
+} HowlVtSurfaceView;
+
 HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t history_capacity);
 void howl_vt_terminal_deinit(HowlVtHandle handle);
 int32_t howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
 HowlVtApplyResult howl_vt_terminal_apply(HowlVtHandle handle, size_t max_events, uint8_t *title_ptr, size_t title_cap);
 int32_t howl_vt_terminal_resize(HowlVtHandle handle, uint16_t rows, uint16_t cols);
 void howl_vt_terminal_clear_dirty_rows(HowlVtHandle handle);
+HowlVtSurfaceView howl_vt_terminal_copy_surface(HowlVtHandle handle, size_t scrollback_offset, HowlVtCell *cells_ptr, size_t cells_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 HowlVtVisibleView howl_vt_terminal_copy_visible(HowlVtHandle handle, size_t scrollback_offset, HowlVtCell *cells_ptr, size_t cells_cap);
 HowlVtDirtyView howl_vt_terminal_copy_dirty(HowlVtHandle handle, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 HowlVtBytesResult howl_vt_terminal_copy_pending_output(HowlVtHandle handle, uint8_t *ptr, size_t cap);

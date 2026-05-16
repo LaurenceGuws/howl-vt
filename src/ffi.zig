@@ -81,6 +81,26 @@ pub const FfiDirtyView = extern struct {
     needed: u64 = 0,
 };
 
+pub const FfiSurfaceView = extern struct {
+    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
+    rows: u16 = 0,
+    cols: u16 = 0,
+    cursor_row: u16 = 0,
+    cursor_col: u16 = 0,
+    cursor_visible: u8 = 0,
+    cursor_shape: u8 = 0,
+    is_alternate_screen: u8 = 0,
+    reserved0: u8 = 0,
+    history_count: u64 = 0,
+    scrollback_offset: u64 = 0,
+    start: u64 = 0,
+    cell_count: u64 = 0,
+    dirty_start_row: u16 = 0,
+    dirty_end_row: u16 = 0,
+    reserved1: u32 = 0,
+    dirty_needed: u64 = 0,
+};
+
 fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
 }
@@ -129,6 +149,26 @@ fn cellOut(value: screen.Screen.Cell) FfiCell {
 
 fn cursorShapeByte(shape: screen.Screen.CursorShape) u8 {
     return @intFromEnum(shape);
+}
+
+fn surfaceViewOut(status: HowlVtCallStatus, view: screen_set.View, cell_count: usize, dirty: ?screen.Screen.DirtyRows) FfiSurfaceView {
+    return .{
+        .status = @intFromEnum(status),
+        .rows = view.rows,
+        .cols = view.cols,
+        .cursor_row = view.cursor_row,
+        .cursor_col = view.cursor_col,
+        .cursor_visible = boolByte(view.cursor_visible),
+        .cursor_shape = cursorShapeByte(view.cursor_shape),
+        .is_alternate_screen = boolByte(view.is_alternate_screen),
+        .history_count = view.history_count,
+        .scrollback_offset = view.scrollback_offset,
+        .start = view.start,
+        .cell_count = cell_count,
+        .dirty_start_row = if (dirty) |value| value.start_row else 0,
+        .dirty_end_row = if (dirty) |value| value.end_row else 0,
+        .dirty_needed = if (dirty) |value| @as(usize, value.end_row) - @as(usize, value.start_row) + 1 else 0,
+    };
 }
 
 fn mouseKindIn(kind: u8) ?input.MouseEventKind {
@@ -252,6 +292,43 @@ pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
 pub fn terminalClearDirtyRows(handle: VtHandle) callconv(.c) void {
     const owned = vtFromHandle(handle) orelse return;
     screen_set.clearDirtyRows(&owned.screen_state);
+}
+
+pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiCell, cells_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiSurfaceView {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const view = screen_set.visibleView(&owned.screen_state, .{ .scrollback_offset = scrollback_offset });
+    const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
+    const dirty = screen_set.peekDirtyRows(&owned.screen_state);
+    const dirty_needed: usize = if (dirty) |value| @as(usize, value.end_row) - @as(usize, value.start_row) + 1 else 0;
+    const base = surfaceViewOut(.ok, view, cell_count, dirty);
+
+    if (cells_cap < cell_count or cols_start_cap < dirty_needed or cols_end_cap < dirty_needed) {
+        var result = base;
+        result.status = @intFromEnum(HowlVtCallStatus.short_buffer);
+        return result;
+    }
+
+    const cells_out = if (cells_ptr) |ptr| ptr[0..cells_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const cols_start = if (dirty_needed == 0) &[_]u16{} else if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const cols_end = if (dirty_needed == 0) &[_]u16{} else if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+
+    var row: u16 = 0;
+    while (row < view.rows) : (row += 1) {
+        var col: u16 = 0;
+        while (col < view.cols) : (col += 1) {
+            const idx = @as(usize, row) * @as(usize, view.cols) + @as(usize, col);
+            cells_out[idx] = cellOut(view.cellInfoAt(row, col));
+        }
+    }
+
+    if (dirty) |value| {
+        const start_idx: usize = value.start_row;
+        const end_idx: usize = value.end_row + 1;
+        @memcpy(cols_start[0..dirty_needed], value.dirty_cols_start[start_idx..end_idx]);
+        @memcpy(cols_end[0..dirty_needed], value.dirty_cols_end[start_idx..end_idx]);
+    }
+
+    return base;
 }
 
 pub fn terminalCopyVisible(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiCell, cells_cap: usize) callconv(.c) FfiVisibleView {

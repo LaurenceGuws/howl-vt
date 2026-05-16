@@ -8,6 +8,7 @@ comptime {
     @export(&ffi.terminalApply, .{ .name = "howl_vt_terminal_apply" });
     @export(&ffi.terminalResize, .{ .name = "howl_vt_terminal_resize" });
     @export(&ffi.terminalClearDirtyRows, .{ .name = "howl_vt_terminal_clear_dirty_rows" });
+    @export(&ffi.terminalCopySurface, .{ .name = "howl_vt_terminal_copy_surface" });
     @export(&ffi.terminalCopyVisible, .{ .name = "howl_vt_terminal_copy_visible" });
     @export(&ffi.terminalCopyDirty, .{ .name = "howl_vt_terminal_copy_dirty" });
     @export(&ffi.terminalCopyPendingOutput, .{ .name = "howl_vt_terminal_copy_pending_output" });
