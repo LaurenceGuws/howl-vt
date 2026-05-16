@@ -168,6 +168,28 @@ pub const Parser = struct {
 
         const transition = parse_table.table[byte][@intFromEnum(self.state)];
         if (self.isActiveState()) {
+            if (byte == 0x9C) {
+                const current_state = self.state;
+                const sos_kind = if (current_state == .sos_pm_apc_string) self.sosPmApcKind() else null;
+                defer self.state = .ground;
+
+                switch (current_state) {
+                    .osc_string => {
+                        self.osc.finishSt();
+                        self.osc_finish_term = .st;
+                    },
+                    .dcs_passthrough => self.dcs.finishSt(),
+                    .sos_pm_apc_string => switch (sos_kind.?) {
+                        .apc => self.apc.finishSt(),
+                        .pm => self.pm.finishSt(),
+                        .dcs => unreachable,
+                    },
+                    else => unreachable,
+                }
+
+                return self.buildPhases(current_state, .ground, null, byte, sos_kind);
+            }
+
             const active_escaping = switch (self.state) {
                 .osc_string => self.osc.escaping(),
                 .dcs_passthrough => self.dcs.escaping(),

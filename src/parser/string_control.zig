@@ -66,6 +66,11 @@ pub const StringControl = struct {
         self.buffer.clearRetainingCapacity();
     }
 
+    pub fn finishSt(self: *StringControl) void {
+        std.debug.assert(self.state != .idle);
+        self.state = .idle;
+    }
+
     pub fn feed(self: *StringControl, byte: u8) ?FeedResult {
         switch (self.state) {
             .idle => return null,
