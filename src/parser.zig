@@ -91,7 +91,6 @@ pub const Parser = struct {
     intermediates: [csi_max_intermediates]u8,
     intermediates_len: u8,
     csi_in_param: bool,
-    osc_finish_term: ?OscTerminator,
     osc: string_control_mod.StringControl,
     apc: string_control_mod.StringControl,
     dcs: string_control_mod.StringControl,
@@ -120,7 +119,6 @@ pub const Parser = struct {
             .intermediates = [_]u8{0} ** csi_max_intermediates,
             .intermediates_len = 0,
             .csi_in_param = false,
-            .osc_finish_term = null,
             .osc = osc,
             .apc = apc,
             .dcs = dcs,
@@ -141,7 +139,6 @@ pub const Parser = struct {
         self.utf8.reset();
         self.clear();
         self.state = .ground;
-        self.osc_finish_term = null;
         self.osc.reset();
         self.apc.reset();
         self.dcs.reset();
@@ -206,10 +203,7 @@ pub const Parser = struct {
 
     fn finishActiveSt(self: *Parser, current_state: ParseState, sos_kind: ?BufferedControlKind) void {
         switch (current_state) {
-            .osc_string => {
-                self.osc.finishSt();
-                self.osc_finish_term = .st;
-            },
+            .osc_string => self.osc.finishSt(),
             .dcs_passthrough => self.dcs.finishSt(),
             .sos_pm_apc_string => switch (sos_kind.?) {
                 .apc => self.apc.finishSt(),
@@ -226,13 +220,7 @@ pub const Parser = struct {
                 const result = self.osc.feed(byte) orelse break :osc .{ .osc_string, null };
                 break :osc switch (result) {
                     .put => .{ .osc_string, null },
-                    .finish => |finish| done: {
-                        self.osc_finish_term = switch (finish) {
-                            .bel => .bel,
-                            .st => .st,
-                        };
-                        break :done .{ .ground, null };
-                    },
+                    .finish => .{ .ground, null },
                 };
             },
             .dcs_passthrough => dcs: {
@@ -273,7 +261,11 @@ pub const Parser = struct {
         return .{
             if (current_state == next_state) null else switch (current_state) {
                 .osc_string => exit: {
-                    const term = self.osc_finish_term orelse break :exit null;
+                    const term = switch (byte) {
+                        0x07 => OscTerminator.bel,
+                        '\\', 0x9C => OscTerminator.st,
+                        else => break :exit null,
+                    };
                     break :exit .{ .osc_dispatch = .{ .data = self.osc.data(), .term = term } };
                 },
                 .dcs_passthrough => dcs: {
@@ -432,8 +424,7 @@ pub const Parser = struct {
     }
 
     fn cleanupBorrowedPhaseState(self: *Parser) void {
-        if (self.osc_finish_term != null and self.state != .osc_string) {
-            self.osc_finish_term = null;
+        if (self.state != .osc_string and !self.osc.active()) {
             self.osc.clearFinished();
         }
     }
