@@ -12,7 +12,6 @@ const ParamKind = enum {
     dcs,
 };
 const BufferedControlKind = enum {
-    dcs,
     apc,
     pm,
 };
@@ -175,7 +174,6 @@ pub const Parser = struct {
             .sos_pm_apc_string => switch (sos_kind.?) {
                 .apc => self.apc.escaping(),
                 .pm => self.pm.escaping(),
-                .dcs => unreachable,
             },
             else => false,
         };
@@ -222,7 +220,6 @@ pub const Parser = struct {
                         .finish => .{ .ground, null },
                     };
                 },
-                .dcs => unreachable,
             },
             else => unreachable,
         };
@@ -259,7 +256,6 @@ pub const Parser = struct {
                             self.pm.clearFinished();
                             break :pm .pm_end;
                         },
-                        .dcs => unreachable,
                     };
                 },
                 else => null,
@@ -371,7 +367,6 @@ pub const Parser = struct {
                         const payload_byte = self.bufferedPut(&self.pm, byte) orelse break :pm null;
                         break :pm .{ .pm_put = payload_byte };
                     },
-                    .dcs => unreachable,
                 };
             },
             .param => switch (self.state) {
