@@ -23,14 +23,14 @@ pub const FfiColor = extern struct {
     value: u32 = 0,
 };
 
-pub const FfiCellFlags = extern struct {
+pub const FfiSurfaceCellFlags = extern struct {
     continuation: u8 = 0,
     reserved0: u8 = 0,
     reserved1: u8 = 0,
     reserved2: u8 = 0,
 };
 
-pub const FfiCellAttrs = extern struct {
+pub const FfiSurfaceCellAttrs = extern struct {
     bold: u8 = 0,
     dim: u8 = 0,
     italic: u8 = 0,
@@ -42,9 +42,9 @@ pub const FfiCellAttrs = extern struct {
     strikethrough: u8 = 0,
 };
 
-pub const FfiCell = extern struct {
+pub const FfiSurfaceCell = extern struct {
     codepoint: u32 = 0,
-    flags: FfiCellFlags = .{},
+    flags: FfiSurfaceCellFlags = .{},
     fg_color: FfiColor = .{},
     bg_color: FfiColor = .{},
     underline_color: FfiColor = .{},
@@ -52,7 +52,7 @@ pub const FfiCell = extern struct {
     reserved0: u8 = 0,
     reserved1: u8 = 0,
     reserved2: u8 = 0,
-    attrs: FfiCellAttrs = .{},
+    attrs: FfiSurfaceCellAttrs = .{},
     link_id: u32 = 0,
 };
 
@@ -116,8 +116,8 @@ pub const FfiSurfaceView = extern struct {
     dirty_needed: u64 = 0,
 };
 
-pub const FfiCellSpan = extern struct {
-    ptr: [*c]const FfiCell,
+pub const FfiSurfaceCellSpan = extern struct {
+    ptr: [*c]const FfiSurfaceCell,
     len: usize,
 };
 
@@ -139,7 +139,7 @@ pub const FfiCursor = extern struct {
 };
 
 pub const FfiSurfaceSource = extern struct {
-    cells: FfiCellSpan,
+    surface_cells: FfiSurfaceCellSpan,
     cols: u16,
     rows: u16,
     scroll_row: u64,
@@ -158,7 +158,7 @@ pub const FfiSurfaceSourceResult = extern struct {
     scrollback_offset: u64 = 0,
     dirty_needed: u64 = 0,
     source: FfiSurfaceSource = .{
-        .cells = .{ .ptr = null, .len = 0 },
+        .surface_cells = .{ .ptr = null, .len = 0 },
         .cols = 0,
         .rows = 0,
         .scroll_row = 0,
@@ -201,7 +201,7 @@ fn colorOut(value: screen.Screen.Color) FfiColor {
     return .{ .kind = 2, .value = (@as(u32, value.r) << 16) | (@as(u32, value.g) << 8) | @as(u32, value.b) };
 }
 
-fn cellOut(value: screen.Screen.Cell) FfiCell {
+fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
     return .{
         .codepoint = value.codepoint,
         .flags = .{ .continuation = boolByte(screen.Screen.isCellContinuation(value)) },
@@ -367,7 +367,7 @@ pub fn terminalClearDirtyRows(handle: VtHandle) callconv(.c) void {
     screen_set.clearDirtyRows(&owned.screen_state);
 }
 
-pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiCell, cells_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiSurfaceView {
+pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiSurfaceView {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const view = screen_set.visibleView(&owned.screen_state, .{ .scrollback_offset = scrollback_offset });
     const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
@@ -408,7 +408,7 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: usize, cells_ptr
     return base;
 }
 
-pub fn terminalCopySurfaceSource(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize, full_damage: u8, scroll_up_rows: u16) callconv(.c) FfiSurfaceSourceResult {
+pub fn terminalCopySurfaceSource(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize, full_damage: u8, scroll_up_rows: u16) callconv(.c) FfiSurfaceSourceResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const view = screen_set.visibleView(&owned.screen_state, .{ .scrollback_offset = scrollback_offset });
     const dirty = screen_set.peekDirtyRows(&owned.screen_state);
@@ -420,7 +420,7 @@ pub fn terminalCopySurfaceSource(handle: VtHandle, scrollback_offset: usize, cel
         .scrollback_offset = view.scrollback_offset,
         .dirty_needed = dirty_needed,
         .source = .{
-            .cells = .{ .ptr = cells_ptr, .len = cell_count },
+            .surface_cells = .{ .ptr = cells_ptr, .len = cell_count },
             .cols = view.cols,
             .rows = view.rows,
             .scroll_row = view.start,
@@ -472,7 +472,7 @@ pub fn terminalCopySurfaceSource(handle: VtHandle, scrollback_offset: usize, cel
     return result;
 }
 
-pub fn terminalCopyVisible(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiCell, cells_cap: usize) callconv(.c) FfiVisibleView {
+pub fn terminalCopyVisible(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize) callconv(.c) FfiVisibleView {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const view = screen_set.visibleView(&owned.screen_state, .{ .scrollback_offset = scrollback_offset });
     const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
@@ -651,7 +651,7 @@ test "vt ffi runtime surface covers apply encode and visible copy" {
     try std.testing.expectEqual(@as(i32, 0), key.status);
     try std.testing.expectEqualStrings("\r", key_buf[0..@intCast(key.written)]);
 
-    var cells: [8]FfiCell = undefined;
+    var cells: [8]FfiSurfaceCell = undefined;
     const view = terminalCopyVisible(handle, 0, cells[0..].ptr, cells.len);
     try std.testing.expectEqual(@as(i32, 0), view.status);
     try std.testing.expectEqual(@as(u16, 2), view.rows);

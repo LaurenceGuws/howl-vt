@@ -158,7 +158,7 @@ sequenceDiagram
 - Zig root imports are not an acceptable host integration path and are not a preservation target.
 - `howl_vt_terminal_init` and `howl_vt_terminal_deinit` own opaque terminal-handle lifecycle.
 - `howl_vt_terminal_feed`, `howl_vt_terminal_apply`, and `howl_vt_terminal_resize` cover bounded parser/apply/geometry control.
-- `howl_vt_terminal_copy_surface_source` is the primary renderer-facing bulk surface seam for visible cells, cursor state, and dirtiness truth.
+- `howl_vt_terminal_copy_surface_source` is the primary renderer-facing bulk surface seam for visible surface cells, cursor state, and dirtiness truth.
 - `howl_vt_terminal_copy_surface` is the compatibility snapshot seam for hosts that still need the combined visible/damage view shape.
 - `howl_vt_terminal_copy_visible` survives as a narrower visible-state compatibility seam, not the preferred render handoff.
 - `howl_vt_terminal_copy_pending_output`, `howl_vt_terminal_clear_pending_output`, and `howl_vt_terminal_drain_pending_clipboard` cover host-facing protocol consequences.
