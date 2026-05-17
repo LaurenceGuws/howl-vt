@@ -152,26 +152,6 @@ typedef struct {
 
 typedef struct {
   int32_t status;
-  uint16_t rows;
-  uint16_t cols;
-  uint16_t cursor_row;
-  uint16_t cursor_col;
-  uint8_t cursor_visible;
-  uint8_t cursor_shape;
-  uint8_t is_alternate_screen;
-  uint8_t reserved0;
-  uint64_t history_count;
-  uint64_t scrollback_offset;
-  uint64_t start;
-  uint64_t cell_count;
-  uint16_t dirty_start_row;
-  uint16_t dirty_end_row;
-  uint32_t reserved1;
-  uint64_t dirty_needed;
-} HowlVtSurfaceView;
-
-typedef struct {
-  int32_t status;
   uint64_t history_count;
   uint64_t scrollback_offset;
   uint64_t dirty_needed;
@@ -180,7 +160,6 @@ typedef struct {
 
 int32_t howl_vt_terminal_resize(HowlVtHandle handle, uint16_t rows, uint16_t cols);
 void howl_vt_terminal_clear_dirty_rows(HowlVtHandle handle);
-HowlVtSurfaceView howl_vt_terminal_copy_surface(HowlVtHandle handle, size_t scrollback_offset, HowlVtSurfaceCell *cells_ptr, size_t cells_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 HowlVtSurfaceSourceResult howl_vt_terminal_copy_surface_source(HowlVtHandle handle, size_t scrollback_offset, HowlVtSurfaceCell *cells_ptr, size_t cells_cap, uint8_t *dirty_rows_ptr, size_t dirty_rows_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap, uint8_t full_damage, uint16_t scroll_up_rows);
 
 /* -------------------------------------------------------------------------- */
