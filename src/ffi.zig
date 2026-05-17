@@ -73,29 +73,6 @@ pub const FfiApplyResult = extern struct {
     title_needed: u64 = 0,
 };
 
-pub const FfiVisibleView = extern struct {
-    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
-    rows: u16 = 0,
-    cols: u16 = 0,
-    cursor_row: u16 = 0,
-    cursor_col: u16 = 0,
-    cursor_visible: u8 = 0,
-    cursor_shape: u8 = 0,
-    is_alternate_screen: u8 = 0,
-    reserved0: u8 = 0,
-    history_count: u64 = 0,
-    scrollback_offset: u64 = 0,
-    start: u64 = 0,
-    cell_count: u64 = 0,
-};
-
-pub const FfiDirtyView = extern struct {
-    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
-    start_row: u16 = 0,
-    end_row: u16 = 0,
-    needed: u64 = 0,
-};
-
 pub const FfiSurfaceView = extern struct {
     status: i32 = @intFromEnum(HowlVtCallStatus.failed),
     rows: u16 = 0,
@@ -472,77 +449,6 @@ pub fn terminalCopySurfaceSource(handle: VtHandle, scrollback_offset: usize, cel
     return result;
 }
 
-pub fn terminalCopyVisible(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize) callconv(.c) FfiVisibleView {
-    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const view = screen_set.visibleView(&owned.screen_state, .{ .scrollback_offset = scrollback_offset });
-    const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
-    if (cells_cap < cell_count) {
-        return .{
-            .status = @intFromEnum(HowlVtCallStatus.short_buffer),
-            .rows = view.rows,
-            .cols = view.cols,
-            .cursor_row = view.cursor_row,
-            .cursor_col = view.cursor_col,
-            .cursor_visible = boolByte(view.cursor_visible),
-            .cursor_shape = cursorShapeByte(view.cursor_shape),
-            .is_alternate_screen = boolByte(view.is_alternate_screen),
-            .history_count = view.history_count,
-            .scrollback_offset = view.scrollback_offset,
-            .start = view.start,
-            .cell_count = cell_count,
-        };
-    }
-    const cells_out = if (cells_ptr) |ptr| ptr[0..cells_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    var row: u16 = 0;
-    while (row < view.rows) : (row += 1) {
-        var col: u16 = 0;
-        while (col < view.cols) : (col += 1) {
-            const idx = @as(usize, row) * @as(usize, view.cols) + @as(usize, col);
-            cells_out[idx] = cellOut(view.cellInfoAt(row, col));
-        }
-    }
-    return .{
-        .status = @intFromEnum(HowlVtCallStatus.ok),
-        .rows = view.rows,
-        .cols = view.cols,
-        .cursor_row = view.cursor_row,
-        .cursor_col = view.cursor_col,
-        .cursor_visible = boolByte(view.cursor_visible),
-        .cursor_shape = cursorShapeByte(view.cursor_shape),
-        .is_alternate_screen = boolByte(view.is_alternate_screen),
-        .history_count = view.history_count,
-        .scrollback_offset = view.scrollback_offset,
-        .start = view.start,
-        .cell_count = cell_count,
-    };
-}
-
-pub fn terminalCopyDirty(handle: VtHandle, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiDirtyView {
-    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const dirty = screen_set.peekDirtyRows(&owned.screen_state) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
-    const row_count: usize = @as(usize, dirty.end_row) - @as(usize, dirty.start_row) + 1;
-    if (cols_start_cap < row_count or cols_end_cap < row_count) {
-        return .{
-            .status = @intFromEnum(HowlVtCallStatus.short_buffer),
-            .start_row = dirty.start_row,
-            .end_row = dirty.end_row,
-            .needed = row_count,
-        };
-    }
-    const cols_start = if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const cols_end = if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const start_idx: usize = dirty.start_row;
-    const end_idx: usize = dirty.end_row + 1;
-    @memcpy(cols_start[0..row_count], dirty.dirty_cols_start[start_idx..end_idx]);
-    @memcpy(cols_end[0..row_count], dirty.dirty_cols_end[start_idx..end_idx]);
-    return .{
-        .status = @intFromEnum(HowlVtCallStatus.ok),
-        .start_row = dirty.start_row,
-        .end_row = dirty.end_row,
-        .needed = row_count,
-    };
-}
-
 pub fn terminalCopyPendingOutput(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
@@ -635,7 +541,7 @@ pub fn terminalEncodePaste(handle: VtHandle, text_ptr: ?[*]const u8, text_len: u
     };
 }
 
-test "vt ffi runtime surface covers apply encode and visible copy" {
+test "vt ffi runtime surface covers apply encode and surface source" {
     const handle = terminalInit(2, 4, 8);
     defer terminalDeinit(handle);
     try std.testing.expect(handle != null);
@@ -652,8 +558,8 @@ test "vt ffi runtime surface covers apply encode and visible copy" {
     try std.testing.expectEqualStrings("\r", key_buf[0..@intCast(key.written)]);
 
     var cells: [8]FfiSurfaceCell = undefined;
-    const view = terminalCopyVisible(handle, 0, cells[0..].ptr, cells.len);
-    try std.testing.expectEqual(@as(i32, 0), view.status);
-    try std.testing.expectEqual(@as(u16, 2), view.rows);
-    try std.testing.expectEqual(@as(u16, 4), view.cols);
+    const source = terminalCopySurfaceSource(handle, 0, cells[0..].ptr, cells.len, null, 0, null, 0, null, 0, 0, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.short_buffer)), source.status);
+    try std.testing.expectEqual(@as(u16, 2), source.source.rows);
+    try std.testing.expectEqual(@as(u16, 4), source.source.cols);
 }
