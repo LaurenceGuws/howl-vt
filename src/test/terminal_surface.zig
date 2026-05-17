@@ -269,8 +269,11 @@ test "full-screen scroll dirties only exposed bottom row" {
     var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 4, 8);
     defer terminal.deinit();
 
+    feedSlice(&terminal, "AAAA\nBBBB\nCCCC");
+    apply(&terminal);
     clearDirtyRows(&terminal);
-    feedSlice(&terminal, "AAAA\nBBBB\nCCCC\nDDDD");
+
+    feedSlice(&terminal, "\nDDDD");
     apply(&terminal);
 
     const dirty = activeScreen(&terminal).peekDirtyRows().?;
