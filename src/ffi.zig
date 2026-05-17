@@ -302,11 +302,6 @@ pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
-pub fn terminalClearDirtyRows(handle: VtHandle) callconv(.c) void {
-    const owned = vtFromHandle(handle) orelse return;
-    screen_set.clearDirtyRows(&owned.screen_state);
-}
-
 pub fn terminalAckSurfaceSource(handle: VtHandle, dirty_generation: u64) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
     if (dirty_generation == 0) return @intFromEnum(HowlVtCallStatus.invalid_argument);

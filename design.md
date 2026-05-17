@@ -159,7 +159,7 @@ sequenceDiagram
 - `howl_vt_terminal_init` and `howl_vt_terminal_deinit` own opaque terminal-handle lifecycle.
 - `howl_vt_terminal_feed`, `howl_vt_terminal_apply`, and `howl_vt_terminal_resize` cover bounded parser/apply/geometry control.
 - `howl_vt_terminal_copy_surface_source` is the primary renderer-facing bulk surface seam for visible surface cells, cursor state, and dirtiness truth.
-- `howl_vt_terminal_ack_surface_source` retires dirty truth only for the captured dirty generation that the renderer-facing surface copy reported.
+- `howl_vt_terminal_ack_surface_source` is the only public dirty-retirement path. It retires dirty truth only for the captured dirty generation that the renderer-facing surface copy reported.
 - `howl_vt_terminal_copy_pending_output`, `howl_vt_terminal_clear_pending_output`, and `howl_vt_terminal_drain_pending_clipboard` cover host-facing protocol consequences.
 - `howl_vt_terminal_encode_key`, `howl_vt_terminal_encode_focus`, `howl_vt_terminal_encode_mouse`, and `howl_vt_terminal_encode_paste` cover host input encoding against current terminal modes.
 - Header-declared key, modifier, and mouse constants are part of the shipped vocabulary contract. Getter and validator helper exports are not.
