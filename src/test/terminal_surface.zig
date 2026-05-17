@@ -4,6 +4,7 @@ const std = @import("std");
 const action_mod = @import("../action.zig");
 const parser_flow = @import("../parser/flow.zig");
 const terminal_mod = @import("../terminal.zig");
+const ffi = @import("../ffi.zig");
 const screen = @import("../screen.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
@@ -93,6 +94,35 @@ fn reset(terminal: *Terminal) void {
 
 fn applyLimit(terminal: *Terminal, max_events: usize) Action.ApplySummary {
     return Action.applyLimit(terminal, max_events);
+}
+
+fn copySurfaceSourceOk(
+    handle: ffi.VtHandle,
+    rows: u16,
+    cols: u16,
+    cells: []ffi.FfiSurfaceCell,
+    dirty_rows: []u8,
+    cols_start: []u16,
+    cols_end: []u16,
+) !ffi.FfiSurfaceSourceResult {
+    const result = ffi.terminalCopySurfaceSource(
+        handle,
+        0,
+        cells.ptr,
+        cells.len,
+        dirty_rows.ptr,
+        dirty_rows.len,
+        cols_start.ptr,
+        cols_start.len,
+        cols_end.ptr,
+        cols_end.len,
+        0,
+        0,
+    );
+    try std.testing.expectEqual(@intFromEnum(ffi.HowlVtCallStatus.ok), result.status);
+    try std.testing.expectEqual(rows, result.source.rows);
+    try std.testing.expectEqual(cols, result.source.cols);
+    return result;
 }
 
 test "Terminal public methods remain available" {
@@ -232,6 +262,102 @@ test "alternate screen switches mark active viewport fully dirty" {
     try std.testing.expectEqual(@as(u16, 2), exit_dirty.end_row);
     try std.testing.expectEqual(@as(u16, 0), exit_dirty.dirty_cols_start[0]);
     try std.testing.expectEqual(@as(u16, 3), exit_dirty.dirty_cols_end[2]);
+}
+
+test "surface source ack clears matching dirty generation" {
+    const handle = ffi.terminalInit(2, 4, 4);
+    defer ffi.terminalDeinit(handle);
+
+    var cells: [8]ffi.FfiSurfaceCell = undefined;
+    var dirty_rows: [2]u8 = undefined;
+    var cols_start: [2]u16 = undefined;
+    var cols_end: [2]u16 = undefined;
+
+    const before = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expect(before.dirty_needed > 0);
+    try std.testing.expect(before.dirty_generation != 0);
+
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
+        ffi.terminalAckSurfaceSource(handle, before.dirty_generation),
+    );
+
+    const after = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expectEqual(@as(u64, 0), after.dirty_needed);
+    try std.testing.expectEqual(@as(u8, 0), dirty_rows[0]);
+    try std.testing.expectEqual(@as(u8, 0), dirty_rows[1]);
+}
+
+test "stale surface source ack does not clear newer dirtiness" {
+    const handle = ffi.terminalInit(2, 4, 4);
+    defer ffi.terminalDeinit(handle);
+
+    var cells: [8]ffi.FfiSurfaceCell = undefined;
+    var dirty_rows: [2]u8 = undefined;
+    var cols_start: [2]u16 = undefined;
+    var cols_end: [2]u16 = undefined;
+    var title: [16]u8 = undefined;
+
+    const first = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expect(first.dirty_generation != 0);
+
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
+        ffi.terminalFeed(handle, "A".ptr, 1),
+    );
+    const applied = ffi.terminalApply(handle, 64, title[0..].ptr, title.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), applied.status);
+    try std.testing.expect(applied.applied > 0);
+
+    const second = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expect(second.dirty_generation != first.dirty_generation);
+
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
+        ffi.terminalAckSurfaceSource(handle, first.dirty_generation),
+    );
+
+    const after_stale_ack = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expectEqual(second.dirty_generation, after_stale_ack.dirty_generation);
+    try std.testing.expect(after_stale_ack.dirty_needed > 0);
+}
+
+test "older ack cannot retire newer published generation" {
+    const handle = ffi.terminalInit(2, 4, 4);
+    defer ffi.terminalDeinit(handle);
+
+    var cells: [8]ffi.FfiSurfaceCell = undefined;
+    var dirty_rows: [2]u8 = undefined;
+    var cols_start: [2]u16 = undefined;
+    var cols_end: [2]u16 = undefined;
+    var title: [16]u8 = undefined;
+
+    _ = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
+        ffi.terminalFeed(handle, "A".ptr, 1),
+    );
+    const first_apply = ffi.terminalApply(handle, 64, title[0..].ptr, title.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), first_apply.status);
+    const second = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
+        ffi.terminalFeed(handle, "B".ptr, 1),
+    );
+    const second_apply = ffi.terminalApply(handle, 64, title[0..].ptr, title.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), second_apply.status);
+    const third = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expect(third.dirty_generation != second.dirty_generation);
+
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
+        ffi.terminalAckSurfaceSource(handle, second.dirty_generation),
+    );
+
+    const after_old_ack = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expectEqual(third.dirty_generation, after_old_ack.dirty_generation);
+    try std.testing.expect(after_old_ack.dirty_needed > 0);
 }
 
 test "input encoding APIs are callable without terminal facade methods" {
