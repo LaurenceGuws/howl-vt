@@ -382,8 +382,12 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: usize, cells_ptr
     }
 
     const cells_out = if (cells_ptr) |ptr| ptr[0..cells_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const cols_start = if (dirty_needed == 0) &[_]u16{} else if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const cols_end = if (dirty_needed == 0) &[_]u16{} else if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    var cols_start: []u16 = &.{};
+    var cols_end: []u16 = &.{};
+    if (dirty_needed != 0) {
+        cols_start = if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+        cols_end = if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    }
 
     var row: u16 = 0;
     while (row < view.rows) : (row += 1) {
@@ -437,8 +441,12 @@ pub fn terminalCopySurfaceSource(handle: VtHandle, scrollback_offset: usize, cel
 
     const cells_out = if (cells_ptr) |ptr| ptr[0..cells_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     const dirty_rows_out = if (dirty_rows_ptr) |ptr| ptr[0..dirty_rows_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const cols_start = if (dirty_needed == 0) &[_]u16{} else if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const cols_end = if (dirty_needed == 0) &[_]u16{} else if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    var cols_start: []u16 = &.{};
+    var cols_end: []u16 = &.{};
+    if (dirty_needed != 0) {
+        cols_start = if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+        cols_end = if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    }
 
     @memset(dirty_rows_out[0..view.rows], 0);
     var row: u16 = 0;

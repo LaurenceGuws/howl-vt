@@ -48,9 +48,8 @@ pub const MouseProtocol = enum(u8) {
     urxvt,
 };
 
-/// Encode one host mouse event for the active terminal mouse protocol.
-pub fn encodeMouse(buf: []u8, event: MouseEvent, tracking: MouseTrackingMode, protocol: MouseProtocol) []const u8 {
-    if (tracking == .off) return buf[0..0];
+pub fn wouldEncodeMouse(event: MouseEvent, tracking: MouseTrackingMode, protocol: MouseProtocol) bool {
+    if (tracking == .off) return false;
 
     const emit = switch (event.kind) {
         .press, .wheel => true,
@@ -61,7 +60,18 @@ pub fn encodeMouse(buf: []u8, event: MouseEvent, tracking: MouseTrackingMode, pr
             else => false,
         },
     };
-    if (!emit) return buf[0..0];
+    if (!emit) return false;
+
+    if (protocol == .sgr or protocol == .urxvt or protocol == .utf8) return true;
+    const row1 = if (event.row < 0) 1 else event.row + 1;
+    const col1 = @as(u32, event.col) + 1;
+    const cb = mouseCode(event, tracking);
+    return cb <= 223 and col1 <= 223 and @as(u32, @intCast(row1)) <= 223;
+}
+
+/// Encode one host mouse event for the active terminal mouse protocol.
+pub fn encodeMouse(buf: []u8, event: MouseEvent, tracking: MouseTrackingMode, protocol: MouseProtocol) []const u8 {
+    if (!wouldEncodeMouse(event, tracking, protocol)) return buf[0..0];
 
     const row1 = if (event.row < 0) 1 else event.row + 1;
     const col1 = @as(u32, event.col) + 1;

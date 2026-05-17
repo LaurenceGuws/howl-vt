@@ -11,6 +11,7 @@ extern "C" {
 typedef struct HowlVtTerminal HowlVtTerminal;
 typedef HowlVtTerminal *HowlVtHandle;
 
+/* Shell input enums. */
 enum {
   HOWL_VT_MOD_NONE = 0,
   HOWL_VT_MOD_SHIFT = 1,
@@ -70,6 +71,10 @@ typedef enum {
   HOWL_VT_CALL_FAILED = -3,
   HOWL_VT_CALL_SHORT_BUFFER = -4,
 } HowlVtCallStatus;
+
+/* -------------------------------------------------------------------------- */
+/* 1. Surface + Dirty                                                          */
+/* -------------------------------------------------------------------------- */
 
 typedef struct {
   uint8_t continuation;
@@ -147,23 +152,6 @@ typedef struct {
 
 typedef struct {
   int32_t status;
-  uint64_t written;
-  uint64_t needed;
-} HowlVtBytesResult;
-
-typedef struct {
-  int32_t status;
-  uint64_t applied;
-  uint64_t remaining_events;
-  uint8_t state_changed;
-  uint8_t reserved0;
-  uint16_t reserved1;
-  uint64_t title_written;
-  uint64_t title_needed;
-} HowlVtApplyResult;
-
-typedef struct {
-  int32_t status;
   uint16_t rows;
   uint16_t cols;
   uint16_t cursor_row;
@@ -213,19 +201,46 @@ typedef struct {
   HowlVtSurfaceSource source;
 } HowlVtSurfaceSourceResult;
 
-HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t history_capacity);
-void howl_vt_terminal_deinit(HowlVtHandle handle);
-int32_t howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
-HowlVtApplyResult howl_vt_terminal_apply(HowlVtHandle handle, size_t max_events, uint8_t *title_ptr, size_t title_cap);
 int32_t howl_vt_terminal_resize(HowlVtHandle handle, uint16_t rows, uint16_t cols);
 void howl_vt_terminal_clear_dirty_rows(HowlVtHandle handle);
 HowlVtSurfaceView howl_vt_terminal_copy_surface(HowlVtHandle handle, size_t scrollback_offset, HowlVtCell *cells_ptr, size_t cells_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 HowlVtSurfaceSourceResult howl_vt_terminal_copy_surface_source(HowlVtHandle handle, size_t scrollback_offset, HowlVtCell *cells_ptr, size_t cells_cap, uint8_t *dirty_rows_ptr, size_t dirty_rows_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap, uint8_t full_damage, uint16_t scroll_up_rows);
 HowlVtVisibleView howl_vt_terminal_copy_visible(HowlVtHandle handle, size_t scrollback_offset, HowlVtCell *cells_ptr, size_t cells_cap);
 HowlVtDirtyView howl_vt_terminal_copy_dirty(HowlVtHandle handle, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
+
+/* -------------------------------------------------------------------------- */
+/* 2. Protocol Metadata Host Output                                            */
+/* -------------------------------------------------------------------------- */
+
+typedef struct {
+  int32_t status;
+  uint64_t written;
+  uint64_t needed;
+} HowlVtBytesResult;
+
+typedef struct {
+  int32_t status;
+  uint64_t applied;
+  uint64_t remaining_events;
+  uint8_t state_changed;
+  uint8_t reserved0;
+  uint16_t reserved1;
+  uint64_t title_written;
+  uint64_t title_needed;
+} HowlVtApplyResult;
+
+HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t history_capacity);
+void howl_vt_terminal_deinit(HowlVtHandle handle);
+int32_t howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
+HowlVtApplyResult howl_vt_terminal_apply(HowlVtHandle handle, size_t max_events, uint8_t *title_ptr, size_t title_cap);
 HowlVtBytesResult howl_vt_terminal_copy_pending_output(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 void howl_vt_terminal_clear_pending_output(HowlVtHandle handle);
 HowlVtBytesResult howl_vt_terminal_drain_pending_clipboard(HowlVtHandle handle, uint8_t *ptr, size_t cap);
+
+/* -------------------------------------------------------------------------- */
+/* 3. Shell Input                                                              */
+/* -------------------------------------------------------------------------- */
+
 HowlVtBytesResult howl_vt_terminal_encode_key(HowlVtHandle handle, uint32_t key, uint8_t mods, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_encode_focus(HowlVtHandle handle, uint8_t focused, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_encode_mouse(
