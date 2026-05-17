@@ -116,6 +116,62 @@ pub const FfiSurfaceView = extern struct {
     dirty_needed: u64 = 0,
 };
 
+pub const FfiCellSpan = extern struct {
+    ptr: [*c]const FfiCell,
+    len: usize,
+};
+
+pub const FfiByteSpan = extern struct {
+    ptr: [*c]const u8,
+    len: usize,
+};
+
+pub const FfiU16Span = extern struct {
+    ptr: [*c]const u16,
+    len: usize,
+};
+
+pub const FfiCursor = extern struct {
+    row: u16,
+    col: u16,
+    visible: u8,
+    shape: u8,
+};
+
+pub const FfiSurfaceSource = extern struct {
+    cells: FfiCellSpan,
+    cols: u16,
+    rows: u16,
+    scroll_row: u64,
+    is_alternate_screen: u8,
+    full_damage: u8,
+    scroll_up_rows: u16,
+    dirty_rows: FfiByteSpan,
+    dirty_cols_start: FfiU16Span,
+    dirty_cols_end: FfiU16Span,
+    cursor: FfiCursor,
+};
+
+pub const FfiSurfaceSourceResult = extern struct {
+    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
+    history_count: u64 = 0,
+    scrollback_offset: u64 = 0,
+    dirty_needed: u64 = 0,
+    source: FfiSurfaceSource = .{
+        .cells = .{ .ptr = null, .len = 0 },
+        .cols = 0,
+        .rows = 0,
+        .scroll_row = 0,
+        .is_alternate_screen = 0,
+        .full_damage = 0,
+        .scroll_up_rows = 0,
+        .dirty_rows = .{ .ptr = null, .len = 0 },
+        .dirty_cols_start = .{ .ptr = null, .len = 0 },
+        .dirty_cols_end = .{ .ptr = null, .len = 0 },
+        .cursor = .{ .row = 0, .col = 0, .visible = 0, .shape = 0 },
+    },
+};
+
 fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
 }
@@ -346,6 +402,66 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: usize, cells_ptr
     }
 
     return base;
+}
+
+pub fn terminalCopySurfaceSource(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize, full_damage: u8, scroll_up_rows: u16) callconv(.c) FfiSurfaceSourceResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const view = screen_set.visibleView(&owned.screen_state, .{ .scrollback_offset = scrollback_offset });
+    const dirty = screen_set.peekDirtyRows(&owned.screen_state);
+    const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
+    const dirty_needed: usize = if (dirty) |value| @as(usize, value.end_row) - @as(usize, value.start_row) + 1 else 0;
+    var result: FfiSurfaceSourceResult = .{
+        .status = @intFromEnum(HowlVtCallStatus.ok),
+        .history_count = view.history_count,
+        .scrollback_offset = view.scrollback_offset,
+        .dirty_needed = dirty_needed,
+        .source = .{
+            .cells = .{ .ptr = cells_ptr, .len = cell_count },
+            .cols = view.cols,
+            .rows = view.rows,
+            .scroll_row = view.start,
+            .is_alternate_screen = boolByte(view.is_alternate_screen),
+            .full_damage = full_damage,
+            .scroll_up_rows = scroll_up_rows,
+            .dirty_rows = .{ .ptr = dirty_rows_ptr, .len = view.rows },
+            .dirty_cols_start = .{ .ptr = cols_start_ptr, .len = dirty_needed },
+            .dirty_cols_end = .{ .ptr = cols_end_ptr, .len = dirty_needed },
+            .cursor = .{ .row = view.cursor_row, .col = view.cursor_col, .visible = boolByte(view.cursor_visible), .shape = cursorShapeByte(view.cursor_shape) },
+        },
+    };
+
+    if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < dirty_needed or cols_end_cap < dirty_needed) {
+        result.status = @intFromEnum(HowlVtCallStatus.short_buffer);
+        return result;
+    }
+
+    const cells_out = if (cells_ptr) |ptr| ptr[0..cells_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const dirty_rows_out = if (dirty_rows_ptr) |ptr| ptr[0..dirty_rows_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const cols_start = if (dirty_needed == 0) &[_]u16{} else if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const cols_end = if (dirty_needed == 0) &[_]u16{} else if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+
+    @memset(dirty_rows_out[0..view.rows], 0);
+    var row: u16 = 0;
+    while (row < view.rows) : (row += 1) {
+        var col: u16 = 0;
+        while (col < view.cols) : (col += 1) {
+            const idx = @as(usize, row) * @as(usize, view.cols) + @as(usize, col);
+            cells_out[idx] = cellOut(view.cellInfoAt(row, col));
+        }
+    }
+
+    if (dirty) |value| {
+        const start_idx: usize = value.start_row;
+        const end_idx: usize = value.end_row + 1;
+        @memcpy(cols_start[0..dirty_needed], value.dirty_cols_start[start_idx..end_idx]);
+        @memcpy(cols_end[0..dirty_needed], value.dirty_cols_end[start_idx..end_idx]);
+        var dirty_row = value.start_row;
+        while (dirty_row <= value.end_row and dirty_row < dirty_rows_out.len) : (dirty_row += 1) {
+            dirty_rows_out[dirty_row] = 1;
+        }
+    }
+
+    return result;
 }
 
 pub fn terminalCopyVisible(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiCell, cells_cap: usize) callconv(.c) FfiVisibleView {
