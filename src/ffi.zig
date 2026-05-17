@@ -114,6 +114,7 @@ pub const FfiSurfaceSourceResult = extern struct {
     history_count: u64 = 0,
     scrollback_offset: u64 = 0,
     dirty_needed: u64 = 0,
+    dirty_generation: u64 = 0,
     source: FfiSurfaceSource = .{
         .surface_cells = .{ .ptr = null, .len = 0 },
         .cols = 0,
@@ -264,6 +265,7 @@ pub fn terminalApply(handle: VtHandle, max_events: usize, title_ptr: ?[*]u8, tit
     const title_out = bytesOut(title_ptr, title_cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     const result = action.applyLimit(owned, max_events);
     const remaining = result.remaining_events;
+    if (result.applied != 0) owned.dirty_generation +%= 1;
     if (result.latest_title) |title| {
         if (title_out.len < title.len) {
             return .{
@@ -296,12 +298,22 @@ pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
     owned.screen_state.resize(owned.parser_state.getAllocator(), rows, cols) catch return @intFromEnum(HowlVtCallStatus.failed);
     owned.screen_state.activeSelection().clearIfInvalidatedByGrid(owned.screen_state.activeConst());
+    owned.dirty_generation +%= 1;
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
 pub fn terminalClearDirtyRows(handle: VtHandle) callconv(.c) void {
     const owned = vtFromHandle(handle) orelse return;
     screen_set.clearDirtyRows(&owned.screen_state);
+}
+
+pub fn terminalAckSurfaceSource(handle: VtHandle, dirty_generation: u64) callconv(.c) i32 {
+    const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
+    if (dirty_generation == 0) return @intFromEnum(HowlVtCallStatus.invalid_argument);
+    if (owned.dirty_generation == dirty_generation) {
+        screen_set.clearDirtyRows(&owned.screen_state);
+    }
+    return @intFromEnum(HowlVtCallStatus.ok);
 }
 
 pub fn terminalCopySurfaceSource(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize, full_damage: u8, scroll_up_rows: u16) callconv(.c) FfiSurfaceSourceResult {
@@ -315,6 +327,7 @@ pub fn terminalCopySurfaceSource(handle: VtHandle, scrollback_offset: usize, cel
         .history_count = view.history_count,
         .scrollback_offset = view.scrollback_offset,
         .dirty_needed = dirty_needed,
+        .dirty_generation = owned.dirty_generation,
         .source = .{
             .surface_cells = .{ .ptr = cells_ptr, .len = cell_count },
             .cols = view.cols,

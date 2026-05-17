@@ -24,6 +24,7 @@ pub const Terminal = struct {
     kitty: KittyState = .{},
     xtchecksum_flags: u16 = 0,
     host: HostState,
+    dirty_generation: u64 = 1,
 
     /// Initialize Terminal without cell storage.
     pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
