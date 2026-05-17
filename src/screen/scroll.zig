@@ -28,7 +28,7 @@ pub fn reverseIndex(self: anytype) void {
 pub fn scrollUp(self: anytype) void {
     const c = self.cells orelse return;
     if (self.rows == 0 or self.cols == 0) return;
-    self.markAllRowsDirty();
+    self.markDirtyRow(self.rows - 1);
     const row_len = @as(usize, self.cols);
     self.storeHistoryRow(0);
     self.row_origin = @intCast((@as(usize, self.row_origin) + 1) % @as(usize, self.rows));

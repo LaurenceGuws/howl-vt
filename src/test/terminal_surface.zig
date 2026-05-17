@@ -264,6 +264,22 @@ test "alternate screen switches mark active viewport fully dirty" {
     try std.testing.expectEqual(@as(u16, 3), exit_dirty.dirty_cols_end[2]);
 }
 
+test "full-screen scroll dirties only exposed bottom row" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 4, 8);
+    defer terminal.deinit();
+
+    clearDirtyRows(&terminal);
+    feedSlice(&terminal, "AAAA\nBBBB\nCCCC\nDDDD");
+    apply(&terminal);
+
+    const dirty = activeScreen(&terminal).peekDirtyRows().?;
+    try std.testing.expectEqual(@as(u16, 2), dirty.start_row);
+    try std.testing.expectEqual(@as(u16, 2), dirty.end_row);
+    try std.testing.expectEqual(@as(u16, 0), dirty.dirty_cols_start[2]);
+    try std.testing.expectEqual(@as(u16, 3), dirty.dirty_cols_end[2]);
+}
+
 test "surface source ack clears matching dirty generation" {
     const handle = ffi.terminalInit(2, 4, 4);
     defer ffi.terminalDeinit(handle);
