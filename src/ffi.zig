@@ -259,7 +259,7 @@ pub fn terminalFeed(handle: VtHandle, ptr: ?[*]const u8, len: usize) callconv(.c
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
-pub fn terminalApply(handle: VtHandle, max_events: usize, title_ptr: ?[*]u8, title_cap: usize) callconv(.c) FfiApplyResult {
+pub fn terminalApply(handle: VtHandle, max_events: u32, title_ptr: ?[*]u8, title_cap: usize) callconv(.c) FfiApplyResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const title_out = bytesOut(title_ptr, title_cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     const result = action.applyLimit(owned, max_events);

@@ -187,7 +187,7 @@ typedef struct {
 HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t history_capacity);
 void howl_vt_terminal_deinit(HowlVtHandle handle);
 int32_t howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
-HowlVtApplyResult howl_vt_terminal_apply(HowlVtHandle handle, size_t max_events, uint8_t *title_ptr, size_t title_cap);
+HowlVtApplyResult howl_vt_terminal_apply(HowlVtHandle handle, uint32_t max_events, uint8_t *title_ptr, size_t title_cap);
 HowlVtBytesResult howl_vt_terminal_copy_pending_output(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 void howl_vt_terminal_clear_pending_output(HowlVtHandle handle);
 HowlVtBytesResult howl_vt_terminal_drain_pending_clipboard(HowlVtHandle handle, uint8_t *ptr, size_t cap);
