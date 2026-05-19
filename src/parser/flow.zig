@@ -10,6 +10,7 @@ const Event = parsed_events_mod.Event;
 
 const FeedError = error{
     OutOfMemory,
+    ParsedEventLimit,
     StringControlLimit,
 };
 

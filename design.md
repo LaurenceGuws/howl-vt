@@ -160,7 +160,7 @@ sequenceDiagram
 - `howl_vt_terminal_feed`, `howl_vt_terminal_apply`, and `howl_vt_terminal_resize` cover bounded parser/apply/geometry control.
 - `howl_vt_terminal_feed` must fail instead of silently dropping parser work when parser-owned
   buffering cannot accept more bytes within its explicit bound, or when parser-owned buffering or
-  parser-event materialization cannot allocate.
+  parser-event materialization cannot allocate. The parsed-event queue must stay explicitly bounded.
 - `HowlVtSurface` and `HowlVtSurfaceResult` are the primary renderer-facing VT-surface contract types for visible surface cells, cursor state, and dirtiness truth.
 - `howl_vt_terminal_copy_surface` is the bounded VT-surface export call.
 - `howl_vt_terminal_ack_surface` is the only public dirty-retirement path. It retires dirty truth only for the captured dirty generation that the renderer-facing VT-surface copy reported.

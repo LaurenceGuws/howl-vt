@@ -49,6 +49,8 @@ pub const OscKind = osc_parse.Kind;
 
 /// Arena-backed event queue for parser callbacks.
 pub const ParsedEvents = struct {
+    const max_queued_events: u32 = 1024 * 1024;
+
     allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
     events: std.ArrayList(Event),
@@ -134,7 +136,14 @@ pub const ParsedEvents = struct {
         self.events.clearRetainingCapacity();
     }
 
-    pub fn appendParserActions(self: *ParsedEvents, actions: []const parser_mod.Action) error{OutOfMemory}!void {
+    pub fn appendParserActions(self: *ParsedEvents, actions: []const parser_mod.Action) error{ OutOfMemory, ParsedEventLimit }!void {
+        // Alacritty's PTY loop reads up to 1 MiB before forcing a terminal
+        // synchronization point. The host PTY owner follows that burst scale,
+        // and the current parser/event shape can materialize at most one
+        // queued parsed event per input byte. Keep the queue large enough to
+        // absorb one normal burst, but still explicitly bounded.
+        if (!self.canAppendActions(actions.len)) return error.ParsedEventLimit;
+
         var idx: usize = 0;
         while (idx < actions.len) {
             if (takeAsciiTextPrefix(self, actions[idx..])) |ascii_len| {
@@ -287,6 +296,12 @@ pub const ParsedEvents = struct {
             }
         }
         try self.events.append(self.allocator, Event{ .esc_dispatch = esc });
+    }
+
+    fn canAppendActions(self: *const ParsedEvents, action_count: usize) bool {
+        const queued = self.events.items.len;
+        const total = std.math.add(usize, queued, action_count) catch return false;
+        return total <= max_queued_events;
     }
 
     fn mapCodepoint(self: *const ParsedEvents, cp: u21) u21 {
