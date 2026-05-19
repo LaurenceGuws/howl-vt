@@ -1,8 +1,11 @@
 //! Scrollback fuzz scenarios.
 
 const std = @import("std");
+const action = @import("../action.zig");
 const screen_set = @import("../screen_set.zig");
 const terminal_mod = @import("../terminal.zig");
+
+const Action = action;
 
 pub const RowsMin: u16 = 1;
 pub const ColsMin: u16 = 1;
@@ -177,10 +180,10 @@ fn applyWriteBurst(vt: *terminal_mod.Terminal, rand: std.Random) !void {
             const cp = "0123456789abcdefXYZ+-_=./[]{}()";
             buf[i] = cp[rand.uintLessThan(usize, cp.len)];
         }
-        vt.feedSlice(buf[0..len]);
-        vt.feedByte('\n');
+        try vt.parser_queue.feedSliceChecked(buf[0..len]);
+        try vt.parser_queue.feedByteChecked('\n');
     }
-    vt.apply();
+    Action.apply(vt);
 }
 
 fn applyResize(vt: *terminal_mod.Terminal, rand: std.Random) !void {

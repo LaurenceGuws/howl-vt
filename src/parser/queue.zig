@@ -51,19 +51,15 @@ pub const Queue = struct {
         return self.allocator;
     }
 
-    // Repo-local tests still use the convenience entrypoints below. The
-    // shipped feed seam must use the checked variants so allocation failure
-    // surfaces explicitly instead of dropping parser work.
-    pub fn feedByte(self: *Queue, byte: u8) void {
-        self.feedByteChecked(byte) catch unreachable;
-    }
-
     pub fn feedByteChecked(self: *Queue, byte: u8) FeedError!void {
         self.clearParserActions();
         try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
         try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
+    // Repo-local queue regression tests still use the convenience entrypoint
+    // below. The shipped feed seam must use the checked variant so allocation
+    // failure surfaces explicitly instead of dropping parser work.
     pub fn feedSlice(self: *Queue, bytes: []const u8) void {
         self.feedSliceChecked(bytes) catch unreachable;
     }
