@@ -73,23 +73,9 @@ pub const Queue = struct {
         return self.parsed_events.events.items[0..@intCast(count)];
     }
 
-    pub fn isEmpty(self: *const Queue) bool {
-        return self.parsed_events.isEmpty();
-    }
-
-    /// Clear queued events without resetting parser state.
-    pub fn clear(self: *Queue) void {
-        self.parsed_events.clear();
-    }
-
     pub fn dropPrefix(self: *Queue, count: u32) void {
         std.debug.assert(count <= self.eventCount());
         self.parsed_events.dropPrefix(count);
-    }
-
-    pub fn reset(self: *Queue) void {
-        self.parsed_events.resetState();
-        self.parser.reset();
     }
 
     pub fn deccirCharsetState(self: *const Queue) @TypeOf(self.parsed_events.deccirCharsetState()) {

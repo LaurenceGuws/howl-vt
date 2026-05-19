@@ -55,16 +55,29 @@ fn queuePrefixAll(queue: *const Queue) []const action_root.Event {
     return queue.prefix(queue.eventCount());
 }
 
+fn queueIsEmpty(queue: *const Queue) bool {
+    return queue.eventCount() == 0;
+}
+
+fn clearQueue(queue: *Queue) void {
+    queue.parsed_events.clear();
+}
+
+fn resetQueue(queue: *Queue) void {
+    queue.parsed_events.resetState();
+    queue.parser.reset();
+}
+
 fn apply(terminal: *Terminal) void {
     ActionRoot.apply(terminal);
 }
 
 fn clear(terminal: *Terminal) void {
-    terminal.parser.clear();
+    clearQueue(&terminal.parser);
 }
 
 fn reset(terminal: *Terminal) void {
-    terminal.parser.reset();
+    resetQueue(&terminal.parser);
 }
 
 fn feed(queue: *Queue, screen: *Screen, bytes: []const u8) void {
@@ -117,8 +130,8 @@ test "queue: reset clears events and parser state" {
     defer queue.deinit();
     feedQueueSlice(&queue, "abc\x1b[1m");
     try std.testing.expectEqual(@as(u32, 2), queue.eventCount());
-    queue.reset();
-    try std.testing.expect(queue.isEmpty());
+    resetQueue(&queue);
+    try std.testing.expect(queueIsEmpty(&queue));
     feedQueueSlice(&queue, "xyz");
     try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
     const events = queuePrefixAll(&queue);
@@ -157,8 +170,8 @@ test "feed/apply: queue clear drops pending parsed events before apply" {
     defer screen.deinit(gpa);
     feedQueueSlice(&queue, "dropped");
     try std.testing.expect(queue.eventCount() > 0);
-    queue.clear();
-    try std.testing.expect(queue.isEmpty());
+    clearQueue(&queue);
+    try std.testing.expect(queueIsEmpty(&queue));
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
@@ -174,8 +187,8 @@ test "feed/apply: queue reset clears queued events and partial CSI" {
     screen.cursor_col = 0;
     feedQueueSlice(&queue, "x\x1b[3");
     try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
-    queue.reset();
-    try std.testing.expect(queue.isEmpty());
+    resetQueue(&queue);
+    try std.testing.expect(queueIsEmpty(&queue));
     feedQueueSlice(&queue, "A");
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 10), screen.cursor_row);
@@ -194,13 +207,13 @@ test "feed/apply: queue clear preserves partial CHT parser state" {
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_col);
     feedQueueSlice(&queue, "\x1b[2");
-    queue.clear();
-    try std.testing.expect(queue.isEmpty());
+    clearQueue(&queue);
+    try std.testing.expect(queueIsEmpty(&queue));
     feedQueueSlice(&queue, "Ix");
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 17), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 16));
-    try std.testing.expect(queue.isEmpty());
+    try std.testing.expect(queueIsEmpty(&queue));
 }
 
 test "feed/apply: queue clear preserves partial CBT parser state" {
@@ -213,13 +226,13 @@ test "feed/apply: queue clear preserves partial CBT parser state" {
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 16), screen.cursor_col);
     feedQueueSlice(&queue, "\x1b[2");
-    queue.clear();
-    try std.testing.expect(queue.isEmpty());
+    clearQueue(&queue);
+    try std.testing.expect(queueIsEmpty(&queue));
     feedQueueSlice(&queue, "Zy");
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 0));
-    try std.testing.expect(queue.isEmpty());
+    try std.testing.expect(queueIsEmpty(&queue));
 }
 
 test "feed/apply: queue reset drops partial CHT parser state" {
@@ -229,8 +242,8 @@ test "feed/apply: queue reset drops partial CHT parser state" {
     var screen = try Screen.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
     feedQueueSlice(&queue, "\x1b[2");
-    queue.reset();
-    try std.testing.expect(queue.isEmpty());
+    resetQueue(&queue);
+    try std.testing.expect(queueIsEmpty(&queue));
     feedQueueSlice(&queue, "Iw");
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
@@ -248,8 +261,8 @@ test "feed/apply: queue reset drops partial CBT parser state" {
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 16), screen.cursor_col);
     feedQueueSlice(&queue, "\x1b[2");
-    queue.reset();
-    try std.testing.expect(queue.isEmpty());
+    resetQueue(&queue);
+    try std.testing.expect(queueIsEmpty(&queue));
     feedQueueSlice(&queue, "Zv");
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 18), screen.cursor_col);
@@ -265,7 +278,7 @@ test "feed/apply: queue apply drains parsed events once repeat apply is no-op" {
     feedQueueSlice(&queue, "\x1b[4C");
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
-    try std.testing.expect(queue.isEmpty());
+    try std.testing.expect(queueIsEmpty(&queue));
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
     feedQueueSlice(&queue, "z");
@@ -1016,7 +1029,7 @@ test "feed/apply: split CHT interrupted by DECSTR bytes remains deterministic" {
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'I'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 1));
-    try std.testing.expect(queue.isEmpty());
+    try std.testing.expect(queueIsEmpty(&queue));
 }
 
 test "feed/apply: split CHT after DECSTR applies from reset origin" {
@@ -1033,7 +1046,7 @@ test "feed/apply: split CHT after DECSTR applies from reset origin" {
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 17), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 16));
-    try std.testing.expect(queue.isEmpty());
+    try std.testing.expect(queueIsEmpty(&queue));
 }
 
 test "feed/apply: split CBT interrupted by DECSTR bytes remains deterministic" {
@@ -1051,7 +1064,7 @@ test "feed/apply: split CBT interrupted by DECSTR bytes remains deterministic" {
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'Z'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 1));
-    try std.testing.expect(queue.isEmpty());
+    try std.testing.expect(queueIsEmpty(&queue));
 }
 
 test "feed/apply: split CBT after DECSTR applies from reset origin" {
@@ -1068,7 +1081,7 @@ test "feed/apply: split CBT after DECSTR applies from reset origin" {
     applyQueue(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 0));
-    try std.testing.expect(queue.isEmpty());
+    try std.testing.expect(queueIsEmpty(&queue));
 }
 
 test "feed/apply: DEC private cursor visibility toggles mode state" {
@@ -1101,7 +1114,7 @@ test "feed/apply: interrupted split private cursor mode remains deterministic" {
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, '5'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 1));
-    try std.testing.expect(queue.isEmpty());
+    try std.testing.expect(queueIsEmpty(&queue));
 }
 
 test "feed/apply: DEC private auto-wrap mode toggles wrap behavior" {
@@ -1142,7 +1155,7 @@ test "feed/apply: interrupted split private auto-wrap mode remains deterministic
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, '7'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 1));
-    try std.testing.expect(queue.isEmpty());
+    try std.testing.expect(queueIsEmpty(&queue));
 }
 
 test "feed/apply: existing text and cursor paths unaffected by erase additions" {
@@ -1479,12 +1492,12 @@ test "edge: zero-dimension queue clear and reset are safe" {
     defer queue.deinit();
     var screen = Grid.init(0, 0);
     feedQueueSlice(&queue, "test\x1b[5A");
-    queue.clear();
-    try std.testing.expect(queue.isEmpty());
+    clearQueue(&queue);
+    try std.testing.expect(queueIsEmpty(&queue));
     applyQueue(&queue, &screen);
     feedQueueSlice(&queue, "more\x1b[1B");
-    queue.reset();
-    try std.testing.expect(queue.isEmpty());
+    resetQueue(&queue);
+    try std.testing.expect(queueIsEmpty(&queue));
     applyQueue(&queue, &screen);
 }
 

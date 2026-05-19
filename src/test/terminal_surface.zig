@@ -86,11 +86,12 @@ fn apply(terminal: *Terminal) void {
 }
 
 fn clear(terminal: *Terminal) void {
-    terminal.parser.clear();
+    terminal.parser.parsed_events.clear();
 }
 
 fn reset(terminal: *Terminal) void {
-    terminal.parser.reset();
+    terminal.parser.parsed_events.resetState();
+    terminal.parser.parser.reset();
 }
 
 fn applyLimit(terminal: *Terminal, max_events: u32) Action.ApplySummary {

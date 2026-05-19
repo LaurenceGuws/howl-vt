@@ -175,7 +175,7 @@ sequenceDiagram
 - `src/terminal.zig` may expose temporary migration APIs for tests, fuzzers, and internal seams only when they describe true owned state or mutation.
 - Root `src/*.zig` files are now curated exports or ABI roots only.
 - Repo-local callers should consume visible terminal state through `src/screen.zig` and `src/screen_set.zig`, not through terminal facade methods.
-- Repo-local callers should consume parser byte-step and queue feed/reset surfaces through `src/parser.zig` and bounded apply through `src/action.zig`, not through terminal facade methods.
+- Repo-local callers should consume parser byte-step and queue feed surfaces through `src/parser.zig` and bounded apply through `src/action.zig`, not through terminal facade methods.
 - `src/input.zig` owns input vocabulary and repo-local input encoding entrypoints.
 - Repo-local callers should consume input encoding through `src/input.zig`, not through terminal facade methods.
 - Repo-local callers should consume selection mutation and selection queries through `src/selection.zig`, not through terminal facade methods.
