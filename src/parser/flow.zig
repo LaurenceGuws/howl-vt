@@ -105,10 +105,6 @@ pub const Queue = struct {
         return self.events()[0..@intCast(count)];
     }
 
-    pub fn len(self: *const Queue) usize {
-        return self.parsed_events.len();
-    }
-
     pub fn isEmpty(self: *const Queue) bool {
         return self.parsed_events.isEmpty();
     }
