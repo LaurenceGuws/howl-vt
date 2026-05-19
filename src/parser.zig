@@ -28,6 +28,15 @@ pub const DeccirCharsetState = struct {
 // path until that event shape is slimmer.
 const csi_max_params: usize = 16;
 const csi_max_intermediates: usize = 4;
+const control_init_capacity: usize = 256;
+// Keep metadata-sized control strings explicitly small. The owned OSC, DCS,
+// and PM protocols in Howl are title, color, report, clipboard, and similar
+// metadata paths, not bulk transport.
+const metadata_control_max_bytes: usize = 4096;
+// APC is the one owned string-control family that legitimately carries large
+// Kitty payload chunks, so keep its bound aligned to the same 1 MiB burst scale
+// already derived from Alacritty's PTY read buffer and the host transport path.
+const apc_max_bytes: usize = 1024 * 1024;
 
 pub const max_params = csi_max_params;
 pub const max_intermediates = csi_max_intermediates;
@@ -101,16 +110,16 @@ pub const Parser = struct {
 
     /// Initialize parser state and owned buffers.
     pub fn init(allocator: std.mem.Allocator) !Parser {
-        var osc = try string_control_mod.StringControl.init(allocator, 256, 4096, true);
+        var osc = try string_control_mod.StringControl.init(allocator, control_init_capacity, metadata_control_max_bytes, true);
         errdefer osc.deinit();
 
-        var apc = try string_control_mod.StringControl.init(allocator, 256, 1024 * 1024, false);
+        var apc = try string_control_mod.StringControl.init(allocator, control_init_capacity, apc_max_bytes, false);
         errdefer apc.deinit();
 
-        var dcs = try string_control_mod.StringControl.init(allocator, 256, 4096, false);
+        var dcs = try string_control_mod.StringControl.init(allocator, control_init_capacity, metadata_control_max_bytes, false);
         errdefer dcs.deinit();
 
-        var pm = try string_control_mod.StringControl.init(allocator, 256, 4096, false);
+        var pm = try string_control_mod.StringControl.init(allocator, control_init_capacity, metadata_control_max_bytes, false);
         errdefer pm.deinit();
 
         return .{
