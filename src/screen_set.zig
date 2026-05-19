@@ -6,7 +6,7 @@ const Screen = screen_mod.Screen;
 const SelectionState = selection.SelectionState;
 
 pub const Options = struct {
-    scrollback_offset: usize = 0,
+    scrollback_offset: u32 = 0,
 };
 
 pub const RowSource = union(enum) {
@@ -157,7 +157,7 @@ pub const Set = struct {
 pub fn visibleView(screen_state: *const Set, options: Options) View {
     const active = screen_state.activeConst();
     const history_count: u32 = if (screen_state.alt_active) 0 else @intCast(active.historyCount());
-    const offset: u32 = @intCast(@min(options.scrollback_offset, @as(usize, history_count)));
+    const offset = @min(options.scrollback_offset, history_count);
     const rows_count: u32 = active.rows;
     const total_rows = history_count + rows_count;
     const start = if (total_rows >= rows_count + offset) total_rows - rows_count - offset else 0;
