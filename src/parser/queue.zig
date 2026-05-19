@@ -61,10 +61,6 @@ pub const Queue = struct {
         try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
-    pub fn events(self: *const Queue) []const Event {
-        return self.parsed_events.events.items;
-    }
-
     pub fn eventCount(self: *const Queue) u32 {
         const count = self.parsed_events.len();
         std.debug.assert(count <= std.math.maxInt(u32));
@@ -73,7 +69,7 @@ pub const Queue = struct {
 
     pub fn prefix(self: *const Queue, count: u32) []const Event {
         std.debug.assert(count <= self.eventCount());
-        return self.events()[0..@intCast(count)];
+        return self.parsed_events.events.items[0..@intCast(count)];
     }
 
     pub fn isEmpty(self: *const Queue) bool {

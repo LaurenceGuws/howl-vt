@@ -36,6 +36,10 @@ fn feedQueueSlice(queue: *Queue, bytes: []const u8) void {
     queue.feedSliceChecked(bytes) catch unreachable;
 }
 
+fn queuePrefixAll(queue: *const Queue) []const action_root.Event {
+    return queue.prefix(queue.eventCount());
+}
+
 fn apply(terminal: *Terminal) void {
     ActionRoot.apply(terminal);
 }
@@ -84,11 +88,12 @@ test "queue: mixed text and CSI and text" {
     defer queue.deinit();
     feedQueueSlice(&queue, "hello\x1b[1mworld");
     try std.testing.expectEqual(@as(u32, 3), queue.eventCount());
-    try std.testing.expect(queue.events()[0] == .text);
-    try std.testing.expectEqualSlices(u8, "hello", queue.events()[0].text);
-    try std.testing.expect(queue.events()[1] == .style_change);
-    try std.testing.expect(queue.events()[2] == .text);
-    try std.testing.expectEqualSlices(u8, "world", queue.events()[2].text);
+    const events = queuePrefixAll(&queue);
+    try std.testing.expect(events[0] == .text);
+    try std.testing.expectEqualSlices(u8, "hello", events[0].text);
+    try std.testing.expect(events[1] == .style_change);
+    try std.testing.expect(events[2] == .text);
+    try std.testing.expectEqualSlices(u8, "world", events[2].text);
 }
 
 test "queue: reset clears events and parser state" {
@@ -101,7 +106,8 @@ test "queue: reset clears events and parser state" {
     try std.testing.expect(queue.isEmpty());
     feedQueueSlice(&queue, "xyz");
     try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
-    try std.testing.expectEqualSlices(u8, "xyz", queue.events()[0].text);
+    const events = queuePrefixAll(&queue);
+    try std.testing.expectEqualSlices(u8, "xyz", events[0].text);
 }
 
 test "queue: split CSI across feeds" {
@@ -111,8 +117,9 @@ test "queue: split CSI across feeds" {
     feedQueueSlice(&queue, "\x1b[");
     feedQueueSlice(&queue, "31m");
     try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
-    try std.testing.expect(queue.events()[0] == .style_change);
-    try std.testing.expectEqual(@as(i32, 31), queue.events()[0].style_change.params[0]);
+    const events = queuePrefixAll(&queue);
+    try std.testing.expect(events[0] == .style_change);
+    try std.testing.expectEqual(@as(i32, 31), events[0].style_change.params[0]);
 }
 
 test "queue: stray ESC in OSC dropped, byte appended" {
@@ -121,9 +128,10 @@ test "queue: stray ESC in OSC dropped, byte appended" {
     defer queue.deinit();
     feedQueueSlice(&queue, "\x1b]ti\x1btle\x07");
     try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
-    try std.testing.expect(queue.events()[0] == .osc);
-    try std.testing.expectEqual(.title, queue.events()[0].osc.kind);
-    try std.testing.expectEqualSlices(u8, "title", queue.events()[0].osc.payload);
+    const events = queuePrefixAll(&queue);
+    try std.testing.expect(events[0] == .osc);
+    try std.testing.expectEqual(.title, events[0].osc.kind);
+    try std.testing.expectEqualSlices(u8, "title", events[0].osc.payload);
 }
 
 test "feed/apply: queue clear drops pending parsed events before apply" {
