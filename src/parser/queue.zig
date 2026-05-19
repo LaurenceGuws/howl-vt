@@ -57,13 +57,6 @@ pub const Queue = struct {
         try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
-    // Repo-local queue regression tests still use the convenience entrypoint
-    // below. The shipped feed seam must use the checked variant so allocation
-    // failure surfaces explicitly instead of dropping parser work.
-    pub fn feedSlice(self: *Queue, bytes: []const u8) void {
-        self.feedSliceChecked(bytes) catch unreachable;
-    }
-
     pub fn feedSliceChecked(self: *Queue, bytes: []const u8) FeedError!void {
         self.clearParserActions();
         for (bytes) |byte| {
