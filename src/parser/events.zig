@@ -561,3 +561,18 @@ test "parsed events: preserves APC, DCS, PM, and ESC transport" {
     try std.testing.expect(parsed_events.events.items[3] == .esc_dispatch);
     try std.testing.expectEqual(@as(u8, 'M'), parsed_events.events.items[3].esc_dispatch.final);
 }
+
+test "parsed events: rejects queue growth past explicit bound" {
+    const gpa = std.testing.allocator;
+    var parsed_events = ParsedEvents.init(gpa);
+    defer parsed_events.deinit();
+    try parsed_events.events.ensureTotalCapacity(gpa, ParsedEvents.max_queued_events);
+    parsed_events.events.items.len = ParsedEvents.max_queued_events;
+
+    var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 1);
+    defer actions.deinit(gpa);
+    try actions.append(gpa, .{ .print = 'A' });
+
+    try std.testing.expectError(error.ParsedEventLimit, parsed_events.appendParserActions(actions.items));
+    try std.testing.expectEqual(@as(usize, ParsedEvents.max_queued_events), parsed_events.events.items.len);
+}
