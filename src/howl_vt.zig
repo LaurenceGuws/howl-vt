@@ -1,4 +1,3 @@
-
 pub const locator = @import("control/locator.zig");
 pub const mode = @import("control/mode.zig");
 pub const osc_color = @import("control/osc_color.zig");
@@ -12,14 +11,6 @@ pub const kitty = @import("kitty.zig");
 pub const parser = @import("parser.zig");
 pub const selection = @import("selection.zig");
 pub const terminal = @import("terminal.zig");
-
-pub const Screen = screen.Screen;
-pub const Input = input;
-pub const Action = action;
-pub const Kitty = kitty;
-pub const Parser = parser.Parser;
-pub const Selection = selection;
-pub const Terminal = terminal.Terminal;
 
 test {
     _ = @import("test/action_mapping.zig");
