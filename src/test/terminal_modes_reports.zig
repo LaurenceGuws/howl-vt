@@ -46,7 +46,7 @@ fn visibleView(terminal: *const Terminal, options: screen_set.Options) screen_se
 
 fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
     return screen_capture.Capture.captureFromScreen(
-        terminal.parser_queue.getAllocator(),
+        terminal.allocator,
         terminal.screen_state.activeConst(),
         terminal.screen_state.activeSelectionConst().state(),
     );

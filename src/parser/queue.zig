@@ -47,10 +47,6 @@ pub const Queue = struct {
         self.parsed_events.deinit();
     }
 
-    pub fn getAllocator(self: *const Queue) std.mem.Allocator {
-        return self.allocator;
-    }
-
     pub fn feedByteChecked(self: *Queue, byte: u8) FeedError!void {
         self.clearParserActions();
         try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));

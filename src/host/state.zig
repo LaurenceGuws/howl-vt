@@ -63,7 +63,7 @@ pub fn pendingClipboardSet(vt: anytype) ?[]const u8 {
 }
 
 pub fn clearPendingClipboardSet(vt: anytype) void {
-    if (vt.host.pending_clipboard) |req| vt.parser_queue.getAllocator().free(req.raw);
+    if (vt.host.pending_clipboard) |req| vt.allocator.free(req.raw);
     vt.host.pending_clipboard = null;
 }
 

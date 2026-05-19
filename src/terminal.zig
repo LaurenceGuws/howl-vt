@@ -18,6 +18,7 @@ pub const Terminal = struct {
 
     const ScreenSet = screen_set.Set;
 
+    allocator: std.mem.Allocator,
     parser_queue: ParserQueue,
     screen_state: ScreenSet,
     modes: TerminalModeNs.State = .{},
@@ -33,6 +34,7 @@ pub const Terminal = struct {
         const state = ScreenNs.init(rows, cols);
         const alt_state = ScreenNs.init(rows, cols);
         return Terminal{
+            .allocator = allocator,
             .parser_queue = parser_queue,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
@@ -48,6 +50,7 @@ pub const Terminal = struct {
         var alt_state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return Terminal{
+            .allocator = allocator,
             .parser_queue = parser_queue,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
@@ -63,6 +66,7 @@ pub const Terminal = struct {
         var alt_state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return Terminal{
+            .allocator = allocator,
             .parser_queue = parser_queue,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
@@ -71,7 +75,7 @@ pub const Terminal = struct {
 
     /// Release Terminal resources.
     pub fn deinit(self: *Terminal) void {
-        const allocator = self.parser_queue.getAllocator();
+        const allocator = self.allocator;
         self.host.deinit(allocator);
         self.kitty.deinit(allocator);
         self.screen_state.deinit(allocator);

@@ -34,7 +34,7 @@ pub fn encodeKey(vt: anytype, scratch: *Scratch, key_value: input.Key, mod: inpu
 }
 
 pub fn encodeMouse(vt: anytype, scratch: *Scratch, event: input.MouseEvent) []const u8 {
-    LocatorNs.handleMouseEvent(&vt.host.locator, vt.parser_queue.getAllocator(), &vt.host.pending_output, scratch.buf[0..], event);
+    LocatorNs.handleMouseEvent(&vt.host.locator, vt.allocator, &vt.host.pending_output, scratch.buf[0..], event);
     const encoded = mouse.encodeMouse(scratch.buf[0..], event, vt.modes.mouse_tracking, vt.modes.mouse_protocol);
     std.debug.assert(encoded.len <= scratch.buf.len);
     return encoded;

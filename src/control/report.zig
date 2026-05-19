@@ -44,7 +44,7 @@ pub fn apply(vt: anytype, report_action: ReportAction) void {
     const active = vt.screen_state.activeConst();
     const deccir_charset = vt.parser_queue.deccirCharsetState();
     const ctx = Context{
-        .allocator = vt.parser_queue.getAllocator(),
+        .allocator = vt.allocator,
         .pending_output = &vt.host.pending_output,
         .encode_buf = scratch.buf[0..],
         .active_screen = active,
