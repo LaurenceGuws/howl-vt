@@ -343,14 +343,14 @@ fn feedBytesToParser(parser: *Parser, output: *ParserOutput, harness: *Harness, 
 
 fn feedBytesToTerminal(terminal: *vt.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
     switch (mode) {
-        .whole_slice => parser_flow.feedSlice(terminal, bytes),
-        .bytewise => for (bytes) |byte| parser_flow.feedByte(terminal, byte),
+        .whole_slice => parser_flow.feedSlice(terminal, bytes) catch unreachable,
+        .bytewise => for (bytes) |byte| parser_flow.feedByte(terminal, byte) catch unreachable,
         .chunked => {
             var offset: usize = 0;
             while (offset < bytes.len) {
                 const remaining = bytes.len - offset;
                 const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
-                parser_flow.feedSlice(terminal, bytes[offset..][0..chunk_len]);
+                parser_flow.feedSlice(terminal, bytes[offset..][0..chunk_len]) catch unreachable;
                 offset += chunk_len;
             }
         },

@@ -73,11 +73,11 @@ fn selectionClear(terminal: *Terminal) void {
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
-    parser_flow.feedByte(terminal, byte);
+    parser_flow.feedByte(terminal, byte) catch unreachable;
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    parser_flow.feedSlice(terminal, bytes);
+    parser_flow.feedSlice(terminal, bytes) catch unreachable;
 }
 
 fn apply(terminal: *Terminal) void {

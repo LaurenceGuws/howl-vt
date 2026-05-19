@@ -16,7 +16,7 @@ const Screen = screen_mod.Screen;
 const Grid = Screen;
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    parser_flow.feedSlice(terminal, bytes);
+    parser_flow.feedSlice(terminal, bytes) catch unreachable;
 }
 
 fn apply(terminal: *Terminal) void {

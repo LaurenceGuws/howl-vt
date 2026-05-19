@@ -134,56 +134,56 @@ pub const ParsedEvents = struct {
         self.events.clearRetainingCapacity();
     }
 
-    pub fn appendParserActions(self: *ParsedEvents, actions: []const parser_mod.Action) void {
+    pub fn appendParserActions(self: *ParsedEvents, actions: []const parser_mod.Action) error{OutOfMemory}!void {
         var idx: usize = 0;
         while (idx < actions.len) {
             if (takeAsciiTextPrefix(self, actions[idx..])) |ascii_len| {
-                self.appendAsciiText(actions[idx .. idx + ascii_len]);
+                try self.appendAsciiText(actions[idx .. idx + ascii_len]);
                 idx += ascii_len;
                 continue;
             }
 
             switch (actions[idx]) {
-                .print => |cp| self.appendPrint(cp),
-                .execute => |ctrl| self.appendControl(ctrl),
-                .invalid => self.events.append(self.allocator, Event.invalid_sequence) catch {},
-                .csi_dispatch => |csi| self.appendCsi(csi),
-                .osc_dispatch => |osc| self.appendOsc(osc.data, osc.term),
+                .print => |cp| try self.appendPrint(cp),
+                .execute => |ctrl| try self.appendControl(ctrl),
+                .invalid => try self.events.append(self.allocator, Event.invalid_sequence),
+                .csi_dispatch => |csi| try self.appendCsi(csi),
+                .osc_dispatch => |osc| try self.appendOsc(osc.data, osc.term),
                 .apc_start => self.apc_bytes.clearRetainingCapacity(),
-                .apc_put => |byte| self.apcBytesAppend(byte),
-                .apc_end => self.appendBufferedBytes(.apc, &self.apc_bytes),
+                .apc_put => |byte| try self.apcBytesAppend(byte),
+                .apc_end => try self.appendBufferedBytes(.apc, &self.apc_bytes),
                 .dcs_hook => |hook| {
                     self.dcs_hook = hook;
                     self.dcs_bytes.clearRetainingCapacity();
                 },
-                .dcs_put => |byte| self.dcsBytesAppend(byte),
-                .dcs_unhook => self.appendDcs(),
+                .dcs_put => |byte| try self.dcsBytesAppend(byte),
+                .dcs_unhook => try self.appendDcs(),
                 .pm_start => self.pm_bytes.clearRetainingCapacity(),
-                .pm_put => |byte| self.pmBytesAppend(byte),
-                .pm_end => self.appendBufferedBytes(.pm, &self.pm_bytes),
-                .esc_dispatch => |esc| self.appendEscDispatch(esc),
+                .pm_put => |byte| try self.pmBytesAppend(byte),
+                .pm_end => try self.appendBufferedBytes(.pm, &self.pm_bytes),
+                .esc_dispatch => |esc| try self.appendEscDispatch(esc),
             }
             idx += 1;
         }
     }
 
-    fn appendPrint(self: *ParsedEvents, cp: u21) void {
-        self.events.append(self.allocator, Event{ .codepoint = self.mapCodepoint(cp) }) catch {};
+    fn appendPrint(self: *ParsedEvents, cp: u21) error{OutOfMemory}!void {
+        try self.events.append(self.allocator, Event{ .codepoint = self.mapCodepoint(cp) });
     }
 
-    fn appendAsciiText(self: *ParsedEvents, actions: []const parser_mod.Action) void {
+    fn appendAsciiText(self: *ParsedEvents, actions: []const parser_mod.Action) error{OutOfMemory}!void {
         if (actions.len == 1) {
-            self.events.append(self.allocator, Event{ .codepoint = self.mapCodepoint(actions[0].print) }) catch {};
+            try self.events.append(self.allocator, Event{ .codepoint = self.mapCodepoint(actions[0].print) });
             return;
         }
 
-        const owned = self.arena.allocator().alloc(u8, actions.len) catch return;
+        const owned = try self.arena.allocator().alloc(u8, actions.len);
         for (actions, 0..) |action, idx| owned[idx] = @intCast(self.mapCodepoint(action.print));
-        self.events.append(self.allocator, Event{ .text = owned }) catch {};
+        try self.events.append(self.allocator, Event{ .text = owned });
     }
 
-    fn appendCsi(self: *ParsedEvents, action: parser_mod.CsiAction) void {
-        self.events.append(self.allocator, Event{
+    fn appendCsi(self: *ParsedEvents, action: parser_mod.CsiAction) error{OutOfMemory}!void {
+        try self.events.append(self.allocator, Event{
             .style_change = .{
                 .final = action.final,
                 .params = action.params,
@@ -194,45 +194,45 @@ pub const ParsedEvents = struct {
                 .intermediates = action.intermediates,
                 .intermediates_len = action.intermediates_len,
             },
-        }) catch {};
+        });
     }
 
-    fn appendOsc(self: *ParsedEvents, data: []const u8, term: parser_mod.OscTerminator) void {
+    fn appendOsc(self: *ParsedEvents, data: []const u8, term: parser_mod.OscTerminator) error{OutOfMemory}!void {
         const parsed = osc_parse.parse(data);
-        const owned = self.arena.allocator().dupe(u8, parsed.payload) catch return;
-        self.events.append(self.allocator, Event{ .osc = .{
+        const owned = try self.arena.allocator().dupe(u8, parsed.payload);
+        try self.events.append(self.allocator, Event{ .osc = .{
             .kind = parsed.kind,
             .command = parsed.command,
             .payload = owned,
             .terminator = term,
-        } }) catch {};
+        } });
     }
 
-    fn appendBytes(self: *ParsedEvents, comptime tag: std.meta.FieldEnum(Event), data: []const u8) void {
-        const owned = self.arena.allocator().dupe(u8, data) catch return;
-        self.events.append(self.allocator, @unionInit(Event, @tagName(tag), owned)) catch {};
+    fn appendBytes(self: *ParsedEvents, comptime tag: std.meta.FieldEnum(Event), data: []const u8) error{OutOfMemory}!void {
+        const owned = try self.arena.allocator().dupe(u8, data);
+        try self.events.append(self.allocator, @unionInit(Event, @tagName(tag), owned));
     }
 
-    fn appendBufferedBytes(self: *ParsedEvents, comptime tag: std.meta.FieldEnum(Event), buffer: *std.ArrayList(u8)) void {
-        self.appendBytes(tag, buffer.items);
+    fn appendBufferedBytes(self: *ParsedEvents, comptime tag: std.meta.FieldEnum(Event), buffer: *std.ArrayList(u8)) error{OutOfMemory}!void {
+        try self.appendBytes(tag, buffer.items);
         buffer.clearRetainingCapacity();
     }
 
-    fn appendDcs(self: *ParsedEvents) void {
+    fn appendDcs(self: *ParsedEvents) error{OutOfMemory}!void {
         const hook = self.dcs_hook orelse return;
         const arena_allocator = self.arena.allocator();
-        const payload = arena_allocator.dupe(u8, self.dcs_bytes.items) catch return;
-        var body = std.ArrayList(u8).initCapacity(arena_allocator, self.dcs_bytes.items.len + 32) catch return;
+        const payload = try arena_allocator.dupe(u8, self.dcs_bytes.items);
+        var body = try std.ArrayList(u8).initCapacity(arena_allocator, self.dcs_bytes.items.len + 32);
         var idx: usize = 0;
         while (idx < hook.count) : (idx += 1) {
-            if (idx > 0) body.append(arena_allocator, ';') catch return;
-            const text = std.fmt.allocPrint(arena_allocator, "{d}", .{hook.params[idx]}) catch return;
-            body.appendSlice(arena_allocator, text) catch return;
+            if (idx > 0) try body.append(arena_allocator, ';');
+            const text = try std.fmt.allocPrint(arena_allocator, "{d}", .{hook.params[idx]});
+            try body.appendSlice(arena_allocator, text);
         }
-        body.appendSlice(arena_allocator, hook.intermediates[0..hook.intermediates_len]) catch return;
-        body.append(arena_allocator, hook.final) catch return;
-        body.appendSlice(arena_allocator, self.dcs_bytes.items) catch return;
-        self.events.append(self.allocator, Event{ .dcs = .{
+        try body.appendSlice(arena_allocator, hook.intermediates[0..hook.intermediates_len]);
+        try body.append(arena_allocator, hook.final);
+        try body.appendSlice(arena_allocator, self.dcs_bytes.items);
+        try self.events.append(self.allocator, Event{ .dcs = .{
             .body = body.items,
             .payload = payload,
             .final = hook.final,
@@ -240,24 +240,24 @@ pub const ParsedEvents = struct {
             .param_count = hook.count,
             .intermediates = hook.intermediates,
             .intermediates_len = hook.intermediates_len,
-        } }) catch {};
+        } });
         self.dcs_bytes.clearRetainingCapacity();
         self.dcs_hook = null;
     }
 
-    fn apcBytesAppend(self: *ParsedEvents, byte: u8) void {
-        self.apc_bytes.append(self.allocator, byte) catch {};
+    fn apcBytesAppend(self: *ParsedEvents, byte: u8) error{OutOfMemory}!void {
+        try self.apc_bytes.append(self.allocator, byte);
     }
 
-    fn dcsBytesAppend(self: *ParsedEvents, byte: u8) void {
-        self.dcs_bytes.append(self.allocator, byte) catch {};
+    fn dcsBytesAppend(self: *ParsedEvents, byte: u8) error{OutOfMemory}!void {
+        try self.dcs_bytes.append(self.allocator, byte);
     }
 
-    fn pmBytesAppend(self: *ParsedEvents, byte: u8) void {
-        self.pm_bytes.append(self.allocator, byte) catch {};
+    fn pmBytesAppend(self: *ParsedEvents, byte: u8) error{OutOfMemory}!void {
+        try self.pm_bytes.append(self.allocator, byte);
     }
 
-    fn appendControl(self: *ParsedEvents, ctrl: u8) void {
+    fn appendControl(self: *ParsedEvents, ctrl: u8) error{OutOfMemory}!void {
         switch (ctrl) {
             0x0E => {
                 self.gl_index = 1;
@@ -269,10 +269,10 @@ pub const ParsedEvents = struct {
             },
             else => {},
         }
-        self.events.append(self.allocator, Event{ .control = ctrl }) catch {};
+        try self.events.append(self.allocator, Event{ .control = ctrl });
     }
 
-    fn appendEscDispatch(self: *ParsedEvents, esc: parser_mod.EscAction) void {
+    fn appendEscDispatch(self: *ParsedEvents, esc: parser_mod.EscAction) error{OutOfMemory}!void {
         if (esc.intermediates_len == 1) {
             switch (esc.intermediates[0]) {
                 '(' => {
@@ -286,7 +286,7 @@ pub const ParsedEvents = struct {
                 else => {},
             }
         }
-        self.events.append(self.allocator, Event{ .esc_dispatch = esc }) catch {};
+        try self.events.append(self.allocator, Event{ .esc_dispatch = esc });
     }
 
     fn mapCodepoint(self: *const ParsedEvents, cp: u21) u21 {
@@ -363,8 +363,8 @@ test "parsed events: maps ASCII text to text event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("hello") |byte| parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
-    parsed_events.appendParserActions(actions.items);
+    for ("hello") |byte| try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .text);
     try std.testing.expectEqualSlices(u8, "hello", parsed_events.events.items[0].text);
@@ -380,8 +380,8 @@ test "parsed events: maps single ASCII byte to codepoint event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("x") |byte| parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
-    parsed_events.appendParserActions(actions.items);
+    for ("x") |byte| try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .codepoint);
     try std.testing.expectEqual(@as(u21, 'x'), parsed_events.events.items[0].codepoint);
@@ -397,8 +397,8 @@ test "parsed events: maps UTF-8 codepoint to codepoint event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\xC3\xA9") |byte| parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
-    parsed_events.appendParserActions(actions.items);
+    for ("\xC3\xA9") |byte| try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .codepoint);
     try std.testing.expectEqual(@as(u21, 0xE9), parsed_events.events.items[0].codepoint);
@@ -414,8 +414,8 @@ test "parsed events: maps control byte to control event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(0x07));
-    parsed_events.appendParserActions(actions.items);
+    try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(0x07));
+    try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .control);
     try std.testing.expectEqual(@as(u8, 0x07), parsed_events.events.items[0].control);
@@ -431,8 +431,8 @@ test "parsed events: maps CSI sequence to style_change event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b[31m") |byte| parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
-    parsed_events.appendParserActions(actions.items);
+    for ("\x1b[31m") |byte| try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .style_change);
     try std.testing.expectEqual(@as(u8, 'm'), parsed_events.events.items[0].style_change.final);
@@ -449,8 +449,8 @@ test "parsed events: preserves CSI leader private and intermediates" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b[?25h\x1b[!p") |byte| parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
-    parsed_events.appendParserActions(actions.items);
+    for ("\x1b[?25h\x1b[!p") |byte| try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 2), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .style_change);
     try std.testing.expectEqual(@as(u8, '?'), parsed_events.events.items[0].style_change.leader);
@@ -472,8 +472,8 @@ test "parsed events: maps OSC title command to typed osc event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b]0;My Window\x07") |byte| parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
-    parsed_events.appendParserActions(actions.items);
+    for ("\x1b]0;My Window\x07") |byte| try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .osc);
     try std.testing.expectEqual(OscKind.title, parsed_events.events.items[0].osc.kind);
@@ -491,8 +491,8 @@ test "parsed events: preserves OSC clipboard transport" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b]52;c;Zm9v\x07") |byte| parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
-    parsed_events.appendParserActions(actions.items);
+    for ("\x1b]52;c;Zm9v\x07") |byte| try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .osc);
     try std.testing.expectEqual(OscKind.clipboard, parsed_events.events.items[0].osc.kind);
@@ -510,8 +510,8 @@ test "parsed events: parses OSC command without semicolon payload" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b]30001\x1b\\") |byte| parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
-    parsed_events.appendParserActions(actions.items);
+    for ("\x1b]30001\x1b\\") |byte| try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .osc);
     try std.testing.expectEqual(OscKind.other, parsed_events.events.items[0].osc.kind);
@@ -529,8 +529,8 @@ test "parsed events: preserves APC, DCS, PM, and ESC transport" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b_kitty\x1b\\\x1bP1$qdata\x1b\\\x1b^ignored\x1b\\\x1bM") |byte| parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
-    parsed_events.appendParserActions(actions.items);
+    for ("\x1b_kitty\x1b\\\x1bP1$qdata\x1b\\\x1b^ignored\x1b\\\x1bM") |byte| try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 4), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .apc);
     try std.testing.expectEqualSlices(u8, "kitty", parsed_events.events.items[0].apc);

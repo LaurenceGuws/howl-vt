@@ -255,7 +255,7 @@ pub fn terminalDeinit(handle: VtHandle) callconv(.c) void {
 pub fn terminalFeed(handle: VtHandle, ptr: ?[*]const u8, len: usize) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
     const bytes = bytesIn(ptr, len) orelse return @intFromEnum(HowlVtCallStatus.invalid_argument);
-    parser_flow.feedSlice(owned, bytes);
+    parser_flow.feedSlice(owned, bytes) catch return @intFromEnum(HowlVtCallStatus.failed);
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 

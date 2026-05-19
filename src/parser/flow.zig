@@ -59,18 +59,29 @@ pub const ApplyFlow = struct {
         self.allocator.destroy(self.parsed_events);
     }
 
+    // Repo-local tests still use the convenience entrypoints below. The
+    // shipped feed seam must use the checked variants so allocation failure
+    // surfaces explicitly instead of dropping parser work.
     pub fn feedByte(self: *ApplyFlow, byte: u8) void {
+        self.feedByteChecked(byte) catch unreachable;
+    }
+
+    pub fn feedByteChecked(self: *ApplyFlow, byte: u8) error{OutOfMemory}!void {
         self.clearParserActions();
-        appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, self.parser.next(byte));
-        self.parsed_events.appendParserActions(self.parser_actions.items);
+        try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, self.parser.next(byte));
+        try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
     pub fn feedSlice(self: *ApplyFlow, bytes: []const u8) void {
+        self.feedSliceChecked(bytes) catch unreachable;
+    }
+
+    pub fn feedSliceChecked(self: *ApplyFlow, bytes: []const u8) error{OutOfMemory}!void {
         self.clearParserActions();
         for (bytes) |byte| {
-            appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, self.parser.next(byte));
+            try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, self.parser.next(byte));
         }
-        self.parsed_events.appendParserActions(self.parser_actions.items);
+        try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
     pub fn events(self: *const ApplyFlow) []const Event {
@@ -106,12 +117,12 @@ pub const ApplyFlow = struct {
 
 };
 
-pub fn feedByte(vt: anytype, byte: u8) void {
-    vt.parser_state.apply_flow.feedByte(byte);
+pub fn feedByte(vt: anytype, byte: u8) error{OutOfMemory}!void {
+    try vt.parser_state.apply_flow.feedByteChecked(byte);
 }
 
-pub fn feedSlice(vt: anytype, bytes: []const u8) void {
-    vt.parser_state.apply_flow.feedSlice(bytes);
+pub fn feedSlice(vt: anytype, bytes: []const u8) error{OutOfMemory}!void {
+    try vt.parser_state.apply_flow.feedSliceChecked(bytes);
 }
 
 pub fn clear(vt: anytype) void {
@@ -127,9 +138,9 @@ pub fn appendOwnedPhases(
     arena: std.mem.Allocator,
     actions: *std.ArrayList(parser_mod.Action),
     phases: parser_mod.PhaseActions,
-) void {
+) error{OutOfMemory}!void {
     for (phases) |phase| {
-        if (phase) |action| appendOwnedAction(allocator, arena, actions, action);
+        if (phase) |action| try appendOwnedAction(allocator, arena, actions, action);
     }
 }
 
@@ -138,12 +149,12 @@ fn appendOwnedAction(
     arena: std.mem.Allocator,
     actions: *std.ArrayList(parser_mod.Action),
     action: parser_mod.Action,
-) void {
+) error{OutOfMemory}!void {
     switch (action) {
         .osc_dispatch => |osc| {
-            const owned = arena.dupe(u8, osc.data) catch return;
-            actions.append(allocator, .{ .osc_dispatch = .{ .data = owned, .term = osc.term } }) catch {};
+            const owned = try arena.dupe(u8, osc.data);
+            try actions.append(allocator, .{ .osc_dispatch = .{ .data = owned, .term = osc.term } });
         },
-        else => actions.append(allocator, action) catch {},
+        else => try actions.append(allocator, action),
     }
 }

@@ -28,7 +28,7 @@ const Output = struct {
     }
 
     fn appendPhases(self: *Output, phases: parser_mod.PhaseActions) void {
-        parser_flow.appendOwnedPhases(std.testing.allocator, self.arena.allocator(), &self.actions, phases);
+        parser_flow.appendOwnedPhases(std.testing.allocator, self.arena.allocator(), &self.actions, phases) catch unreachable;
     }
 };
 

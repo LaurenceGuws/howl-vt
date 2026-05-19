@@ -84,11 +84,11 @@ test "terminal tracks synchronized output private mode" {
     var vt = try Terminal.init(std.testing.allocator, 2, 8);
     defer vt.deinit();
 
-    parser_flow.feedSlice(&vt, "\x1b[?2026h");
+    try parser_flow.feedSlice(&vt, "\x1b[?2026h");
     action.apply(&vt);
     try std.testing.expect(vt.modes.synchronized_output);
 
-    parser_flow.feedSlice(&vt, "\x1b[?2026l");
+    try parser_flow.feedSlice(&vt, "\x1b[?2026l");
     action.apply(&vt);
     try std.testing.expect(!vt.modes.synchronized_output);
 }
@@ -97,7 +97,7 @@ test "terminal visible view projects scrollback rows" {
     var vt = try Terminal.initWithCellsAndHistory(std.testing.allocator, 2, 2, 4);
     defer vt.deinit();
 
-    parser_flow.feedSlice(&vt, "aa\r\nbb\r\ncc");
+    try parser_flow.feedSlice(&vt, "aa\r\nbb\r\ncc");
     action.apply(&vt);
 
     const live = screen_set.visibleView(&vt.screen_state, .{});

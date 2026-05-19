@@ -13,10 +13,10 @@ fn feedCsiBytes(bytes: []const u8) !CsiAction {
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
 
-    parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(0x1b));
-    parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next('['));
+    try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(0x1b));
+    try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next('['));
     for (bytes) |byte| {
-        parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+        try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
     }
 
     for (actions.items) |action| {

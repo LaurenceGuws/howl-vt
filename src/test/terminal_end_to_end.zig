@@ -13,9 +13,9 @@ test "terminal: parser apply flow applies bytes to grid state deterministically"
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
-    parser_flow.feedSlice(&terminal, "ab");
-    parser_flow.feedByte(&terminal, 'c');
-    parser_flow.feedSlice(&terminal, "\r\nxy");
+    try parser_flow.feedSlice(&terminal, "ab");
+    try parser_flow.feedByte(&terminal, 'c');
+    try parser_flow.feedSlice(&terminal, "\r\nxy");
     Action.apply(&terminal);
 
     const s = terminal.screen_state.activeConst();
