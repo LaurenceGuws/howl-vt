@@ -4,7 +4,6 @@ const std = @import("std");
 const dispatch = @import("action/dispatch.zig");
 const parsed_events = @import("parser/events.zig");
 const route = @import("action/route.zig");
-const apply_flow = @import("parser/flow.zig");
 const vocabulary = @import("action/vocabulary.zig");
 
 pub const Event = parsed_events.Event;
@@ -21,7 +20,6 @@ pub const KittyNotificationCommand = vocabulary.KittyNotificationCommand;
 pub const KittyShellMark = vocabulary.KittyShellMark;
 pub const LegacyControlKind = route.LegacyControlKind;
 pub const EscAction = route.EscAction;
-pub const ApplyFlow = apply_flow.ApplyFlow;
 pub const ApplySummary = dispatch.ApplySummary;
 pub const Osc = @import("xterm/osc.zig");
 

@@ -28,42 +28,42 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
     if (max_events == 0) {
         return .{
             .applied = 0,
-            .remaining_events = queuedEventCount(vt.parser_state.apply_flow.events().len),
+            .remaining_events = queuedEventCount(vt.parser_state.queue.events().len),
             .latest_title = null,
         };
     }
 
-    const count = @min(max_events, queuedEventCount(vt.parser_state.apply_flow.events().len));
+    const count = @min(max_events, queuedEventCount(vt.parser_state.queue.events().len));
     if (count == 0) return .{ .applied = 0, .remaining_events = 0, .latest_title = null };
 
     std.debug.assert(count <= max_events);
-    std.debug.assert(count <= vt.parser_state.apply_flow.events().len);
+    std.debug.assert(count <= vt.parser_state.queue.events().len);
 
     var latest_title: ?[]const u8 = null;
-    for (vt.parser_state.apply_flow.events()[0..count]) |ev| {
+    for (vt.parser_state.queue.events()[0..count]) |ev| {
         latest_title = latestTitle(latest_title, ev);
         applyEvent(vt, ev);
     }
-    vt.parser_state.apply_flow.parsed_events.dropPrefix(count);
-    const remaining = queuedEventCount(vt.parser_state.apply_flow.events().len);
+    vt.parser_state.queue.parsed_events.dropPrefix(count);
+    const remaining = queuedEventCount(vt.parser_state.queue.events().len);
     std.debug.assert(remaining + count >= count);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .applied = count, .remaining_events = remaining, .latest_title = latest_title };
 }
 
-pub fn applyToScreen(flow: anytype, screen: *Screen) void {
-    while (applyToScreenLimit(flow, screen, std.math.maxInt(u32)) != 0) {}
+pub fn applyToScreen(queue: anytype, screen: *Screen) void {
+    while (applyToScreenLimit(queue, screen, std.math.maxInt(u32)) != 0) {}
 }
 
-pub fn applyToScreenLimit(flow: anytype, screen: *Screen, max_events: u32) u32 {
+pub fn applyToScreenLimit(queue: anytype, screen: *Screen, max_events: u32) u32 {
     if (max_events == 0) return 0;
-    const count = @min(max_events, queuedEventCount(flow.events().len));
-    for (flow.events()[0..count]) |ev| {
+    const count = @min(max_events, queuedEventCount(queue.events().len));
+    for (queue.events()[0..count]) |ev| {
         if (action_mod.process(ev)) |sem_ev| {
             if (action_mod.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
         }
     }
-    flow.parsed_events.dropPrefix(count);
+    queue.parsed_events.dropPrefix(count);
     return count;
 }
 

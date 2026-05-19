@@ -31,7 +31,7 @@ A15 ScreenSet => src/screen/set.zig | ghostty=src/terminal/ScreenSet.zig | termi
 
 fields
 F01 allocator => delete field; pass allocator explicitly to owner init/deinit paths that need it | ghostty=src/terminal/Screen.zig::alloc and ScreenSet.init/deinit | no terminal-wide allocator field should survive just to prop up a facade
-F02 apply_flow => src/parser/flow.zig and src/parser/main.zig | ghostty=src/terminal/Parser.zig + src/terminal/stream.zig | parser feed state is parser-owned
+F02 queue => src/parser/flow.zig and src/parser/main.zig | ghostty=src/terminal/Parser.zig + src/terminal/stream.zig | parser feed state is parser-owned
 F03 screen_state => src/screen/set.zig | ghostty=src/terminal/ScreenSet.zig | screen switching and active screen truth live here
 F04 selection => move storage under src/screen/ with mutation in src/selection/ | ghostty=src/terminal/Screen.zig::selection + src/terminal/Selection.zig | selection is screen-local, not terminal-root state
 F05 modes => dedicated mode owner, likely rename current src/control/mode.zig to explicit modes owner | ghostty=src/terminal/modes.zig::ModeState | mode storage must leave terminal facade

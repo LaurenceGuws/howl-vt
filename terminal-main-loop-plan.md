@@ -173,7 +173,7 @@ Work:
 - make bounded apply turn live under `action/dispatch`
 - delete:
   - `allocator`
-  - `apply_flow`
+  - `queue`
   - `init*`
   - `deinit`
   - `feedByte`
@@ -198,7 +198,7 @@ Status:
 - terminal parser/apply shim methods were deleted
 - remaining work in this loop is the state/lifecycle cut:
   - `allocator`
-  - `apply_flow`
+  - `queue`
   - `init*`
   - `deinit`
 

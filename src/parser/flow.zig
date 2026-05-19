@@ -1,4 +1,4 @@
-//! Parser feed, parsed-event queue, and screen apply flow.
+//! Parser feed and parsed-event queue.
 
 const std = @import("std");
 const parser_mod = @import("../parser.zig");
@@ -15,30 +15,30 @@ const FeedError = error{
 };
 
 pub const State = struct {
-    apply_flow: ApplyFlow,
+    queue: Queue,
 
     pub fn getAllocator(self: *const State) std.mem.Allocator {
-        return self.apply_flow.allocator;
+        return self.queue.allocator;
     }
 
     pub fn init(allocator: std.mem.Allocator) !State {
-        return .{ .apply_flow = try ApplyFlow.init(allocator) };
+        return .{ .queue = try Queue.init(allocator) };
     }
 
     pub fn deinit(self: *State) void {
-        self.apply_flow.deinit();
+        self.queue.deinit();
     }
 };
 
-/// Stateful parser-to-screen feed path.
-pub const ApplyFlow = struct {
+/// Stateful parser feed and parsed-event queue path.
+pub const Queue = struct {
     allocator: std.mem.Allocator,
     parsed_events: *parsed_events_mod.ParsedEvents,
     parser_action_arena: std.heap.ArenaAllocator,
     parser_actions: std.ArrayList(parser_mod.Action),
     parser: ParserApi,
 
-    pub fn init(allocator: std.mem.Allocator) !ApplyFlow {
+    pub fn init(allocator: std.mem.Allocator) !Queue {
         const parsed_events = try allocator.create(parsed_events_mod.ParsedEvents);
         parsed_events.* = parsed_events_mod.ParsedEvents.init(allocator);
         errdefer {
@@ -57,7 +57,7 @@ pub const ApplyFlow = struct {
         };
     }
 
-    pub fn deinit(self: *ApplyFlow) void {
+    pub fn deinit(self: *Queue) void {
         self.parser_actions.deinit(self.allocator);
         self.parser_action_arena.deinit();
         self.parser.deinit();
@@ -68,21 +68,21 @@ pub const ApplyFlow = struct {
     // Repo-local tests still use the convenience entrypoints below. The
     // shipped feed seam must use the checked variants so allocation failure
     // surfaces explicitly instead of dropping parser work.
-    pub fn feedByte(self: *ApplyFlow, byte: u8) void {
+    pub fn feedByte(self: *Queue, byte: u8) void {
         self.feedByteChecked(byte) catch unreachable;
     }
 
-    pub fn feedByteChecked(self: *ApplyFlow, byte: u8) FeedError!void {
+    pub fn feedByteChecked(self: *Queue, byte: u8) FeedError!void {
         self.clearParserActions();
         try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
         try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
-    pub fn feedSlice(self: *ApplyFlow, bytes: []const u8) void {
+    pub fn feedSlice(self: *Queue, bytes: []const u8) void {
         self.feedSliceChecked(bytes) catch unreachable;
     }
 
-    pub fn feedSliceChecked(self: *ApplyFlow, bytes: []const u8) FeedError!void {
+    pub fn feedSliceChecked(self: *Queue, bytes: []const u8) FeedError!void {
         self.clearParserActions();
         for (bytes) |byte| {
             try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
@@ -90,38 +90,38 @@ pub const ApplyFlow = struct {
         try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
-    pub fn events(self: *const ApplyFlow) []const Event {
+    pub fn events(self: *const Queue) []const Event {
         return self.parsed_events.events.items;
     }
 
-    pub fn len(self: *const ApplyFlow) usize {
+    pub fn len(self: *const Queue) usize {
         return self.parsed_events.len();
     }
 
-    pub fn isEmpty(self: *const ApplyFlow) bool {
+    pub fn isEmpty(self: *const Queue) bool {
         return self.parsed_events.isEmpty();
     }
 
     /// Clear queued events without resetting parser state.
-    pub fn clear(self: *ApplyFlow) void {
+    pub fn clear(self: *Queue) void {
         self.parsed_events.clear();
     }
 
-    pub fn reset(self: *ApplyFlow) void {
+    pub fn reset(self: *Queue) void {
         self.parsed_events.resetState();
         self.parser.reset();
     }
 
-    pub fn deccirCharsetState(self: *const ApplyFlow) @TypeOf(self.parsed_events.deccirCharsetState()) {
+    pub fn deccirCharsetState(self: *const Queue) @TypeOf(self.parsed_events.deccirCharsetState()) {
         return self.parsed_events.deccirCharsetState();
     }
 
-    fn clearParserActions(self: *ApplyFlow) void {
+    fn clearParserActions(self: *Queue) void {
         self.parser_actions.clearRetainingCapacity();
         _ = self.parser_action_arena.reset(.retain_capacity);
     }
 
-    fn nextPhasesChecked(self: *ApplyFlow, byte: u8) FeedError!parser_mod.PhaseActions {
+    fn nextPhasesChecked(self: *Queue, byte: u8) FeedError!parser_mod.PhaseActions {
         const phases = self.parser.next(byte);
         const failure = self.parser.takeStringControlFailed() orelse return phases;
 
@@ -135,19 +135,19 @@ pub const ApplyFlow = struct {
 };
 
 pub fn feedByte(vt: anytype, byte: u8) FeedError!void {
-    try vt.parser_state.apply_flow.feedByteChecked(byte);
+    try vt.parser_state.queue.feedByteChecked(byte);
 }
 
 pub fn feedSlice(vt: anytype, bytes: []const u8) FeedError!void {
-    try vt.parser_state.apply_flow.feedSliceChecked(bytes);
+    try vt.parser_state.queue.feedSliceChecked(bytes);
 }
 
 pub fn clear(vt: anytype) void {
-    vt.parser_state.apply_flow.clear();
+    vt.parser_state.queue.clear();
 }
 
 pub fn reset(vt: anytype) void {
-    vt.parser_state.apply_flow.reset();
+    vt.parser_state.queue.reset();
 }
 
 pub fn appendOwnedPhases(

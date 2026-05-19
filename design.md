@@ -120,7 +120,7 @@ stateDiagram-v2
 sequenceDiagram
     participant Host
     participant V as Terminal
-    participant F as Interpret.ApplyFlow
+    participant F as Parser.Queue
     participant D as Action.Dispatch
     participant A as Action Routing
     participant G as Screen

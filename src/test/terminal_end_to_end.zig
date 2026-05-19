@@ -8,7 +8,7 @@ const terminal_mod = @import("../terminal.zig");
 const Action = action;
 const Terminal = terminal_mod.Terminal;
 
-test "terminal: parser apply flow applies bytes to grid state deterministically" {
+test "terminal: parser queue applies bytes to grid state deterministically" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();

@@ -1,9 +1,8 @@
-//! Parser feed/apply regression tests.
+//! Parser queue/apply regression tests.
 
 const std = @import("std");
 const dispatch = @import("../action/dispatch.zig");
 const screen_mod = @import("../screen.zig");
-const action = @import("../action.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
@@ -13,8 +12,8 @@ const terminal_mod = @import("../terminal.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
-const Action = action;
-const ApplyFlow = Action.ApplyFlow;
+const Queue = parser_flow.Queue;
+const ApplyFlow = Queue;
 const ActionRoot = action_root;
 const Terminal = terminal_mod.Terminal;
 
@@ -46,15 +45,15 @@ fn reset(terminal: *Terminal) void {
     parser_flow.reset(terminal);
 }
 
-fn feed(flow: *ApplyFlow, screen: *Screen, bytes: []const u8) void {
-    flow.feedSlice(bytes);
-    dispatch.applyToScreen(flow, screen);
+fn feed(queue: *Queue, screen: *Screen, bytes: []const u8) void {
+    queue.feedSlice(bytes);
+    dispatch.applyToScreen(queue, screen);
 }
 
-fn repaintPromptLine(flow: *ApplyFlow, screen: *Screen, prompt: []const u8, command: []const u8) void {
-    feed(flow, screen, "\r\x1b[K");
-    feed(flow, screen, prompt);
-    feed(flow, screen, command);
+fn repaintPromptLine(queue: *Queue, screen: *Screen, prompt: []const u8, command: []const u8) void {
+    feed(queue, screen, "\r\x1b[K");
+    feed(queue, screen, prompt);
+    feed(queue, screen, command);
 }
 
 fn expectPromptLine(screen: *Screen, prompt: []const u8, command: []const u8) !void {

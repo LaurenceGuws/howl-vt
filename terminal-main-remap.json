@@ -159,7 +159,7 @@
       ],
       "symbols": [
         { "line": 57, "kind": "field", "symbol": "allocator" },
-        { "line": 58, "kind": "field", "symbol": "apply_flow" },
+        { "line": 58, "kind": "field", "symbol": "queue" },
         { "line": 68, "kind": "method", "symbol": "init" },
         { "line": 83, "kind": "method", "symbol": "initWithCells" },
         { "line": 100, "kind": "method", "symbol": "initWithCellsAndHistory" },

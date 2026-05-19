@@ -245,7 +245,7 @@ This is the Checkpoint 1 map. It is the current working cut plan.
 
 | Current responsibility | Current home | Target owner | Notes |
 | --- | --- | --- | --- |
-| Parser byte feed state | `terminal.zig` via `apply_flow` | `parser/` | Keep syntax-only. |
+| Parser byte feed state | `terminal.zig` via `queue` | `parser/` | Keep syntax-only. |
 | Parsed event queue | `interpret/apply_flow.zig` | `parser/` or `action/` | Queue owner stays open. |
 | Semantic action vocabulary | `action/vocabulary.zig` | `action/` | First explicit action seam cut is complete. |
 | Event-to-action mapping | `interpret/actions/*` and `xterm/*` | `xterm/`, `kitty/`, `iterm/` | Split by protocol family is underway. |
@@ -271,7 +271,7 @@ This is the Checkpoint 1 map. It is the current working cut plan.
 These seams must be respected or clarified before broad code motion.
 
 - action vocabulary now lives in `action/vocabulary.zig`, but dispatch policy still lives in `terminal.zig`
-- `apply_flow` couples parser feed, event queue ownership, and direct screen application helpers
+- `queue` couples parser feed, event queue ownership, and direct screen application helpers
 - `VisibleView` is a good screen-facing contract, but it is nested inside `Terminal`
 - `HostState` keeps true host consequences, but its public accessors are mixed with screen and kitty accessors in one file
 - `ModeState` currently mixes screen behavior toggles, host input encoding policy, and DEC save/restore state
