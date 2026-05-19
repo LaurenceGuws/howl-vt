@@ -92,7 +92,7 @@ fn reset(terminal: *Terminal) void {
     parser_flow.reset(terminal);
 }
 
-fn applyLimit(terminal: *Terminal, max_events: usize) Action.ApplySummary {
+fn applyLimit(terminal: *Terminal, max_events: u32) Action.ApplySummary {
     return Action.applyLimit(terminal, max_events);
 }
 
@@ -142,7 +142,7 @@ test "Terminal method signatures remain host-facing" {
     const apply_fn: fn (*Terminal) void = apply;
     const clear_fn: fn (*Terminal) void = clear;
     const reset_fn: fn (*Terminal) void = reset;
-    const apply_limit_fn: fn (*Terminal, usize) Action.ApplySummary = applyLimit;
+    const apply_limit_fn: fn (*Terminal, u32) Action.ApplySummary = applyLimit;
     _ = .{ init_fn, init_cells_fn, deinit_fn, feed_byte_fn, feed_slice_fn, apply_fn, clear_fn, reset_fn, apply_limit_fn };
 }
 

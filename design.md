@@ -203,4 +203,6 @@ sequenceDiagram
 - Screen mutation owners must not know protocol families.
 - `Terminal` boundary owners must keep host consequences explicit.
 - Hosts should depend on the C ABI, not deep parser/screen leaves.
+- Bounded apply and throughput policy must stay explicit at the owning seam. If a limit changes,
+  lock the current Ghostty or Alacritty rationale in code and prove the changed host path.
 - Update `protocol_coverage.db` and test filters with the same change that adds protocol behavior.

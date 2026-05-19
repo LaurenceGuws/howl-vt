@@ -11,12 +11,15 @@ const report = @import("../control/report.zig");
 const Screen = screen_mod.Screen;
 
 pub const ApplySummary = struct {
-    applied: usize,
+    applied: u32,
     remaining_events: usize,
     latest_title: ?[]const u8,
 };
 
-pub fn applyLimit(vt: anytype, max_events: usize) ApplySummary {
+// Zero max_events is a query-only pass. The owner thread chooses the apply
+// slice size; VT only enforces that bound exactly and reports the true
+// remaining queue depth so the next turn stays explicit.
+pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
     if (max_events == 0) {
         return .{
             .applied = 0,
@@ -25,7 +28,7 @@ pub fn applyLimit(vt: anytype, max_events: usize) ApplySummary {
         };
     }
 
-    const count = @min(max_events, vt.parser_state.apply_flow.events().len);
+    const count: u32 = @intCast(@min(@as(usize, max_events), vt.parser_state.apply_flow.events().len));
     if (count == 0) return .{ .applied = 0, .remaining_events = 0, .latest_title = null };
 
     std.debug.assert(count <= max_events);
@@ -39,17 +42,17 @@ pub fn applyLimit(vt: anytype, max_events: usize) ApplySummary {
     vt.parser_state.apply_flow.parsed_events.dropPrefix(count);
     const remaining = vt.parser_state.apply_flow.events().len;
     std.debug.assert(remaining + count >= count);
-        vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
+    vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .applied = count, .remaining_events = remaining, .latest_title = latest_title };
 }
 
 pub fn applyToScreen(flow: anytype, screen: *Screen) void {
-    _ = applyToScreenLimit(flow, screen, std.math.maxInt(usize));
+    while (applyToScreenLimit(flow, screen, std.math.maxInt(u32)) != 0) {}
 }
 
-pub fn applyToScreenLimit(flow: anytype, screen: *Screen, max_events: usize) usize {
+pub fn applyToScreenLimit(flow: anytype, screen: *Screen, max_events: u32) u32 {
     if (max_events == 0) return 0;
-    const count = @min(max_events, flow.events().len);
+    const count: u32 = @intCast(@min(@as(usize, max_events), flow.events().len));
     for (flow.events()[0..count]) |ev| {
         if (action_mod.process(ev)) |sem_ev| {
             if (action_mod.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);

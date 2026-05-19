@@ -33,7 +33,10 @@ pub const kittyAction = route.kittyAction;
 pub const hostAction = route.hostAction;
 
 pub fn apply(vt: anytype) void {
-    _ = dispatch.applyLimit(vt, std.math.maxInt(usize));
+    while (true) {
+        const result = dispatch.applyLimit(vt, std.math.maxInt(u32));
+        if (result.applied == 0) return;
+    }
 }
 
 pub const applyLimit = dispatch.applyLimit;

@@ -23,7 +23,7 @@ fn apply(terminal: *Terminal) void {
     Action.apply(terminal);
 }
 
-fn applyLimit(terminal: *Terminal, max_events: usize) Action.ApplySummary {
+fn applyLimit(terminal: *Terminal, max_events: u32) Action.ApplySummary {
     return Action.applyLimit(terminal, max_events);
 }
 
