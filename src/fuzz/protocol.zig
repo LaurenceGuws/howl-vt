@@ -3,7 +3,6 @@
 const std = @import("std");
 const action = @import("../action.zig");
 const parser_mod = @import("../parser.zig");
-const parser_flow = @import("../parser/flow.zig");
 const screen_set = @import("../screen_set.zig");
 const Action = action;
 const Parser = parser_mod.Parser;
@@ -343,14 +342,14 @@ fn feedBytesToParser(parser: *Parser, output: *ParserOutput, harness: *Harness, 
 
 fn feedBytesToTerminal(terminal: *vt.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
     switch (mode) {
-        .whole_slice => parser_flow.feedSlice(terminal, bytes) catch unreachable,
-        .bytewise => for (bytes) |byte| parser_flow.feedByte(terminal, byte) catch unreachable,
+        .whole_slice => terminal.parser_queue.feedSliceChecked(bytes) catch unreachable,
+        .bytewise => for (bytes) |byte| terminal.parser_queue.feedByteChecked(byte) catch unreachable,
         .chunked => {
             var offset: usize = 0;
             while (offset < bytes.len) {
                 const remaining = bytes.len - offset;
                 const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
-                parser_flow.feedSlice(terminal, bytes[offset..][0..chunk_len]) catch unreachable;
+                terminal.parser_queue.feedSliceChecked(bytes[offset..][0..chunk_len]) catch unreachable;
                 offset += chunk_len;
             }
         },

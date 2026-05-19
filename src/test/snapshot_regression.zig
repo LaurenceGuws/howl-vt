@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const action_mod = @import("../action.zig");
-const parser_flow = @import("../parser/flow.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
@@ -23,11 +22,11 @@ fn visibleView(terminal: *const Terminal) screen_set.View {
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
-    parser_flow.feedByte(terminal, byte) catch unreachable;
+    terminal.parser_queue.feedByteChecked(byte) catch unreachable;
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    parser_flow.feedSlice(terminal, bytes) catch unreachable;
+    terminal.parser_queue.feedSliceChecked(bytes) catch unreachable;
 }
 
 fn apply(terminal: *Terminal) void {

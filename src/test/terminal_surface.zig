@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const action_mod = @import("../action.zig");
-const parser_flow = @import("../parser/flow.zig");
 const terminal_mod = @import("../terminal.zig");
 const ffi = @import("../ffi.zig");
 const parsed_events_mod = @import("../parser/events.zig");
@@ -75,11 +74,11 @@ fn selectionClear(terminal: *Terminal) void {
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
-    parser_flow.feedByte(terminal, byte) catch unreachable;
+    terminal.parser_queue.feedByteChecked(byte) catch unreachable;
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    parser_flow.feedSlice(terminal, bytes) catch unreachable;
+    terminal.parser_queue.feedSliceChecked(bytes) catch unreachable;
 }
 
 fn apply(terminal: *Terminal) void {
@@ -87,11 +86,11 @@ fn apply(terminal: *Terminal) void {
 }
 
 fn clear(terminal: *Terminal) void {
-    parser_flow.clear(terminal);
+    terminal.parser_queue.clear();
 }
 
 fn reset(terminal: *Terminal) void {
-    parser_flow.reset(terminal);
+    terminal.parser_queue.reset();
 }
 
 fn applyLimit(terminal: *Terminal, max_events: u32) Action.ApplySummary {

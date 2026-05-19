@@ -3,7 +3,6 @@
 const std = @import("std");
 const action_mod = @import("../action.zig");
 const host_state = @import("../host/state.zig");
-const parser_flow = @import("../parser/flow.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
@@ -54,7 +53,7 @@ fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    parser_flow.feedSlice(terminal, bytes) catch unreachable;
+    terminal.parser_queue.feedSliceChecked(bytes) catch unreachable;
 }
 
 fn apply(terminal: *Terminal) void {

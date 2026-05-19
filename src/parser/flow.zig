@@ -132,22 +132,6 @@ pub const Queue = struct {
 
 };
 
-pub fn feedByte(vt: anytype, byte: u8) FeedError!void {
-    try vt.parser_queue.feedByteChecked(byte);
-}
-
-pub fn feedSlice(vt: anytype, bytes: []const u8) FeedError!void {
-    try vt.parser_queue.feedSliceChecked(bytes);
-}
-
-pub fn clear(vt: anytype) void {
-    vt.parser_queue.clear();
-}
-
-pub fn reset(vt: anytype) void {
-    vt.parser_queue.reset();
-}
-
 pub fn appendOwnedPhases(
     allocator: std.mem.Allocator,
     arena: std.mem.Allocator,

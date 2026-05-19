@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const action = @import("../action.zig");
-const parser_flow = @import("../parser/flow.zig");
 const terminal_mod = @import("../terminal.zig");
 
 const Action = action;
@@ -13,9 +12,9 @@ test "terminal: parser queue applies bytes to grid state deterministically" {
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
-    try parser_flow.feedSlice(&terminal, "ab");
-    try parser_flow.feedByte(&terminal, 'c');
-    try parser_flow.feedSlice(&terminal, "\r\nxy");
+    try terminal.parser_queue.feedSliceChecked("ab");
+    try terminal.parser_queue.feedByteChecked('c');
+    try terminal.parser_queue.feedSliceChecked("\r\nxy");
     Action.apply(&terminal);
 
     const s = terminal.screen_state.activeConst();

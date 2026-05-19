@@ -4,7 +4,6 @@ const std = @import("std");
 const action = @import("../action.zig");
 const host_state = @import("../host/state.zig");
 const kitty_state = @import("../kitty/state.zig");
-const parser_flow = @import("../parser/flow.zig");
 const terminal_mod = @import("../terminal.zig");
 
 const Action = action;
@@ -13,7 +12,7 @@ const KittyState = kitty_state;
 const Terminal = terminal_mod.Terminal;
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    parser_flow.feedSlice(terminal, bytes) catch unreachable;
+    terminal.parser_queue.feedSliceChecked(bytes) catch unreachable;
 }
 
 fn apply(terminal: *Terminal) void {
