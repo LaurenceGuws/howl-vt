@@ -19,7 +19,7 @@ pub const Terminal = struct {
     const ScreenSet = screen_set.Set;
 
     allocator: std.mem.Allocator,
-    parser_queue: ParserQueue,
+    parser: ParserQueue,
     screen_state: ScreenSet,
     modes: TerminalModeNs.State = .{},
     kitty: KittyState = .{},
@@ -29,13 +29,13 @@ pub const Terminal = struct {
 
     /// Initialize Terminal without cell storage.
     pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
-        var parser_queue = try ParserQueue.init(allocator);
-        errdefer parser_queue.deinit();
+        var parser = try ParserQueue.init(allocator);
+        errdefer parser.deinit();
         const state = ScreenNs.init(rows, cols);
         const alt_state = ScreenNs.init(rows, cols);
         return Terminal{
             .allocator = allocator,
-            .parser_queue = parser_queue,
+            .parser = parser,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
         };
@@ -43,15 +43,15 @@ pub const Terminal = struct {
 
     /// Initialize Terminal with cell storage.
     pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
-        var parser_queue = try ParserQueue.init(allocator);
-        errdefer parser_queue.deinit();
+        var parser = try ParserQueue.init(allocator);
+        errdefer parser.deinit();
         var state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer state.deinit(allocator);
         var alt_state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return Terminal{
             .allocator = allocator,
-            .parser_queue = parser_queue,
+            .parser = parser,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
         };
@@ -59,15 +59,15 @@ pub const Terminal = struct {
 
     /// Initialize Terminal with cell and history storage.
     pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !Terminal {
-        var parser_queue = try ParserQueue.init(allocator);
-        errdefer parser_queue.deinit();
+        var parser = try ParserQueue.init(allocator);
+        errdefer parser.deinit();
         var state = try ScreenNs.initWithCellsAndHistory(allocator, rows, cols, history_capacity);
         errdefer state.deinit(allocator);
         var alt_state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return Terminal{
             .allocator = allocator,
-            .parser_queue = parser_queue,
+            .parser = parser,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
         };
@@ -79,7 +79,7 @@ pub const Terminal = struct {
         self.host.deinit(allocator);
         self.kitty.deinit(allocator);
         self.screen_state.deinit(allocator);
-        self.parser_queue.deinit();
+        self.parser.deinit();
     }
 
 };
@@ -88,11 +88,11 @@ test "terminal tracks synchronized output private mode" {
     var vt = try Terminal.init(std.testing.allocator, 2, 8);
     defer vt.deinit();
 
-    try vt.parser_queue.feedSliceChecked("\x1b[?2026h");
+    try vt.parser.feedSlice("\x1b[?2026h");
     action.apply(&vt);
     try std.testing.expect(vt.modes.synchronized_output);
 
-    try vt.parser_queue.feedSliceChecked("\x1b[?2026l");
+    try vt.parser.feedSlice("\x1b[?2026l");
     action.apply(&vt);
     try std.testing.expect(!vt.modes.synchronized_output);
 }
@@ -101,7 +101,7 @@ test "terminal visible view projects scrollback rows" {
     var vt = try Terminal.initWithCellsAndHistory(std.testing.allocator, 2, 2, 4);
     defer vt.deinit();
 
-    try vt.parser_queue.feedSliceChecked("aa\r\nbb\r\ncc");
+    try vt.parser.feedSlice("aa\r\nbb\r\ncc");
     action.apply(&vt);
 
     const live = screen_set.visibleView(&vt.screen_state, .{});

@@ -12,9 +12,9 @@ test "terminal: parser queue applies bytes to grid state deterministically" {
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
 
-    try terminal.parser_queue.feedSliceChecked("ab");
-    try terminal.parser_queue.feedByteChecked('c');
-    try terminal.parser_queue.feedSliceChecked("\r\nxy");
+    try terminal.parser.feedSlice("ab");
+    try terminal.parser.feedByte('c');
+    try terminal.parser.feedSlice("\r\nxy");
     Action.apply(&terminal);
 
     const s = terminal.screen_state.activeConst();

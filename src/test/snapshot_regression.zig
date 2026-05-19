@@ -22,11 +22,11 @@ fn visibleView(terminal: *const Terminal) screen_set.View {
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
-    terminal.parser_queue.feedByteChecked(byte) catch unreachable;
+    terminal.parser.feedByte(byte) catch unreachable;
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    terminal.parser_queue.feedSliceChecked(bytes) catch unreachable;
+    terminal.parser.feedSlice(bytes) catch unreachable;
 }
 
 fn apply(terminal: *Terminal) void {

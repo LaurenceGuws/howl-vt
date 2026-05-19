@@ -53,7 +53,7 @@ fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    terminal.parser_queue.feedSliceChecked(bytes) catch unreachable;
+    terminal.parser.feedSlice(bytes) catch unreachable;
 }
 
 fn apply(terminal: *Terminal) void {

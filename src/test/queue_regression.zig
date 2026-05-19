@@ -40,15 +40,15 @@ fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
-    terminal.parser_queue.feedByteChecked(byte) catch unreachable;
+    terminal.parser.feedByte(byte) catch unreachable;
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    terminal.parser_queue.feedSliceChecked(bytes) catch unreachable;
+    terminal.parser.feedSlice(bytes) catch unreachable;
 }
 
 fn feedQueueSlice(queue: *Queue, bytes: []const u8) void {
-    queue.feedSliceChecked(bytes) catch unreachable;
+    queue.feedSlice(bytes) catch unreachable;
 }
 
 fn queuePrefixAll(queue: *const Queue) []const action_root.Event {
@@ -60,11 +60,11 @@ fn apply(terminal: *Terminal) void {
 }
 
 fn clear(terminal: *Terminal) void {
-    terminal.parser_queue.clear();
+    terminal.parser.clear();
 }
 
 fn reset(terminal: *Terminal) void {
-    terminal.parser_queue.reset();
+    terminal.parser.reset();
 }
 
 fn feed(queue: *Queue, screen: *Screen, bytes: []const u8) void {

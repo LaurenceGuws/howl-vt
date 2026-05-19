@@ -180,8 +180,8 @@ fn applyWriteBurst(vt: *terminal_mod.Terminal, rand: std.Random) !void {
             const cp = "0123456789abcdefXYZ+-_=./[]{}()";
             buf[i] = cp[rand.uintLessThan(usize, cp.len)];
         }
-        try vt.parser_queue.feedSliceChecked(buf[0..len]);
-        try vt.parser_queue.feedByteChecked('\n');
+        try vt.parser.feedSlice(buf[0..len]);
+        try vt.parser.feedByte('\n');
     }
     Action.apply(vt);
 }

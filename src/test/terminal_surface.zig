@@ -74,11 +74,11 @@ fn selectionClear(terminal: *Terminal) void {
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
-    terminal.parser_queue.feedByteChecked(byte) catch unreachable;
+    terminal.parser.feedByte(byte) catch unreachable;
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    terminal.parser_queue.feedSliceChecked(bytes) catch unreachable;
+    terminal.parser.feedSlice(bytes) catch unreachable;
 }
 
 fn apply(terminal: *Terminal) void {
@@ -86,11 +86,11 @@ fn apply(terminal: *Terminal) void {
 }
 
 fn clear(terminal: *Terminal) void {
-    terminal.parser_queue.clear();
+    terminal.parser.clear();
 }
 
 fn reset(terminal: *Terminal) void {
-    terminal.parser_queue.reset();
+    terminal.parser.reset();
 }
 
 fn applyLimit(terminal: *Terminal, max_events: u32) Action.ApplySummary {

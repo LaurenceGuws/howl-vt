@@ -20,24 +20,24 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
     if (max_events == 0) {
         return .{
             .applied = 0,
-            .remaining_events = vt.parser_queue.eventCount(),
+            .remaining_events = vt.parser.eventCount(),
             .latest_title = null,
         };
     }
 
-    const count = @min(max_events, vt.parser_queue.eventCount());
+    const count = @min(max_events, vt.parser.eventCount());
     if (count == 0) return .{ .applied = 0, .remaining_events = 0, .latest_title = null };
 
     std.debug.assert(count <= max_events);
-    std.debug.assert(count <= vt.parser_queue.eventCount());
+    std.debug.assert(count <= vt.parser.eventCount());
 
     var latest_title: ?[]const u8 = null;
-    for (vt.parser_queue.prefix(count)) |ev| {
+    for (vt.parser.prefix(count)) |ev| {
         latest_title = latestTitle(latest_title, ev);
         applyEvent(vt, ev);
     }
-    vt.parser_queue.dropPrefix(count);
-    const remaining = vt.parser_queue.eventCount();
+    vt.parser.dropPrefix(count);
+    const remaining = vt.parser.eventCount();
     std.debug.assert(remaining + count >= count);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .applied = count, .remaining_events = remaining, .latest_title = latest_title };

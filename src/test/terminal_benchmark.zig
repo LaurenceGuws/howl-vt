@@ -246,7 +246,7 @@ fn runFeedApplyWorkload(
         defer terminal.deinit();
         counting.resetWindow();
         const start = nowNs(io);
-        try terminal.parser_queue.feedSliceChecked(fixture);
+        try terminal.parser.feedSlice(fixture);
         const max_queue_depth = Action.applyLimit(&terminal, 0).remaining_events;
         Action.apply(&terminal);
         const end = nowNs(io);
@@ -316,7 +316,7 @@ fn runMixedInteractiveWorkload(
         var j: usize = 0;
         var max_queue_depth: u32 = 0;
         while (j < bursts_per_run) : (j += 1) {
-            try terminal.parser_queue.feedSliceChecked(burst);
+            try terminal.parser.feedSlice(burst);
             max_queue_depth = @max(max_queue_depth, Action.applyLimit(&terminal, 0).remaining_events);
             Action.apply(&terminal);
         }
@@ -382,7 +382,7 @@ fn runSnapshotWorkload(
             1_000,
         );
         defer terminal.deinit();
-        try terminal.parser_queue.feedSliceChecked(fixture);
+        try terminal.parser.feedSlice(fixture);
         Action.apply(&terminal);
         counting.resetWindow();
         const start = nowNs(io);
@@ -468,7 +468,7 @@ fn runQueueGrowthChunkedWorkload(
         const start = nowNs(io);
         while (offset < fixture.len) {
             const next = @min(offset + chunk_size, fixture.len);
-            try terminal.parser_queue.feedSliceChecked(fixture[offset..next]);
+            try terminal.parser.feedSlice(fixture[offset..next]);
             max_queue_depth = @max(max_queue_depth, Action.applyLimit(&terminal, 0).remaining_events);
             offset = next;
         }
