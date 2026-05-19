@@ -9,6 +9,7 @@ pub const input = @import("input.zig");
 pub const action = @import("action.zig");
 pub const kitty = @import("kitty.zig");
 pub const parser = @import("parser.zig");
+pub const parser_owned_actions = @import("parser/owned_actions.zig");
 pub const selection = @import("selection.zig");
 pub const terminal = @import("terminal.zig");
 

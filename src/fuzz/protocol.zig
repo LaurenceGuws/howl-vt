@@ -1,12 +1,14 @@
 //! Protocol/parser fuzz scenarios.
 
 const std = @import("std");
-const action = @import("../action.zig");
-const owned_actions = @import("../parser/owned_actions.zig");
-const parser_mod = @import("../parser.zig");
-const screen_set = @import("../screen_set.zig");
-const Action = action;
-const Parser = parser_mod.Parser;
+const howl_vt = @import("howl_vt");
+
+const action = howl_vt.action;
+const owned_actions = howl_vt.parser_owned_actions;
+const parser_mod = howl_vt.parser;
+const screen_set = howl_vt.screen_set;
+const terminal_mod = howl_vt.terminal;
+
 const OscTerminator = parser_mod.OscTerminator;
 const CsiAction = parser_mod.CsiAction;
 const xterm_ctlseqs = @embedFile("assets/xterm-ctlseqs.ms");
@@ -85,44 +87,45 @@ const Harness = struct {
         self.events.deinit(self.allocator);
     }
 
-    fn appendActions(self: *Harness, actions: []const parser_mod.Action) void {
-        for (actions) |action| switch (action) {
-            .print => |cp| self.events.append(self.allocator, Event{ .print = cp }) catch {},
-            .execute => |ctrl| self.events.append(self.allocator, Event{ .execute = ctrl }) catch {},
-            .invalid => self.events.append(self.allocator, .invalid) catch {},
-            .csi_dispatch => |csi| self.appendCsi(csi),
-            .osc_dispatch => |osc| self.appendOsc(osc.data, osc.term),
-            .apc_start => self.events.append(self.allocator, .apc_start) catch {},
-            .apc_put => |byte| self.events.append(self.allocator, Event{ .apc_put = byte }) catch {},
-            .apc_end => self.events.append(self.allocator, .apc_end) catch {},
-            .dcs_hook => |hook| self.events.append(self.allocator, Event{ .dcs_hook = hook }) catch {},
-            .dcs_put => |byte| self.events.append(self.allocator, Event{ .dcs_put = byte }) catch {},
-            .dcs_unhook => self.events.append(self.allocator, .dcs_unhook) catch {},
-            .pm_start => self.events.append(self.allocator, .pm_start) catch {},
-            .pm_put => |byte| self.events.append(self.allocator, Event{ .pm_put = byte }) catch {},
-            .pm_end => self.events.append(self.allocator, .pm_end) catch {},
-            .esc_dispatch => |esc| self.events.append(self.allocator, Event{ .esc_dispatch = esc }) catch {},
+    fn appendActions(self: *Harness, actions: []const parser_mod.Action) error{OutOfMemory}!void {
+        for (actions) |parser_action| switch (parser_action) {
+            .print => |cp| try self.events.append(self.allocator, Event{ .print = cp }),
+            .execute => |ctrl| try self.events.append(self.allocator, Event{ .execute = ctrl }),
+            .invalid => try self.events.append(self.allocator, .invalid),
+            .csi_dispatch => |csi| try self.appendCsi(csi),
+            .osc_dispatch => |osc| try self.appendOsc(osc.data, osc.term),
+            .apc_start => try self.events.append(self.allocator, .apc_start),
+            .apc_put => |byte| try self.events.append(self.allocator, Event{ .apc_put = byte }),
+            .apc_end => try self.events.append(self.allocator, .apc_end),
+            .dcs_hook => |hook| try self.events.append(self.allocator, Event{ .dcs_hook = hook }),
+            .dcs_put => |byte| try self.events.append(self.allocator, Event{ .dcs_put = byte }),
+            .dcs_unhook => try self.events.append(self.allocator, .dcs_unhook),
+            .pm_start => try self.events.append(self.allocator, .pm_start),
+            .pm_put => |byte| try self.events.append(self.allocator, Event{ .pm_put = byte }),
+            .pm_end => try self.events.append(self.allocator, .pm_end),
+            .esc_dispatch => |esc| try self.events.append(self.allocator, Event{ .esc_dispatch = esc }),
         };
     }
 
-    fn appendCsi(self: *Harness, action: CsiAction) void {
-        self.events.append(self.allocator, Event{ .csi = .{
-            .final = action.final,
-            .leader = action.leader,
-            .private = action.private,
-            .params = action.params,
-            .count = action.count,
-            .intermediates = action.intermediates,
-            .intermediates_len = action.intermediates_len,
-        } }) catch {};
+    fn appendCsi(self: *Harness, csi_action: CsiAction) error{OutOfMemory}!void {
+        try self.events.append(self.allocator, Event{ .csi = .{
+            .final = csi_action.final,
+            .leader = csi_action.leader,
+            .private = csi_action.private,
+            .params = csi_action.params,
+            .count = csi_action.count,
+            .intermediates = csi_action.intermediates,
+            .intermediates_len = csi_action.intermediates_len,
+        } });
     }
 
-    fn appendOsc(self: *Harness, data: []const u8, term: OscTerminator) void {
-        const owned = self.allocator.dupe(u8, data) catch return;
-        self.events.append(self.allocator, Event{ .osc = .{
+    fn appendOsc(self: *Harness, data: []const u8, term: OscTerminator) error{OutOfMemory}!void {
+        const owned = try self.allocator.dupe(u8, data);
+        errdefer self.allocator.free(owned);
+        try self.events.append(self.allocator, Event{ .osc = .{
             .data = owned,
             .term = term,
-        } }) catch {};
+        } });
     }
 
 };
@@ -155,8 +158,8 @@ const ParserOutput = struct {
         };
     }
 
-    fn deinit(self: *ParserOutput, allocator: std.mem.Allocator) void {
-        self.actions.deinit(allocator);
+    fn deinit(self: *ParserOutput) void {
+        self.actions.deinit(self.allocator);
         self.arena.deinit();
     }
 
@@ -165,8 +168,8 @@ const ParserOutput = struct {
         _ = self.arena.reset(.retain_capacity);
     }
 
-    fn appendPhases(self: *ParserOutput, phases: parser_mod.PhaseActions) void {
-        owned_actions.appendOwnedPhases(self.allocator, self.arena.allocator(), &self.actions, phases);
+    fn appendPhases(self: *ParserOutput, phases: parser_mod.PhaseActions) error{OutOfMemory}!void {
+        try owned_actions.appendOwnedPhases(self.allocator, self.arena.allocator(), &self.actions, phases);
     }
 };
 
@@ -291,12 +294,12 @@ fn runParser(
     var harness = Harness.init(gpa);
     errdefer harness.deinit();
 
-    var parser = try Parser.init(gpa);
+    var parser = try parser_mod.Parser.init(gpa);
     defer parser.deinit();
     var output = try ParserOutput.init(gpa);
-    defer output.deinit(gpa);
+    defer output.deinit();
 
-    feedBytesToParser(&parser, &output, &harness, bytes, mode, rand, max_chunk_len);
+    try feedBytesToParser(&parser, &output, &harness, bytes, mode, rand, max_chunk_len);
     return harness;
 }
 
@@ -307,25 +310,25 @@ fn runTerminal(
     rand: std.Random,
     max_chunk_len: usize,
 ) !VtDigest {
-    var terminal = try vt.Terminal.initWithCellsAndHistory(gpa, 24, 80, 256);
+    var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(gpa, 24, 80, 256);
     defer terminal.deinit();
 
     feedBytesToTerminal(&terminal, bytes, mode, rand, max_chunk_len);
-    Action.apply(&terminal);
+    action.apply(&terminal);
     return digestTerminal(&terminal);
 }
 
-fn feedBytesToParser(parser: *Parser, output: *ParserOutput, harness: *Harness, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
+fn feedBytesToParser(parser: *parser_mod.Parser, output: *ParserOutput, harness: *Harness, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) error{OutOfMemory}!void {
     switch (mode) {
         .whole_slice => {
             output.clear();
-            for (bytes) |byte| output.appendPhases(parser.next(byte));
-            harness.appendActions(output.actions.items);
+            for (bytes) |byte| try output.appendPhases(parser.next(byte));
+            try harness.appendActions(output.actions.items);
         },
         .bytewise => for (bytes) |byte| {
             output.clear();
-            output.appendPhases(parser.next(byte));
-            harness.appendActions(output.actions.items);
+            try output.appendPhases(parser.next(byte));
+            try harness.appendActions(output.actions.items);
         },
         .chunked => {
             var offset: usize = 0;
@@ -333,15 +336,15 @@ fn feedBytesToParser(parser: *Parser, output: *ParserOutput, harness: *Harness, 
                 const remaining = bytes.len - offset;
                 const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
                 output.clear();
-                for (bytes[offset..][0..chunk_len]) |byte| output.appendPhases(parser.next(byte));
-                harness.appendActions(output.actions.items);
+                for (bytes[offset..][0..chunk_len]) |byte| try output.appendPhases(parser.next(byte));
+                try harness.appendActions(output.actions.items);
                 offset += chunk_len;
             }
         },
     }
 }
 
-fn feedBytesToTerminal(terminal: *vt.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
+fn feedBytesToTerminal(terminal: *terminal_mod.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
     switch (mode) {
         .whole_slice => terminal.parser.feedSlice(bytes) catch unreachable,
         .bytewise => for (bytes) |byte| terminal.parser.feedSlice(&.{byte}) catch unreachable,
@@ -357,7 +360,7 @@ fn feedBytesToTerminal(terminal: *vt.Terminal, bytes: []const u8, mode: FeedMode
     }
 }
 
-fn digestTerminal(terminal: *const vt.Terminal) VtDigest {
+fn digestTerminal(terminal: *const terminal_mod.Terminal) VtDigest {
     var hasher = std.hash.Wyhash.init(0);
     const view = screen_set.visibleView(&terminal.screen_state, .{});
 

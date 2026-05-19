@@ -1,11 +1,11 @@
 //! Scrollback fuzz scenarios.
 
 const std = @import("std");
-const action = @import("../action.zig");
-const screen_set = @import("../screen_set.zig");
-const terminal_mod = @import("../terminal.zig");
+const howl_vt = @import("howl_vt");
 
-const Action = action;
+const action = howl_vt.action;
+const screen_set = howl_vt.screen_set;
+const terminal_mod = howl_vt.terminal;
 
 pub const RowsMin: u16 = 1;
 pub const ColsMin: u16 = 1;
@@ -183,7 +183,7 @@ fn applyWriteBurst(vt: *terminal_mod.Terminal, rand: std.Random) !void {
         try vt.parser.feedSlice(buf[0..len]);
         try vt.parser.feedSlice(&.{ '\n' });
     }
-    Action.apply(vt);
+    action.apply(vt);
 }
 
 fn applyResize(vt: *terminal_mod.Terminal, rand: std.Random) !void {
@@ -273,7 +273,7 @@ fn hashStructural(vt: *const terminal_mod.Terminal) u64 {
     return h.final();
 }
 
-fn hashLogicalContent(vt: *const vt_mod.Terminal) u64 {
+fn hashLogicalContent(vt: *const terminal_mod.Terminal) u64 {
     var h = std.hash.Wyhash.init(0x9e3779b97f4a7c15);
     const s = vt.screen_state.activeConst();
     const history = screen_set.visibleView(&vt.screen_state, .{}).history_count;
@@ -299,7 +299,7 @@ fn hashLogicalContent(vt: *const vt_mod.Terminal) u64 {
     return h.final();
 }
 
-fn canonicalLogicalHash(allocator: std.mem.Allocator, vt: *const vt_mod.Terminal) !u64 {
+fn canonicalLogicalHash(allocator: std.mem.Allocator, vt: *const terminal_mod.Terminal) !u64 {
     const lines = try canonicalLogicalStream(allocator, vt);
     defer allocator.free(lines);
 
@@ -308,7 +308,7 @@ fn canonicalLogicalHash(allocator: std.mem.Allocator, vt: *const vt_mod.Terminal
     return h.final();
 }
 
-fn canonicalLogicalStream(allocator: std.mem.Allocator, vt: *const vt_mod.Terminal) ![]u21 {
+fn canonicalLogicalStream(allocator: std.mem.Allocator, vt: *const terminal_mod.Terminal) ![]u21 {
     const s = vt.screen_state.activeConst();
     var lines: std.ArrayList(u21) = .empty;
     defer lines.deinit(allocator);
@@ -338,7 +338,7 @@ fn appendHistoryRowCanonical(
     allocator: std.mem.Allocator,
     all_lines: *std.ArrayList(u21),
     current_line: *std.ArrayList(u21),
-    vt: *const vt_mod.Terminal,
+    vt: *const terminal_mod.Terminal,
     recency: u32,
     cols: u16,
 ) !void {
@@ -377,7 +377,7 @@ fn flushLogicalRow(allocator: std.mem.Allocator, all_lines: *std.ArrayList(u21),
     current_line.clearRetainingCapacity();
 }
 
-fn historyContentLen(s: anytype, vt: *const vt_mod.Terminal, recency: u32, cols: u16) u16 {
+fn historyContentLen(s: anytype, vt: *const terminal_mod.Terminal, recency: u32, cols: u16) u16 {
     var col = cols;
     while (col > 0) {
         const idx = col - 1;
@@ -410,7 +410,7 @@ fn historyRowWrapped(s: anytype, recency: u32) bool {
     return s.historyRowWrapped(recency);
 }
 
-fn summarizeCoreState(vt: *const vt_mod.Terminal) CoreStateSummary {
+fn summarizeCoreState(vt: *const terminal_mod.Terminal) CoreStateSummary {
     const s = vt.screen_state.activeConst();
     return .{
         .rows = s.rows,

@@ -88,11 +88,13 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    fuzz_module.addImport("howl_vt", internal_mod);
 
     const fuzz_exe = b.addExecutable(.{
         .name = "howl_vt_fuzz",
         .root_module = fuzz_module,
     });
+    fuzz_exe.use_llvm = true;
     const fuzz_step = b.step("fuzz", "Run fuzzers");
     const fuzz_build_step = b.step("fuzz:build", "Build fuzzers");
     fuzz_build_step.dependOn(&b.addInstallArtifact(fuzz_exe, .{}).step);
