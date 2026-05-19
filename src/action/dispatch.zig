@@ -17,19 +17,20 @@ pub const ApplySummary = struct {
 // slice size; VT only enforces that bound exactly and reports the true
 // remaining queue depth so the next turn stays explicit.
 pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
+    const queued = vt.parser.eventCount();
     if (max_events == 0) {
         return .{
             .applied = 0,
-            .remaining_events = vt.parser.eventCount(),
+            .remaining_events = queued,
             .latest_title = null,
         };
     }
 
-    const count = @min(max_events, vt.parser.eventCount());
+    const count = @min(max_events, queued);
     if (count == 0) return .{ .applied = 0, .remaining_events = 0, .latest_title = null };
 
     std.debug.assert(count <= max_events);
-    std.debug.assert(count <= vt.parser.eventCount());
+    std.debug.assert(count <= queued);
 
     var latest_title: ?[]const u8 = null;
     for (vt.parser.prefix(count)) |ev| {
@@ -38,7 +39,6 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
     }
     vt.parser.dropPrefix(count);
     const remaining = vt.parser.eventCount();
-    std.debug.assert(remaining + count >= count);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .applied = count, .remaining_events = remaining, .latest_title = latest_title };
 }
@@ -71,6 +71,6 @@ fn applyEvent(vt: anytype, event: action_mod.Event) void {
         host.apply(vt, host_action);
         return;
     }
-    std.debug.assert(action_mod.screenAction(sem_ev) != null);
-    if (action_mod.screenAction(sem_ev)) |screen_ev| vt.screen_state.active().applyScreen(screen_ev);
+    const screen_ev = action_mod.screenAction(sem_ev) orelse unreachable;
+    vt.screen_state.active().applyScreen(screen_ev);
 }
