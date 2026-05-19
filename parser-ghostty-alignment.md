@@ -48,5 +48,5 @@ Iteration 1: parser root API.
 
 Target:
 - parser root exposes byte-step `next(...)`
-- slice feeding moves to `src/parser/flow.zig`
+- slice feeding moves to `src/parser/queue.zig`
 - `src/parser.zig` stops advertising slice orchestration as parser truth

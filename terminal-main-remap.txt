@@ -31,7 +31,7 @@ A15 ScreenSet => src/screen/set.zig | ghostty=src/terminal/ScreenSet.zig | termi
 
 fields
 F01 allocator => delete field; pass allocator explicitly to owner init/deinit paths that need it | ghostty=src/terminal/Screen.zig::alloc and ScreenSet.init/deinit | no terminal-wide allocator field should survive just to prop up a facade
-F02 queue => src/parser/flow.zig and src/parser/main.zig | ghostty=src/terminal/Parser.zig + src/terminal/stream.zig | parser feed state is parser-owned
+F02 queue => src/parser/queue.zig and src/parser/main.zig | ghostty=src/terminal/Parser.zig + src/terminal/stream.zig | parser feed state is parser-owned
 F03 screen_state => src/screen/set.zig | ghostty=src/terminal/ScreenSet.zig | screen switching and active screen truth live here
 F04 selection => move storage under src/screen/ with mutation in src/selection/ | ghostty=src/terminal/Screen.zig::selection + src/terminal/Selection.zig | selection is screen-local, not terminal-root state
 F05 modes => dedicated mode owner, likely rename current src/control/mode.zig to explicit modes owner | ghostty=src/terminal/modes.zig::ModeState | mode storage must leave terminal facade
@@ -45,11 +45,11 @@ M01 init => split across owner init helpers and constructed by ffi/root state ow
 M02 initWithCells => split across grid and screen init helpers | ghostty=src/terminal/ScreenSet.zig + Screen.zig init path | terminal constructor must die
 M03 initWithCellsAndHistory => split across screen/grid/history init helpers | ghostty=src/terminal/Terminal.zig::Options.max_scrollback + ScreenSet.init | terminal constructor must die
 M04 deinit => split across owner deinit helpers and ffi/root state owner only | ghostty=src/terminal/Terminal.zig::deinit + ScreenSet.deinit | terminal destructor must die
-M05 feedByte => src/parser/flow.zig or src/parser/main.zig | ghostty=src/terminal/Parser.zig::next | parser feed path
-M06 feedSlice => src/parser/flow.zig or src/parser/main.zig | ghostty=src/terminal/stream.zig | parser feed path
+M05 feedByte => src/parser/queue.zig or src/parser/main.zig | ghostty=src/terminal/Parser.zig::next | parser feed path
+M06 feedSlice => src/parser/queue.zig or src/parser/main.zig | ghostty=src/terminal/stream.zig | parser feed path
 M07 apply => delete terminal facade; caller uses action/dispatch directly through owner-true state root | ghostty=src/terminal/stream_readonly.zig handler turn | top-level apply turn is dispatch-owned
 M08 applyLimit => src/action/dispatch.zig | ghostty=src/terminal/stream_readonly.zig::Handler + parsed action application in Terminal methods | already dispatch-owned
-M09 clear => src/parser/flow.zig | ghostty=src/terminal/Parser.zig reset/clear style state | queue clear is parser-owned
+M09 clear => src/parser/queue.zig | ghostty=src/terminal/Parser.zig reset/clear style state | queue clear is parser-owned
 M10 pendingOutput => src/host/state.zig | ghostty=host/runtime consequence path, not terminal module root | already host-owned
 M11 clearPendingOutput => src/host/state.zig | ghostty=host/runtime consequence path | already host-owned
 M12 hyperlinkUriForId => move hyperlink retention under screen or dedicated hyperlink owner, not host state facade | ghostty=src/terminal/Screen.zig cursor hyperlink state + src/terminal/hyperlink.zig + page.zig hyperlink data | current host placement looks temporary

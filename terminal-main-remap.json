@@ -152,7 +152,7 @@
     },
     {
       "id": "g013-parser-flow",
-      "howl_target": "src/parser/flow.zig + src/parser/main.zig",
+      "howl_target": "src/parser/queue.zig + src/parser/main.zig",
       "ghostty_refs": [
         { "path": "src/terminal/Parser.zig", "anchor": "const Parser = @This();" },
         { "path": "src/terminal/stream.zig", "anchor": "pub const Action = union(Key) {" }

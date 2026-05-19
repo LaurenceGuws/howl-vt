@@ -77,7 +77,7 @@ classDiagram
 - `src/action/dispatch.zig` owns the parent event-routing loop.
 - `src/action/route.zig` owns parsed-event routing into family owners and owner action slices.
 - `src/parser/events.zig` owns parser-event buffering and transport into current action routing.
-- `src/parser/flow.zig` owns parser feed plus parsed-event queue state.
+- `src/parser/queue.zig` owns parser feed plus parsed-event queue state.
 - `src/xterm/` owns current xterm-family routing.
 - `src/host/state.zig` owns host-facing consequence state.
 - `src/host/apply.zig` owns host-facing consequence application.

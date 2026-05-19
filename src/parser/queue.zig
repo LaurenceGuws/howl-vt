@@ -14,7 +14,7 @@ const FeedError = error{
     StringControlLimit,
 };
 
-/// Stateful parser feed and parsed-event queue path.
+/// Stateful parser feed and parsed-event queue owner.
 pub const Queue = struct {
     allocator: std.mem.Allocator,
     parsed_events: parsed_events_mod.ParsedEvents,

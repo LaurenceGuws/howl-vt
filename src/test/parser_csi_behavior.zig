@@ -1,6 +1,6 @@
 const std = @import("std");
 const parser_mod = @import("../parser.zig");
-const parser_flow = @import("../parser/flow.zig");
+const queue_mod = @import("../parser/queue.zig");
 
 const CsiAction = parser_mod.CsiAction;
 
@@ -13,10 +13,10 @@ fn feedCsiBytes(bytes: []const u8) !CsiAction {
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
 
-    try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(0x1b));
-    try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next('['));
+    try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(0x1b));
+    try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next('['));
     for (bytes) |byte| {
-        try parser_flow.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+        try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
     }
 
     for (actions.items) |action| {

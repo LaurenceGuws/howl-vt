@@ -3,7 +3,7 @@ const mode = @import("control/mode.zig");
 const screen = @import("screen.zig");
 const host_state = @import("host/state.zig");
 const kitty_state = @import("kitty/state.zig");
-const parser_flow = @import("parser/flow.zig");
+const parser_queue_mod = @import("parser/queue.zig");
 const screen_set = @import("screen_set.zig");
 const action = @import("action.zig");
 
@@ -14,7 +14,7 @@ const TerminalModeNs = mode;
 pub const Terminal = struct {
     const HostState = host_state.State;
     const KittyState = kitty_state.State;
-    const ParserQueue = parser_flow.Queue;
+    const ParserQueue = parser_queue_mod.Queue;
 
     const ScreenSet = screen_set.Set;
 
