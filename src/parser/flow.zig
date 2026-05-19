@@ -17,19 +17,18 @@ const FeedError = error{
 /// Stateful parser feed and parsed-event queue path.
 pub const Queue = struct {
     allocator: std.mem.Allocator,
-    parsed_events: *parsed_events_mod.ParsedEvents,
+    parsed_events: parsed_events_mod.ParsedEvents,
     parser_action_arena: std.heap.ArenaAllocator,
     parser_actions: std.ArrayList(parser_mod.Action),
     parser: ParserApi,
 
     pub fn init(allocator: std.mem.Allocator) !Queue {
-        const parsed_events = try allocator.create(parsed_events_mod.ParsedEvents);
-        parsed_events.* = parsed_events_mod.ParsedEvents.init(allocator);
-        errdefer {
-            parsed_events.deinit();
-            allocator.destroy(parsed_events);
-        }
-        const p = try ParserApi.init(allocator);
+        var parsed_events = parsed_events_mod.ParsedEvents.init(allocator);
+        errdefer parsed_events.deinit();
+
+        var parser = try ParserApi.init(allocator);
+        errdefer parser.deinit();
+
         var parser_actions = try std.ArrayList(parser_mod.Action).initCapacity(allocator, 16);
         errdefer parser_actions.deinit(allocator);
         return .{
@@ -37,7 +36,7 @@ pub const Queue = struct {
             .parsed_events = parsed_events,
             .parser_action_arena = std.heap.ArenaAllocator.init(allocator),
             .parser_actions = parser_actions,
-            .parser = p,
+            .parser = parser,
         };
     }
 
@@ -46,7 +45,6 @@ pub const Queue = struct {
         self.parser_action_arena.deinit();
         self.parser.deinit();
         self.parsed_events.deinit();
-        self.allocator.destroy(self.parsed_events);
     }
 
     pub fn getAllocator(self: *const Queue) std.mem.Allocator {
