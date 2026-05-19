@@ -207,5 +207,6 @@ sequenceDiagram
 - `Terminal` boundary owners must keep host consequences explicit.
 - Hosts should depend on the C ABI, not deep parser/screen leaves.
 - Bounded apply and throughput policy must stay explicit at the owning seam. If a limit changes,
-  lock the current Ghostty or Alacritty rationale in code and prove the changed host path.
+  lock the current Ghostty or Alacritty reference, the reason Howl keeps that value today, and proof
+  of the changed host path in the same change.
 - Update `protocol_coverage.db` and test filters with the same change that adds protocol behavior.

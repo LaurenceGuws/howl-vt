@@ -28,6 +28,9 @@ pub const DeccirCharsetState = struct {
 // path until that event shape is slimmer.
 const csi_max_params: usize = 16;
 const csi_max_intermediates: usize = 4;
+// Start metadata controls small so ordinary title, report, and color traffic
+// avoids immediate growth without preallocating the full metadata ceiling for
+// every parser-owned control buffer.
 const control_init_capacity: usize = 256;
 // Keep metadata-sized control strings explicitly small. The owned OSC, DCS,
 // and PM protocols in Howl are title, color, report, clipboard, and similar

@@ -49,6 +49,11 @@ pub const OscKind = osc_parse.Kind;
 
 /// Arena-backed event queue for parser callbacks.
 pub const ParsedEvents = struct {
+    // Alacritty forces a terminal synchronization point after a 1 MiB PTY read
+    // burst. The PTY owner keeps the same burst scale, and the current Howl
+    // parser/event shape can still materialize one queued event per input byte.
+    // Keep one full reference burst buffered, but fail the next byte instead of
+    // silently letting queue growth outrun the owner thread.
     pub const max_queued_events: u32 = 1024 * 1024;
 
     allocator: std.mem.Allocator,
@@ -137,11 +142,8 @@ pub const ParsedEvents = struct {
     }
 
     pub fn appendParserActions(self: *ParsedEvents, actions: []const parser_mod.Action) error{ OutOfMemory, ParsedEventLimit }!void {
-        // Alacritty's PTY loop reads up to 1 MiB before forcing a terminal
-        // synchronization point. The host PTY owner follows that burst scale,
-        // and the current parser/event shape can materialize at most one
-        // queued parsed event per input byte. Keep the queue large enough to
-        // absorb one normal burst, but still explicitly bounded.
+        // Keep feed failure explicit instead of truncating parser work once the
+        // queue reaches the owner-defined burst bound above.
         if (!self.canAppendActions(actions.len)) return error.ParsedEventLimit;
 
         var idx: usize = 0;
