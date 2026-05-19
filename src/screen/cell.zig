@@ -67,23 +67,3 @@ pub const default_cell = Cell{
     .codepoint = 0,
     .attrs = default_cell_attrs,
 };
-
-pub fn defaultCell() Cell {
-    return Cell{
-        .codepoint = 0,
-        .width = 1,
-        .attrs = CellAttrs{
-            .fg = default_fg,
-            .bg = default_bg,
-            .bold = false,
-            .blink = false,
-            .blink_fast = false,
-            .reverse = false,
-            .underline = false,
-            .underline_style = .straight,
-            .underline_color = default_fg,
-            .protected = false,
-            .link_id = 0,
-        },
-    };
-}

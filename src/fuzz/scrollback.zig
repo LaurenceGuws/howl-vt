@@ -21,7 +21,7 @@ const OpKind = enum {
 pub const RunSummary = struct {
     structural_hash: u64,
     logical_hash: u64,
-    history_count: usize,
+    history_count: u32,
     rows: u16,
     cols: u16,
 };
@@ -43,7 +43,7 @@ pub const CoreStateSummary = struct {
     cursor_row: u16,
     cursor_col: u16,
     wrap_pending: bool,
-    history_count: usize,
+    history_count: u32,
     history_capacity: u16,
 };
 
@@ -278,7 +278,7 @@ fn hashLogicalContent(vt: *const vt_mod.Terminal) u64 {
     const s = vt.screen_state.activeConst();
     const history = screen_set.visibleView(&vt.screen_state, .{}).history_count;
 
-    var hr: usize = 0;
+    var hr: u32 = 0;
     while (hr < history) : (hr += 1) {
         var col: u16 = 0;
         while (col < s.cols) : (col += 1) {
@@ -339,7 +339,7 @@ fn appendHistoryRowCanonical(
     all_lines: *std.ArrayList(u21),
     current_line: *std.ArrayList(u21),
     vt: *const vt_mod.Terminal,
-    recency: usize,
+    recency: u32,
     cols: u16,
 ) !void {
     const s = vt.screen_state.activeConst();
@@ -377,7 +377,7 @@ fn flushLogicalRow(allocator: std.mem.Allocator, all_lines: *std.ArrayList(u21),
     current_line.clearRetainingCapacity();
 }
 
-fn historyContentLen(s: anytype, vt: *const vt_mod.Terminal, recency: usize, cols: u16) u16 {
+fn historyContentLen(s: anytype, vt: *const vt_mod.Terminal, recency: u32, cols: u16) u16 {
     var col = cols;
     while (col > 0) {
         const idx = col - 1;
@@ -406,11 +406,8 @@ fn visibleRowWrapped(s: anytype, row: u16) bool {
     return wraps[idx];
 }
 
-fn historyRowWrapped(s: anytype, recency: usize) bool {
-    const wraps = s.history_wraps orelse return false;
-    if (recency >= s.history_count) return false;
-    const slot = s.history_count - 1 - recency;
-    return wraps[slot];
+fn historyRowWrapped(s: anytype, recency: u32) bool {
+    return s.historyRowWrapped(recency);
 }
 
 fn summarizeCoreState(vt: *const vt_mod.Terminal) CoreStateSummary {

@@ -156,7 +156,7 @@ pub const Set = struct {
 
 pub fn visibleView(screen_state: *const Set, options: Options) View {
     const active = screen_state.activeConst();
-    const history_count: u32 = if (screen_state.alt_active) 0 else @intCast(active.historyCount());
+    const history_count: u32 = if (screen_state.alt_active) 0 else active.historyCount();
     const offset = @min(options.scrollback_offset, history_count);
     const rows_count: u32 = active.rows;
     const total_rows = history_count + rows_count;
@@ -188,12 +188,12 @@ pub fn clearDirtyRows(screen_state: *Set) void {
     screen_state.active().clearDirtyRows();
 }
 
-pub fn historyRowAt(screen_state: *const Set, history_idx: usize, col: u16) u21 {
+pub fn historyRowAt(screen_state: *const Set, history_idx: u32, col: u16) u21 {
     if (screen_state.alt_active) return 0;
     return screen_state.primary.historyRowAt(history_idx, col);
 }
 
-pub fn historyCellAt(screen_state: *const Set, history_idx: usize, col: u16) Screen.Cell {
+pub fn historyCellAt(screen_state: *const Set, history_idx: u32, col: u16) Screen.Cell {
     if (screen_state.alt_active) return Screen.default_cell;
     return screen_state.primary.historyCellAt(history_idx, col);
 }

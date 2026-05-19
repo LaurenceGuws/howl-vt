@@ -149,7 +149,7 @@ test "snapshot: historyRowAt matches terminal after wraparound" {
     try std.testing.expectEqual(visibleView(&terminal).history_count, snap.history_count);
     try std.testing.expectEqual(screen_set.historyCapacity(&terminal.screen_state), snap.history_capacity);
 
-    var idx: usize = 0;
+    var idx: u32 = 0;
     while (idx < visibleView(&terminal).history_count) : (idx += 1) {
         var col: u16 = 0;
         while (col < terminal.screen_state.activeConst().cols) : (col += 1) {

@@ -76,14 +76,6 @@ pub fn cloneOpenHistoryAsLogicalLine(self: anytype, allocator: std.mem.Allocator
     return line;
 }
 
-pub fn firstLineForRow(line_row_starts: []const usize, line_row_counts: []const usize, row_index: usize) ?usize {
-    for (line_row_starts, line_row_counts, 0..) |row_start, row_count, line_idx| {
-        if (row_count == 0) continue;
-        if (row_index < row_start + row_count) return line_idx;
-    }
-    return null;
-}
-
 pub fn firstLineForRowBounded(line_row_starts: []const u32, line_row_counts: []const u16, row_index: u32) ?u32 {
     std.debug.assert(line_row_starts.len == line_row_counts.len);
     for (line_row_starts, line_row_counts, 0..) |row_start, row_count, line_idx| {
@@ -224,12 +216,13 @@ pub fn slotForLogicalRow(self: anytype, logical_row: usize) ?usize {
     return (self.history_write_idx + logical_row) % capacity;
 }
 
-pub fn slotForRecency(self: anytype, history_idx: usize) ?usize {
-    if (history_idx >= self.history_count) return null;
-    return slotForLogicalRow(self, self.history_count - 1 - history_idx);
+pub fn slotForRecency(self: anytype, history_idx: u32) ?usize {
+    const bounded_idx = listIndex(history_idx);
+    if (bounded_idx >= self.history_count) return null;
+    return slotForLogicalRow(self, self.history_count - 1 - bounded_idx);
 }
 
-pub fn rowWrapped(self: anytype, history_idx: usize) bool {
+pub fn rowWrapped(self: anytype, history_idx: u32) bool {
     const wraps = self.history_wraps orelse return false;
     const slot = slotForRecency(self, history_idx) orelse return false;
     return wraps[slot];

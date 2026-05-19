@@ -319,7 +319,7 @@ pub fn terminalAckSurface(handle: VtHandle, dirty_generation: u64) callconv(.c) 
 
 pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize, full_damage: u8, scroll_up_rows: u16) callconv(.c) FfiSurfaceResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const history_count: u32 = if (owned.screen_state.alt_active) 0 else @intCast(owned.screen_state.activeConst().historyCount());
+    const history_count: u32 = if (owned.screen_state.alt_active) 0 else owned.screen_state.activeConst().historyCount();
     const offset: u32 = @intCast(@min(scrollback_offset, @as(u64, history_count)));
     const view = screen_set.visibleView(&owned.screen_state, .{ .scrollback_offset = offset });
     const dirty = screen_set.peekDirtyRows(&owned.screen_state);

@@ -35,7 +35,6 @@ pub const Screen = struct {
     pub const default_underline_color = color.default_underline_color;
     pub const default_cell_attrs = cell.default_cell_attrs;
     pub const default_cell = cell.default_cell;
-    pub const defaultCell = cell.defaultCell;
     pub const isCellContinuation = cell.isCellContinuation;
     pub const DirtyRows = dirty.DirtyRows;
 
@@ -360,20 +359,22 @@ pub const Screen = struct {
     }
 
     /// Read history cell by recency index and column.
-    pub fn historyRowAt(self: *const Screen, history_idx: usize, col: u16) u21 {
+    pub fn historyRowAt(self: *const Screen, history_idx: u32, col: u16) u21 {
         return @intCast(self.historyCellAt(history_idx, col).codepoint);
     }
 
-    pub fn historyCellAt(self: *const Screen, history_idx: usize, col: u16) Cell {
+    pub fn historyCellAt(self: *const Screen, history_idx: u32, col: u16) Cell {
         const h = self.history orelse return default_cell;
-        if (history_idx >= self.history_count or col >= self.cols) return default_cell;
+        const bounded_idx: usize = @intCast(history_idx);
+        if (bounded_idx >= self.history_count or col >= self.cols) return default_cell;
         const slot = self.historySlotForRecency(history_idx) orelse return default_cell;
         return h[slot * @as(usize, self.cols) + @as(usize, col)];
     }
 
     /// Return retained history row count.
-    pub fn historyCount(self: *const Screen) usize {
-        return self.history_count;
+    pub fn historyCount(self: *const Screen) u32 {
+        std.debug.assert(self.history_count <= std.math.maxInt(u32));
+        return @intCast(self.history_count);
     }
 
     /// Return configured history capacity.
@@ -628,11 +629,11 @@ pub const Screen = struct {
         return history_mod.slotForLogicalRow(self, logical_row);
     }
 
-    fn historySlotForRecency(self: *const Screen, history_idx: usize) ?usize {
+    fn historySlotForRecency(self: *const Screen, history_idx: u32) ?usize {
         return history_mod.slotForRecency(self, history_idx);
     }
 
-    fn historyRowWrapped(self: *const Screen, history_idx: usize) bool {
+    pub fn historyRowWrapped(self: *const Screen, history_idx: u32) bool {
         return history_mod.rowWrapped(self, history_idx);
     }
 

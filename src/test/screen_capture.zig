@@ -15,12 +15,13 @@ pub const Capture = struct {
     auto_wrap: bool,
     cells: ?[]u21,
     history: ?[]u21,
-    history_count: usize,
+    history_count: u32,
     history_capacity: u16,
     history_write_idx: usize,
     selection: ?Selection.TerminalSelection,
 
     pub fn captureFromScreen(allocator: std.mem.Allocator, screen: *const Screen, selection: ?Selection.TerminalSelection) !Capture {
+        const history_count = screen.historyCount();
         var capture = Capture{
             .allocator = allocator,
             .rows = screen.rows,
@@ -31,7 +32,7 @@ pub const Capture = struct {
             .auto_wrap = screen.auto_wrap,
             .cells = null,
             .history = null,
-            .history_count = screen.history_count,
+            .history_count = history_count,
             .history_capacity = screen.history_capacity,
             .history_write_idx = screen.history_write_idx,
             .selection = selection,
@@ -54,14 +55,14 @@ pub const Capture = struct {
             capture.cells = owned_cells;
         }
 
-        if (screen.history_count > 0 and screen.cols > 0) {
-            const size = screen.history_count * @as(usize, screen.cols);
+        if (history_count > 0 and screen.cols > 0) {
+            const size = @as(usize, history_count) * @as(usize, screen.cols);
             const owned_history = try allocator.alloc(u21, size);
-            var row: usize = 0;
-            while (row < screen.history_count) : (row += 1) {
+            var row: u32 = 0;
+            while (row < history_count) : (row += 1) {
                 var col: u16 = 0;
                 while (col < screen.cols) : (col += 1) {
-                    owned_history[row * @as(usize, screen.cols) + @as(usize, col)] = @intCast(screen.historyCellAt(screen.history_count - 1 - row, col).codepoint);
+                    owned_history[@as(usize, row) * @as(usize, screen.cols) + @as(usize, col)] = @intCast(screen.historyCellAt(history_count - 1 - row, col).codepoint);
                 }
             }
             capture.history = owned_history;
@@ -83,10 +84,10 @@ pub const Capture = struct {
         return cells[@as(usize, row) * self.cols + col];
     }
 
-    pub fn historyRowAt(self: *const Capture, history_idx: usize, col: u16) u21 {
+    pub fn historyRowAt(self: *const Capture, history_idx: u32, col: u16) u21 {
         const history = self.history orelse return 0;
         if (history_idx >= self.history_count or col >= self.cols) return 0;
         const logical_slot = self.history_count - 1 - history_idx;
-        return history[logical_slot * @as(usize, self.cols) + @as(usize, col)];
+        return history[@as(usize, logical_slot) * @as(usize, self.cols) + @as(usize, col)];
     }
 };

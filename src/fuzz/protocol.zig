@@ -133,7 +133,7 @@ const VtDigest = struct {
     cols: u16,
     cursor_row: u16,
     cursor_col: u16,
-    history_count: usize,
+    history_count: u32,
     alt_active: bool,
 };
 
@@ -379,7 +379,7 @@ fn digestTerminal(terminal: *const vt.Terminal) VtDigest {
 
     const history_count = screen_set.visibleView(&terminal.screen_state, .{}).history_count;
     hashValue(&hasher, history_count);
-    var history_idx: usize = 0;
+    var history_idx: u32 = 0;
     while (history_idx < history_count) : (history_idx += 1) {
         var col: u16 = 0;
         while (col < view.cols) : (col += 1) {
