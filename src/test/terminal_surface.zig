@@ -5,6 +5,7 @@ const action_mod = @import("../action.zig");
 const parser_flow = @import("../parser/flow.zig");
 const terminal_mod = @import("../terminal.zig");
 const ffi = @import("../ffi.zig");
+const parsed_events_mod = @import("../parser/events.zig");
 const screen = @import("../screen.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
@@ -13,6 +14,7 @@ const input_mod = @import("../input.zig");
 
 const Terminal = terminal_mod.Terminal;
 const Action = action_mod;
+const ParsedEvents = parsed_events_mod.ParsedEvents;
 const Screen = screen.Screen;
 const Selection = selection;
 const Input = input_mod;
@@ -406,6 +408,25 @@ test "terminal feed fails overlong OSC instead of truncating it" {
     const applied = ffi.terminalApply(handle, 64, null, 0);
     try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), applied.status);
     try std.testing.expect(applied.applied > 0);
+}
+
+test "terminal feed fails queue-heavy burst at explicit event bound" {
+    const allocator = std.testing.allocator;
+    const handle = ffi.terminalInit(2, 4, 4);
+    defer ffi.terminalDeinit(handle);
+
+    var bytes = try std.ArrayList(u8).initCapacity(allocator, ParsedEvents.max_queued_events + 1);
+    defer bytes.deinit(allocator);
+    try bytes.appendNTimes(allocator, 0x07, ParsedEvents.max_queued_events + 1);
+
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)),
+        ffi.terminalFeed(handle, bytes.items.ptr, bytes.items.len),
+    );
+
+    const queued = ffi.terminalApply(handle, 0, null, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), queued.status);
+    try std.testing.expectEqual(@as(u64, 0), queued.remaining_events);
 }
 
 test "input encoding APIs are callable without terminal facade methods" {

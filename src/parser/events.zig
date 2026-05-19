@@ -49,7 +49,7 @@ pub const OscKind = osc_parse.Kind;
 
 /// Arena-backed event queue for parser callbacks.
 pub const ParsedEvents = struct {
-    const max_queued_events: u32 = 1024 * 1024;
+    pub const max_queued_events: u32 = 1024 * 1024;
 
     allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
