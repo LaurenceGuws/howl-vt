@@ -96,7 +96,7 @@ fn applyLimit(terminal: *Terminal, max_events: usize) Action.ApplySummary {
     return Action.applyLimit(terminal, max_events);
 }
 
-fn copySurfaceSourceOk(
+fn copySurfaceOk(
     handle: ffi.VtHandle,
     rows: u16,
     cols: u16,
@@ -104,8 +104,8 @@ fn copySurfaceSourceOk(
     dirty_rows: []u8,
     cols_start: []u16,
     cols_end: []u16,
-) !ffi.FfiSurfaceSourceResult {
-    const result = ffi.terminalCopySurfaceSource(
+) !ffi.FfiSurfaceResult {
+    const result = ffi.terminalCopySurface(
         handle,
         0,
         cells.ptr,
@@ -292,16 +292,16 @@ test "surface source ack clears matching dirty generation" {
     var cols_start: [2]u16 = undefined;
     var cols_end: [2]u16 = undefined;
 
-    const before = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    const before = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expect(before.dirty_needed > 0);
     try std.testing.expect(before.dirty_generation != 0);
 
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalAckSurfaceSource(handle, before.dirty_generation),
+        ffi.terminalAckSurface(handle, before.dirty_generation),
     );
 
-    const after = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    const after = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expectEqual(@as(u64, 0), after.dirty_needed);
     try std.testing.expectEqual(@as(u8, 0), dirty_rows[0]);
     try std.testing.expectEqual(@as(u8, 0), dirty_rows[1]);
@@ -317,7 +317,7 @@ test "stale surface source ack does not clear newer dirtiness" {
     var cols_end: [2]u16 = undefined;
     var title: [16]u8 = undefined;
 
-    const first = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    const first = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expect(first.dirty_generation != 0);
 
     try std.testing.expectEqual(
@@ -328,15 +328,15 @@ test "stale surface source ack does not clear newer dirtiness" {
     try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), applied.status);
     try std.testing.expect(applied.applied > 0);
 
-    const second = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    const second = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expect(second.dirty_generation != first.dirty_generation);
 
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalAckSurfaceSource(handle, first.dirty_generation),
+        ffi.terminalAckSurface(handle, first.dirty_generation),
     );
 
-    const after_stale_ack = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    const after_stale_ack = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expectEqual(second.dirty_generation, after_stale_ack.dirty_generation);
     try std.testing.expect(after_stale_ack.dirty_needed > 0);
 }
@@ -351,14 +351,14 @@ test "older ack cannot retire newer published generation" {
     var cols_end: [2]u16 = undefined;
     var title: [16]u8 = undefined;
 
-    _ = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    _ = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
         ffi.terminalFeed(handle, "A".ptr, 1),
     );
     const first_apply = ffi.terminalApply(handle, 64, title[0..].ptr, title.len);
     try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), first_apply.status);
-    const second = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    const second = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
 
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
@@ -366,15 +366,15 @@ test "older ack cannot retire newer published generation" {
     );
     const second_apply = ffi.terminalApply(handle, 64, title[0..].ptr, title.len);
     try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), second_apply.status);
-    const third = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    const third = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expect(third.dirty_generation != second.dirty_generation);
 
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalAckSurfaceSource(handle, second.dirty_generation),
+        ffi.terminalAckSurface(handle, second.dirty_generation),
     );
 
-    const after_old_ack = try copySurfaceSourceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    const after_old_ack = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expectEqual(third.dirty_generation, after_old_ack.dirty_generation);
     try std.testing.expect(after_old_ack.dirty_needed > 0);
 }

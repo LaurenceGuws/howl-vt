@@ -1,4 +1,3 @@
-
 const std = @import("std");
 const screen = @import("screen.zig");
 const input = @import("input.zig");
@@ -95,7 +94,7 @@ pub const FfiCursor = extern struct {
     shape: u8,
 };
 
-pub const FfiSurfaceSource = extern struct {
+pub const FfiSurface = extern struct {
     surface_cells: FfiSurfaceCellSpan,
     cols: u16,
     rows: u16,
@@ -109,13 +108,13 @@ pub const FfiSurfaceSource = extern struct {
     cursor: FfiCursor,
 };
 
-pub const FfiSurfaceSourceResult = extern struct {
+pub const FfiSurfaceResult = extern struct {
     status: i32 = @intFromEnum(HowlVtCallStatus.failed),
     history_count: u64 = 0,
     scrollback_offset: u64 = 0,
     dirty_needed: u64 = 0,
     dirty_generation: u64 = 0,
-    source: FfiSurfaceSource = .{
+    source: FfiSurface = .{
         .surface_cells = .{ .ptr = null, .len = 0 },
         .cols = 0,
         .rows = 0,
@@ -302,7 +301,7 @@ pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
-pub fn terminalAckSurfaceSource(handle: VtHandle, dirty_generation: u64) callconv(.c) i32 {
+pub fn terminalAckSurface(handle: VtHandle, dirty_generation: u64) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
     if (dirty_generation == 0) return @intFromEnum(HowlVtCallStatus.invalid_argument);
     if (owned.dirty_generation == dirty_generation) {
@@ -311,13 +310,13 @@ pub fn terminalAckSurfaceSource(handle: VtHandle, dirty_generation: u64) callcon
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
-pub fn terminalCopySurfaceSource(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize, full_damage: u8, scroll_up_rows: u16) callconv(.c) FfiSurfaceSourceResult {
+pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: usize, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize, full_damage: u8, scroll_up_rows: u16) callconv(.c) FfiSurfaceResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const view = screen_set.visibleView(&owned.screen_state, .{ .scrollback_offset = scrollback_offset });
     const dirty = screen_set.peekDirtyRows(&owned.screen_state);
     const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
     const dirty_needed: usize = if (dirty) |value| @as(usize, value.end_row) - @as(usize, value.start_row) + 1 else 0;
-    var result: FfiSurfaceSourceResult = .{
+    var result: FfiSurfaceResult = .{
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .history_count = view.history_count,
         .scrollback_offset = view.scrollback_offset,
@@ -468,7 +467,7 @@ pub fn terminalEncodePaste(handle: VtHandle, text_ptr: ?[*]const u8, text_len: u
     };
 }
 
-test "vt ffi runtime surface covers apply encode and surface source" {
+test "vt ffi runtime surface covers apply encode and surface" {
     const handle = terminalInit(2, 4, 8);
     defer terminalDeinit(handle);
     try std.testing.expect(handle != null);
@@ -485,7 +484,7 @@ test "vt ffi runtime surface covers apply encode and surface source" {
     try std.testing.expectEqualStrings("\r", key_buf[0..@intCast(key.written)]);
 
     var cells: [8]FfiSurfaceCell = undefined;
-    const source = terminalCopySurfaceSource(handle, 0, cells[0..].ptr, cells.len, null, 0, null, 0, null, 0, 0, 0);
+    const source = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, null, 0, null, 0, null, 0, 0, 0);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.short_buffer)), source.status);
     try std.testing.expectEqual(@as(u16, 2), source.source.rows);
     try std.testing.expectEqual(@as(u16, 4), source.source.cols);

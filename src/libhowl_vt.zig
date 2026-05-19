@@ -1,4 +1,3 @@
-
 const ffi = @import("ffi.zig");
 
 comptime {
@@ -7,8 +6,8 @@ comptime {
     @export(&ffi.terminalFeed, .{ .name = "howl_vt_terminal_feed" });
     @export(&ffi.terminalApply, .{ .name = "howl_vt_terminal_apply" });
     @export(&ffi.terminalResize, .{ .name = "howl_vt_terminal_resize" });
-    @export(&ffi.terminalAckSurfaceSource, .{ .name = "howl_vt_terminal_ack_surface_source" });
-    @export(&ffi.terminalCopySurfaceSource, .{ .name = "howl_vt_terminal_copy_surface_source" });
+    @export(&ffi.terminalAckSurface, .{ .name = "howl_vt_terminal_ack_surface" });
+    @export(&ffi.terminalCopySurface, .{ .name = "howl_vt_terminal_copy_surface" });
     @export(&ffi.terminalCopyPendingOutput, .{ .name = "howl_vt_terminal_copy_pending_output" });
     @export(&ffi.terminalClearPendingOutput, .{ .name = "howl_vt_terminal_clear_pending_output" });
     @export(&ffi.terminalDrainPendingClipboard, .{ .name = "howl_vt_terminal_drain_pending_clipboard" });
