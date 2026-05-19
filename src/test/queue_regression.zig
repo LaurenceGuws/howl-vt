@@ -13,7 +13,6 @@ const terminal_mod = @import("../terminal.zig");
 const Screen = screen_mod.Screen;
 const Grid = Screen;
 const Queue = parser_flow.Queue;
-const ApplyFlow = Queue;
 const ActionRoot = action_root;
 const Terminal = terminal_mod.Terminal;
 
@@ -57,362 +56,360 @@ fn repaintPromptLine(queue: *Queue, screen: *Screen, prompt: []const u8, command
 }
 
 fn expectPromptLine(screen: *Screen, prompt: []const u8, command: []const u8) !void {
-    const total_len = prompt.len + command.len;
-    try std.testing.expect(total_len <= screen.cols);
+    const total_cols: u16 = @intCast(prompt.len + command.len);
+    try std.testing.expect(total_cols <= screen.cols);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
-    try std.testing.expectEqual(@as(u16, @intCast(total_len)), screen.cursor_col);
+    try std.testing.expectEqual(total_cols, screen.cursor_col);
 
-    var idx: usize = 0;
-    while (idx < prompt.len) : (idx += 1) {
-        try std.testing.expectEqual(@as(u21, prompt[idx]), screen.cellAt(0, @intCast(idx)));
+    for (prompt, 0..) |byte, idx| {
+        try std.testing.expectEqual(@as(u21, byte), screen.cellAt(0, @intCast(idx)));
     }
 
-    var cmd_idx: usize = 0;
-    while (cmd_idx < command.len) : (cmd_idx += 1) {
-        try std.testing.expectEqual(@as(u21, command[cmd_idx]), screen.cellAt(0, @intCast(prompt.len + cmd_idx)));
+    for (command, 0..) |byte, idx| {
+        try std.testing.expectEqual(@as(u21, byte), screen.cellAt(0, @intCast(prompt.len + idx)));
     }
 
-    var clear_idx: usize = total_len;
-    while (clear_idx < screen.cols) : (clear_idx += 1) {
-        try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, @intCast(clear_idx)));
+    var clear_col = total_cols;
+    while (clear_col < screen.cols) : (clear_col += 1) {
+        try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, clear_col));
     }
 }
-test "apply flow: mixed text and CSI and text" {
+test "queue: mixed text and CSI and text" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
-    flow.feedSlice("hello\x1b[1mworld");
-    try std.testing.expectEqual(@as(usize, 3), flow.len());
-    try std.testing.expect(flow.events()[0] == .text);
-    try std.testing.expectEqualSlices(u8, "hello", flow.events()[0].text);
-    try std.testing.expect(flow.events()[1] == .style_change);
-    try std.testing.expect(flow.events()[2] == .text);
-    try std.testing.expectEqualSlices(u8, "world", flow.events()[2].text);
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
+    queue.feedSlice("hello\x1b[1mworld");
+    try std.testing.expectEqual(@as(u32, 3), queue.eventCount());
+    try std.testing.expect(queue.events()[0] == .text);
+    try std.testing.expectEqualSlices(u8, "hello", queue.events()[0].text);
+    try std.testing.expect(queue.events()[1] == .style_change);
+    try std.testing.expect(queue.events()[2] == .text);
+    try std.testing.expectEqualSlices(u8, "world", queue.events()[2].text);
 }
 
-test "apply flow: reset clears events and parser state" {
+test "queue: reset clears events and parser state" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
-    flow.feedSlice("abc\x1b[1m");
-    try std.testing.expectEqual(@as(usize, 2), flow.len());
-    flow.reset();
-    try std.testing.expect(flow.isEmpty());
-    flow.feedSlice("xyz");
-    try std.testing.expectEqual(@as(usize, 1), flow.len());
-    try std.testing.expectEqualSlices(u8, "xyz", flow.events()[0].text);
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
+    queue.feedSlice("abc\x1b[1m");
+    try std.testing.expectEqual(@as(u32, 2), queue.eventCount());
+    queue.reset();
+    try std.testing.expect(queue.isEmpty());
+    queue.feedSlice("xyz");
+    try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
+    try std.testing.expectEqualSlices(u8, "xyz", queue.events()[0].text);
 }
 
-test "apply flow: split CSI across feeds" {
+test "queue: split CSI across feeds" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
-    flow.feedSlice("\x1b[");
-    flow.feedSlice("31m");
-    try std.testing.expectEqual(@as(usize, 1), flow.len());
-    try std.testing.expect(flow.events()[0] == .style_change);
-    try std.testing.expectEqual(@as(i32, 31), flow.events()[0].style_change.params[0]);
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
+    queue.feedSlice("\x1b[");
+    queue.feedSlice("31m");
+    try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
+    try std.testing.expect(queue.events()[0] == .style_change);
+    try std.testing.expectEqual(@as(i32, 31), queue.events()[0].style_change.params[0]);
 }
 
-test "apply flow: stray ESC in OSC dropped, byte appended" {
+test "queue: stray ESC in OSC dropped, byte appended" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
-    flow.feedSlice("\x1b]ti\x1btle\x07");
-    try std.testing.expectEqual(@as(usize, 1), flow.len());
-    try std.testing.expect(flow.events()[0] == .osc);
-    try std.testing.expectEqual(.title, flow.events()[0].osc.kind);
-    try std.testing.expectEqualSlices(u8, "title", flow.events()[0].osc.payload);
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
+    queue.feedSlice("\x1b]ti\x1btle\x07");
+    try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
+    try std.testing.expect(queue.events()[0] == .osc);
+    try std.testing.expectEqual(.title, queue.events()[0].osc.kind);
+    try std.testing.expectEqualSlices(u8, "title", queue.events()[0].osc.payload);
 }
 
-test "feed/apply: apply-flow clear drops pending parsed events before apply" {
+test "feed/apply: queue clear drops pending parsed events before apply" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Screen.initWithCells(gpa, 2, 8);
     defer screen.deinit(gpa);
-    flow.feedSlice("dropped");
-    try std.testing.expect(flow.len() > 0);
-    flow.clear();
-    try std.testing.expect(flow.isEmpty());
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("dropped");
+    try std.testing.expect(queue.eventCount() > 0);
+    queue.clear();
+    try std.testing.expect(queue.isEmpty());
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "feed/apply: apply-flow reset clears queued events and partial CSI" {
+test "feed/apply: queue reset clears queued events and partial CSI" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Screen.initWithCells(gpa, 12, 40);
     defer screen.deinit(gpa);
     screen.cursor_row = 10;
     screen.cursor_col = 0;
-    flow.feedSlice("x\x1b[3");
-    try std.testing.expectEqual(@as(usize, 1), flow.len());
-    flow.reset();
-    try std.testing.expect(flow.isEmpty());
-    flow.feedSlice("A");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("x\x1b[3");
+    try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
+    queue.reset();
+    try std.testing.expect(queue.isEmpty());
+    queue.feedSlice("A");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 10), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'A'), screen.cellAt(10, 0));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(10, 1));
 }
 
-test "feed/apply: apply-flow clear preserves partial CHT parser state" {
+test "feed/apply: queue clear preserves partial CHT parser state" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Screen.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
-    flow.feedSlice("abc");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("abc");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_col);
-    flow.feedSlice("\x1b[2");
-    flow.clear();
-    try std.testing.expect(flow.isEmpty());
-    flow.feedSlice("Ix");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[2");
+    queue.clear();
+    try std.testing.expect(queue.isEmpty());
+    queue.feedSlice("Ix");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 17), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 16));
-    try std.testing.expect(flow.isEmpty());
+    try std.testing.expect(queue.isEmpty());
 }
 
-test "feed/apply: apply-flow clear preserves partial CBT parser state" {
+test "feed/apply: queue clear preserves partial CBT parser state" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Screen.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
-    flow.feedSlice("a\x1b[2I");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("a\x1b[2I");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 16), screen.cursor_col);
-    flow.feedSlice("\x1b[2");
-    flow.clear();
-    try std.testing.expect(flow.isEmpty());
-    flow.feedSlice("Zy");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[2");
+    queue.clear();
+    try std.testing.expect(queue.isEmpty());
+    queue.feedSlice("Zy");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 0));
-    try std.testing.expect(flow.isEmpty());
+    try std.testing.expect(queue.isEmpty());
 }
 
-test "feed/apply: apply-flow reset drops partial CHT parser state" {
+test "feed/apply: queue reset drops partial CHT parser state" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Screen.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
-    flow.feedSlice("\x1b[2");
-    flow.reset();
-    try std.testing.expect(flow.isEmpty());
-    flow.feedSlice("Iw");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[2");
+    queue.reset();
+    try std.testing.expect(queue.isEmpty());
+    queue.feedSlice("Iw");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'I'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'w'), screen.cellAt(0, 1));
 }
 
-test "feed/apply: apply-flow reset drops partial CBT parser state" {
+test "feed/apply: queue reset drops partial CBT parser state" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Screen.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
-    flow.feedSlice("a\x1b[2I");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("a\x1b[2I");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 16), screen.cursor_col);
-    flow.feedSlice("\x1b[2");
-    flow.reset();
-    try std.testing.expect(flow.isEmpty());
-    flow.feedSlice("Zv");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[2");
+    queue.reset();
+    try std.testing.expect(queue.isEmpty());
+    queue.feedSlice("Zv");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 18), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'v'), screen.cellAt(0, 17));
 }
 
 test "feed/apply: applyToScreen drains parsed events once repeat apply is no-op" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 8);
     defer screen.deinit(gpa);
-    flow.feedSlice("\x1b[4C");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[4C");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
-    try std.testing.expect(flow.isEmpty());
-    dispatch.applyToScreen(&flow, &screen);
+    try std.testing.expect(queue.isEmpty());
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
-    flow.feedSlice("z");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("z");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u21, 'z'), screen.cellAt(0, 4));
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
 }
 
 test "feed/apply: CUU moves cursor up" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 10;
-    feed(&flow, &screen, "\x1b[3A");
+    feed(&queue, &screen, "\x1b[3A");
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_row);
 }
 
 test "feed/apply: CUD moves cursor down" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 5;
-    feed(&flow, &screen, "\x1b[4B");
+    feed(&queue, &screen, "\x1b[4B");
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_row);
 }
 
 test "feed/apply: CUF moves cursor forward" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_col = 10;
-    feed(&flow, &screen, "\x1b[5C");
+    feed(&queue, &screen, "\x1b[5C");
     try std.testing.expectEqual(@as(u16, 15), screen.cursor_col);
 }
 
 test "feed/apply: CUB moves cursor back" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_col = 20;
-    feed(&flow, &screen, "\x1b[6D");
+    feed(&queue, &screen, "\x1b[6D");
     try std.testing.expectEqual(@as(u16, 14), screen.cursor_col);
 }
 
 test "feed/apply: CUD alias 'e' moves cursor down" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 5;
-    feed(&flow, &screen, "\x1b[4e");
+    feed(&queue, &screen, "\x1b[4e");
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_row);
 }
 
 test "feed/apply: CUD alias 'e' zero param defaults to 1" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 5;
-    feed(&flow, &screen, "\x1b[e");
+    feed(&queue, &screen, "\x1b[e");
     try std.testing.expectEqual(@as(u16, 6), screen.cursor_row);
 }
 
 test "feed/apply: CUF alias 'a' moves cursor forward" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_col = 10;
-    feed(&flow, &screen, "\x1b[5a");
+    feed(&queue, &screen, "\x1b[5a");
     try std.testing.expectEqual(@as(u16, 15), screen.cursor_col);
 }
 
 test "feed/apply: CUF alias 'a' zero param defaults to 1" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_col = 10;
-    feed(&flow, &screen, "\x1b[a");
+    feed(&queue, &screen, "\x1b[a");
     try std.testing.expectEqual(@as(u16, 11), screen.cursor_col);
 }
 
 test "feed/apply: CHA alias backtick moves cursor to absolute column" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_col = 10;
-    feed(&flow, &screen, "\x1b[7`");
+    feed(&queue, &screen, "\x1b[7`");
     try std.testing.expectEqual(@as(u16, 6), screen.cursor_col);
 }
 
 test "feed/apply: CHA alias backtick zero param defaults to column 0" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_col = 10;
-    feed(&flow, &screen, "\x1b[`");
+    feed(&queue, &screen, "\x1b[`");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "feed/apply: CUD alias 'e' clamps at last row" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(5, 20);
     screen.cursor_row = 2;
-    feed(&flow, &screen, "\x1b[999e");
+    feed(&queue, &screen, "\x1b[999e");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
 }
 
 test "feed/apply: CUF alias 'a' clamps at last column" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(10, 5);
-    feed(&flow, &screen, "\x1b[999a");
+    feed(&queue, &screen, "\x1b[999a");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
 }
 
 test "feed/apply: CHA alias backtick clamps at last column" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(5, 20);
-    feed(&flow, &screen, "\x1b[999`");
+    feed(&queue, &screen, "\x1b[999`");
     try std.testing.expectEqual(@as(u16, 19), screen.cursor_col);
 }
 
 test "feed/apply: CNL moves cursor down and resets column" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 5;
     screen.cursor_col = 20;
-    feed(&flow, &screen, "\x1b[3E");
+    feed(&queue, &screen, "\x1b[3E");
     try std.testing.expectEqual(@as(u16, 8), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "feed/apply: CPL moves cursor up and resets column" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 8;
     screen.cursor_col = 20;
-    feed(&flow, &screen, "\x1b[3F");
+    feed(&queue, &screen, "\x1b[3F");
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "feed/apply: split CNL interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 10, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc");
-    flow.feedSlice("\x1b[7");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("Ex");
-    dispatch.applyToScreen(&flow, &screen);
+    feed(&queue, &screen, "abc");
+    queue.feedSlice("\x1b[7");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("Ex");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'E'), screen.cellAt(0, 0));
@@ -421,15 +418,15 @@ test "feed/apply: split CNL interrupted by DECSTR bytes remains deterministic" {
 
 test "feed/apply: split CNL after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 10, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("\x1b[7");
-    flow.feedSlice("Ex");
-    dispatch.applyToScreen(&flow, &screen);
+    feed(&queue, &screen, "abc");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("\x1b[7");
+    queue.feedSlice("Ex");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(7, 0));
@@ -437,15 +434,15 @@ test "feed/apply: split CNL after DECSTR applies from reset origin" {
 
 test "feed/apply: split CPL interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 10, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc");
-    flow.feedSlice("\x1b[7");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("Fx");
-    dispatch.applyToScreen(&flow, &screen);
+    feed(&queue, &screen, "abc");
+    queue.feedSlice("\x1b[7");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("Fx");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'F'), screen.cellAt(0, 0));
@@ -454,15 +451,15 @@ test "feed/apply: split CPL interrupted by DECSTR bytes remains deterministic" {
 
 test "feed/apply: split CPL after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 10, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("\x1b[7");
-    flow.feedSlice("Fx");
-    dispatch.applyToScreen(&flow, &screen);
+    feed(&queue, &screen, "abc");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("\x1b[7");
+    queue.feedSlice("Fx");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 0));
@@ -470,61 +467,61 @@ test "feed/apply: split CPL after DECSTR applies from reset origin" {
 
 test "feed/apply: CHA moves cursor to absolute column" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 6;
     screen.cursor_col = 12;
-    feed(&flow, &screen, "\x1b[5G");
+    feed(&queue, &screen, "\x1b[5G");
     try std.testing.expectEqual(@as(u16, 6), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
 }
 
 test "feed/apply: VPA moves cursor to absolute row" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 12;
     screen.cursor_col = 9;
-    feed(&flow, &screen, "\x1b[7d");
+    feed(&queue, &screen, "\x1b[7d");
     try std.testing.expectEqual(@as(u16, 6), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_col);
 }
 
 test "feed/apply: VPA default param moves cursor to row zero" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 12;
     screen.cursor_col = 9;
-    feed(&flow, &screen, "\x1b[d");
+    feed(&queue, &screen, "\x1b[d");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_col);
 }
 
 test "feed/apply: VPA clamps at last row" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(5, 20);
-    feed(&flow, &screen, "\x1b[999d");
+    feed(&queue, &screen, "\x1b[999d");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "feed/apply: split VPA interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 10, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc");
-    flow.feedSlice("\x1b[7");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("dx");
-    dispatch.applyToScreen(&flow, &screen);
+    feed(&queue, &screen, "abc");
+    queue.feedSlice("\x1b[7");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("dx");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'd'), screen.cellAt(0, 0));
@@ -533,15 +530,15 @@ test "feed/apply: split VPA interrupted by DECSTR bytes remains deterministic" {
 
 test "feed/apply: split VPA after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 10, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("\x1b[7");
-    flow.feedSlice("dx");
-    dispatch.applyToScreen(&flow, &screen);
+    feed(&queue, &screen, "abc");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("\x1b[7");
+    queue.feedSlice("dx");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 6), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(6, 0));
@@ -549,37 +546,37 @@ test "feed/apply: split VPA after DECSTR applies from reset origin" {
 
 test "feed/apply: CHA default param moves cursor to column zero" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 4;
     screen.cursor_col = 33;
-    feed(&flow, &screen, "\x1b[G");
+    feed(&queue, &screen, "\x1b[G");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "feed/apply: CHA clamps at last column" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(2, 20);
-    feed(&flow, &screen, "\x1b[999G");
+    feed(&queue, &screen, "\x1b[999G");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 19), screen.cursor_col);
 }
 
 test "feed/apply: split CHA interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc");
-    flow.feedSlice("\x1b[7");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("Gx");
-    dispatch.applyToScreen(&flow, &screen);
+    feed(&queue, &screen, "abc");
+    queue.feedSlice("\x1b[7");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("Gx");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'G'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 1));
@@ -587,76 +584,76 @@ test "feed/apply: split CHA interrupted by DECSTR bytes remains deterministic" {
 
 test "feed/apply: split CHA after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("\x1b[7");
-    flow.feedSlice("Gx");
-    dispatch.applyToScreen(&flow, &screen);
+    feed(&queue, &screen, "abc");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("\x1b[7");
+    queue.feedSlice("Gx");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 6));
 }
 
 test "feed/apply: CUP absolute move" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
-    feed(&flow, &screen, "\x1b[5;20H");
+    feed(&queue, &screen, "\x1b[5;20H");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 19), screen.cursor_col);
 }
 
 test "feed/apply: CUP no params moves to origin" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 10;
     screen.cursor_col = 40;
-    feed(&flow, &screen, "\x1b[H");
+    feed(&queue, &screen, "\x1b[H");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "feed/apply: split CSI across multiple feeds" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 10;
-    flow.feedSlice("\x1b[");
-    flow.feedSlice("2");
-    flow.feedSlice("A");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[");
+    queue.feedSlice("2");
+    queue.feedSlice("A");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 8), screen.cursor_row);
 }
 
 test "feed/apply: clamping at screen boundaries" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
-    feed(&flow, &screen, "\x1b[999A");
+    feed(&queue, &screen, "\x1b[999A");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[999B");
+    feed(&queue, &screen, "\x1b[999B");
     try std.testing.expectEqual(@as(u16, 23), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[999D");
+    feed(&queue, &screen, "\x1b[999D");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[999C");
+    feed(&queue, &screen, "\x1b[999C");
     try std.testing.expectEqual(@as(u16, 79), screen.cursor_col);
 }
 
 test "feed/apply: plain text feed writes to screen cells" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "hello");
+    feed(&queue, &screen, "hello");
     try std.testing.expectEqual(@as(u21, 'h'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'o'), screen.cellAt(0, 4));
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
@@ -664,11 +661,11 @@ test "feed/apply: plain text feed writes to screen cells" {
 
 test "feed/apply: mixed CSI cursor move then text write" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "\x1b[2;5Hhi");
+    feed(&queue, &screen, "\x1b[2;5Hhi");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     try std.testing.expectEqual(@as(u21, 'h'), screen.cellAt(1, 4));
     try std.testing.expectEqual(@as(u21, 'i'), screen.cellAt(1, 5));
@@ -676,11 +673,11 @@ test "feed/apply: mixed CSI cursor move then text write" {
 
 test "feed/apply: CR resets column leaving row unchanged" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc\x0Dxy");
+    feed(&queue, &screen, "abc\x0Dxy");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 1));
@@ -688,11 +685,11 @@ test "feed/apply: CR resets column leaving row unchanged" {
 
 test "feed/apply: LF advances row" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "ab\x0Acd");
+    feed(&queue, &screen, "ab\x0Acd");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'c'), screen.cellAt(1, 2));
@@ -700,11 +697,11 @@ test "feed/apply: LF advances row" {
 
 test "feed/apply: CR+LF writes to start of next row" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc\x0D\x0Adef");
+    feed(&queue, &screen, "abc\x0D\x0Adef");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'd'), screen.cellAt(1, 0));
@@ -712,22 +709,22 @@ test "feed/apply: CR+LF writes to start of next row" {
 
 test "feed/apply: BS moves cursor left without erasing cell" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc\x08");
+    feed(&queue, &screen, "abc\x08");
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'c'), screen.cellAt(0, 2));
 }
 
 test "feed/apply: CSI I advances cursor by default tab stops" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "a\x1b[2Ib");
+    feed(&queue, &screen, "a\x1b[2Ib");
     try std.testing.expectEqual(@as(u16, 17), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'b'), screen.cellAt(0, 16));
@@ -735,11 +732,11 @@ test "feed/apply: CSI I advances cursor by default tab stops" {
 
 test "feed/apply: CSI Z moves cursor to previous default tab stop" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "a\x1b[2I\x1b[Zb");
+    feed(&queue, &screen, "a\x1b[2I\x1b[Zb");
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'b'), screen.cellAt(0, 8));
@@ -747,35 +744,35 @@ test "feed/apply: CSI Z moves cursor to previous default tab stop" {
 
 test "feed/apply: UTF-8 codepoint written to cell" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "\xC3\xA9");
+    feed(&queue, &screen, "\xC3\xA9");
     try std.testing.expectEqual(@as(u21, 0xE9), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
 }
 
 test "feed/apply: invalid UTF-8 does not corrupt cursor state" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 5;
     screen.cursor_col = 10;
-    feed(&flow, &screen, "\x80\xFE");
+    feed(&queue, &screen, "\x80\xFE");
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 10), screen.cursor_col);
 }
 
 test "feed/apply: unsupported CSI does not alter cell content or cursor" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "ab");
-    feed(&flow, &screen, "\x1b[1m\x1b[0m");
+    feed(&queue, &screen, "ab");
+    feed(&queue, &screen, "\x1b[1m\x1b[0m");
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'b'), screen.cellAt(0, 1));
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
@@ -783,11 +780,11 @@ test "feed/apply: unsupported CSI does not alter cell content or cursor" {
 
 test "feed/apply: multi-line text via CR+LF sequence" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "row0\x0D\x0Arow1\x0D\x0Arow2");
+    feed(&queue, &screen, "row0\x0D\x0Arow1\x0D\x0Arow2");
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_row);
     try std.testing.expectEqual(@as(u21, 'r'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'r'), screen.cellAt(1, 0));
@@ -797,30 +794,30 @@ test "feed/apply: multi-line text via CR+LF sequence" {
 
 test "feed/apply: sequence of moves composes correctly" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
-    feed(&flow, &screen, "\x1b[10;10H");
+    feed(&queue, &screen, "\x1b[10;10H");
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[2A");
+    feed(&queue, &screen, "\x1b[2A");
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[5C");
+    feed(&queue, &screen, "\x1b[5C");
     try std.testing.expectEqual(@as(u16, 14), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[H");
+    feed(&queue, &screen, "\x1b[H");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "feed/apply: CSI K erases from cursor to end of line" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "hello");
+    feed(&queue, &screen, "hello");
     screen.cursor_col = 2;
-    feed(&flow, &screen, "\x1b[K");
+    feed(&queue, &screen, "\x1b[K");
     try std.testing.expectEqual(@as(u21, 'h'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'e'), screen.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 2));
@@ -830,22 +827,22 @@ test "feed/apply: CSI K erases from cursor to end of line" {
 
 test "feed/apply: CSI J erases from cursor to end of screen" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 3, 5);
     defer screen.deinit(gpa);
     screen.cursor_row = 0;
     screen.cursor_col = 0;
-    feed(&flow, &screen, "AAAAA");
+    feed(&queue, &screen, "AAAAA");
     screen.cursor_row = 1;
     screen.cursor_col = 0;
-    feed(&flow, &screen, "BBBBB");
+    feed(&queue, &screen, "BBBBB");
     screen.cursor_row = 2;
     screen.cursor_col = 0;
-    feed(&flow, &screen, "CCCCC");
+    feed(&queue, &screen, "CCCCC");
     screen.cursor_row = 1;
     screen.cursor_col = 2;
-    feed(&flow, &screen, "\x1b[J");
+    feed(&queue, &screen, "\x1b[J");
     try std.testing.expectEqual(@as(u21, 'A'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), screen.cellAt(1, 0));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(1, 2));
@@ -854,13 +851,13 @@ test "feed/apply: CSI J erases from cursor to end of screen" {
 
 test "feed/apply: cursor move then CSI K erase to end of line" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abcdef");
-    feed(&flow, &screen, "\x1b[1;4H");
-    feed(&flow, &screen, "\x1b[K");
+    feed(&queue, &screen, "abcdef");
+    feed(&queue, &screen, "\x1b[1;4H");
+    feed(&queue, &screen, "\x1b[K");
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'b'), screen.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 'c'), screen.cellAt(0, 2));
@@ -870,14 +867,14 @@ test "feed/apply: cursor move then CSI K erase to end of line" {
 
 test "feed/apply: CSI @ inserts blanks and preserves suffix" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 1, 8);
     defer screen.deinit(gpa);
 
-    feed(&flow, &screen, "abcdef");
-    feed(&flow, &screen, "\x1b[1;3H");
-    feed(&flow, &screen, "\x1b[2@");
+    feed(&queue, &screen, "abcdef");
+    feed(&queue, &screen, "\x1b[1;3H");
+    feed(&queue, &screen, "\x1b[2@");
 
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'b'), screen.cellAt(0, 1));
@@ -891,45 +888,45 @@ test "feed/apply: CSI @ inserts blanks and preserves suffix" {
 
 test "feed/apply: VT FF IND NEL and RI aliases" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 3, 5);
     defer screen.deinit(gpa);
 
-    feed(&flow, &screen, "A\x0bB\x0cC");
+    feed(&queue, &screen, "A\x0bB\x0cC");
     try std.testing.expectEqual(@as(u21, 'A'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), screen.cellAt(1, 1));
     try std.testing.expectEqual(@as(u21, 'C'), screen.cellAt(2, 2));
 
-    feed(&flow, &screen, "\x1b[1;5H\x1bE");
+    feed(&queue, &screen, "\x1b[1;5H\x1bE");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 
-    feed(&flow, &screen, "\x1bM");
+    feed(&queue, &screen, "\x1bM");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
-    feed(&flow, &screen, "\x1bD");
+    feed(&queue, &screen, "\x1bD");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
 }
 
 test "feed/apply: ANSI CSI save and restore cursor aliases" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
 
-    feed(&flow, &screen, "\x1b[4;5H\x1b[s\x1b[10;10H\x1b[u");
+    feed(&queue, &screen, "\x1b[4;5H\x1b[s\x1b[10;10H\x1b[u");
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
 }
 
 test "feed/apply: ESC c resets visible grid state" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 5);
     defer screen.deinit(gpa);
 
-    feed(&flow, &screen, "abc\x1bc");
+    feed(&queue, &screen, "abc\x1bc");
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
@@ -937,23 +934,23 @@ test "feed/apply: ESC c resets visible grid state" {
 
 test "feed/apply: DECSCUSR sets steady bar cursor" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
 
-    feed(&flow, &screen, "\x1b[6 q");
+    feed(&queue, &screen, "\x1b[6 q");
     try std.testing.expectEqual(.bar, screen.cursor_style.shape);
     try std.testing.expect(!screen.cursor_style.blink);
 }
 
 test "feed/apply: REP repeats preceding graphic character" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 1, 8);
     defer screen.deinit(gpa);
 
-    feed(&flow, &screen, "A\x1b[4b");
+    feed(&queue, &screen, "A\x1b[4b");
     var col: u16 = 0;
     while (col < 5) : (col += 1) {
         try std.testing.expectEqual(@as(u21, 'A'), screen.cellAt(0, col));
@@ -963,14 +960,14 @@ test "feed/apply: REP repeats preceding graphic character" {
 
 test "feed/apply: DECSTR resets visible grid state" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 5);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abcdef");
+    feed(&queue, &screen, "abcdef");
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[!p");
+    feed(&queue, &screen, "\x1b[!p");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
@@ -979,123 +976,123 @@ test "feed/apply: DECSTR resets visible grid state" {
 
 test "feed/apply: split CHT interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc");
+    feed(&queue, &screen, "abc");
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_col);
-    flow.feedSlice("\x1b[2");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("Ix");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[2");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("Ix");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'I'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 1));
-    try std.testing.expect(flow.isEmpty());
+    try std.testing.expect(queue.isEmpty());
 }
 
 test "feed/apply: split CHT after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abc");
+    feed(&queue, &screen, "abc");
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_col);
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("\x1b[2");
-    flow.feedSlice("Ix");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("\x1b[2");
+    queue.feedSlice("Ix");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 17), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'x'), screen.cellAt(0, 16));
-    try std.testing.expect(flow.isEmpty());
+    try std.testing.expect(queue.isEmpty());
 }
 
 test "feed/apply: split CBT interrupted by DECSTR bytes remains deterministic" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "a\x1b[2I");
+    feed(&queue, &screen, "a\x1b[2I");
     try std.testing.expectEqual(@as(u16, 16), screen.cursor_col);
-    flow.feedSlice("\x1b[2");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("Zy");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[2");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("Zy");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'Z'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 1));
-    try std.testing.expect(flow.isEmpty());
+    try std.testing.expect(queue.isEmpty());
 }
 
 test "feed/apply: split CBT after DECSTR applies from reset origin" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "a\x1b[2I");
+    feed(&queue, &screen, "a\x1b[2I");
     try std.testing.expectEqual(@as(u16, 16), screen.cursor_col);
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("\x1b[2");
-    flow.feedSlice("Zy");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("\x1b[2");
+    queue.feedSlice("Zy");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'y'), screen.cellAt(0, 0));
-    try std.testing.expect(flow.isEmpty());
+    try std.testing.expect(queue.isEmpty());
 }
 
 test "feed/apply: DEC private cursor visibility toggles mode state" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(2, 5);
     try std.testing.expect(screen.cursor_visible);
-    feed(&flow, &screen, "\x1b[?25l");
+    feed(&queue, &screen, "\x1b[?25l");
     try std.testing.expect(!screen.cursor_visible);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[?25h");
+    feed(&queue, &screen, "\x1b[?25h");
     try std.testing.expect(screen.cursor_visible);
 }
 
 test "feed/apply: interrupted split private cursor mode remains deterministic" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
     try std.testing.expect(screen.cursor_visible);
-    feed(&flow, &screen, "x");
-    flow.feedSlice("\x1b[?2");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("5l");
-    dispatch.applyToScreen(&flow, &screen);
+    feed(&queue, &screen, "x");
+    queue.feedSlice("\x1b[?2");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("5l");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expect(screen.cursor_visible);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, '5'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 1));
-    try std.testing.expect(flow.isEmpty());
+    try std.testing.expect(queue.isEmpty());
 }
 
 test "feed/apply: DEC private auto-wrap mode toggles wrap behavior" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 5);
     defer screen.deinit(gpa);
     try std.testing.expect(screen.auto_wrap);
-    feed(&flow, &screen, "\x1b[?7l");
+    feed(&queue, &screen, "\x1b[?7l");
     try std.testing.expect(!screen.auto_wrap);
-    feed(&flow, &screen, "abcdefg");
+    feed(&queue, &screen, "abcdefg");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'g'), screen.cellAt(0, 4));
-    feed(&flow, &screen, "\x1b[?7h");
+    feed(&queue, &screen, "\x1b[?7h");
     try std.testing.expect(screen.auto_wrap);
-    feed(&flow, &screen, "hi");
+    feed(&queue, &screen, "hi");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'h'), screen.cellAt(0, 4));
@@ -1104,30 +1101,30 @@ test "feed/apply: DEC private auto-wrap mode toggles wrap behavior" {
 
 test "feed/apply: interrupted split private auto-wrap mode remains deterministic" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
     try std.testing.expect(screen.auto_wrap);
-    feed(&flow, &screen, "x");
-    flow.feedSlice("\x1b[?");
-    flow.feedSlice("\x1b[!p");
-    flow.feedSlice("7l");
-    dispatch.applyToScreen(&flow, &screen);
+    feed(&queue, &screen, "x");
+    queue.feedSlice("\x1b[?");
+    queue.feedSlice("\x1b[!p");
+    queue.feedSlice("7l");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expect(screen.auto_wrap);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, '7'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 1));
-    try std.testing.expect(flow.isEmpty());
+    try std.testing.expect(queue.isEmpty());
 }
 
 test "feed/apply: existing text and cursor paths unaffected by erase additions" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "hello\x0D\x0Aworld");
+    feed(&queue, &screen, "hello\x0D\x0Aworld");
     try std.testing.expectEqual(@as(u21, 'h'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'w'), screen.cellAt(1, 0));
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
@@ -1136,24 +1133,24 @@ test "feed/apply: existing text and cursor paths unaffected by erase additions" 
 
 test "feed/apply: CUP alternate final f positions cursor" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
-    feed(&flow, &screen, "\x1b[4;7f");
+    feed(&queue, &screen, "\x1b[4;7f");
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 6), screen.cursor_col);
 }
 
 test "feed/apply: CSI J mode 2 erases full screen" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 4);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "AAAA");
-    feed(&flow, &screen, "\x0D\x0A");
-    feed(&flow, &screen, "BBBB");
-    feed(&flow, &screen, "\x1b[H\x1b[2J");
+    feed(&queue, &screen, "AAAA");
+    feed(&queue, &screen, "\x0D\x0A");
+    feed(&queue, &screen, "BBBB");
+    feed(&queue, &screen, "\x1b[H\x1b[2J");
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 3));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(1, 0));
@@ -1164,18 +1161,18 @@ test "feed/apply: CSI J mode 2 erases full screen" {
 
 test "feed/apply: CSI J mode 1 erases through cursor inclusive" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 3, 4);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "AAAA");
-    feed(&flow, &screen, "\x0D\x0A");
-    feed(&flow, &screen, "BBBB");
-    feed(&flow, &screen, "\x0D\x0A");
-    feed(&flow, &screen, "CCCC");
+    feed(&queue, &screen, "AAAA");
+    feed(&queue, &screen, "\x0D\x0A");
+    feed(&queue, &screen, "BBBB");
+    feed(&queue, &screen, "\x0D\x0A");
+    feed(&queue, &screen, "CCCC");
     screen.cursor_row = 1;
     screen.cursor_col = 2;
-    feed(&flow, &screen, "\x1b[1J");
+    feed(&queue, &screen, "\x1b[1J");
     try std.testing.expectEqual(@as(u21, 'C'), screen.cellAt(2, 0));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(1, 0));
@@ -1186,13 +1183,13 @@ test "feed/apply: CSI J mode 1 erases through cursor inclusive" {
 
 test "feed/apply: CSI K mode 1 erases line start through cursor" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 6);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "abcdef");
+    feed(&queue, &screen, "abcdef");
     screen.cursor_col = 2;
-    feed(&flow, &screen, "\x1b[1K");
+    feed(&queue, &screen, "\x1b[1K");
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 2));
     try std.testing.expectEqual(@as(u21, 'd'), screen.cellAt(0, 3));
@@ -1201,15 +1198,15 @@ test "feed/apply: CSI K mode 1 erases line start through cursor" {
 
 test "feed/apply: CSI K mode 2 erases entire current line" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 5);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "hello");
-    feed(&flow, &screen, "\x1b[2;1H");
-    feed(&flow, &screen, "world");
-    feed(&flow, &screen, "\x1b[1;1H");
-    feed(&flow, &screen, "\x1b[2K");
+    feed(&queue, &screen, "hello");
+    feed(&queue, &screen, "\x1b[2;1H");
+    feed(&queue, &screen, "world");
+    feed(&queue, &screen, "\x1b[1;1H");
+    feed(&queue, &screen, "\x1b[2K");
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'w'), screen.cellAt(1, 0));
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
@@ -1218,16 +1215,16 @@ test "feed/apply: CSI K mode 2 erases entire current line" {
 
 test "feed/apply: CSI J invalid param maps to mode 0 through end of screen" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 4);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "AAAA");
-    feed(&flow, &screen, "\x0D\x0A");
-    feed(&flow, &screen, "BBBB");
+    feed(&queue, &screen, "AAAA");
+    feed(&queue, &screen, "\x0D\x0A");
+    feed(&queue, &screen, "BBBB");
     screen.cursor_row = 0;
     screen.cursor_col = 1;
-    feed(&flow, &screen, "\x1b[9J");
+    feed(&queue, &screen, "\x1b[9J");
     try std.testing.expectEqual(@as(u21, 'A'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(1, 0));
@@ -1235,15 +1232,15 @@ test "feed/apply: CSI J invalid param maps to mode 0 through end of screen" {
 
 test "feed/apply: split CSI erase across parser feeds" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 1, 5);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "hello");
+    feed(&queue, &screen, "hello");
     screen.cursor_col = 2;
-    flow.feedSlice("\x1b[");
-    flow.feedSlice("1K");
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("\x1b[");
+    queue.feedSlice("1K");
+    dispatch.applyToScreen(&queue, &screen);
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 2));
     try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 3));
@@ -1251,11 +1248,11 @@ test "feed/apply: split CSI erase across parser feeds" {
 
 test "feed/apply: control BEL does not move cursor or alter cells" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 8);
     defer screen.deinit(gpa);
-    feed(&flow, &screen, "ab\x07c");
+    feed(&queue, &screen, "ab\x07c");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_col);
     try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
@@ -1265,354 +1262,354 @@ test "feed/apply: control BEL does not move cursor or alter cells" {
 
 test "edge: CUU repeated moves from top clamps at row 0" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_row = 3;
-    feed(&flow, &screen, "\x1b[1A");
+    feed(&queue, &screen, "\x1b[1A");
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[1A");
+    feed(&queue, &screen, "\x1b[1A");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[1A");
+    feed(&queue, &screen, "\x1b[1A");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[1A");
+    feed(&queue, &screen, "\x1b[1A");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[1A");
+    feed(&queue, &screen, "\x1b[1A");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
 }
 
 test "edge: CUD repeated moves from bottom clamps at last row" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(10, 80);
     screen.cursor_row = 7;
-    feed(&flow, &screen, "\x1b[1B");
+    feed(&queue, &screen, "\x1b[1B");
     try std.testing.expectEqual(@as(u16, 8), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[1B");
+    feed(&queue, &screen, "\x1b[1B");
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[1B");
+    feed(&queue, &screen, "\x1b[1B");
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[1B");
+    feed(&queue, &screen, "\x1b[1B");
     try std.testing.expectEqual(@as(u16, 9), screen.cursor_row);
 }
 
 test "edge: CUF repeated moves from right clamps at last column" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 12);
     screen.cursor_col = 10;
-    feed(&flow, &screen, "\x1b[1C");
+    feed(&queue, &screen, "\x1b[1C");
     try std.testing.expectEqual(@as(u16, 11), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[1C");
+    feed(&queue, &screen, "\x1b[1C");
     try std.testing.expectEqual(@as(u16, 11), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[1C");
+    feed(&queue, &screen, "\x1b[1C");
     try std.testing.expectEqual(@as(u16, 11), screen.cursor_col);
 }
 
 test "edge: CUB repeated moves from left clamps at column 0" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(24, 80);
     screen.cursor_col = 3;
-    feed(&flow, &screen, "\x1b[1D");
+    feed(&queue, &screen, "\x1b[1D");
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[1D");
+    feed(&queue, &screen, "\x1b[1D");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[1D");
+    feed(&queue, &screen, "\x1b[1D");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[1D");
+    feed(&queue, &screen, "\x1b[1D");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "edge: mixed cursor moves (up/down/left/right) maintain saturation at edges" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(8, 8);
-    feed(&flow, &screen, "\x1b[999A");
+    feed(&queue, &screen, "\x1b[999A");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[999B");
+    feed(&queue, &screen, "\x1b[999B");
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_row);
-    feed(&flow, &screen, "\x1b[999D");
+    feed(&queue, &screen, "\x1b[999D");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[999C");
+    feed(&queue, &screen, "\x1b[999C");
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[5A\x1b[2C");
+    feed(&queue, &screen, "\x1b[5A\x1b[2C");
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 7), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[999D");
+    feed(&queue, &screen, "\x1b[999D");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[1A");
+    feed(&queue, &screen, "\x1b[1A");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
 }
 
 test "edge: CR at column 0 leaves cursor unchanged" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
     screen.cursor_row = 2;
     screen.cursor_col = 0;
-    feed(&flow, &screen, "\x0D");
+    feed(&queue, &screen, "\x0D");
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x0D");
+    feed(&queue, &screen, "\x0D");
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "edge: LF at bottom row clamps at last row" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 5, 20);
     defer screen.deinit(gpa);
     screen.cursor_row = 4;
     screen.cursor_col = 5;
-    feed(&flow, &screen, "\x0A");
+    feed(&queue, &screen, "\x0A");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
-    feed(&flow, &screen, "\x0A");
+    feed(&queue, &screen, "\x0A");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
-    feed(&flow, &screen, "\x0A");
+    feed(&queue, &screen, "\x0A");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
 }
 
 test "edge: BS at column 0 clamps at column 0" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
     screen.cursor_row = 1;
     screen.cursor_col = 0;
-    feed(&flow, &screen, "\x08");
+    feed(&queue, &screen, "\x08");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x08");
+    feed(&queue, &screen, "\x08");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "edge: CR then LF sequences from edge positions" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 5, 10);
     defer screen.deinit(gpa);
     screen.cursor_col = 9;
     screen.cursor_row = 0;
-    feed(&flow, &screen, "\x0D\x0A");
+    feed(&queue, &screen, "\x0D\x0A");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     screen.cursor_row = 4;
-    feed(&flow, &screen, "\x0D\x0A");
+    feed(&queue, &screen, "\x0D\x0A");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
 }
 
 test "edge: BS then CUB sequence does not corrupt cursor" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 4, 20);
     defer screen.deinit(gpa);
     screen.cursor_col = 5;
-    feed(&flow, &screen, "\x08\x08\x08\x08\x08");
+    feed(&queue, &screen, "\x08\x08\x08\x08\x08");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[3D");
+    feed(&queue, &screen, "\x1b[3D");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x08\x08\x08");
+    feed(&queue, &screen, "\x08\x08\x08");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "edge: CR does not move row; LF only moves row; BS only moves column" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 8, 15);
     defer screen.deinit(gpa);
     screen.cursor_row = 3;
     screen.cursor_col = 10;
-    feed(&flow, &screen, "\x0D");
+    feed(&queue, &screen, "\x0D");
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x0A");
+    feed(&queue, &screen, "\x0A");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x08");
+    feed(&queue, &screen, "\x08");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
-test "edge: zero-dimension apply-flow clear and reset are safe" {
+test "edge: zero-dimension queue clear and reset are safe" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(0, 0);
-    flow.feedSlice("test\x1b[5A");
-    flow.clear();
-    try std.testing.expect(flow.isEmpty());
-    dispatch.applyToScreen(&flow, &screen);
-    flow.feedSlice("more\x1b[1B");
-    flow.reset();
-    try std.testing.expect(flow.isEmpty());
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice("test\x1b[5A");
+    queue.clear();
+    try std.testing.expect(queue.isEmpty());
+    dispatch.applyToScreen(&queue, &screen);
+    queue.feedSlice("more\x1b[1B");
+    queue.reset();
+    try std.testing.expect(queue.isEmpty());
+    dispatch.applyToScreen(&queue, &screen);
 }
 
 test "zero-dim: rows=0, cols=8: cursor moves saturate, text/erase are safe no-ops" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(0, 8);
-    feed(&flow, &screen, "\x1b[5C");
+    feed(&queue, &screen, "\x1b[5C");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[3D");
+    feed(&queue, &screen, "\x1b[3D");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
-    feed(&flow, &screen, "hello");
+    feed(&queue, &screen, "hello");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[K");
+    feed(&queue, &screen, "\x1b[K");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
 }
 
 test "zero-dim: rows=8, cols=0: cursor moves saturate, text/erase are safe no-ops" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(8, 0);
-    feed(&flow, &screen, "\x1b[3B");
+    feed(&queue, &screen, "\x1b[3B");
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[2A");
+    feed(&queue, &screen, "\x1b[2A");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "text");
+    feed(&queue, &screen, "text");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[J");
+    feed(&queue, &screen, "\x1b[J");
     try std.testing.expectEqual(@as(u16, 1), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "zero-dim: rows=0, cols=0: all cursor moves saturate at origin, text/erase safe" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(0, 0);
-    feed(&flow, &screen, "\x1b[999A");
+    feed(&queue, &screen, "\x1b[999A");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[999B");
+    feed(&queue, &screen, "\x1b[999B");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[999C");
+    feed(&queue, &screen, "\x1b[999C");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[999D");
+    feed(&queue, &screen, "\x1b[999D");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "xyz");
+    feed(&queue, &screen, "xyz");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[2J");
+    feed(&queue, &screen, "\x1b[2J");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "zero-dim: rows=0, cols=8: CR/LF/BS control sequence determinism" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(0, 8);
     screen.cursor_col = 5;
-    feed(&flow, &screen, "\x0D");
+    feed(&queue, &screen, "\x0D");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x0A");
+    feed(&queue, &screen, "\x0A");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[3C");
+    feed(&queue, &screen, "\x1b[3C");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_col);
-    feed(&flow, &screen, "\x08");
+    feed(&queue, &screen, "\x08");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_col);
 }
 
 test "zero-dim: rows=8, cols=0: CR/LF/BS control sequence determinism" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(8, 0);
     screen.cursor_row = 3;
-    feed(&flow, &screen, "\x0A");
+    feed(&queue, &screen, "\x0A");
     try std.testing.expectEqual(@as(u16, 4), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[2A");
+    feed(&queue, &screen, "\x1b[2A");
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x0D");
+    feed(&queue, &screen, "\x0D");
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x08");
+    feed(&queue, &screen, "\x08");
     try std.testing.expectEqual(@as(u16, 2), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "zero-dim: rows=0, cols=0: CUP absolute position saturates at origin" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(0, 0);
-    feed(&flow, &screen, "\x1b[999;999H");
+    feed(&queue, &screen, "\x1b[999;999H");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[H");
+    feed(&queue, &screen, "\x1b[H");
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
 
 test "zero-dim: rows=0, cols=10: repeated erase operations remain safe" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(0, 10);
     screen.cursor_col = 5;
-    feed(&flow, &screen, "\x1b[K");
+    feed(&queue, &screen, "\x1b[K");
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[1K");
+    feed(&queue, &screen, "\x1b[1K");
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[2K");
+    feed(&queue, &screen, "\x1b[2K");
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[J");
+    feed(&queue, &screen, "\x1b[J");
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[1J");
+    feed(&queue, &screen, "\x1b[1J");
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
-    feed(&flow, &screen, "\x1b[2J");
+    feed(&queue, &screen, "\x1b[2J");
     try std.testing.expectEqual(@as(u16, 5), screen.cursor_col);
 }
 
 test "zero-dim: rows=10, cols=0: repeated text writes remain safe" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = Grid.init(10, 0);
     screen.cursor_row = 3;
-    feed(&flow, &screen, "test");
+    feed(&queue, &screen, "test");
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "\xC3\xA9");
+    feed(&queue, &screen, "\xC3\xA9");
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
-    feed(&flow, &screen, "more");
+    feed(&queue, &screen, "more");
     try std.testing.expectEqual(@as(u16, 3), screen.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen.cursor_col);
 }
@@ -1620,14 +1617,14 @@ test "zero-dim: rows=10, cols=0: repeated text writes remain safe" {
 test "zero-dim: tab commands remain safe across all zero-dimension variants" {
     const gpa = std.testing.allocator;
 
-    var pl_rows0 = try ApplyFlow.init(gpa);
+    var pl_rows0 = try Queue.init(gpa);
     defer pl_rows0.deinit();
     var screen_rows0 = Grid.init(0, 8);
     feed(&pl_rows0, &screen_rows0, "\x09\x1b[2I\x1b[3Z");
     try std.testing.expectEqual(@as(u16, 0), screen_rows0.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen_rows0.cursor_col);
 
-    var pl_cols0 = try ApplyFlow.init(gpa);
+    var pl_cols0 = try Queue.init(gpa);
     defer pl_cols0.deinit();
     var screen_cols0 = Grid.init(8, 0);
     screen_cols0.cursor_row = 3;
@@ -1635,7 +1632,7 @@ test "zero-dim: tab commands remain safe across all zero-dimension variants" {
     try std.testing.expectEqual(@as(u16, 3), screen_cols0.cursor_row);
     try std.testing.expectEqual(@as(u16, 0), screen_cols0.cursor_col);
 
-    var pl_zero = try ApplyFlow.init(gpa);
+    var pl_zero = try Queue.init(gpa);
     defer pl_zero.deinit();
     var screen_zero = Grid.init(0, 0);
     feed(&pl_zero, &screen_zero, "\x09\x1b[2I\x1b[3Z");
@@ -1682,8 +1679,8 @@ test "feed/apply: reset preserves snapshot state" {
     try std.testing.expectEqual(snap_before.cursor_col, snap_after.cursor_col);
     try std.testing.expectEqual(snap_before.cursor_row, snap_after.cursor_row);
     if (snap_before.cells != null and snap_after.cells != null) {
-        const size = @as(usize, snap_before.rows) * @as(usize, snap_before.cols);
-        try std.testing.expectEqualSlices(u21, snap_before.cells.?[0..size], snap_after.cells.?[0..size]);
+        const cell_count: u32 = @as(u32, snap_before.rows) * @as(u32, snap_before.cols);
+        try std.testing.expectEqualSlices(u21, snap_before.cells.?[0..@intCast(cell_count)], snap_after.cells.?[0..@intCast(cell_count)]);
     }
 }
 
@@ -1708,8 +1705,8 @@ test "feed/apply: resetScreen clears cells while preserving history" {
     try std.testing.expectEqual(@as(u16, 0), snap_after.cursor_col);
     try std.testing.expectEqual(hist_before, snap_after.history_count);
     if (snap_after.cells != null) {
-        const size = @as(usize, snap_after.rows) * @as(usize, snap_after.cols);
-        for (snap_after.cells.?[0..size]) |cell| {
+        const cell_count: u32 = @as(u32, snap_after.rows) * @as(u32, snap_after.cols);
+        for (snap_after.cells.?[0..@intCast(cell_count)]) |cell| {
             try std.testing.expectEqual(@as(u21, 0), cell);
         }
     }
@@ -1742,8 +1739,8 @@ test "feed/apply: snapshot determinism across feed sequence variations" {
     try std.testing.expectEqual(snap1.cursor_row, snap2.cursor_row);
     try std.testing.expectEqual(snap1.cursor_col, snap2.cursor_col);
     if (snap1.cells != null and snap2.cells != null) {
-        const size = @as(usize, snap1.rows) * @as(usize, snap1.cols);
-        try std.testing.expectEqualSlices(u21, snap1.cells.?[0..size], snap2.cells.?[0..size]);
+        const cell_count: u32 = @as(u32, snap1.rows) * @as(u32, snap1.cols);
+        try std.testing.expectEqualSlices(u21, snap1.cells.?[0..@intCast(cell_count)], snap2.cells.?[0..@intCast(cell_count)]);
     }
 }
 
@@ -1796,17 +1793,17 @@ test "feed/apply: snapshot includes active selection endpoints" {
     }
 }
 
-test "feed/apply: snapshot parity across direct apply flow" {
+test "feed/apply: snapshot parity across direct queue" {
     const gpa = std.testing.allocator;
     const test_bytes = "ABC\x1b[1;5HXY";
 
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 5, 10);
     defer screen.deinit(gpa);
 
-    flow.feedSlice(test_bytes);
-    dispatch.applyToScreen(&flow, &screen);
+    queue.feedSlice(test_bytes);
+    dispatch.applyToScreen(&queue, &screen);
 
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
@@ -1841,17 +1838,18 @@ test "feed/apply: snapshot wraparound history indices after eviction" {
     defer snap.deinit();
 
     try std.testing.expectEqual(@as(u16, 3), snap.history_capacity);
-    try std.testing.expectEqual(@as(usize, 3), snap.history_count);
+    try std.testing.expectEqual(3, snap.history_count);
 
     try std.testing.expect(snap.history != null);
-    try std.testing.expectEqual(@as(usize, 15), snap.history.?.len);
+    try std.testing.expectEqual(15, snap.history.?.len);
 
     try std.testing.expectEqual(@as(u21, 'C'), snap.historyRowAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), snap.historyRowAt(1, 0));
     try std.testing.expectEqual(@as(u21, 'A'), snap.historyRowAt(2, 0));
 
-    var row: usize = 0;
-    while (row < snap.history_count) : (row += 1) {
+    const history_count: u16 = @intCast(snap.history_count);
+    var row: u16 = 0;
+    while (row < history_count) : (row += 1) {
         var col: u16 = 0;
         while (col < snap.cols) : (col += 1) {
             try std.testing.expectEqual(screen_set.historyRowAt(&terminal.screen_state, row, col), snap.historyRowAt(row, col));
@@ -1861,33 +1859,33 @@ test "feed/apply: snapshot wraparound history indices after eviction" {
 
 test "feed/apply: prompt redraw clears stale suffix after reset history entry" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 1, 64);
     defer screen.deinit(gpa);
 
     const prompt = "$ ";
 
-    repaintPromptLine(&flow, &screen, prompt, "ll");
+    repaintPromptLine(&queue, &screen, prompt, "ll");
     try expectPromptLine(&screen, prompt, "ll");
 
-    repaintPromptLine(&flow, &screen, prompt, "reset");
+    repaintPromptLine(&queue, &screen, prompt, "reset");
     try expectPromptLine(&screen, prompt, "reset");
 
-    repaintPromptLine(&flow, &screen, prompt, "ll");
+    repaintPromptLine(&queue, &screen, prompt, "ll");
     try expectPromptLine(&screen, prompt, "ll");
 
-    repaintPromptLine(&flow, &screen, prompt, "reset");
+    repaintPromptLine(&queue, &screen, prompt, "reset");
     try expectPromptLine(&screen, prompt, "reset");
 
-    repaintPromptLine(&flow, &screen, prompt, "ll");
+    repaintPromptLine(&queue, &screen, prompt, "ll");
     try expectPromptLine(&screen, prompt, "ll");
 }
 
 test "feed/apply: prompt redraw fuzz clears stale suffix across random history entries" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 1, 96);
     defer screen.deinit(gpa);
 
@@ -1908,23 +1906,23 @@ test "feed/apply: prompt redraw fuzz clears stale suffix across random history e
     var prng = std.Random.DefaultPrng.init(0xBADC0FFEE0DDF00D);
     const rand = prng.random();
 
-    var i: usize = 0;
+    var i: u8 = 0;
     while (i < 20) : (i += 1) {
-        const command = commands[rand.uintLessThan(usize, commands.len)];
-        repaintPromptLine(&flow, &screen, prompt, command);
+        const command = commands[rand.uintLessThan(u8, commands.len)];
+        repaintPromptLine(&queue, &screen, prompt, command);
         try expectPromptLine(&screen, prompt, command);
     }
 }
 
 test "feed/apply: bash history redraw with DCH clears reset suffix" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 1, 64);
     defer screen.deinit(gpa);
 
-    feed(&flow, &screen, "reset");
-    feed(&flow, &screen, "\x08\x08\x08\x08\x08\x1b[3Pll");
+    feed(&queue, &screen, "reset");
+    feed(&queue, &screen, "\x08\x08\x08\x08\x08\x1b[3Pll");
 
     try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'l'), screen.cellAt(0, 1));
@@ -1935,13 +1933,13 @@ test "feed/apply: bash history redraw with DCH clears reset suffix" {
 
 test "feed/apply: neovim colored empty cells through EL and ECH" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 10);
     defer screen.deinit(gpa);
 
-    feed(&flow, &screen, "\x1b[38;2;40;44;52m\x1b[48;2;40;44;52m~\x1b[K");
-    feed(&flow, &screen, "\x1b[2;3H\x1b[6X");
+    feed(&queue, &screen, "\x1b[38;2;40;44;52m\x1b[48;2;40;44;52m~\x1b[K");
+    feed(&queue, &screen, "\x1b[2;3H\x1b[6X");
 
     const el_cell = screen.cellInfoAt(0, 1);
     try std.testing.expectEqual(@as(u21, 0), @as(u21, @intCast(el_cell.codepoint)));
@@ -1958,12 +1956,12 @@ test "feed/apply: neovim colored empty cells through EL and ECH" {
 
 test "feed/apply: DEC special graphics renders box drawing cells" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 1, 8);
     defer screen.deinit(gpa);
 
-    feed(&flow, &screen, "\x1b(0lqkxmj\x1b(Bq");
+    feed(&queue, &screen, "\x1b(0lqkxmj\x1b(Bq");
 
     try std.testing.expectEqual(@as(u21, 0x250C), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0x2500), screen.cellAt(0, 1));
@@ -1976,12 +1974,12 @@ test "feed/apply: DEC special graphics renders box drawing cells" {
 
 test "feed/apply: DEC special graphics G1 via SO SI" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 1, 4);
     defer screen.deinit(gpa);
 
-    feed(&flow, &screen, "\x1b)0\x0eq\x0fq");
+    feed(&queue, &screen, "\x1b)0\x0eq\x0fq");
 
     try std.testing.expectEqual(@as(u21, 0x2500), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'q'), screen.cellAt(0, 1));
@@ -1989,24 +1987,24 @@ test "feed/apply: DEC special graphics G1 via SO SI" {
 
 test "feed/apply: SL SR and DECST8C execute from CSI syntax" {
     const gpa = std.testing.allocator;
-    var flow = try ApplyFlow.init(gpa);
-    defer flow.deinit();
+    var queue = try Queue.init(gpa);
+    defer queue.deinit();
     var screen = try Grid.initWithCells(gpa, 2, 20);
     defer screen.deinit(gpa);
 
-    feed(&flow, &screen, "ABCDE\x1b[2 @");
+    feed(&queue, &screen, "ABCDE\x1b[2 @");
     try std.testing.expectEqual(@as(u21, 'C'), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'D'), screen.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 'E'), screen.cellAt(0, 2));
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 3));
 
-    feed(&flow, &screen, "\x1b[1;1HABCDE\x1b[1 A");
+    feed(&queue, &screen, "\x1b[1;1HABCDE\x1b[1 A");
     try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'A'), screen.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 'D'), screen.cellAt(0, 4));
     try std.testing.expectEqual(@as(u21, 'E'), screen.cellAt(0, 5));
 
-    feed(&flow, &screen, "\x1b[3g\x1b[?5W");
+    feed(&queue, &screen, "\x1b[3g\x1b[?5W");
     try std.testing.expect(screen.tabStopAt(8));
     try std.testing.expect(screen.tabStopAt(16));
 }

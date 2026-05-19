@@ -54,7 +54,7 @@ classDiagram
 
 ## Ownership Rules
 - `src/howl_vt.zig` is repo-local only. It is a curated root for tests and local Zig proofs, not a host integration surface.
-- `Terminal` currently owns lifecycle, apply-flow orchestration, grouped screen/mode/host/kitty state, and the temporary terminal implementation facade behind the C ABI.
+- `Terminal` currently owns lifecycle, parser-queue orchestration, grouped screen/mode/host/kitty state, and the temporary terminal implementation facade behind the C ABI.
 - `Input` owns key, modifier, mouse, host-token parsing, and input encoding vocabulary.
 - `Action` owns terminal action vocabulary and payload types.
 - `Dispatch` owns the parent event-routing control spine.

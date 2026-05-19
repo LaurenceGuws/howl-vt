@@ -100,6 +100,11 @@ pub const Queue = struct {
         return @intCast(count);
     }
 
+    pub fn prefix(self: *const Queue, count: u32) []const Event {
+        std.debug.assert(count <= self.eventCount());
+        return self.events()[0..@intCast(count)];
+    }
+
     pub fn len(self: *const Queue) usize {
         return self.parsed_events.len();
     }

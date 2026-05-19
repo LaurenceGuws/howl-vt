@@ -23,7 +23,7 @@ pub const Terminal = terminal.Terminal;
 
 test {
     _ = @import("test/action_mapping.zig");
-    _ = @import("test/apply_flow_regression.zig");
+    _ = @import("test/queue_regression.zig");
     _ = @import("test/parser_csi_behavior.zig");
     _ = @import("test/parser_behavior.zig");
     _ = @import("test/screen_state_behavior.zig");

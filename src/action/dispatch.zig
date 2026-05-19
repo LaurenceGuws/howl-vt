@@ -35,7 +35,7 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
     std.debug.assert(count <= vt.parser_state.queue.eventCount());
 
     var latest_title: ?[]const u8 = null;
-    for (vt.parser_state.queue.events()[0..@intCast(count)]) |ev| {
+    for (vt.parser_state.queue.prefix(count)) |ev| {
         latest_title = latestTitle(latest_title, ev);
         applyEvent(vt, ev);
     }
@@ -53,7 +53,7 @@ pub fn applyToScreen(queue: anytype, screen: *Screen) void {
 pub fn applyToScreenLimit(queue: anytype, screen: *Screen, max_events: u32) u32 {
     if (max_events == 0) return 0;
     const count = @min(max_events, queue.eventCount());
-    for (queue.events()[0..@intCast(count)]) |ev| {
+    for (queue.prefix(count)) |ev| {
         if (action_mod.process(ev)) |sem_ev| {
             if (action_mod.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
         }
