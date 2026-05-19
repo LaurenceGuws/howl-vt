@@ -22,6 +22,10 @@ pub const DeccirCharsetState = struct {
     gl_index: u8,
 };
 
+// Ghostty raised this from 16 to 24 after hitting real 17-parameter SGR input
+// from Kakoune. Howl keeps 16 for now because queued style-change events still
+// carry this bound inline today, and widening it regresses the current hot
+// path until that event shape is slimmer.
 const csi_max_params: usize = 16;
 const csi_max_intermediates: usize = 4;
 

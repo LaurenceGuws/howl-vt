@@ -16,8 +16,8 @@ pub const Event = union(enum) {
     control: u8,
     style_change: struct {
         final: u8,
-        params: [16]i32,
-        separators: [16]u8 = [_]u8{0} ** 16,
+        params: [parser_mod.max_params]i32,
+        separators: [parser_mod.max_params]u8 = [_]u8{0} ** parser_mod.max_params,
         param_count: u8,
         leader: u8,
         private: bool,

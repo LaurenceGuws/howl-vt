@@ -1,11 +1,12 @@
 //! CSI intermediate-byte semantic event mapping.
 
 const events = @import("../../action/vocabulary.zig");
+const parser_mod = @import("../../parser.zig");
 const params_mod = @import("params.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
-pub fn process(final: u8, params: [16]i32, count: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
+pub fn process(final: u8, params: [parser_mod.max_params]i32, count: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     if (intermediates_len == 2 and intermediates[0] == '\'' and intermediates[1] == '*') {
         if (final == '{') return SemanticEvent{ .locator_events = params_mod.collectParams(params, count) };
         return null;

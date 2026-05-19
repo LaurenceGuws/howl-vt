@@ -3,10 +3,12 @@
 const std = @import("std");
 const screen_mod = @import("../screen.zig");
 const action = @import("../action.zig");
+const parser_mod = @import("../parser.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
 const SemanticEvent = action.SemanticEvent;
+const csi_max_params = parser_mod.max_params;
 test "screen: initial cursor at origin" {
     const s = Screen.init(24, 80);
     try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
@@ -174,8 +176,8 @@ test "screen: sgr applies ansi and 256-color attrs to written cells" {
     var s = try Screen.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 38, 5, 196 } ++ [_]i32{0} ** 13, .separators = [_]u8{0} ** 16, .param_count = 3 } });
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 48, 5, 23 } ++ [_]i32{0} ** 13, .separators = [_]u8{0} ** 16, .param_count = 3 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 38, 5, 196 } ++ [_]i32{0} ** (csi_max_params - 3), .separators = [_]u8{0} ** csi_max_params, .param_count = 3 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 48, 5, 23 } ++ [_]i32{0} ** (csi_max_params - 3), .separators = [_]u8{0} ** csi_max_params, .param_count = 3 } });
     s.apply(SemanticEvent{ .write_text = "X" });
 
     const cell = s.cellInfoAt(0, 0);
@@ -193,9 +195,9 @@ test "screen: sgr reset restores default attrs for later writes" {
     var s = try Grid.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{31} ++ [_]i32{0} ** 15, .separators = [_]u8{0} ** 16, .param_count = 1 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{31} ++ [_]i32{0} ** (csi_max_params - 1), .separators = [_]u8{0} ** csi_max_params, .param_count = 1 } });
     s.apply(SemanticEvent{ .write_text = "A" });
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{0} ++ [_]i32{0} ** 15, .separators = [_]u8{0} ** 16, .param_count = 1 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{0} ++ [_]i32{0} ** (csi_max_params - 1), .separators = [_]u8{0} ** csi_max_params, .param_count = 1 } });
     s.apply(SemanticEvent{ .write_text = "B" });
 
     const a = s.cellInfoAt(0, 0);
@@ -211,14 +213,14 @@ test "screen: kitty colon SGR sets underline styles without stealing semicolon p
     var s = try Screen.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
-    var colon = [_]u8{0} ** 16;
+    var colon = [_]u8{0} ** csi_max_params;
     colon[1] = ':';
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 4, 3 } ++ [_]i32{0} ** 14, .separators = colon, .param_count = 2 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 4, 3 } ++ [_]i32{0} ** (csi_max_params - 2), .separators = colon, .param_count = 2 } });
     s.apply(SemanticEvent{ .write_text = "C" });
 
-    var semicolon = [_]u8{0} ** 16;
+    var semicolon = [_]u8{0} ** csi_max_params;
     semicolon[1] = ';';
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 4, 5 } ++ [_]i32{0} ** 14, .separators = semicolon, .param_count = 2 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 4, 5 } ++ [_]i32{0} ** (csi_max_params - 2), .separators = semicolon, .param_count = 2 } });
     s.apply(SemanticEvent{ .write_text = "S" });
 
     const curly = s.cellInfoAt(0, 0);
@@ -235,9 +237,9 @@ test "screen: kitty underline color SGR sets and resets color" {
     var s = try Grid.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 4, 58, 2, 1, 2, 3 } ++ [_]i32{0} ** 10, .separators = [_]u8{0} ** 16, .param_count = 6 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 4, 58, 2, 1, 2, 3 } ++ [_]i32{0} ** (csi_max_params - 6), .separators = [_]u8{0} ** csi_max_params, .param_count = 6 } });
     s.apply(SemanticEvent{ .write_text = "C" });
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{59} ++ [_]i32{0} ** 15, .separators = [_]u8{0} ** 16, .param_count = 1 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{59} ++ [_]i32{0} ** (csi_max_params - 1), .separators = [_]u8{0} ** csi_max_params, .param_count = 1 } });
     s.apply(SemanticEvent{ .write_text = "R" });
 
     const colored = s.cellInfoAt(0, 0);
@@ -946,7 +948,7 @@ test "screen: DECCARA stream mode spans full middle rows" {
     s.apply(SemanticEvent{ .write_text = "ABCDEFGHI" });
     s.apply(SemanticEvent{ .rect_attrs_change = .{
         .area = .{ .top = 0, .left = 1, .bottom = 2, .right = 1 },
-        .attrs = .{ .params = .{1} ++ [_]u16{0} ** 15, .param_count = 1 },
+        .attrs = .{ .params = .{1} ++ [_]u16{0} ** (csi_max_params - 1), .param_count = 1 },
         .reverse = false,
     } });
 
@@ -968,7 +970,7 @@ test "screen: DECSACE rectangle mode constrains DECCARA to exact bounds" {
     s.apply(SemanticEvent{ .attr_change_extent_rect = true });
     s.apply(SemanticEvent{ .rect_attrs_change = .{
         .area = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 },
-        .attrs = .{ .params = .{1} ++ [_]u16{0} ** 15, .param_count = 1 },
+        .attrs = .{ .params = .{1} ++ [_]u16{0} ** (csi_max_params - 1), .param_count = 1 },
         .reverse = false,
     } });
 
@@ -983,11 +985,11 @@ test "screen: DECRARA toggles supported attrs" {
     var s = try Grid.initWithCells(gpa, 2, 3);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{4} ++ [_]i32{0} ** 15, .separators = [_]u8{0} ** 16, .param_count = 1 } });
+    s.apply(SemanticEvent{ .sgr = .{ .params = .{4} ++ [_]i32{0} ** (csi_max_params - 1), .separators = [_]u8{0} ** csi_max_params, .param_count = 1 } });
     s.apply(SemanticEvent{ .write_text = "ABCDEF" });
     s.apply(SemanticEvent{ .rect_attrs_change = .{
         .area = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 },
-        .attrs = .{ .params = .{ 1, 4 } ++ [_]u16{0} ** 14, .param_count = 2 },
+        .attrs = .{ .params = .{ 1, 4 } ++ [_]u16{0} ** (csi_max_params - 2), .param_count = 2 },
         .reverse = true,
     } });
 

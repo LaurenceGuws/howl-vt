@@ -2,13 +2,15 @@
 
 const std = @import("std");
 const action = @import("../action.zig");
+const parser_mod = @import("../parser.zig");
 
 const Action = action;
 const Event = Action.Event;
 const SemanticEvent = Action.SemanticEvent;
 const process = Action.process;
+const csi_max_params = parser_mod.max_params;
 fn makeStyleChange(final: u8, p0: i32, p1: i32, count: u8) Event {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = p0;
     params[1] = p1;
     return Event{ .style_change = .{
@@ -23,7 +25,7 @@ fn makeStyleChange(final: u8, p0: i32, p1: i32, count: u8) Event {
 }
 
 fn makeStyleChangeWithIntermediate(final: u8, intermediate: u8) Event {
-    const params = [_]i32{0} ** 16;
+    const params = [_]i32{0} ** csi_max_params;
     var intermediates = [_]u8{0} ** 4;
     intermediates[0] = intermediate;
     return Event{ .style_change = .{
@@ -38,7 +40,7 @@ fn makeStyleChangeWithIntermediate(final: u8, intermediate: u8) Event {
 }
 
 fn makeStyleChangeWithParamAndIntermediate(final: u8, p0: i32, intermediate: u8) Event {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = p0;
     var intermediates = [_]u8{0} ** 4;
     intermediates[0] = intermediate;
@@ -54,7 +56,7 @@ fn makeStyleChangeWithParamAndIntermediate(final: u8, p0: i32, intermediate: u8)
 }
 
 fn makePrivateStyleChange(final: u8, params_in: []const i32) Event {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     for (params_in, 0..) |value, idx| params[idx] = value;
     return Event{ .style_change = .{
         .final = final,
@@ -76,7 +78,7 @@ fn makeEscFinal(final: u8) Event {
 }
 
 fn makeDcs(payload: []const u8) Event {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     var intermediates = [_]u8{0} ** 4;
     var param_count: u8 = 0;
     var in_param = false;
@@ -303,7 +305,7 @@ test "actions: kitty unscroll maps plus modified SD" {
     intermediates[0] = '+';
     const sem = process(Event{ .style_change = .{
         .final = 'T',
-        .params = .{3} ++ [_]i32{0} ** 15,
+        .params = .{3} ++ [_]i32{0} ** (csi_max_params - 1),
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -347,7 +349,7 @@ test "actions: DECSTR maps to reset_screen" {
 }
 
 test "actions: DEC private cursor show maps to cursor_visible true" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 25;
     const ev = Event{ .style_change = .{
         .final = 'h',
@@ -362,7 +364,7 @@ test "actions: DEC private cursor show maps to cursor_visible true" {
 }
 
 test "actions: DEC private cursor hide maps to cursor_visible false" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 25;
     const ev = Event{ .style_change = .{
         .final = 'l',
@@ -377,7 +379,7 @@ test "actions: DEC private cursor hide maps to cursor_visible false" {
 }
 
 test "actions: DEC private wrap enable maps to auto_wrap true" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 7;
     const ev = Event{ .style_change = .{
         .final = 'h',
@@ -392,7 +394,7 @@ test "actions: DEC private wrap enable maps to auto_wrap true" {
 }
 
 test "actions: DEC private origin mode enable maps true" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 6;
     const ev = Event{ .style_change = .{
         .final = 'h',
@@ -407,7 +409,7 @@ test "actions: DEC private origin mode enable maps true" {
 }
 
 test "actions: DEC private wrap disable maps to auto_wrap false" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 7;
     const ev = Event{ .style_change = .{
         .final = 'l',
@@ -471,7 +473,7 @@ test "actions: DECSED and DECSEL map from private CSI" {
 }
 
 test "actions: rectangular erase fill copy and column ops map" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 88;
     params[1] = 1;
     params[2] = 2;
@@ -492,7 +494,7 @@ test "actions: rectangular erase fill copy and column ops map" {
     try std.testing.expectEqual(@as(u16, 0), fill.rect_fill.area.top);
     try std.testing.expectEqual(@as(u16, 1), fill.rect_fill.area.left);
 
-    params = [_]i32{0} ** 16;
+    params = [_]i32{0} ** csi_max_params;
     params[0] = 1;
     params[1] = 1;
     params[2] = 2;
@@ -516,7 +518,7 @@ test "actions: rectangular erase fill copy and column ops map" {
     intermediates[0] = '\'';
     const insert = process(Event{ .style_change = .{
         .final = '}',
-        .params = .{2} ++ [_]i32{0} ** 15,
+        .params = .{2} ++ [_]i32{0} ** (csi_max_params - 1),
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -527,7 +529,7 @@ test "actions: rectangular erase fill copy and column ops map" {
 
     const delete = process(Event{ .style_change = .{
         .final = '~',
-        .params = .{3} ++ [_]i32{0} ** 15,
+        .params = .{3} ++ [_]i32{0} ** (csi_max_params - 1),
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -538,7 +540,7 @@ test "actions: rectangular erase fill copy and column ops map" {
 }
 
 test "actions: rectangular attr ops and margin controls map" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 1;
     params[1] = 1;
     params[2] = 2;
@@ -572,7 +574,7 @@ test "actions: rectangular attr ops and margin controls map" {
     intermediates[0] = '*';
     const extent = process(Event{ .style_change = .{
         .final = 'x',
-        .params = .{2} ++ [_]i32{0} ** 15,
+        .params = .{2} ++ [_]i32{0} ** (csi_max_params - 1),
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -712,7 +714,7 @@ test "actions: DECSCUSR maps cursor styles" {
 }
 
 test "actions: DEC private application cursor enable maps true" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 1;
     const ev = Event{ .style_change = .{
         .final = 'h',
@@ -727,7 +729,7 @@ test "actions: DEC private application cursor enable maps true" {
 }
 
 test "actions: DEC private focus reporting enable maps true" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 1004;
     const ev = Event{ .style_change = .{
         .final = 'h',
@@ -742,7 +744,7 @@ test "actions: DEC private focus reporting enable maps true" {
 }
 
 test "actions: DEC private bracketed paste disable maps false" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 2004;
     const ev = Event{ .style_change = .{
         .final = 'l',
@@ -762,7 +764,7 @@ test "actions: DEC private synchronized output maps enable disable" {
 }
 
 test "actions: kitty clipboard mode maps enable disable and query" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 5522;
     var ev = Event{ .style_change = .{
         .final = 'h',
@@ -785,7 +787,7 @@ test "actions: kitty clipboard mode maps enable disable and query" {
 }
 
 test "actions: DEC private mouse tracking mode mappings" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 9;
     var ev = Event{ .style_change = .{
         .final = 'h',
@@ -818,7 +820,7 @@ test "actions: DEC private mouse tracking mode mappings" {
 }
 
 test "actions: low priority DEC private modes and media copy map" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     var ev = Event{ .style_change = .{
         .final = 'h',
         .params = params,
@@ -851,7 +853,7 @@ test "actions: application keypad and modifyOtherKeys mappings" {
     try std.testing.expect(process(makeEscFinal('=')).?.application_keypad);
     try std.testing.expect(!process(makeEscFinal('>')).?.application_keypad);
 
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 66;
     var ev = Event{ .style_change = .{
         .final = 'h',
@@ -888,7 +890,7 @@ test "actions: application keypad and modifyOtherKeys mappings" {
 }
 
 test "actions: xterm key format set reset and query mappings" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 4;
     params[1] = 1;
     var ev = Event{ .style_change = .{
@@ -923,7 +925,7 @@ test "actions: xterm key format set reset and query mappings" {
 }
 
 test "actions: xterm pointer mode maps bounded value" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 2;
     var ev = Event{ .style_change = .{
         .final = 'p',
@@ -973,7 +975,7 @@ test "actions: DA maps to primary device attributes" {
 }
 
 test "actions: DA2 maps to secondary device attributes" {
-    const params = [_]i32{0} ** 16;
+    const params = [_]i32{0} ** csi_max_params;
     const ev = Event{ .style_change = .{
         .final = 'c',
         .params = params,
@@ -987,7 +989,7 @@ test "actions: DA2 maps to secondary device attributes" {
 }
 
 test "actions: XTVERSION maps to xtversion report" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 0;
     const ev = Event{ .style_change = .{
         .final = 'q',
@@ -1006,7 +1008,7 @@ test "actions: XTTITLEPOS maps to title stack report" {
     intermediates[0] = '#';
     const ev = Event{ .style_change = .{
         .final = 'S',
-        .params = [_]i32{0} ** 16,
+        .params = [_]i32{0} ** csi_max_params,
         .param_count = 0,
         .leader = 0,
         .private = false,
@@ -1017,7 +1019,7 @@ test "actions: XTTITLEPOS maps to title stack report" {
 }
 
 test "actions: DA3 maps to tertiary device attributes" {
-    const params = [_]i32{0} ** 16;
+    const params = [_]i32{0} ** csi_max_params;
     const ev = Event{ .style_change = .{
         .final = 'c',
         .params = params,
@@ -1040,7 +1042,7 @@ test "actions: ANSI mode set reset and query map" {
     try std.testing.expectEqual(@as(u8, 1), reset.ansi_mode_reset.param_count);
     try std.testing.expectEqual(@as(u16, 2), reset.ansi_mode_reset.params[0]);
 
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 4;
     var intermediates = [_]u8{0} ** 4;
     intermediates[0] = '$';
@@ -1058,7 +1060,7 @@ test "actions: ANSI mode set reset and query map" {
 
 test "actions: report and checksum requests map" {
     var intermediates = [_]u8{0} ** 4;
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
 
     intermediates[0] = '"';
     try std.testing.expect(process(Event{ .style_change = .{
@@ -1098,7 +1100,7 @@ test "actions: report and checksum requests map" {
     try std.testing.expectEqual(@as(u16, 3), xt.xtchecksum);
 
     intermediates[0] = '*';
-    params = [_]i32{0} ** 16;
+    params = [_]i32{0} ** csi_max_params;
     params[0] = 7;
     params[1] = 1;
     params[2] = 2;
@@ -1123,7 +1125,7 @@ test "actions: report and checksum requests map" {
     intermediates[0] = '#';
     try std.testing.expect(process(Event{ .style_change = .{
         .final = 'R',
-        .params = [_]i32{0} ** 16,
+        .params = [_]i32{0} ** csi_max_params,
         .param_count = 0,
         .leader = 0,
         .private = false,
@@ -1135,7 +1137,7 @@ test "actions: report and checksum requests map" {
 test "actions: XTREPORTSGR maps to selected graphic rendition report" {
     var intermediates = [_]u8{0} ** 4;
     intermediates[0] = '#';
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 1;
     params[1] = 2;
     params[2] = 3;
@@ -1156,7 +1158,7 @@ test "actions: XTREPORTSGR maps to selected graphic rendition report" {
 }
 
 test "actions: locator controls map" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 2;
     params[1] = 1;
     var intermediates = [_]u8{0} ** 4;
@@ -1173,7 +1175,7 @@ test "actions: locator controls map" {
     try std.testing.expectEqual(@as(u16, 2), elr.locator_reporting.mode);
     try std.testing.expectEqual(@as(u16, 1), elr.locator_reporting.unit);
 
-    params = [_]i32{0} ** 16;
+    params = [_]i32{0} ** csi_max_params;
     params[0] = 3;
     const req = process(Event{ .style_change = .{
         .final = '|',
@@ -1186,7 +1188,7 @@ test "actions: locator controls map" {
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 3), req.locator_request);
 
-    params = [_]i32{0} ** 16;
+    params = [_]i32{0} ** csi_max_params;
     params[0] = 2;
     params[1] = 3;
     params[2] = 4;
@@ -1204,7 +1206,7 @@ test "actions: locator controls map" {
     try std.testing.expectEqual(@as(?u16, 4), filter.locator_filter.right);
 
     intermediates[1] = '*';
-    params = [_]i32{0} ** 16;
+    params = [_]i32{0} ** csi_max_params;
     params[0] = 1;
     params[1] = 3;
     const sle = process(Event{ .style_change = .{
@@ -1220,7 +1222,7 @@ test "actions: locator controls map" {
 }
 
 test "actions: DECRQM maps to dec mode query" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     params[0] = 1004;
     var intermediates = [_]u8{0} ** 4;
     intermediates[0] = '$';
@@ -1345,7 +1347,7 @@ test "actions: kitty notification OSC 99 splits metadata and payload" {
 }
 
 test "actions: kitty multiple cursor query and clear mappings" {
-    var params = [_]i32{0} ** 16;
+    var params = [_]i32{0} ** csi_max_params;
     var intermediates = [_]u8{0} ** 4;
     intermediates[0] = ' ';
 

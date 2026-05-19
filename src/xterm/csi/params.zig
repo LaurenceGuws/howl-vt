@@ -2,10 +2,11 @@
 
 const std = @import("std");
 const events = @import("../../action/vocabulary.zig");
+const parser_mod = @import("../../parser.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
-pub fn optionalRectArea(params: [16]i32, count: u8) SemanticEvent.OptionalRectArea {
+pub fn optionalRectArea(params: [parser_mod.max_params]i32, count: u8) SemanticEvent.OptionalRectArea {
     return .{
         .top = if (count >= 1 and params[0] > 0) paramOrDefault1(params[0]) - 1 else null,
         .left = if (count >= 2 and params[1] > 0) paramOrDefault1(params[1]) - 1 else null,
@@ -14,7 +15,7 @@ pub fn optionalRectArea(params: [16]i32, count: u8) SemanticEvent.OptionalRectAr
     };
 }
 
-pub fn rectArea(params: [16]i32, count: u8, start_idx: usize) SemanticEvent.RectArea {
+pub fn rectArea(params: [parser_mod.max_params]i32, count: u8, start_idx: usize) SemanticEvent.RectArea {
     return .{
         .top = if (count > start_idx) paramOrDefault1(params[start_idx]) - 1 else 0,
         .left = if (count > start_idx + 1) paramOrDefault1(params[start_idx + 1]) - 1 else 0,
@@ -23,8 +24,8 @@ pub fn rectArea(params: [16]i32, count: u8, start_idx: usize) SemanticEvent.Rect
     };
 }
 
-pub fn attrParams(params: [16]i32, count: u8, start_idx: usize) SemanticEvent.AttrParams {
-    var out = [_]u16{0} ** 16;
+pub fn attrParams(params: [parser_mod.max_params]i32, count: u8, start_idx: usize) SemanticEvent.AttrParams {
+    var out = [_]u16{0} ** parser_mod.max_params;
     var idx: usize = start_idx;
     var dst: usize = 0;
     while (idx < count and dst < out.len) : ({
@@ -60,8 +61,8 @@ pub fn cursorStyle(param: u16) SemanticEvent.CursorStyle {
     };
 }
 
-pub fn collectParams(params: [16]i32, count: u8) SemanticEvent.ModeParams {
-    var out = [_]u16{0} ** 16;
+pub fn collectParams(params: [parser_mod.max_params]i32, count: u8) SemanticEvent.ModeParams {
+    var out = [_]u16{0} ** parser_mod.max_params;
     const n = @min(count, out.len);
     var idx: usize = 0;
     while (idx < n) : (idx += 1) out[idx] = paramOrDefault0(params[idx]);

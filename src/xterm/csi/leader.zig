@@ -1,13 +1,14 @@
 //! CSI leader-byte semantic event mapping.
 
 const std = @import("std");
+const parser_mod = @import("../../parser.zig");
 
 const events = @import("../../action/vocabulary.zig");
 const params_mod = @import("params.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
-pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
+pub fn process(final: u8, params: [parser_mod.max_params]i32, count: u8, leader: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     return switch (leader) {
         '>' => switch (final) {
             'c' => SemanticEvent.secondary_device_attributes,
@@ -32,7 +33,7 @@ pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates:
     };
 }
 
-fn multipleCursorOrXtVersion(params: [16]i32, count: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
+fn multipleCursorOrXtVersion(params: [parser_mod.max_params]i32, count: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     if (!params_mod.intermediatesLenHas(intermediates, intermediates_len, ' ')) {
         return if (params_mod.paramOrDefault0(params[0]) == 0) SemanticEvent.xtversion else null;
     }
@@ -45,14 +46,14 @@ fn multipleCursorOrXtVersion(params: [16]i32, count: u8, intermediates: [4]u8, i
     };
 }
 
-fn keyFormatChange(params: [16]i32, count: u8) SemanticEvent {
+fn keyFormatChange(params: [parser_mod.max_params]i32, count: u8) SemanticEvent {
     if (count == 0) return SemanticEvent{ .key_format_change = .{ .resource = null, .value = null } };
     const resource: u8 = @intCast(@min(params_mod.paramOrDefault0(params[0]), std.math.maxInt(u8)));
     if (count == 1) return SemanticEvent{ .key_format_change = .{ .resource = resource, .value = null } };
     return SemanticEvent{ .key_format_change = .{ .resource = resource, .value = params_mod.paramOrDefault0(params[1]) } };
 }
 
-fn pointerMode(params: [16]i32, count: u8) SemanticEvent {
+fn pointerMode(params: [parser_mod.max_params]i32, count: u8) SemanticEvent {
     const value = if (count == 0) 1 else params_mod.paramOrDefault0(params[0]);
     return SemanticEvent{ .pointer_mode = @intCast(@min(value, 3)) };
 }

@@ -1,5 +1,9 @@
 //! Terminal action vocabulary and payload types.
 
+const parser_mod = @import("../parser.zig");
+
+const csi_max_params = parser_mod.max_params;
+
 pub const KittyGraphicsCommand = struct {
     action: u8,
     image_id: u32,
@@ -97,7 +101,7 @@ pub const SemanticEvent = union(enum) {
     };
 
     pub const ModeParams = struct {
-        params: [16]u16,
+        params: [csi_max_params]u16,
         param_count: u8,
     };
 
@@ -109,7 +113,7 @@ pub const SemanticEvent = union(enum) {
     };
 
     pub const AttrParams = struct {
-        params: [16]u16,
+        params: [csi_max_params]u16,
         param_count: u8,
     };
 
@@ -227,8 +231,8 @@ pub const SemanticEvent = union(enum) {
     media_copy_request: u16,
     legacy_control: LegacyControlKind,
     sgr: struct {
-        params: [16]i32,
-        separators: [16]u8,
+        params: [csi_max_params]i32,
+        separators: [csi_max_params]u8,
         param_count: u8,
     },
     kitty_graphics: KittyGraphicsCommand,
@@ -300,8 +304,8 @@ pub const ScreenAction = union(enum) {
     save_cursor,
     restore_cursor,
     sgr: struct {
-        params: [16]i32,
-        separators: [16]u8,
+        params: [csi_max_params]i32,
+        separators: [csi_max_params]u8,
         param_count: u8,
     },
     insert_lines: u16,

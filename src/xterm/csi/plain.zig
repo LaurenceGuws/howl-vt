@@ -1,11 +1,12 @@
 //! Plain CSI semantic event mapping.
 
 const events = @import("../../action/vocabulary.zig");
+const parser_mod = @import("../../parser.zig");
 const params_mod = @import("params.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
-pub fn process(final: u8, params: [16]i32, separators: [16]u8, count: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
+pub fn process(final: u8, params: [parser_mod.max_params]i32, separators: [parser_mod.max_params]u8, count: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     switch (final) {
         '@' => return SemanticEvent{ .insert_chars = params_mod.paramOrDefault1(params[0]) },
         'A' => return SemanticEvent{ .cursor_up = params_mod.paramOrDefault1(params[0]) },

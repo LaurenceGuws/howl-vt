@@ -1,13 +1,14 @@
 //! Private CSI semantic event mapping.
 
 const std = @import("std");
+const parser_mod = @import("../../parser.zig");
 
 const events = @import("../../action/vocabulary.zig");
 const params_mod = @import("params.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
-pub fn process(final: u8, params: [16]i32, count: u8, leader: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
+pub fn process(final: u8, params: [parser_mod.max_params]i32, count: u8, leader: u8, intermediates: [4]u8, intermediates_len: u8) ?SemanticEvent {
     if (leader == '?' and final == 'u') return SemanticEvent.kitty_keyboard_query;
     if (leader == '?' and final == 'g') return SemanticEvent{ .key_format_query = @intCast(@min(params_mod.paramOrDefault0(params[0]), std.math.maxInt(u8))) };
     if (leader == '?' and final == 'J') return SemanticEvent{ .selective_erase_display = params_mod.eraseMode(params[0]) };
