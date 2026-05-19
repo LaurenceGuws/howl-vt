@@ -12,9 +12,14 @@ const Screen = screen_mod.Screen;
 
 pub const ApplySummary = struct {
     applied: u32,
-    remaining_events: usize,
+    remaining_events: u32,
     latest_title: ?[]const u8,
 };
+
+fn queuedEventCount(len: usize) u32 {
+    std.debug.assert(len <= std.math.maxInt(u32));
+    return @intCast(len);
+}
 
 // Zero max_events is a query-only pass. The owner thread chooses the apply
 // slice size; VT only enforces that bound exactly and reports the true
@@ -23,12 +28,12 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
     if (max_events == 0) {
         return .{
             .applied = 0,
-            .remaining_events = vt.parser_state.apply_flow.events().len,
+            .remaining_events = queuedEventCount(vt.parser_state.apply_flow.events().len),
             .latest_title = null,
         };
     }
 
-    const count: u32 = @intCast(@min(@as(usize, max_events), vt.parser_state.apply_flow.events().len));
+    const count = @min(max_events, queuedEventCount(vt.parser_state.apply_flow.events().len));
     if (count == 0) return .{ .applied = 0, .remaining_events = 0, .latest_title = null };
 
     std.debug.assert(count <= max_events);
@@ -40,7 +45,7 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
         applyEvent(vt, ev);
     }
     vt.parser_state.apply_flow.parsed_events.dropPrefix(count);
-    const remaining = vt.parser_state.apply_flow.events().len;
+    const remaining = queuedEventCount(vt.parser_state.apply_flow.events().len);
     std.debug.assert(remaining + count >= count);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .applied = count, .remaining_events = remaining, .latest_title = latest_title };
@@ -52,7 +57,7 @@ pub fn applyToScreen(flow: anytype, screen: *Screen) void {
 
 pub fn applyToScreenLimit(flow: anytype, screen: *Screen, max_events: u32) u32 {
     if (max_events == 0) return 0;
-    const count: u32 = @intCast(@min(@as(usize, max_events), flow.events().len));
+    const count = @min(max_events, queuedEventCount(flow.events().len));
     for (flow.events()[0..count]) |ev| {
         if (action_mod.process(ev)) |sem_ev| {
             if (action_mod.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);

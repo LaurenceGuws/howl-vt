@@ -16,7 +16,7 @@ const WorkloadResult = struct {
     median_alloc_count: usize,
     median_alloc_bytes: usize,
     median_peak_live_bytes: usize,
-    median_max_queue_depth: usize,
+    median_max_queue_depth: u32,
 
     fn throughputMibS(self: WorkloadResult) f64 {
         const median_seconds = @as(f64, @floatFromInt(self.median_ns)) / 1_000_000_000.0;
@@ -37,7 +37,7 @@ const RunObservation = struct {
     alloc_count: usize,
     alloc_bytes: usize,
     peak_live_bytes: usize,
-    max_queue_depth: usize,
+    max_queue_depth: u32,
 };
 
 const CountingAllocator = struct {
@@ -141,6 +141,10 @@ fn lessUsize(_: void, lhs: usize, rhs: usize) bool {
     return lhs < rhs;
 }
 
+fn lessU32(_: void, lhs: u32, rhs: u32) bool {
+    return lhs < rhs;
+}
+
 fn medianU64(scratch: []u64) u64 {
     std.sort.heap(u64, scratch, {}, lessU64);
     return scratch[scratch.len / 2];
@@ -155,6 +159,11 @@ fn p95U64(scratch: []u64) u64 {
 
 fn medianUsize(scratch: []usize) usize {
     std.sort.heap(usize, scratch, {}, lessUsize);
+    return scratch[scratch.len / 2];
+}
+
+fn medianU32(scratch: []u32) u32 {
+    std.sort.heap(u32, scratch, {}, lessU32);
     return scratch[scratch.len / 2];
 }
 
@@ -259,7 +268,7 @@ fn runFeedApplyWorkload(
     defer base_allocator.free(alloc_bytes_values);
     const peak_live_values = try base_allocator.alloc(usize, runs);
     defer base_allocator.free(peak_live_values);
-    const queue_depth_values = try base_allocator.alloc(usize, runs);
+    const queue_depth_values = try base_allocator.alloc(u32, runs);
     defer base_allocator.free(queue_depth_values);
 
     for (observations, 0..) |obs, idx| {
@@ -279,7 +288,7 @@ fn runFeedApplyWorkload(
         .median_alloc_count = medianUsize(alloc_count_values),
         .median_alloc_bytes = medianUsize(alloc_bytes_values),
         .median_peak_live_bytes = medianUsize(peak_live_values),
-        .median_max_queue_depth = medianUsize(queue_depth_values),
+        .median_max_queue_depth = medianU32(queue_depth_values),
     };
 }
 
@@ -306,7 +315,7 @@ fn runMixedInteractiveWorkload(
         counting.resetWindow();
         const start = nowNs(io);
         var j: usize = 0;
-        var max_queue_depth: usize = 0;
+        var max_queue_depth: u32 = 0;
         while (j < bursts_per_run) : (j += 1) {
             parser_flow.feedSlice(&terminal, burst);
             max_queue_depth = @max(max_queue_depth, Action.applyLimit(&terminal, 0).remaining_events);
@@ -330,7 +339,7 @@ fn runMixedInteractiveWorkload(
     defer base_allocator.free(alloc_bytes_values);
     const peak_live_values = try base_allocator.alloc(usize, runs);
     defer base_allocator.free(peak_live_values);
-    const queue_depth_values = try base_allocator.alloc(usize, runs);
+    const queue_depth_values = try base_allocator.alloc(u32, runs);
     defer base_allocator.free(queue_depth_values);
 
     for (observations, 0..) |obs, idx| {
@@ -350,7 +359,7 @@ fn runMixedInteractiveWorkload(
         .median_alloc_count = medianUsize(alloc_count_values),
         .median_alloc_bytes = medianUsize(alloc_bytes_values),
         .median_peak_live_bytes = medianUsize(peak_live_values),
-        .median_max_queue_depth = medianUsize(queue_depth_values),
+        .median_max_queue_depth = medianU32(queue_depth_values),
     };
 }
 
@@ -405,7 +414,7 @@ fn runSnapshotWorkload(
     defer base_allocator.free(alloc_bytes_values);
     const peak_live_values = try base_allocator.alloc(usize, runs);
     defer base_allocator.free(peak_live_values);
-    const queue_depth_values = try base_allocator.alloc(usize, runs);
+    const queue_depth_values = try base_allocator.alloc(u32, runs);
     defer base_allocator.free(queue_depth_values);
 
     for (observations, 0..) |obs, idx| {
@@ -425,7 +434,7 @@ fn runSnapshotWorkload(
         .median_alloc_count = medianUsize(alloc_count_values),
         .median_alloc_bytes = medianUsize(alloc_bytes_values),
         .median_peak_live_bytes = medianUsize(peak_live_values),
-        .median_max_queue_depth = medianUsize(queue_depth_values),
+        .median_max_queue_depth = medianU32(queue_depth_values),
     };
 }
 
@@ -456,7 +465,7 @@ fn runQueueGrowthChunkedWorkload(
 
         counting.resetWindow();
         var offset: usize = 0;
-        var max_queue_depth: usize = 0;
+        var max_queue_depth: u32 = 0;
         const start = nowNs(io);
         while (offset < fixture.len) {
             const next = @min(offset + chunk_size, fixture.len);
@@ -483,7 +492,7 @@ fn runQueueGrowthChunkedWorkload(
     defer base_allocator.free(alloc_bytes_values);
     const peak_live_values = try base_allocator.alloc(usize, runs);
     defer base_allocator.free(peak_live_values);
-    const queue_depth_values = try base_allocator.alloc(usize, runs);
+    const queue_depth_values = try base_allocator.alloc(u32, runs);
     defer base_allocator.free(queue_depth_values);
 
     for (observations, 0..) |obs, idx| {
@@ -503,7 +512,7 @@ fn runQueueGrowthChunkedWorkload(
         .median_alloc_count = medianUsize(alloc_count_values),
         .median_alloc_bytes = medianUsize(alloc_bytes_values),
         .median_peak_live_bytes = medianUsize(peak_live_values),
-        .median_max_queue_depth = medianUsize(queue_depth_values),
+        .median_max_queue_depth = medianU32(queue_depth_values),
     };
 }
 
