@@ -1,14 +1,11 @@
 //! Parent-owned action routing control spine.
 
 const std = @import("std");
-const screen_mod = @import("../screen.zig");
 const host = @import("../host/apply.zig");
 const action_mod = @import("../action.zig");
 const kitty = @import("../kitty.zig");
 const mode = @import("../control/mode.zig");
 const report = @import("../control/report.zig");
-
-const Screen = screen_mod.Screen;
 
 pub const ApplySummary = struct {
     applied: u32,
@@ -44,22 +41,6 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
     std.debug.assert(remaining + count >= count);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .applied = count, .remaining_events = remaining, .latest_title = latest_title };
-}
-
-pub fn applyToScreen(queue: anytype, screen: *Screen) void {
-    while (applyToScreenLimit(queue, screen, std.math.maxInt(u32)) != 0) {}
-}
-
-pub fn applyToScreenLimit(queue: anytype, screen: *Screen, max_events: u32) u32 {
-    if (max_events == 0) return 0;
-    const count = @min(max_events, queue.eventCount());
-    for (queue.prefix(count)) |ev| {
-        if (action_mod.process(ev)) |sem_ev| {
-            if (action_mod.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
-        }
-    }
-    queue.dropPrefix(count);
-    return count;
 }
 
 fn latestTitle(current: ?[]const u8, event: action_mod.Event) ?[]const u8 {
