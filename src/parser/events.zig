@@ -92,12 +92,10 @@ pub const ParsedEvents = struct {
         self.arena.deinit();
     }
 
-    pub fn len(self: *const ParsedEvents) usize {
-        return self.events.items.len;
-    }
-
-    pub fn isEmpty(self: *const ParsedEvents) bool {
-        return self.events.items.len == 0;
+    pub fn eventCount(self: *const ParsedEvents) u32 {
+        const count = self.events.items.len;
+        std.debug.assert(count <= std.math.maxInt(u32));
+        return @intCast(count);
     }
 
     /// Clear queued events and arena-owned byte slices.
@@ -125,20 +123,21 @@ pub const ParsedEvents = struct {
         };
     }
 
-    pub fn dropPrefix(self: *ParsedEvents, count: usize) void {
+    pub fn prefix(self: *const ParsedEvents, count: u32) []const Event {
+        std.debug.assert(count <= self.eventCount());
+        return self.events.items[0..@intCast(count)];
+    }
+
+    pub fn dropPrefix(self: *ParsedEvents, count: u32) void {
         if (count == 0) return;
-        if (count >= self.events.items.len) {
+        const bounded_count: usize = @intCast(count);
+        if (bounded_count >= self.events.items.len) {
             self.clear();
             return;
         }
-        const remaining = self.events.items.len - count;
-        std.mem.copyForwards(Event, self.events.items[0..remaining], self.events.items[count..]);
+        const remaining = self.events.items.len - bounded_count;
+        std.mem.copyForwards(Event, self.events.items[0..remaining], self.events.items[bounded_count..]);
         self.events.shrinkRetainingCapacity(remaining);
-    }
-
-    pub fn drainInto(self: *ParsedEvents, dest: *std.ArrayList(Event), dest_allocator: std.mem.Allocator) !void {
-        try dest.appendSlice(dest_allocator, self.events.items);
-        self.events.clearRetainingCapacity();
     }
 
     pub fn appendParserActions(self: *ParsedEvents, actions: []const parser_mod.Action) error{ OutOfMemory, ParsedEventLimit }!void {

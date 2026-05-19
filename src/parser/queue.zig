@@ -57,22 +57,18 @@ pub const Queue = struct {
     }
 
     pub fn eventCount(self: *const Queue) u32 {
-        const count = self.parsed_events.len();
-        std.debug.assert(count <= std.math.maxInt(u32));
-        return @intCast(count);
+        return self.parsed_events.eventCount();
     }
 
     pub fn prefix(self: *const Queue, count: u32) []const Event {
-        std.debug.assert(count <= self.eventCount());
-        return self.parsed_events.events.items[0..@intCast(count)];
+        return self.parsed_events.prefix(count);
     }
 
     pub fn dropPrefix(self: *Queue, count: u32) void {
-        std.debug.assert(count <= self.eventCount());
         self.parsed_events.dropPrefix(count);
     }
 
-    pub fn deccirCharsetState(self: *const Queue) @TypeOf(self.parsed_events.deccirCharsetState()) {
+    pub fn deccirCharsetState(self: *const Queue) parser_mod.DeccirCharsetState {
         return self.parsed_events.deccirCharsetState();
     }
 
