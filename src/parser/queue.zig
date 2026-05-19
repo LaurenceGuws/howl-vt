@@ -1,6 +1,7 @@
 //! Parser feed and parsed-event queue.
 
 const std = @import("std");
+const owned_actions = @import("owned_actions.zig");
 const parser_mod = @import("main.zig");
 const parsed_events_mod = @import("events.zig");
 
@@ -49,14 +50,14 @@ pub const Queue = struct {
 
     pub fn feedByteChecked(self: *Queue, byte: u8) FeedError!void {
         self.clearParserActions();
-        try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
+        try owned_actions.appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
         try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
     pub fn feedSliceChecked(self: *Queue, bytes: []const u8) FeedError!void {
         self.clearParserActions();
         for (bytes) |byte| {
-            try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
+            try owned_actions.appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
         }
         try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
@@ -112,29 +113,3 @@ pub const Queue = struct {
     }
 
 };
-
-pub fn appendOwnedPhases(
-    allocator: std.mem.Allocator,
-    arena: std.mem.Allocator,
-    actions: *std.ArrayList(parser_mod.Action),
-    phases: parser_mod.PhaseActions,
-) error{OutOfMemory}!void {
-    for (phases) |phase| {
-        if (phase) |action| try appendOwnedAction(allocator, arena, actions, action);
-    }
-}
-
-fn appendOwnedAction(
-    allocator: std.mem.Allocator,
-    arena: std.mem.Allocator,
-    actions: *std.ArrayList(parser_mod.Action),
-    action: parser_mod.Action,
-) error{OutOfMemory}!void {
-    switch (action) {
-        .osc_dispatch => |osc| {
-            const owned = try arena.dupe(u8, osc.data);
-            try actions.append(allocator, .{ .osc_dispatch = .{ .data = owned, .term = osc.term } });
-        },
-        else => try actions.append(allocator, action),
-    }
-}

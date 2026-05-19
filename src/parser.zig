@@ -1,4 +1,5 @@
 const main = @import("parser/main.zig");
+const owned_actions = @import("parser/owned_actions.zig");
 const queue = @import("parser/queue.zig");
 
 pub const DeccirCharsetState = main.DeccirCharsetState;
@@ -13,4 +14,4 @@ pub const PhaseActions = main.PhaseActions;
 pub const Parser = main.Parser;
 
 pub const Queue = queue.Queue;
-pub const appendOwnedPhases = queue.appendOwnedPhases;
+pub const appendOwnedPhases = owned_actions.appendOwnedPhases;
