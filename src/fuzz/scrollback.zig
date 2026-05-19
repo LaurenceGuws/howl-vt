@@ -181,7 +181,7 @@ fn applyWriteBurst(vt: *terminal_mod.Terminal, rand: std.Random) !void {
             buf[i] = cp[rand.uintLessThan(usize, cp.len)];
         }
         try vt.parser.feedSlice(buf[0..len]);
-        try vt.parser.feedByte('\n');
+        try vt.parser.feedSlice(&.{ '\n' });
     }
     Action.apply(vt);
 }

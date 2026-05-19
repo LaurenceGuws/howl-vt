@@ -48,12 +48,6 @@ pub const Queue = struct {
         self.parsed_events.deinit();
     }
 
-    pub fn feedByte(self: *Queue, byte: u8) FeedError!void {
-        self.clearParserActions();
-        try owned_actions.appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
-        try self.parsed_events.appendParserActions(self.parser_actions.items);
-    }
-
     pub fn feedSlice(self: *Queue, bytes: []const u8) FeedError!void {
         self.clearParserActions();
         for (bytes) |byte| {

@@ -13,7 +13,7 @@ test "terminal: parser queue applies bytes to grid state deterministically" {
     defer terminal.deinit();
 
     try terminal.parser.feedSlice("ab");
-    try terminal.parser.feedByte('c');
+    try terminal.parser.feedSlice(&.{ 'c' });
     try terminal.parser.feedSlice("\r\nxy");
     Action.apply(&terminal);
 

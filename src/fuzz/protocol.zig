@@ -343,7 +343,7 @@ fn feedBytesToParser(parser: *Parser, output: *ParserOutput, harness: *Harness, 
 fn feedBytesToTerminal(terminal: *vt.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
     switch (mode) {
         .whole_slice => terminal.parser.feedSlice(bytes) catch unreachable,
-        .bytewise => for (bytes) |byte| terminal.parser.feedByte(byte) catch unreachable,
+        .bytewise => for (bytes) |byte| terminal.parser.feedSlice(&.{byte}) catch unreachable,
         .chunked => {
             var offset: usize = 0;
             while (offset < bytes.len) {

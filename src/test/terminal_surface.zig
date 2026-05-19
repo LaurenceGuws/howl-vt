@@ -74,7 +74,7 @@ fn selectionClear(terminal: *Terminal) void {
 }
 
 fn feedByte(terminal: *Terminal, byte: u8) void {
-    terminal.parser.feedByte(byte) catch unreachable;
+    terminal.parser.feedSlice(&.{byte}) catch unreachable;
 }
 
 fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
