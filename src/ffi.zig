@@ -15,6 +15,7 @@ pub const HowlVtCallStatus = enum(c_int) {
     invalid_argument = -2,
     failed = -3,
     short_buffer = -4,
+    limit_reached = -5,
 };
 
 pub const FfiColor = extern struct {
@@ -255,7 +256,12 @@ pub fn terminalDeinit(handle: VtHandle) callconv(.c) void {
 pub fn terminalFeed(handle: VtHandle, ptr: ?[*]const u8, len: usize) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
     const bytes = bytesIn(ptr, len) orelse return @intFromEnum(HowlVtCallStatus.invalid_argument);
-    parser_flow.feedSlice(owned, bytes) catch return @intFromEnum(HowlVtCallStatus.failed);
+    parser_flow.feedSlice(owned, bytes) catch |err| {
+        return @intFromEnum(switch (err) {
+            error.ParsedEventLimit, error.StringControlLimit => HowlVtCallStatus.limit_reached,
+            error.OutOfMemory => HowlVtCallStatus.failed,
+        });
+    };
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 

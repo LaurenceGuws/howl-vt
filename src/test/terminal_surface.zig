@@ -391,7 +391,7 @@ test "terminal feed fails overlong OSC instead of truncating it" {
     try bytes.append(allocator, 0x07);
 
     try std.testing.expectEqual(
-        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.failed)),
+        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)),
         ffi.terminalFeed(handle, bytes.items.ptr, bytes.items.len),
     );
 
