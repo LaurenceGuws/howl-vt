@@ -1,6 +1,5 @@
 const std = @import("std");
 const parser_mod = @import("../parser.zig");
-const queue_mod = @import("../parser/queue.zig");
 
 const Parser = parser_mod.Parser;
 const OscTerminator = parser_mod.OscTerminator;
@@ -28,7 +27,7 @@ const Output = struct {
     }
 
     fn appendPhases(self: *Output, phases: parser_mod.PhaseActions) void {
-        queue_mod.appendOwnedPhases(std.testing.allocator, self.arena.allocator(), &self.actions, phases) catch unreachable;
+        parser_mod.appendOwnedPhases(std.testing.allocator, self.arena.allocator(), &self.actions, phases) catch unreachable;
     }
 };
 

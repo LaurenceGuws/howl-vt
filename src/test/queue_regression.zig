@@ -5,13 +5,13 @@ const screen_mod = @import("../screen.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
-const queue_mod = @import("../parser/queue.zig");
+const parser_mod = @import("../parser.zig");
 const action_root = @import("../action.zig");
 const terminal_mod = @import("../terminal.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
-const Queue = queue_mod.Queue;
+const Queue = parser_mod.Queue;
 const ActionRoot = action_root;
 const Terminal = terminal_mod.Terminal;
 

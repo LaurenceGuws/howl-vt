@@ -319,7 +319,7 @@ These seams must be respected or clarified before broad code motion.
   - `selection.zig` now re-exports `selection/state.zig`
   - `input.zig` now re-exports `input/types.zig`
   - `kitty.zig` now re-exports `kitty/types.zig`, `kitty/protocol.zig`, and `kitty/apply.zig`
-  - `parser.zig` now re-exports `parser/main.zig`
+  - `parser.zig` now re-exports `parser/main.zig` plus the repo-local queue surface
   - `grid.zig` now re-exports `grid/main.zig`
   - `terminal.zig` now re-exports `terminal/main.zig`
   - `action.zig` now re-exports parser-event, routing, and vocabulary surfaces

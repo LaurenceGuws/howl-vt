@@ -1,13 +1,38 @@
 //! Parser actions collected as parsed events.
 
 const std = @import("std");
-const parser_mod = @import("../parser.zig");
-const queue_mod = @import("queue.zig");
+const parser_mod = @import("main.zig");
 const osc_parse = @import("../xterm/osc_parse.zig");
 
 const ParserApi = parser_mod.Parser;
 const dec_special_designation: u8 = '0';
 const ascii_designation: u8 = 'B';
+
+fn appendOwnedPhasesForTest(
+    allocator: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    actions: *std.ArrayList(parser_mod.Action),
+    phases: parser_mod.PhaseActions,
+) error{OutOfMemory}!void {
+    for (phases) |phase| {
+        if (phase) |action| try appendOwnedActionForTest(allocator, arena, actions, action);
+    }
+}
+
+fn appendOwnedActionForTest(
+    allocator: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    actions: *std.ArrayList(parser_mod.Action),
+    action: parser_mod.Action,
+) error{OutOfMemory}!void {
+    switch (action) {
+        .osc_dispatch => |osc| {
+            const owned = try arena.dupe(u8, osc.data);
+            try actions.append(allocator, .{ .osc_dispatch = .{ .data = owned, .term = osc.term } });
+        },
+        else => try actions.append(allocator, action),
+    }
+}
 
 /// Parser output event.
 pub const Event = union(enum) {
@@ -380,7 +405,7 @@ test "parsed events: maps ASCII text to text event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("hello") |byte| try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    for ("hello") |byte| try appendOwnedPhasesForTest(gpa, arena.allocator(), &actions, parser.next(byte));
     try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .text);
@@ -397,7 +422,7 @@ test "parsed events: maps single ASCII byte to codepoint event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("x") |byte| try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    for ("x") |byte| try appendOwnedPhasesForTest(gpa, arena.allocator(), &actions, parser.next(byte));
     try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .codepoint);
@@ -414,7 +439,7 @@ test "parsed events: maps UTF-8 codepoint to codepoint event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\xC3\xA9") |byte| try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    for ("\xC3\xA9") |byte| try appendOwnedPhasesForTest(gpa, arena.allocator(), &actions, parser.next(byte));
     try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .codepoint);
@@ -431,7 +456,7 @@ test "parsed events: maps control byte to control event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(0x07));
+    try appendOwnedPhasesForTest(gpa, arena.allocator(), &actions, parser.next(0x07));
     try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .control);
@@ -448,7 +473,7 @@ test "parsed events: maps CSI sequence to style_change event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b[31m") |byte| try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    for ("\x1b[31m") |byte| try appendOwnedPhasesForTest(gpa, arena.allocator(), &actions, parser.next(byte));
     try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .style_change);
@@ -466,7 +491,7 @@ test "parsed events: preserves CSI leader private and intermediates" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b[?25h\x1b[!p") |byte| try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    for ("\x1b[?25h\x1b[!p") |byte| try appendOwnedPhasesForTest(gpa, arena.allocator(), &actions, parser.next(byte));
     try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 2), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .style_change);
@@ -489,7 +514,7 @@ test "parsed events: maps OSC title command to typed osc event" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b]0;My Window\x07") |byte| try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    for ("\x1b]0;My Window\x07") |byte| try appendOwnedPhasesForTest(gpa, arena.allocator(), &actions, parser.next(byte));
     try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .osc);
@@ -508,7 +533,7 @@ test "parsed events: preserves OSC clipboard transport" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b]52;c;Zm9v\x07") |byte| try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    for ("\x1b]52;c;Zm9v\x07") |byte| try appendOwnedPhasesForTest(gpa, arena.allocator(), &actions, parser.next(byte));
     try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .osc);
@@ -527,7 +552,7 @@ test "parsed events: parses OSC command without semicolon payload" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b]30001\x1b\\") |byte| try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    for ("\x1b]30001\x1b\\") |byte| try appendOwnedPhasesForTest(gpa, arena.allocator(), &actions, parser.next(byte));
     try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 1), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .osc);
@@ -546,7 +571,7 @@ test "parsed events: preserves APC, DCS, PM, and ESC transport" {
     defer arena.deinit();
     var actions = try std.ArrayList(parser_mod.Action).initCapacity(gpa, 8);
     defer actions.deinit(gpa);
-    for ("\x1b_kitty\x1b\\\x1bP1$qdata\x1b\\\x1b^ignored\x1b\\\x1bM") |byte| try queue_mod.appendOwnedPhases(gpa, arena.allocator(), &actions, parser.next(byte));
+    for ("\x1b_kitty\x1b\\\x1bP1$qdata\x1b\\\x1b^ignored\x1b\\\x1bM") |byte| try appendOwnedPhasesForTest(gpa, arena.allocator(), &actions, parser.next(byte));
     try parsed_events.appendParserActions(actions.items);
     try std.testing.expectEqual(@as(usize, 4), parsed_events.events.items.len);
     try std.testing.expect(parsed_events.events.items[0] == .apc);

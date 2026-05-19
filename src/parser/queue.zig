@@ -1,7 +1,7 @@
 //! Parser feed and parsed-event queue.
 
 const std = @import("std");
-const parser_mod = @import("../parser.zig");
+const parser_mod = @import("main.zig");
 const parsed_events_mod = @import("events.zig");
 
 const ParserApi = parser_mod.Parser;
