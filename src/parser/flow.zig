@@ -8,6 +8,11 @@ const ParserApi = parser_mod.Parser;
 
 const Event = parsed_events_mod.Event;
 
+const FeedError = error{
+    OutOfMemory,
+    StringControlLimit,
+};
+
 pub const State = struct {
     apply_flow: ApplyFlow,
 
@@ -66,7 +71,7 @@ pub const ApplyFlow = struct {
         self.feedByteChecked(byte) catch unreachable;
     }
 
-    pub fn feedByteChecked(self: *ApplyFlow, byte: u8) error{OutOfMemory}!void {
+    pub fn feedByteChecked(self: *ApplyFlow, byte: u8) FeedError!void {
         self.clearParserActions();
         try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
         try self.parsed_events.appendParserActions(self.parser_actions.items);
@@ -76,7 +81,7 @@ pub const ApplyFlow = struct {
         self.feedSliceChecked(bytes) catch unreachable;
     }
 
-    pub fn feedSliceChecked(self: *ApplyFlow, bytes: []const u8) error{OutOfMemory}!void {
+    pub fn feedSliceChecked(self: *ApplyFlow, bytes: []const u8) FeedError!void {
         self.clearParserActions();
         for (bytes) |byte| {
             try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
@@ -115,24 +120,24 @@ pub const ApplyFlow = struct {
         _ = self.parser_action_arena.reset(.retain_capacity);
     }
 
-    fn nextPhasesChecked(self: *ApplyFlow, byte: u8) error{OutOfMemory}!parser_mod.PhaseActions {
+    fn nextPhasesChecked(self: *ApplyFlow, byte: u8) FeedError!parser_mod.PhaseActions {
         const phases = self.parser.next(byte);
-        if (!self.parser.takeAllocFailed()) return phases;
+        const failure = self.parser.takeStringControlFailed() orelse return phases;
 
         // No parsed events from the current feed call were published yet, so
         // drop the partial parser state and fail the whole feed explicitly.
         self.parser.reset();
         self.clearParserActions();
-        return error.OutOfMemory;
+        return failure;
     }
 
 };
 
-pub fn feedByte(vt: anytype, byte: u8) error{OutOfMemory}!void {
+pub fn feedByte(vt: anytype, byte: u8) FeedError!void {
     try vt.parser_state.apply_flow.feedByteChecked(byte);
 }
 
-pub fn feedSlice(vt: anytype, bytes: []const u8) error{OutOfMemory}!void {
+pub fn feedSlice(vt: anytype, bytes: []const u8) FeedError!void {
     try vt.parser_state.apply_flow.feedSliceChecked(bytes);
 }
 

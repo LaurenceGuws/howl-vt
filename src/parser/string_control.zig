@@ -21,12 +21,15 @@ const State = enum {
 
 /// Incremental string-control byte buffer.
 pub const StringControl = struct {
+    const Failure = error{ OutOfMemory, StringControlLimit };
+
     allocator: std.mem.Allocator,
     state: State = .idle,
     buffer: std.ArrayList(u8),
     max_len: usize,
     bel_terminates: bool,
     alloc_failed: bool = false,
+    overflowed: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, capacity: usize, max_len: usize, bel_terminates: bool) !StringControl {
         return .{
@@ -44,12 +47,14 @@ pub const StringControl = struct {
     pub fn reset(self: *StringControl) void {
         self.state = .idle;
         self.alloc_failed = false;
+        self.overflowed = false;
         self.buffer.clearRetainingCapacity();
     }
 
     pub fn start(self: *StringControl) void {
         self.state = .payload;
         self.alloc_failed = false;
+        self.overflowed = false;
         self.buffer.clearRetainingCapacity();
     }
 
@@ -69,10 +74,16 @@ pub const StringControl = struct {
         self.buffer.clearRetainingCapacity();
     }
 
-    pub fn takeAllocFailed(self: *StringControl) bool {
-        const failed = self.alloc_failed;
+    pub fn takeFailure(self: *StringControl) ?Failure {
+        var failure: ?Failure = null;
+        if (self.overflowed) {
+            failure = error.StringControlLimit;
+        } else if (self.alloc_failed) {
+            failure = error.OutOfMemory;
+        }
         self.alloc_failed = false;
-        return failed;
+        self.overflowed = false;
+        return failure;
     }
 
     pub fn feed(self: *StringControl, byte: u8) ?FeedResult {
@@ -109,10 +120,12 @@ pub const StringControl = struct {
     }
 
     fn append(self: *StringControl, byte: u8) void {
-        if (self.buffer.items.len < self.max_len) {
-            self.buffer.append(self.allocator, byte) catch {
-                self.alloc_failed = true;
-            };
+        if (self.buffer.items.len >= self.max_len) {
+            self.overflowed = true;
+            return;
         }
+        self.buffer.append(self.allocator, byte) catch {
+            self.alloc_failed = true;
+        };
     }
 };

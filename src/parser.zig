@@ -144,13 +144,12 @@ pub const Parser = struct {
         self.pm.reset();
     }
 
-    pub fn takeAllocFailed(self: *Parser) bool {
-        var failed = false;
-        if (self.osc.takeAllocFailed()) failed = true;
-        if (self.apc.takeAllocFailed()) failed = true;
-        if (self.dcs.takeAllocFailed()) failed = true;
-        if (self.pm.takeAllocFailed()) failed = true;
-        return failed;
+    pub fn takeStringControlFailed(self: *Parser) ?error{ OutOfMemory, StringControlLimit } {
+        if (self.osc.takeFailure()) |failure| return failure;
+        if (self.apc.takeFailure()) |failure| return failure;
+        if (self.dcs.takeFailure()) |failure| return failure;
+        if (self.pm.takeFailure()) |failure| return failure;
+        return null;
     }
 
     /// Advance the parser by one byte and return ordered phase actions.
