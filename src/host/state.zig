@@ -3,6 +3,7 @@ const locator = @import("../control/locator.zig");
 const osc_color = @import("../control/osc_color.zig");
 const input = @import("../input.zig");
 const action = @import("../action.zig");
+const osc = @import("../xterm/osc.zig");
 
 const LocatorNs = locator;
 const OscColorNs = osc_color;
@@ -70,7 +71,7 @@ pub fn clearPendingClipboardSet(vt: anytype) void {
 pub fn drainPendingClipboardSet(vt: anytype, allocator: std.mem.Allocator) !?[]u8 {
     const pending = pendingClipboardSet(vt) orelse return null;
     defer clearPendingClipboardSet(vt);
-    return action.Osc.decodeClipboardSet(allocator, pending) catch |err| switch (err) {
+    return osc.decodeClipboardSet(allocator, pending) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => null,
     };

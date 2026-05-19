@@ -7,7 +7,6 @@ const route = @import("action/route.zig");
 const vocabulary = @import("action/vocabulary.zig");
 
 pub const Event = parsed_events.Event;
-pub const ParsedEvents = parsed_events.ParsedEvents;
 pub const SemanticEvent = route.SemanticEvent;
 pub const ScreenAction = route.ScreenAction;
 pub const ReportAction = route.ReportAction;
@@ -21,7 +20,6 @@ pub const KittyShellMark = vocabulary.KittyShellMark;
 pub const LegacyControlKind = route.LegacyControlKind;
 pub const EscAction = route.EscAction;
 pub const ApplySummary = dispatch.ApplySummary;
-pub const Osc = @import("xterm/osc.zig");
 
 pub const process = route.process;
 pub const screenAction = route.screenAction;
