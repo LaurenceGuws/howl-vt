@@ -14,11 +14,11 @@ const TerminalModeNs = mode;
 pub const Terminal = struct {
     const HostState = host_state.State;
     const KittyState = kitty_state.State;
-    const ParserState = parser_flow.State;
+    const ParserQueue = parser_flow.Queue;
 
     const ScreenSet = screen_set.Set;
 
-    parser_state: ParserState,
+    parser_queue: ParserQueue,
     screen_state: ScreenSet,
     modes: TerminalModeNs.State = .{},
     kitty: KittyState = .{},
@@ -28,12 +28,12 @@ pub const Terminal = struct {
 
     /// Initialize Terminal without cell storage.
     pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
-        var parser_state = try ParserState.init(allocator);
-        errdefer parser_state.deinit();
+        var parser_queue = try ParserQueue.init(allocator);
+        errdefer parser_queue.deinit();
         const state = ScreenNs.init(rows, cols);
         const alt_state = ScreenNs.init(rows, cols);
         return Terminal{
-            .parser_state = parser_state,
+            .parser_queue = parser_queue,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
         };
@@ -41,14 +41,14 @@ pub const Terminal = struct {
 
     /// Initialize Terminal with cell storage.
     pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
-        var parser_state = try ParserState.init(allocator);
-        errdefer parser_state.deinit();
+        var parser_queue = try ParserQueue.init(allocator);
+        errdefer parser_queue.deinit();
         var state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer state.deinit(allocator);
         var alt_state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return Terminal{
-            .parser_state = parser_state,
+            .parser_queue = parser_queue,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
         };
@@ -56,14 +56,14 @@ pub const Terminal = struct {
 
     /// Initialize Terminal with cell and history storage.
     pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !Terminal {
-        var parser_state = try ParserState.init(allocator);
-        errdefer parser_state.deinit();
+        var parser_queue = try ParserQueue.init(allocator);
+        errdefer parser_queue.deinit();
         var state = try ScreenNs.initWithCellsAndHistory(allocator, rows, cols, history_capacity);
         errdefer state.deinit(allocator);
         var alt_state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return Terminal{
-            .parser_state = parser_state,
+            .parser_queue = parser_queue,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
         };
@@ -71,11 +71,11 @@ pub const Terminal = struct {
 
     /// Release Terminal resources.
     pub fn deinit(self: *Terminal) void {
-        const allocator = self.parser_state.getAllocator();
+        const allocator = self.parser_queue.getAllocator();
         self.host.deinit(allocator);
         self.kitty.deinit(allocator);
         self.screen_state.deinit(allocator);
-        self.parser_state.deinit();
+        self.parser_queue.deinit();
     }
 
 };

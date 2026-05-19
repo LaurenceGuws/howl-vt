@@ -17,7 +17,7 @@ const HostAction = vocabulary.HostAction;
 
 pub fn apply(vt: anytype, action: HostAction) void {
     var scratch: input.Scratch = .{};
-    const allocator = vt.parser_state.getAllocator();
+    const allocator = vt.parser_queue.getAllocator();
     switch (action) {
         .color_control => |cmd| {
             switch (cmd.command) {
@@ -51,7 +51,7 @@ fn internHyperlink(vt: anytype, uri: []const u8) u32 {
     for (vt.host.hyperlink_targets.items, 0..) |existing, idx| {
         if (std.mem.eql(u8, existing, uri)) return @intCast(idx + 1);
     }
-    const allocator = vt.parser_state.getAllocator();
+    const allocator = vt.parser_queue.getAllocator();
     const owned = allocator.dupe(u8, uri) catch return 0;
     vt.host.hyperlink_targets.append(allocator, owned) catch {
         allocator.free(owned);
@@ -61,7 +61,7 @@ fn internHyperlink(vt: anytype, uri: []const u8) u32 {
 }
 
 fn setPendingClipboard(vt: anytype, payload: []const u8) void {
-    const allocator = vt.parser_state.getAllocator();
+    const allocator = vt.parser_queue.getAllocator();
     if (vt.host.pending_clipboard) |req| allocator.free(req.raw);
     const owned = allocator.dupe(u8, payload) catch {
         vt.host.pending_clipboard = null;
@@ -71,7 +71,7 @@ fn setPendingClipboard(vt: anytype, payload: []const u8) void {
 }
 
 fn setDcsPayload(vt: anytype, payload: DcsPayload) void {
-    const allocator = vt.parser_state.getAllocator();
+    const allocator = vt.parser_queue.getAllocator();
     if (vt.host.dcs_payload) |old| allocator.free(old.payload);
     const owned = allocator.dupe(u8, payload.payload) catch {
         vt.host.dcs_payload = null;

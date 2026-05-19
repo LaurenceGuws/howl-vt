@@ -18,7 +18,7 @@ const Terminal = terminal_mod.Terminal;
 
 fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
     return screen_capture.Capture.captureFromScreen(
-        terminal.parser_state.getAllocator(),
+        terminal.parser_queue.getAllocator(),
         terminal.screen_state.activeConst(),
         terminal.screen_state.activeSelectionConst().state(),
     );

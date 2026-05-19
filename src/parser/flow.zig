@@ -14,22 +14,6 @@ const FeedError = error{
     StringControlLimit,
 };
 
-pub const State = struct {
-    queue: Queue,
-
-    pub fn getAllocator(self: *const State) std.mem.Allocator {
-        return self.queue.allocator;
-    }
-
-    pub fn init(allocator: std.mem.Allocator) !State {
-        return .{ .queue = try Queue.init(allocator) };
-    }
-
-    pub fn deinit(self: *State) void {
-        self.queue.deinit();
-    }
-};
-
 /// Stateful parser feed and parsed-event queue path.
 pub const Queue = struct {
     allocator: std.mem.Allocator,
@@ -63,6 +47,10 @@ pub const Queue = struct {
         self.parser.deinit();
         self.parsed_events.deinit();
         self.allocator.destroy(self.parsed_events);
+    }
+
+    pub fn getAllocator(self: *const Queue) std.mem.Allocator {
+        return self.allocator;
     }
 
     // Repo-local tests still use the convenience entrypoints below. The
@@ -147,19 +135,19 @@ pub const Queue = struct {
 };
 
 pub fn feedByte(vt: anytype, byte: u8) FeedError!void {
-    try vt.parser_state.queue.feedByteChecked(byte);
+    try vt.parser_queue.feedByteChecked(byte);
 }
 
 pub fn feedSlice(vt: anytype, bytes: []const u8) FeedError!void {
-    try vt.parser_state.queue.feedSliceChecked(bytes);
+    try vt.parser_queue.feedSliceChecked(bytes);
 }
 
 pub fn clear(vt: anytype) void {
-    vt.parser_state.queue.clear();
+    vt.parser_queue.clear();
 }
 
 pub fn reset(vt: anytype) void {
-    vt.parser_state.queue.reset();
+    vt.parser_queue.reset();
 }
 
 pub fn appendOwnedPhases(

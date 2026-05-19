@@ -9,7 +9,7 @@ const KittyAction = vocabulary.KittyAction;
 
 pub fn apply(vt: anytype, action: KittyAction) void {
     var scratch: input.Scratch = .{};
-    const allocator = vt.parser_state.getAllocator();
+    const allocator = vt.parser_queue.getAllocator();
     const active_screen = vt.kitty.activeScreen(vt.screen_state.alt_active);
     const active_screen_const = vt.kitty.activeScreenConst(vt.screen_state.alt_active);
     switch (action) {

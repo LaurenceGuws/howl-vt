@@ -43,14 +43,14 @@ fn clearDirtyRows(terminal: *Terminal) void {
 
 fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
     return screen_capture.Capture.captureFromScreen(
-        terminal.parser_state.getAllocator(),
+        terminal.parser_queue.getAllocator(),
         terminal.screen_state.activeConst(),
         terminal.screen_state.activeSelectionConst().state(),
     );
 }
 
 fn resizeTerminal(terminal: *Terminal, rows: u16, cols: u16) !void {
-    try terminal.screen_state.resize(terminal.parser_state.getAllocator(), rows, cols);
+    try terminal.screen_state.resize(terminal.parser_queue.getAllocator(), rows, cols);
     terminal.screen_state.activeSelection().clearIfInvalidatedByGrid(terminal.screen_state.activeConst());
 }
 

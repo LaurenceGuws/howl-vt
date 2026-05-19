@@ -126,7 +126,7 @@ pub fn runCanonicalPreservation(
     }
 
     const restore_pre_state = summarizeCoreState(&vt);
-    try vt.screen_state.resize(vt.parser_state.getAllocator(), options.initial_rows, options.initial_cols);
+    try vt.screen_state.resize(vt.parser_queue.getAllocator(), options.initial_rows, options.initial_cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     const restore_step: ChurnStep = .{ .resize = .{
         .rows = options.initial_rows,
@@ -186,14 +186,14 @@ fn applyWriteBurst(vt: *terminal_mod.Terminal, rand: std.Random) !void {
 fn applyResize(vt: *terminal_mod.Terminal, rand: std.Random) !void {
     const rows = RowsMin + rand.uintLessThan(u16, RowsMax - RowsMin + 1);
     const cols = ColsMin + rand.uintLessThan(u16, ColsMax - ColsMin + 1);
-    try vt.screen_state.resize(vt.parser_state.getAllocator(), rows, cols);
+    try vt.screen_state.resize(vt.parser_queue.getAllocator(), rows, cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
 }
 
 fn applyResizeStep(vt: *terminal_mod.Terminal, rand: std.Random) !ChurnStep {
     const rows = RowsMin + rand.uintLessThan(u16, RowsMax - RowsMin + 1);
     const cols = ColsMin + rand.uintLessThan(u16, ColsMax - ColsMin + 1);
-    try vt.screen_state.resize(vt.parser_state.getAllocator(), rows, cols);
+    try vt.screen_state.resize(vt.parser_queue.getAllocator(), rows, cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .resize = .{ .rows = rows, .cols = cols } };
 }
@@ -208,10 +208,10 @@ fn applyZoomJitter(vt: *terminal_mod.Terminal, rand: std.Random) !void {
         const delta_cols: i16 = @as(i16, @intCast(rand.uintLessThan(u8, 19))) - 9;
         const next_rows = clampDimI16(cur_rows, delta_rows, RowsMin, RowsMax);
         const next_cols = clampDimI16(cur_cols, delta_cols, ColsMin, ColsMax);
-        try vt.screen_state.resize(vt.parser_state.getAllocator(), next_rows, next_cols);
+        try vt.screen_state.resize(vt.parser_queue.getAllocator(), next_rows, next_cols);
         vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     }
-    try vt.screen_state.resize(vt.parser_state.getAllocator(), cur_rows, cur_cols);
+    try vt.screen_state.resize(vt.parser_queue.getAllocator(), cur_rows, cur_cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
 }
 
@@ -227,10 +227,10 @@ fn applyZoomJitterStep(vt: *terminal_mod.Terminal, rand: std.Random) !ChurnStep 
         const delta_cols: i16 = @as(i16, @intCast(rand.uintLessThan(u8, 19))) - 9;
         end_rows = clampDimI16(cur_rows, delta_rows, RowsMin, RowsMax);
         end_cols = clampDimI16(cur_cols, delta_cols, ColsMin, ColsMax);
-        try vt.screen_state.resize(vt.parser_state.getAllocator(), end_rows, end_cols);
+        try vt.screen_state.resize(vt.parser_queue.getAllocator(), end_rows, end_cols);
         vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     }
-    try vt.screen_state.resize(vt.parser_state.getAllocator(), cur_rows, cur_cols);
+    try vt.screen_state.resize(vt.parser_queue.getAllocator(), cur_rows, cur_cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .zoom_jitter = .{
         .start_rows = cur_rows,

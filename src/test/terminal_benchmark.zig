@@ -390,7 +390,7 @@ fn runSnapshotWorkload(
         var j: usize = 0;
         while (j < snapshot_calls_per_run) : (j += 1) {
             var snap = try @import("screen_capture.zig").Capture.captureFromScreen(
-                terminal.parser_state.getAllocator(),
+                terminal.parser_queue.getAllocator(),
                 terminal.screen_state.activeConst(),
                 terminal.screen_state.activeSelectionConst().state(),
             );

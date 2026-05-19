@@ -301,7 +301,7 @@ pub fn terminalApply(handle: VtHandle, max_events: u32, title_ptr: ?[*]u8, title
 
 pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
-    owned.screen_state.resize(owned.parser_state.getAllocator(), rows, cols) catch return @intFromEnum(HowlVtCallStatus.failed);
+    owned.screen_state.resize(owned.parser_queue.getAllocator(), rows, cols) catch return @intFromEnum(HowlVtCallStatus.failed);
     owned.screen_state.activeSelection().clearIfInvalidatedByGrid(owned.screen_state.activeConst());
     owned.dirty_generation +%= 1;
     return @intFromEnum(HowlVtCallStatus.ok);
