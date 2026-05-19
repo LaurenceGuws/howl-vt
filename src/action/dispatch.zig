@@ -16,11 +16,6 @@ pub const ApplySummary = struct {
     latest_title: ?[]const u8,
 };
 
-fn queuedEventCount(len: usize) u32 {
-    std.debug.assert(len <= std.math.maxInt(u32));
-    return @intCast(len);
-}
-
 // Zero max_events is a query-only pass. The owner thread chooses the apply
 // slice size; VT only enforces that bound exactly and reports the true
 // remaining queue depth so the next turn stays explicit.
@@ -28,24 +23,24 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
     if (max_events == 0) {
         return .{
             .applied = 0,
-            .remaining_events = queuedEventCount(vt.parser_state.queue.events().len),
+            .remaining_events = vt.parser_state.queue.eventCount(),
             .latest_title = null,
         };
     }
 
-    const count = @min(max_events, queuedEventCount(vt.parser_state.queue.events().len));
+    const count = @min(max_events, vt.parser_state.queue.eventCount());
     if (count == 0) return .{ .applied = 0, .remaining_events = 0, .latest_title = null };
 
     std.debug.assert(count <= max_events);
-    std.debug.assert(count <= vt.parser_state.queue.events().len);
+    std.debug.assert(count <= vt.parser_state.queue.eventCount());
 
     var latest_title: ?[]const u8 = null;
-    for (vt.parser_state.queue.events()[0..count]) |ev| {
+    for (vt.parser_state.queue.events()[0..@intCast(count)]) |ev| {
         latest_title = latestTitle(latest_title, ev);
         applyEvent(vt, ev);
     }
-    vt.parser_state.queue.parsed_events.dropPrefix(count);
-    const remaining = queuedEventCount(vt.parser_state.queue.events().len);
+    vt.parser_state.queue.dropPrefix(count);
+    const remaining = vt.parser_state.queue.eventCount();
     std.debug.assert(remaining + count >= count);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
     return .{ .applied = count, .remaining_events = remaining, .latest_title = latest_title };
@@ -57,13 +52,13 @@ pub fn applyToScreen(queue: anytype, screen: *Screen) void {
 
 pub fn applyToScreenLimit(queue: anytype, screen: *Screen, max_events: u32) u32 {
     if (max_events == 0) return 0;
-    const count = @min(max_events, queuedEventCount(queue.events().len));
-    for (queue.events()[0..count]) |ev| {
+    const count = @min(max_events, queue.eventCount());
+    for (queue.events()[0..@intCast(count)]) |ev| {
         if (action_mod.process(ev)) |sem_ev| {
             if (action_mod.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
         }
     }
-    queue.parsed_events.dropPrefix(count);
+    queue.dropPrefix(count);
     return count;
 }
 

@@ -94,6 +94,12 @@ pub const Queue = struct {
         return self.parsed_events.events.items;
     }
 
+    pub fn eventCount(self: *const Queue) u32 {
+        const count = self.parsed_events.len();
+        std.debug.assert(count <= std.math.maxInt(u32));
+        return @intCast(count);
+    }
+
     pub fn len(self: *const Queue) usize {
         return self.parsed_events.len();
     }
@@ -105,6 +111,11 @@ pub const Queue = struct {
     /// Clear queued events without resetting parser state.
     pub fn clear(self: *Queue) void {
         self.parsed_events.clear();
+    }
+
+    pub fn dropPrefix(self: *Queue, count: u32) void {
+        std.debug.assert(count <= self.eventCount());
+        self.parsed_events.dropPrefix(count);
     }
 
     pub fn reset(self: *Queue) void {
