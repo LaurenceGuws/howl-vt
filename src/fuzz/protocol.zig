@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const action = @import("../action.zig");
+const owned_actions = @import("../parser/owned_actions.zig");
 const parser_mod = @import("../parser.zig");
 const screen_set = @import("../screen_set.zig");
 const Action = action;
@@ -165,7 +166,7 @@ const ParserOutput = struct {
     }
 
     fn appendPhases(self: *ParserOutput, phases: parser_mod.PhaseActions) void {
-        parser_mod.appendOwnedPhases(self.allocator, self.arena.allocator(), &self.actions, phases);
+        owned_actions.appendOwnedPhases(self.allocator, self.arena.allocator(), &self.actions, phases);
     }
 };
 

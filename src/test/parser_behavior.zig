@@ -1,4 +1,5 @@
 const std = @import("std");
+const owned_actions = @import("../parser/owned_actions.zig");
 const parser_mod = @import("../parser.zig");
 
 const Parser = parser_mod.Parser;
@@ -27,7 +28,7 @@ const Output = struct {
     }
 
     fn appendPhases(self: *Output, phases: parser_mod.PhaseActions) void {
-        parser_mod.appendOwnedPhases(std.testing.allocator, self.arena.allocator(), &self.actions, phases) catch unreachable;
+        owned_actions.appendOwnedPhases(std.testing.allocator, self.arena.allocator(), &self.actions, phases) catch unreachable;
     }
 };
 
