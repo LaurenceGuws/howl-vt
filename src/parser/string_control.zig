@@ -26,6 +26,7 @@ pub const StringControl = struct {
     buffer: std.ArrayList(u8),
     max_len: usize,
     bel_terminates: bool,
+    alloc_failed: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, capacity: usize, max_len: usize, bel_terminates: bool) !StringControl {
         return .{
@@ -42,11 +43,13 @@ pub const StringControl = struct {
 
     pub fn reset(self: *StringControl) void {
         self.state = .idle;
+        self.alloc_failed = false;
         self.buffer.clearRetainingCapacity();
     }
 
     pub fn start(self: *StringControl) void {
         self.state = .payload;
+        self.alloc_failed = false;
         self.buffer.clearRetainingCapacity();
     }
 
@@ -64,6 +67,12 @@ pub const StringControl = struct {
 
     pub fn clearFinished(self: *StringControl) void {
         self.buffer.clearRetainingCapacity();
+    }
+
+    pub fn takeAllocFailed(self: *StringControl) bool {
+        const failed = self.alloc_failed;
+        self.alloc_failed = false;
+        return failed;
     }
 
     pub fn feed(self: *StringControl, byte: u8) ?FeedResult {
@@ -101,7 +110,9 @@ pub const StringControl = struct {
 
     fn append(self: *StringControl, byte: u8) void {
         if (self.buffer.items.len < self.max_len) {
-            self.buffer.append(self.allocator, byte) catch {};
+            self.buffer.append(self.allocator, byte) catch {
+                self.alloc_failed = true;
+            };
         }
     }
 };

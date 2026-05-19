@@ -144,6 +144,15 @@ pub const Parser = struct {
         self.pm.reset();
     }
 
+    pub fn takeAllocFailed(self: *Parser) bool {
+        var failed = false;
+        if (self.osc.takeAllocFailed()) failed = true;
+        if (self.apc.takeAllocFailed()) failed = true;
+        if (self.dcs.takeAllocFailed()) failed = true;
+        if (self.pm.takeAllocFailed()) failed = true;
+        return failed;
+    }
+
     /// Advance the parser by one byte and return ordered phase actions.
     pub fn next(self: *Parser, byte: u8) PhaseActions {
         std.debug.assert(self.activeControlCount() <= 1);

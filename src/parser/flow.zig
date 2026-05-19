@@ -68,7 +68,7 @@ pub const ApplyFlow = struct {
 
     pub fn feedByteChecked(self: *ApplyFlow, byte: u8) error{OutOfMemory}!void {
         self.clearParserActions();
-        try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, self.parser.next(byte));
+        try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
         try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
 
@@ -79,7 +79,7 @@ pub const ApplyFlow = struct {
     pub fn feedSliceChecked(self: *ApplyFlow, bytes: []const u8) error{OutOfMemory}!void {
         self.clearParserActions();
         for (bytes) |byte| {
-            try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, self.parser.next(byte));
+            try appendOwnedPhases(self.allocator, self.parser_action_arena.allocator(), &self.parser_actions, try self.nextPhasesChecked(byte));
         }
         try self.parsed_events.appendParserActions(self.parser_actions.items);
     }
@@ -113,6 +113,17 @@ pub const ApplyFlow = struct {
     fn clearParserActions(self: *ApplyFlow) void {
         self.parser_actions.clearRetainingCapacity();
         _ = self.parser_action_arena.reset(.retain_capacity);
+    }
+
+    fn nextPhasesChecked(self: *ApplyFlow, byte: u8) error{OutOfMemory}!parser_mod.PhaseActions {
+        const phases = self.parser.next(byte);
+        if (!self.parser.takeAllocFailed()) return phases;
+
+        // No parsed events from the current feed call were published yet, so
+        // drop the partial parser state and fail the whole feed explicitly.
+        self.parser.reset();
+        self.clearParserActions();
+        return error.OutOfMemory;
     }
 
 };

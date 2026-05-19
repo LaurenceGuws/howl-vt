@@ -158,8 +158,8 @@ sequenceDiagram
 - Zig root imports are not an acceptable host integration path and are not a preservation target.
 - `howl_vt_terminal_init` and `howl_vt_terminal_deinit` own opaque terminal-handle lifecycle.
 - `howl_vt_terminal_feed`, `howl_vt_terminal_apply`, and `howl_vt_terminal_resize` cover bounded parser/apply/geometry control.
-- `howl_vt_terminal_feed` must fail instead of silently dropping parser work when parser-event
-  materialization cannot allocate.
+- `howl_vt_terminal_feed` must fail instead of silently dropping parser work when parser-owned
+  buffering or parser-event materialization cannot allocate.
 - `HowlVtSurface` and `HowlVtSurfaceResult` are the primary renderer-facing VT-surface contract types for visible surface cells, cursor state, and dirtiness truth.
 - `howl_vt_terminal_copy_surface` is the bounded VT-surface export call.
 - `howl_vt_terminal_ack_surface` is the only public dirty-retirement path. It retires dirty truth only for the captured dirty generation that the renderer-facing VT-surface copy reported.
