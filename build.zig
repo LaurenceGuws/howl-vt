@@ -101,7 +101,7 @@ pub fn build(b: *std.Build) void {
     fuzz_step.dependOn(&run_fuzz.step);
 
     const baseline_mod = b.createModule(.{
-        .root_source_file = b.path("src/test/terminal_benchmark.zig"),
+        .root_source_file = b.path("src/terminal_benchmark_main.zig"),
         .target = target,
         .optimize = .ReleaseFast,
     });
