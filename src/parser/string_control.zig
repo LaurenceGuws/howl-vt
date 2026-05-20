@@ -20,7 +20,7 @@ pub const FeedResult = union(enum) {
     finish: Finish,
 };
 
-const State = enum {
+const DelimitedState = enum {
     idle,
     payload,
     esc,
@@ -31,14 +31,19 @@ pub const StringControl = struct {
     const Failure = error{ OutOfMemory, StringControlLimit };
 
     allocator: std.mem.Allocator,
-    state: State = .idle,
+    state: DelimitedState = .idle,
     buffer: std.ArrayList(u8),
     max_len: usize,
     bel_terminates: bool,
     alloc_failed: bool = false,
     overflowed: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator, capacity: usize, max_len: usize, bel_terminates: bool) !StringControl {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        capacity: usize,
+        max_len: usize,
+        bel_terminates: bool,
+    ) !StringControl {
         return .{
             .allocator = allocator,
             .buffer = try std.ArrayList(u8).initCapacity(allocator, capacity),
@@ -66,11 +71,11 @@ pub const StringControl = struct {
     }
 
     pub fn active(self: *const StringControl) bool {
-        return self.state != .idle;
+        return stateActive(self.state);
     }
 
     pub fn escaping(self: *const StringControl) bool {
-        return self.state == .esc;
+        return stateEscaping(self.state);
     }
 
     pub fn data(self: *const StringControl) []const u8 {
@@ -94,36 +99,12 @@ pub const StringControl = struct {
     }
 
     pub fn feed(self: *StringControl, byte: u8) ?FeedResult {
-        switch (self.state) {
-            .idle => return null,
-            .payload => {
-                if (self.bel_terminates and byte == 0x07) {
-                    self.state = .idle;
-                    return .{ .finish = .bel };
-                }
-                if (byte == 0x9C) {
-                    self.state = .idle;
-                    return .{ .finish = .st };
-                }
-                if (byte == 0x1B) {
-                    self.state = .esc;
-                    return null;
-                }
-                self.append(byte);
-                return .{ .put = byte };
-            },
-            .esc => {
-                if (byte == '\\') {
-                    self.state = .idle;
-                    return .{ .finish = .st };
-                }
-
-                // Stray ESC marker is dropped; following byte stays payload.
-                self.state = .payload;
-                self.append(byte);
-                return .{ .put = byte };
-            },
+        const result = feedDelimitedState(&self.state, byte, self.bel_terminates) orelse return null;
+        switch (result) {
+            .put => |payload_byte| self.append(payload_byte),
+            .finish => {},
         }
+        return result;
     }
 
     fn append(self: *StringControl, byte: u8) void {
@@ -234,15 +215,13 @@ pub const OscControl = struct {
     }
 
     pub fn feed(self: *OscControl, byte: u8) ?FeedResult {
-        switch (self.state) {
-            .idle => return null,
-            .prefix => return self.feedPrefix(byte),
-            .prefix_esc => return self.feedPrefixEsc(byte),
-            .payload => return self.feedPayload(byte),
-            .payload_esc => return self.feedPayloadEsc(byte),
-            .raw => return self.feedRaw(byte),
-            .raw_esc => return self.feedRawEsc(byte),
-        }
+        return switch (self.state) {
+            .idle => null,
+            .prefix => self.feedPrefix(byte),
+            .prefix_esc => self.feedPrefixEsc(byte),
+            .payload, .payload_esc => self.feedPayload(byte),
+            .raw, .raw_esc => self.feedRaw(byte),
+        };
     }
 
     fn feedPrefix(self: *OscControl, byte: u8) ?FeedResult {
@@ -282,59 +261,67 @@ pub const OscControl = struct {
     }
 
     fn feedPayload(self: *OscControl, byte: u8) ?FeedResult {
-        if (byte == 0x07) {
-            self.state = .idle;
-            return .{ .finish = .bel };
+        switch (self.state) {
+            .payload => {
+                if (byte == 0x07) {
+                    self.state = .idle;
+                    return .{ .finish = .bel };
+                }
+                if (byte == 0x9C) {
+                    self.state = .idle;
+                    return .{ .finish = .st };
+                }
+                if (byte == 0x1B) {
+                    self.state = .payload_esc;
+                    return null;
+                }
+                self.append(byte);
+                return .{ .put = byte };
+            },
+            .payload_esc => {
+                if (byte == '\\') {
+                    self.state = .idle;
+                    return .{ .finish = .st };
+                }
+                self.state = .payload;
+                self.append(byte);
+                return .{ .put = byte };
+            },
+            else => unreachable,
         }
-        if (byte == 0x9C) {
-            self.state = .idle;
-            return .{ .finish = .st };
-        }
-        if (byte == 0x1B) {
-            self.state = .payload_esc;
-            return null;
-        }
-        self.append(byte);
-        return .{ .put = byte };
-    }
-
-    fn feedPayloadEsc(self: *OscControl, byte: u8) ?FeedResult {
-        if (byte == '\\') {
-            self.state = .idle;
-            return .{ .finish = .st };
-        }
-        self.state = .payload;
-        self.append(byte);
-        return .{ .put = byte };
     }
 
     fn feedRaw(self: *OscControl, byte: u8) ?FeedResult {
-        if (byte == 0x07) {
-            self.finishRaw();
-            return .{ .finish = .bel };
+        switch (self.state) {
+            .raw => {
+                if (byte == 0x07) {
+                    self.finishRaw();
+                    return .{ .finish = .bel };
+                }
+                if (byte == 0x9C) {
+                    self.finishRaw();
+                    return .{ .finish = .st };
+                }
+                if (byte == 0x1B) {
+                    self.state = .raw_esc;
+                    return null;
+                }
+                if (byte == ';') self.raw_has_separator = true;
+                self.append(byte);
+                return .{ .put = byte };
+            },
+            .raw_esc => {
+                if (byte == '\\') {
+                    self.finishRaw();
+                    return .{ .finish = .st };
+                }
+                self.state = .raw;
+                if (byte == ';') self.raw_has_separator = true;
+                self.append(byte);
+                return .{ .put = byte };
+            },
+            else => unreachable,
         }
-        if (byte == 0x9C) {
-            self.finishRaw();
-            return .{ .finish = .st };
-        }
-        if (byte == 0x1B) {
-            self.state = .raw_esc;
-            return null;
-        }
-        if (byte == ';') self.raw_has_separator = true;
-        self.append(byte);
-        return .{ .put = byte };
-    }
-
-    fn feedRawEsc(self: *OscControl, byte: u8) ?FeedResult {
-        if (byte == '\\') {
-            self.finishRaw();
-            return .{ .finish = .st };
-        }
-        self.state = .raw;
-        if (byte == ';') self.raw_has_separator = true;
-        self.append(byte);
-        return .{ .put = byte };
     }
 
     fn finishPrefix(self: *OscControl) void {
@@ -430,7 +417,7 @@ fn classifyCommand(command: u16) OscKind {
 
 /// Incremental string-control parser state without payload ownership.
 pub const PassthroughControl = struct {
-    state: State = .idle,
+    state: DelimitedState = .idle,
     bel_terminates: bool,
 
     pub fn init(bel_terminates: bool) PassthroughControl {
@@ -454,41 +441,57 @@ pub const PassthroughControl = struct {
     }
 
     pub fn active(self: *const PassthroughControl) bool {
-        return self.state != .idle;
+        return stateActive(self.state);
     }
 
     pub fn escaping(self: *const PassthroughControl) bool {
-        return self.state == .esc;
+        return stateEscaping(self.state);
     }
 
     pub fn feed(self: *PassthroughControl, byte: u8) ?FeedResult {
-        switch (self.state) {
-            .idle => return null,
-            .payload => {
-                if (self.bel_terminates and byte == 0x07) {
-                    self.state = .idle;
-                    return .{ .finish = .bel };
-                }
-                if (byte == 0x9C) {
-                    self.state = .idle;
-                    return .{ .finish = .st };
-                }
-                if (byte == 0x1B) {
-                    self.state = .esc;
-                    return null;
-                }
-                return .{ .put = byte };
-            },
-            .esc => {
-                if (byte == '\\') {
-                    self.state = .idle;
-                    return .{ .finish = .st };
-                }
-
-                // Stray ESC marker is dropped; following byte stays payload.
-                self.state = .payload;
-                return .{ .put = byte };
-            },
-        }
+        return feedDelimitedState(&self.state, byte, self.bel_terminates);
     }
 };
+
+fn stateActive(state: DelimitedState) bool {
+    return state != .idle;
+}
+
+fn stateEscaping(state: DelimitedState) bool {
+    return state == .esc;
+}
+
+fn feedDelimitedState(state: *DelimitedState, byte: u8, bel_terminates: bool) ?FeedResult {
+    return switch (state.*) {
+        .idle => null,
+        .payload => feedPayloadState(state, byte, bel_terminates),
+        .esc => feedEscState(state, byte),
+    };
+}
+
+fn feedPayloadState(state: *DelimitedState, byte: u8, bel_terminates: bool) ?FeedResult {
+    if (bel_terminates and byte == 0x07) {
+        state.* = .idle;
+        return .{ .finish = .bel };
+    }
+    if (byte == 0x9C) {
+        state.* = .idle;
+        return .{ .finish = .st };
+    }
+    if (byte == 0x1B) {
+        state.* = .esc;
+        return null;
+    }
+    return .{ .put = byte };
+}
+
+fn feedEscState(state: *DelimitedState, byte: u8) ?FeedResult {
+    if (byte == '\\') {
+        state.* = .idle;
+        return .{ .finish = .st };
+    }
+
+    // Stray ESC marker is dropped; following byte stays payload.
+    state.* = .payload;
+    return .{ .put = byte };
+}

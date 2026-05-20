@@ -79,3 +79,5 @@ Closed result so far:
   one raw buffer
 - parser now tracks numeric OSC command values incrementally instead of reparsing the numeric prefix
   from stored bytes
+- shared BEL/ST/ESC delimiter policy is now centralized for buffered and passthrough string controls;
+  OSC keeps separate command/raw ownership on top of that shared delimiter rule
