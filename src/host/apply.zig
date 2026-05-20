@@ -23,13 +23,10 @@ pub fn apply(vt: anytype, action: HostAction) void {
             switch (cmd.command) {
                 21 => KittyNs.Color.handleKittyControl(allocator, &vt.host.colors, &vt.host.pending_output, cmd.payload),
                 4 => OscColorNs.handleXtermPaletteControl(allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], cmd.payload),
-                10 => OscColorNs.handleXtermSpecialColor(allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], .foreground, cmd.payload),
-                11 => OscColorNs.handleXtermSpecialColor(allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], .background, cmd.payload),
-                12 => OscColorNs.handleXtermSpecialColor(allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], .cursor, cmd.payload),
+                5 => OscColorNs.handleXtermSpecialPaletteControl(allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], cmd.payload),
+                10, 11, 12, 13, 14, 15, 16, 17, 18, 19 => OscColorNs.handleXtermDynamicColor(allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], cmd.command, cmd.payload),
                 104 => OscColorNs.resetXtermPalette(&vt.host.colors, cmd.payload),
-                110 => vt.host.colors.foreground = ScreenNs.default_fg,
-                111 => vt.host.colors.background = ScreenNs.default_bg,
-                112 => vt.host.colors.cursor = null,
+                110, 111, 112, 113, 114, 115, 116, 117, 118, 119 => OscColorNs.resetXtermDynamicColor(&vt.host.colors, cmd.command, cmd.payload),
                 else => {},
             }
         },

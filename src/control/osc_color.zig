@@ -10,35 +10,81 @@ pub const State = struct {
     foreground: Screen.Color = Screen.default_fg,
     background: Screen.Color = Screen.default_bg,
     cursor: ?Screen.Color = null,
+    pointer_foreground: ?Screen.Color = null,
+    pointer_background: ?Screen.Color = null,
+    tektronix_foreground: ?Screen.Color = null,
+    tektronix_background: ?Screen.Color = null,
+    tektronix_cursor: ?Screen.Color = null,
     cursor_text: ?Screen.Color = null,
     selection_background: ?Screen.Color = null,
     selection_foreground: ?Screen.Color = null,
+    special_palette: [5]?Screen.Color = [_]?Screen.Color{null} ** 5,
     palette: [256]Screen.Color = defaultPalette(),
 };
 
 pub const SpecialKey = enum { foreground, background, cursor, cursor_text, selection_background, selection_foreground };
+pub const DynamicKey = enum {
+    foreground,
+    background,
+    cursor,
+    pointer_foreground,
+    pointer_background,
+    tektronix_foreground,
+    tektronix_background,
+    selection_background,
+    tektronix_cursor,
+    selection_foreground,
+};
+pub const SpecialPaletteKey = enum(u3) {
+    bold = 0,
+    underline = 1,
+    blink = 2,
+    reverse = 3,
+    italic = 4,
+};
 
 pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) void {
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |idx_text| {
         const value = parts.next() orelse break;
-        const idx = std.fmt.parseUnsigned(u8, idx_text, 10) catch continue;
+        const idx = std.fmt.parseUnsigned(u16, idx_text, 10) catch continue;
         if (std.mem.eql(u8, value, "?")) {
             const text = std.fmt.bufPrint(encode_buf, "\x1b]4;{d};", .{idx}) catch continue;
             output.appendSlice(allocator, text) catch continue;
-            appendColorOsc(allocator, output, colors.palette[idx]);
+            if (paletteTargetColor(colors.*, idx)) |color| appendColorOsc(allocator, output, color);
             output.appendSlice(allocator, "\x1b\\") catch {};
         } else if (parseColor(value)) |color| {
-            colors.palette[idx] = color;
+            setPaletteTarget(colors, idx, color);
         }
     }
 }
 
-pub fn handleXtermSpecialColor(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, key: SpecialKey, payload: []const u8) void {
-    if (std.mem.eql(u8, payload, "?")) {
-        appendXtermSpecialColorReply(allocator, output, encode_buf, colors.*, key);
-    } else if (parseColor(payload)) |color| {
-        setSpecialColor(colors, key, color);
+pub fn handleXtermSpecialPaletteControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) void {
+    var parts = std.mem.splitScalar(u8, payload, ';');
+    while (parts.next()) |idx_text| {
+        const value = parts.next() orelse break;
+        const idx = std.fmt.parseUnsigned(u3, idx_text, 10) catch continue;
+        const text = std.fmt.bufPrint(encode_buf, "\x1b]5;{d};", .{idx}) catch continue;
+        if (std.mem.eql(u8, value, "?")) {
+            output.appendSlice(allocator, text) catch continue;
+            if (colors.special_palette[idx]) |color| appendColorOsc(allocator, output, color);
+            output.appendSlice(allocator, "\x1b\\") catch {};
+        } else if (parseColor(value)) |color| {
+            colors.special_palette[idx] = color;
+        }
+    }
+}
+
+pub fn handleXtermDynamicColor(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, command: u16, payload: []const u8) void {
+    var key = dynamicKeyForCommand(command) orelse return;
+    var parts = std.mem.splitScalar(u8, payload, ';');
+    while (parts.next()) |value| {
+        if (std.mem.eql(u8, value, "?")) {
+            appendXtermDynamicColorReply(allocator, output, encode_buf, colors.*, key);
+        } else if (parseColor(value)) |color| {
+            setDynamicColor(colors, key, color);
+        }
+        key = nextDynamicKey(key) orelse return;
     }
 }
 
@@ -49,9 +95,15 @@ pub fn resetXtermPalette(colors: *State, payload: []const u8) void {
     }
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |idx_text| {
-        const idx = std.fmt.parseUnsigned(u8, idx_text, 10) catch continue;
-        colors.palette[idx] = paletteColor(idx);
+        const idx = std.fmt.parseUnsigned(u16, idx_text, 10) catch continue;
+        resetPaletteTarget(colors, idx);
     }
+}
+
+pub fn resetXtermDynamicColor(colors: *State, command: u16, payload: []const u8) void {
+    if (payload.len != 0) return;
+    const key = dynamicKeyForResetCommand(command) orelse return;
+    resetDynamicColor(colors, key);
 }
 
 pub fn parseColor(value: []const u8) ?Screen.Color {
@@ -104,6 +156,140 @@ pub fn colorForKey(colors: State, key: []const u8) ?Screen.Color {
     return null;
 }
 
+fn paletteTargetColor(colors: State, idx: u16) ?Screen.Color {
+    if (idx < 256) return colors.palette[@intCast(idx)];
+    const special_idx = idx - 256;
+    if (special_idx >= colors.special_palette.len) return null;
+    return colors.special_palette[special_idx];
+}
+
+fn setPaletteTarget(colors: *State, idx: u16, color: Screen.Color) void {
+    if (idx < 256) {
+        colors.palette[@intCast(idx)] = color;
+        return;
+    }
+    const special_idx = idx - 256;
+    if (special_idx >= colors.special_palette.len) return;
+    colors.special_palette[special_idx] = color;
+}
+
+fn resetPaletteTarget(colors: *State, idx: u16) void {
+    if (idx < 256) {
+        colors.palette[@intCast(idx)] = paletteColor(@intCast(idx));
+        return;
+    }
+    const special_idx = idx - 256;
+    if (special_idx >= colors.special_palette.len) return;
+    colors.special_palette[special_idx] = null;
+}
+
+fn dynamicKeyForCommand(command: u16) ?DynamicKey {
+    return switch (command) {
+        10 => .foreground,
+        11 => .background,
+        12 => .cursor,
+        13 => .pointer_foreground,
+        14 => .pointer_background,
+        15 => .tektronix_foreground,
+        16 => .tektronix_background,
+        17 => .selection_background,
+        18 => .tektronix_cursor,
+        19 => .selection_foreground,
+        else => null,
+    };
+}
+
+fn dynamicKeyForResetCommand(command: u16) ?DynamicKey {
+    return switch (command) {
+        110 => .foreground,
+        111 => .background,
+        112 => .cursor,
+        113 => .pointer_foreground,
+        114 => .pointer_background,
+        115 => .tektronix_foreground,
+        116 => .tektronix_background,
+        117 => .selection_background,
+        118 => .tektronix_cursor,
+        119 => .selection_foreground,
+        else => null,
+    };
+}
+
+fn nextDynamicKey(key: DynamicKey) ?DynamicKey {
+    return switch (key) {
+        .foreground => .background,
+        .background => .cursor,
+        .cursor => .pointer_foreground,
+        .pointer_foreground => .pointer_background,
+        .pointer_background => .tektronix_foreground,
+        .tektronix_foreground => .tektronix_background,
+        .tektronix_background => .selection_background,
+        .selection_background => .tektronix_cursor,
+        .tektronix_cursor => .selection_foreground,
+        .selection_foreground => null,
+    };
+}
+
+fn dynamicCommandForKey(key: DynamicKey) u16 {
+    return switch (key) {
+        .foreground => 10,
+        .background => 11,
+        .cursor => 12,
+        .pointer_foreground => 13,
+        .pointer_background => 14,
+        .tektronix_foreground => 15,
+        .tektronix_background => 16,
+        .selection_background => 17,
+        .tektronix_cursor => 18,
+        .selection_foreground => 19,
+    };
+}
+
+fn dynamicColor(colors: State, key: DynamicKey) ?Screen.Color {
+    return switch (key) {
+        .foreground => colors.foreground,
+        .background => colors.background,
+        .cursor => colors.cursor,
+        .pointer_foreground => colors.pointer_foreground,
+        .pointer_background => colors.pointer_background,
+        .tektronix_foreground => colors.tektronix_foreground,
+        .tektronix_background => colors.tektronix_background,
+        .selection_background => colors.selection_background,
+        .tektronix_cursor => colors.tektronix_cursor,
+        .selection_foreground => colors.selection_foreground,
+    };
+}
+
+fn setDynamicColor(colors: *State, key: DynamicKey, color: Grid.Color) void {
+    switch (key) {
+        .foreground => colors.foreground = color,
+        .background => colors.background = color,
+        .cursor => colors.cursor = color,
+        .pointer_foreground => colors.pointer_foreground = color,
+        .pointer_background => colors.pointer_background = color,
+        .tektronix_foreground => colors.tektronix_foreground = color,
+        .tektronix_background => colors.tektronix_background = color,
+        .selection_background => colors.selection_background = color,
+        .tektronix_cursor => colors.tektronix_cursor = color,
+        .selection_foreground => colors.selection_foreground = color,
+    }
+}
+
+fn resetDynamicColor(colors: *State, key: DynamicKey) void {
+    switch (key) {
+        .foreground => colors.foreground = Grid.default_fg,
+        .background => colors.background = Grid.default_bg,
+        .cursor => colors.cursor = null,
+        .pointer_foreground => colors.pointer_foreground = null,
+        .pointer_background => colors.pointer_background = null,
+        .tektronix_foreground => colors.tektronix_foreground = null,
+        .tektronix_background => colors.tektronix_background = null,
+        .selection_background => colors.selection_background = null,
+        .tektronix_cursor => colors.tektronix_cursor = null,
+        .selection_foreground => colors.selection_foreground = null,
+    }
+}
+
 pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), color: Screen.Color) void {
     var buf: [32]u8 = undefined;
     const text = std.fmt.bufPrint(buf[0..], "rgb:{x:0>2}/{x:0>2}/{x:0>2}", .{ color.r, color.g, color.b }) catch return;
@@ -153,6 +339,13 @@ fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.Array
     const text = std.fmt.bufPrint(encode_buf, "\x1b]{d};", .{osc}) catch return;
     output.appendSlice(allocator, text) catch return;
     appendColorOsc(allocator, output, color);
+    output.appendSlice(allocator, "\x1b\\") catch {};
+}
+
+fn appendXtermDynamicColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: State, key: DynamicKey) void {
+    const text = std.fmt.bufPrint(encode_buf, "\x1b]{d};", .{dynamicCommandForKey(key)}) catch return;
+    output.appendSlice(allocator, text) catch return;
+    if (dynamicColor(colors, key)) |color| appendColorOsc(allocator, output, color);
     output.appendSlice(allocator, "\x1b\\") catch {};
 }
 

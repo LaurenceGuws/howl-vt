@@ -10,7 +10,12 @@ const SemanticEvent = events.SemanticEvent;
 pub fn process(kind: parser_mod.OscKind, command: ?u16, payload: []const u8) ?SemanticEvent {
     if (command) |cmd| switch (cmd) {
         22 => return SemanticEvent{ .kitty_pointer_shape = kitty.parsePointerShape(payload) },
-        4, 10, 11, 12, 21, 104, 110, 111, 112 => return SemanticEvent{ .color_control = .{ .command = cmd, .payload = payload } },
+        4, 5,
+        10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+        21,
+        104,
+        110, 111, 112, 113, 114, 115, 116, 117, 118, 119,
+        => return SemanticEvent{ .color_control = .{ .command = cmd, .payload = payload } },
         9, 99 => if (kitty.parseNotification(payload)) |notification| return SemanticEvent{ .kitty_notification = notification },
         133 => if (kitty.parseShellMark(payload)) |mark| return SemanticEvent{ .kitty_shell_mark = mark },
         66 => return SemanticEvent{ .kitty_text_size = payload },

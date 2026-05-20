@@ -300,6 +300,69 @@ test "parser: OSC overlong numeric prefix stays raw payload" {
     try std.testing.expectEqualSlices(u8, "999999999;abc", output.actions.items[0].osc_dispatch.payload);
 }
 
+test "parser: explicit OSC ladder recognizes full Ghostty command list" {
+    const gpa = std.testing.allocator;
+    const cases = [_]struct {
+        seq: []const u8,
+        command: ?u16,
+    }{
+        .{ .seq = "\x1b]0;title\x07", .command = 0 },
+        .{ .seq = "\x1b]1;icon\x07", .command = 1 },
+        .{ .seq = "\x1b]2;title\x07", .command = 2 },
+        .{ .seq = "\x1b]4;1;#ff0000\x1b\\", .command = 4 },
+        .{ .seq = "\x1b]5;0;#ff0000\x1b\\", .command = 5 },
+        .{ .seq = "\x1b]7;file:///tmp\x1b\\", .command = 7 },
+        .{ .seq = "\x1b]8;;https://example.com\x07", .command = 8 },
+        .{ .seq = "\x1b]9;i=1:p=body;Hi\x1b\\", .command = 9 },
+        .{ .seq = "\x1b]10;#010203\x1b\\", .command = 10 },
+        .{ .seq = "\x1b]11;#010203\x1b\\", .command = 11 },
+        .{ .seq = "\x1b]12;#010203\x1b\\", .command = 12 },
+        .{ .seq = "\x1b]13;#010203\x1b\\", .command = 13 },
+        .{ .seq = "\x1b]14;#010203\x1b\\", .command = 14 },
+        .{ .seq = "\x1b]15;#010203\x1b\\", .command = 15 },
+        .{ .seq = "\x1b]16;#010203\x1b\\", .command = 16 },
+        .{ .seq = "\x1b]17;#010203\x1b\\", .command = 17 },
+        .{ .seq = "\x1b]18;#010203\x1b\\", .command = 18 },
+        .{ .seq = "\x1b]19;#010203\x1b\\", .command = 19 },
+        .{ .seq = "\x1b]21;foreground=?\x1b\\", .command = 21 },
+        .{ .seq = "\x1b]22;pointer\x1b\\", .command = 22 },
+        .{ .seq = "\x1b]52;c;AAAA\x1b\\", .command = 52 },
+        .{ .seq = "\x1b]66;s=2;Hi\x1b\\", .command = 66 },
+        .{ .seq = "\x1b]99;i=1:p=body;Hello\x1b\\", .command = 99 },
+        .{ .seq = "\x1b]104;1\x1b\\", .command = 104 },
+        .{ .seq = "\x1b]110\x1b\\", .command = 110 },
+        .{ .seq = "\x1b]111\x1b\\", .command = 111 },
+        .{ .seq = "\x1b]112\x1b\\", .command = 112 },
+        .{ .seq = "\x1b]113\x1b\\", .command = 113 },
+        .{ .seq = "\x1b]114\x1b\\", .command = 114 },
+        .{ .seq = "\x1b]115\x1b\\", .command = 115 },
+        .{ .seq = "\x1b]116\x1b\\", .command = 116 },
+        .{ .seq = "\x1b]117\x1b\\", .command = 117 },
+        .{ .seq = "\x1b]118\x1b\\", .command = 118 },
+        .{ .seq = "\x1b]119\x1b\\", .command = 119 },
+        .{ .seq = "\x1b]133;D;7\x07", .command = 133 },
+        .{ .seq = "\x1b]777;notify;body\x1b\\", .command = 777 },
+        .{ .seq = "\x1b]1337;File=name=test;AAAA\x1b\\", .command = 1337 },
+        .{ .seq = "\x1b]3008;mark\x1b\\", .command = 3008 },
+        .{ .seq = "\x1b]30001\x1b\\", .command = 30001 },
+        .{ .seq = "\x1b]30101\x1b\\", .command = 30101 },
+        .{ .seq = "\x1b]5113;cmd=data;AAAA\x1b\\", .command = 5113 },
+        .{ .seq = "\x1b]5522;type=write;AAAA\x1b\\", .command = 5522 },
+    };
+
+    for (cases) |case| {
+        var parser = try Parser.init(gpa);
+        defer parser.deinit();
+        var output = try Output.init(gpa);
+        defer output.deinit(gpa);
+
+        for (case.seq) |byte| output.appendPhases(parser.next(byte));
+        try expectActionCount(output.actions.items, 1);
+        try std.testing.expect(output.actions.items[0] == .osc_dispatch);
+        try std.testing.expectEqual(case.command, output.actions.items[0].osc_dispatch.command);
+    }
+}
+
 test "parser: CSI with multiple parameters exact order" {
     const gpa = std.testing.allocator;
     var parser = try Parser.init(gpa);

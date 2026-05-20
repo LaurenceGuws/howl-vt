@@ -91,6 +91,8 @@ throughput truth, and zero tolerance for stale doc or code posture.
     promotion is centralized in one helper.
   - OSC prefix progression now uses an explicit state ladder for the supported command surface rather
     than a generic numeric accumulator path.
+  - the explicit OSC ladder now copies Ghostty's full parser command list, and validation tests cover
+    every command in that copied list.
   - next parser-reference pressure is Ghostty's exact OSC command-state ladder and per-command
     capture shape, not queue-side reparsing, a second metadata copy layer, or duplicate APC/DCS/PM
     payload owner.

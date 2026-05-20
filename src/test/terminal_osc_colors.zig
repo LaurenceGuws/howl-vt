@@ -259,6 +259,62 @@ test "xterm OSC colors set query and reset palette and dynamic colors" {
     try std.testing.expectEqual(@as(?Grid.Color, null), HostState.terminalColorState(&terminal).cursor);
 }
 
+test "xterm extra dynamic colors set query and reset host-neutral state" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    defer terminal.deinit();
+
+    feedSlice(&terminal, "\x1b]13;#010203\x1b\\\x1b]14;#040506\x1b\\\x1b]15;#070809\x1b\\\x1b]16;#0a0b0c\x1b\\\x1b]17;#0d0e0f\x1b\\\x1b]18;#101112\x1b\\\x1b]19;#131415\x1b\\");
+    feedSlice(&terminal, "\x1b]13;?\x1b\\\x1b]14;?\x1b\\\x1b]15;?\x1b\\\x1b]16;?\x1b\\\x1b]17;?\x1b\\\x1b]18;?\x1b\\\x1b]19;?\x1b\\");
+    apply(&terminal);
+
+    const colors = HostState.terminalColorState(&terminal);
+    try std.testing.expectEqual(Grid.Color{ .r = 1, .g = 2, .b = 3 }, colors.pointer_foreground.?);
+    try std.testing.expectEqual(Grid.Color{ .r = 4, .g = 5, .b = 6 }, colors.pointer_background.?);
+    try std.testing.expectEqual(Grid.Color{ .r = 7, .g = 8, .b = 9 }, colors.tektronix_foreground.?);
+    try std.testing.expectEqual(Grid.Color{ .r = 10, .g = 11, .b = 12 }, colors.tektronix_background.?);
+    try std.testing.expectEqual(Grid.Color{ .r = 13, .g = 14, .b = 15 }, colors.selection_background.?);
+    try std.testing.expectEqual(Grid.Color{ .r = 16, .g = 17, .b = 18 }, colors.tektronix_cursor.?);
+    try std.testing.expectEqual(Grid.Color{ .r = 19, .g = 20, .b = 21 }, colors.selection_foreground.?);
+    try std.testing.expectEqualStrings("\x1b]13;rgb:01/02/03\x1b\\\x1b]14;rgb:04/05/06\x1b\\\x1b]15;rgb:07/08/09\x1b\\\x1b]16;rgb:0a/0b/0c\x1b\\\x1b]17;rgb:0d/0e/0f\x1b\\\x1b]18;rgb:10/11/12\x1b\\\x1b]19;rgb:13/14/15\x1b\\", HostState.pendingOutput(&terminal));
+
+    HostState.clearPendingOutput(&terminal);
+    feedSlice(&terminal, "\x1b]113\x1b\\\x1b]114\x1b\\\x1b]115\x1b\\\x1b]116\x1b\\\x1b]117\x1b\\\x1b]118\x1b\\\x1b]119\x1b\\");
+    apply(&terminal);
+    const reset = HostState.terminalColorState(&terminal);
+    try std.testing.expectEqual(@as(?Grid.Color, null), reset.pointer_foreground);
+    try std.testing.expectEqual(@as(?Grid.Color, null), reset.pointer_background);
+    try std.testing.expectEqual(@as(?Grid.Color, null), reset.tektronix_foreground);
+    try std.testing.expectEqual(@as(?Grid.Color, null), reset.tektronix_background);
+    try std.testing.expectEqual(@as(?Grid.Color, null), reset.selection_background);
+    try std.testing.expectEqual(@as(?Grid.Color, null), reset.tektronix_cursor);
+    try std.testing.expectEqual(@as(?Grid.Color, null), reset.selection_foreground);
+}
+
+test "xterm special colors via OSC 5 and OSC 4 special offsets" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    defer terminal.deinit();
+
+    feedSlice(&terminal, "\x1b]5;0;#010203;1;#040506\x1b\\\x1b]4;258;#070809;260;#0a0b0c\x1b\\");
+    feedSlice(&terminal, "\x1b]5;0;?;1;?\x1b\\\x1b]4;258;?;260;?\x1b\\");
+    apply(&terminal);
+
+    const colors = HostState.terminalColorState(&terminal);
+    try std.testing.expectEqual(Grid.Color{ .r = 1, .g = 2, .b = 3 }, colors.special_palette[0].?);
+    try std.testing.expectEqual(Grid.Color{ .r = 4, .g = 5, .b = 6 }, colors.special_palette[1].?);
+    try std.testing.expectEqual(Grid.Color{ .r = 7, .g = 8, .b = 9 }, colors.special_palette[2].?);
+    try std.testing.expectEqual(Grid.Color{ .r = 10, .g = 11, .b = 12 }, colors.special_palette[4].?);
+    try std.testing.expectEqualStrings("\x1b]5;0;rgb:01/02/03\x1b\\\x1b]5;1;rgb:04/05/06\x1b\\\x1b]4;258;rgb:07/08/09\x1b\\\x1b]4;260;rgb:0a/0b/0c\x1b\\", HostState.pendingOutput(&terminal));
+
+    HostState.clearPendingOutput(&terminal);
+    feedSlice(&terminal, "\x1b]104;258;260\x1b\\");
+    apply(&terminal);
+    const reset = HostState.terminalColorState(&terminal);
+    try std.testing.expectEqual(@as(?Grid.Color, null), reset.special_palette[2]);
+    try std.testing.expectEqual(@as(?Grid.Color, null), reset.special_palette[4]);
+}
+
 test "kitty color stack restores terminal color snapshots" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);

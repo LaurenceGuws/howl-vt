@@ -102,3 +102,5 @@ Closed result so far:
   payload queries, and recognized-prefix promotion is centralized in one helper
 - Howl now uses an explicit prefix-state ladder for its actual supported OSC command surface instead
   of the old generic numeric-prefix accumulator path
+- Howl's explicit OSC ladder now copies Ghostty's full parser command list, and parser validation
+  covers every command in that copied list
