@@ -1,5 +1,3 @@
-//! Locator protocol state and replies.
-
 const std = @import("std");
 const input_mod = @import("../input.zig");
 const action_mod = @import("../action.zig");

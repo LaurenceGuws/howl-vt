@@ -1,5 +1,3 @@
-//! Parser event routing and direct VT application.
-
 const events = @import("vocabulary.zig");
 const host_apply = @import("../host/apply.zig");
 const kitty_apply = @import("../kitty/apply.zig");

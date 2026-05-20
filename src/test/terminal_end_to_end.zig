@@ -1,5 +1,3 @@
-//! End-to-end terminal flow tests.
-
 const std = @import("std");
 const terminal_mod = @import("../terminal.zig");
 const stream_harness = @import("stream_harness.zig");

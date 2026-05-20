@@ -1,5 +1,3 @@
-//! CSI parameter normalization.
-
 const std = @import("std");
 const events = @import("../../action/vocabulary.zig");
 const parser_mod = @import("../../parser.zig");

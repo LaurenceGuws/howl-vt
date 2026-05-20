@@ -1,5 +1,3 @@
-//! Kitty graphics behavior tests.
-
 const std = @import("std");
 const host_state = @import("../host/state.zig");
 const kitty_state = @import("../kitty/state.zig");

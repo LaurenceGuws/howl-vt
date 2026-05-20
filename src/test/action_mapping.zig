@@ -1,5 +1,3 @@
-//! Parser-event to semantic-event mapping tests.
-
 const std = @import("std");
 const action = @import("../action.zig");
 const parser_mod = @import("../parser.zig");

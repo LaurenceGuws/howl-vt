@@ -1,5 +1,3 @@
-//! Kitty protocol payload parsing.
-
 const std = @import("std");
 const vocabulary = @import("../action/vocabulary.zig");
 

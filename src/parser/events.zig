@@ -1,5 +1,3 @@
-//! Parser actions collected as parsed events.
-
 const std = @import("std");
 const parser_mod = @import("main.zig");
 

@@ -1,5 +1,3 @@
-//! Scrollback fuzz scenarios.
-
 const std = @import("std");
 const howl_vt = @import("howl_vt");
 

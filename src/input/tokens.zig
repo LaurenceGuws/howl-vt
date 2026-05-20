@@ -1,5 +1,3 @@
-//! Host input token parsing.
-
 const std = @import("std");
 const keyboard = @import("keyboard.zig");
 

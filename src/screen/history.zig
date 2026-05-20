@@ -1,5 +1,3 @@
-//! Grid scrollback row storage.
-
 const std = @import("std");
 const cell = @import("cell.zig");
 

@@ -1,5 +1,3 @@
-//! String-control parser state owners.
-
 const std = @import("std");
 const parser_mod = @import("main.zig");
 

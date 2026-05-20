@@ -1,5 +1,3 @@
-//! Kitty keyboard protocol state and reports.
-
 const std = @import("std");
 
 pub const Stack = struct {

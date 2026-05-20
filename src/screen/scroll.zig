@@ -1,5 +1,3 @@
-//! Grid line-feed and scroll mutations.
-
 const cell = @import("cell.zig");
 
 pub fn lineFeed(self: anytype) void {

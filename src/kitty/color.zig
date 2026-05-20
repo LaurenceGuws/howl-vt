@@ -1,5 +1,3 @@
-//! Kitty color stack and OSC 21 behavior.
-
 const std = @import("std");
 const osc_color = @import("../control/osc_color.zig");
 

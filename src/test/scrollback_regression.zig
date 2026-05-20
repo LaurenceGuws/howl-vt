@@ -1,5 +1,3 @@
-//! Scrollback preservation regression tests.
-
 const std = @import("std");
 const scrollback = @import("fuzz_scrollback");
 

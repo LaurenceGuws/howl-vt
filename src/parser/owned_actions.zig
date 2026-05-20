@@ -1,5 +1,3 @@
-//! Parser actions copied into owned buffers.
-
 const std = @import("std");
 const parser_mod = @import("main.zig");
 

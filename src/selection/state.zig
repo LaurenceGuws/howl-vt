@@ -1,5 +1,3 @@
-//! Terminal selection state.
-
 const std = @import("std");
 const screen_mod = @import("../screen.zig");
 

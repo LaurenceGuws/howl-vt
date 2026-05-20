@@ -1,5 +1,3 @@
-//! Grid cell values and defaults.
-
 const color = @import("color.zig");
 
 const Color = color.Color;

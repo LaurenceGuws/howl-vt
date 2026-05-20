@@ -1,5 +1,3 @@
-//! Grid character and column edit mutations.
-
 const std = @import("std");
 const cell = @import("cell.zig");
 

@@ -1,5 +1,3 @@
-//! DCS semantic event mapping.
-
 const parsed_events = @import("../parser/events.zig");
 
 pub fn requestStatusPayload(data: []const u8) ?[]const u8 {

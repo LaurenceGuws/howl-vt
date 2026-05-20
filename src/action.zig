@@ -1,5 +1,3 @@
-//! Parser events, action routing, and action vocabulary.
-
 const parsed_events = @import("parser/events.zig");
 const route = @import("action/route.zig");
 const vocabulary = @import("action/vocabulary.zig");

@@ -1,5 +1,3 @@
-//! Terminal report formatting and checksums.
-
 const std = @import("std");
 const screen_mod = @import("../screen.zig");
 const action_mod = @import("../action.zig");

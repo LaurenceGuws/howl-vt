@@ -1,5 +1,3 @@
-//! Host-facing consequence application.
-
 const std = @import("std");
 const input = @import("../input.zig");
 const locator = @import("../control/locator.zig");

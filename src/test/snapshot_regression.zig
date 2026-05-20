@@ -1,5 +1,3 @@
-//! Snapshot capture regression tests.
-
 const std = @import("std");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");

@@ -1,5 +1,3 @@
-//! Grid color values and defaults.
-
 pub const Color = struct {
     r: u8,
     g: u8,

@@ -1,5 +1,3 @@
-//! Keyboard input values and escape encoding.
-
 const std = @import("std");
 
 /// Host physical-key identifier.

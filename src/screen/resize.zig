@@ -1,5 +1,3 @@
-//! Grid resize and reflow behavior.
-
 const std = @import("std");
 const dirty = @import("dirty.zig");
 const cell = @import("cell.zig");

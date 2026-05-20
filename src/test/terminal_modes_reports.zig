@@ -1,5 +1,3 @@
-//! Input encoding, mode tracking, and report behavior tests.
-
 const std = @import("std");
 const action_mod = @import("../action.zig");
 const host_state = @import("../host/state.zig");

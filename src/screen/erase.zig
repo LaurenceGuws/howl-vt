@@ -1,5 +1,3 @@
-//! Grid erase and selective-erase mutations.
-
 const cell_mod = @import("cell.zig");
 
 pub fn eraseDisplay(self: anytype, mode: u2) void {

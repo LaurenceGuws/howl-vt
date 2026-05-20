@@ -1,5 +1,3 @@
-//! CSI intermediate-byte semantic event mapping.
-
 const events = @import("../../action/vocabulary.zig");
 const params_mod = @import("params.zig");
 

@@ -1,5 +1,3 @@
-//! Grid tab-stop initialization and copy rules.
-
 const std = @import("std");
 
 pub fn allocTabStops(allocator: std.mem.Allocator, cols: u16) !?[]bool {

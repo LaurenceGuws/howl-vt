@@ -1,5 +1,3 @@
-//! Public Terminal API and lifecycle tests.
-
 const std = @import("std");
 const parser_mod = @import("../parser.zig");
 const terminal_mod = @import("../terminal.zig");

@@ -1,5 +1,3 @@
-//! Grid cursor bounds, origin, and save/restore.
-
 pub const CursorShape = enum {
     block,
     underline,

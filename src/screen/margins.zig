@@ -1,5 +1,3 @@
-//! Grid scroll and left/right margin configuration.
-
 pub fn setScrollRegion(self: anytype, top: u16, bottom: ?u16) void {
     if (self.rows == 0) {
         self.scroll_top = 0;

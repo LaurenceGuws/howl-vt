@@ -1,5 +1,3 @@
-//! terminal fuzz executable entrypoint.
-
 const std = @import("std");
 const protocol = @import("protocol.zig");
 const scrollback = @import("scrollback.zig");

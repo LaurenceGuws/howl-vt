@@ -1,5 +1,3 @@
-//! Mouse input values and escape encoding.
-
 const std = @import("std");
 const keyboard = @import("keyboard.zig");
 

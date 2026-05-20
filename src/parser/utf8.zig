@@ -1,5 +1,3 @@
-//! Incremental UTF-8 decoding for parser input.
-
 const std = @import("std");
 
 /// UTF-8 decode result union.

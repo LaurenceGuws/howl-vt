@@ -1,5 +1,3 @@
-//! ESC final-byte semantic mapping.
-
 pub const EscAction = union(enum) {
     line_feed,
     next_line,

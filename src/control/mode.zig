@@ -1,5 +1,3 @@
-//! Terminal mode state and save/restore.
-
 const input_mod = @import("../input.zig");
 const action_mod = @import("../action.zig");
 

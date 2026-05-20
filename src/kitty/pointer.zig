@@ -1,5 +1,3 @@
-//! Kitty pointer-shape protocol state and queries.
-
 const std = @import("std");
 
 pub const Shape = enum {

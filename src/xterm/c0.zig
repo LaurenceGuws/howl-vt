@@ -1,5 +1,3 @@
-//! C0 semantic mapping.
-
 pub const C0Action = enum {
     line_feed,
     carriage_return,

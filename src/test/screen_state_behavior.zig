@@ -1,5 +1,3 @@
-//! Screen-state mutation behavior tests.
-
 const std = @import("std");
 const screen_mod = @import("../screen.zig");
 const action = @import("../action.zig");

@@ -1,5 +1,3 @@
-//! Rectangular grid mutations.
-
 const action = @import("../action.zig");
 const style_mod = @import("style.zig");
 const cell = @import("cell.zig");

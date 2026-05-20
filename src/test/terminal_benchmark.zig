@@ -1,5 +1,3 @@
-//! Deterministic M7 baseline smoke test.
-
 const std = @import("std");
 const terminal_mod = @import("../terminal.zig");
 const pty_feed_record = @import("pty_feed_record.zig");

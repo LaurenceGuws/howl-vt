@@ -1,5 +1,3 @@
-//! Host input values and encoding.
-
 const std = @import("std");
 const keyboard = @import("keyboard.zig");
 const mouse = @import("mouse.zig");

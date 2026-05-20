@@ -1,5 +1,3 @@
-//! Terminal action vocabulary and payload types.
-
 const parser_mod = @import("../parser.zig");
 
 const csi_max_params = parser_mod.max_params;

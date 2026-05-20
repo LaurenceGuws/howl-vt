@@ -1,5 +1,3 @@
-//! CSI leader-byte semantic event mapping.
-
 const std = @import("std");
 const events = @import("../../action/vocabulary.zig");
 const params_mod = @import("params.zig");

@@ -1,5 +1,3 @@
-//! Grid dirty-region tracking.
-
 const std = @import("std");
 
 pub const DirtyRows = struct {

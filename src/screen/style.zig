@@ -1,5 +1,3 @@
-//! Grid text style and SGR color decoding.
-
 const std = @import("std");
 const parser_mod = @import("../parser.zig");
 const cell_mod = @import("cell.zig");

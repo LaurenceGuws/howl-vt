@@ -1,5 +1,3 @@
-//! Screen-action dispatch to grid mutations.
-
 const action = @import("../action.zig");
 
 const ScreenAction = action.ScreenAction;

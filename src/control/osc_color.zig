@@ -1,5 +1,3 @@
-//! OSC terminal color state and xterm color controls.
-
 const std = @import("std");
 const screen_mod = @import("../screen.zig");
 

@@ -1,5 +1,3 @@
-//! Terminal screen state and mutations.
-
 const std = @import("std");
 const action_mod = @import("action.zig");
 const parser_mod = @import("parser.zig");
