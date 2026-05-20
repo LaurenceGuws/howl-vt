@@ -4,6 +4,7 @@ const parser_mod = @import("../parser.zig");
 
 const Parser = parser_mod.Parser;
 const OscTerminator = parser_mod.OscTerminator;
+const OscAction = parser_mod.OscAction;
 const Action = parser_mod.Action;
 
 const Output = struct {
@@ -115,10 +116,10 @@ test "parser: OSC with BEL terminator" {
     for ("\x1b]title\x07") |byte| output.appendPhases(parser.next(byte));
     try expectActionCount(output.actions.items, 1);
     try std.testing.expect(output.actions.items[0] == .osc_dispatch);
-    try std.testing.expectEqual(OscTerminator.bel, output.actions.items[0].osc_dispatch.term);
-    try std.testing.expectEqual(parser_mod.OscKind.title, output.actions.items[0].osc_dispatch.kind);
-    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command);
-    try std.testing.expectEqualSlices(u8, "title", output.actions.items[0].osc_dispatch.payload);
+    try std.testing.expectEqual(OscTerminator.bel, output.actions.items[0].osc_dispatch.term());
+    try std.testing.expectEqual(std.meta.Tag(OscAction).raw_title, std.meta.activeTag(output.actions.items[0].osc_dispatch));
+    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command());
+    try std.testing.expectEqualSlices(u8, "title", output.actions.items[0].osc_dispatch.payload());
 }
 
 test "parser: OSC with ST terminator" {
@@ -131,10 +132,10 @@ test "parser: OSC with ST terminator" {
     for ("\x1b]url\x1b\\") |byte| output.appendPhases(parser.next(byte));
     try expectActionCount(output.actions.items, 1);
     try std.testing.expect(output.actions.items[0] == .osc_dispatch);
-    try std.testing.expectEqual(OscTerminator.st, output.actions.items[0].osc_dispatch.term);
-    try std.testing.expectEqual(parser_mod.OscKind.title, output.actions.items[0].osc_dispatch.kind);
-    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command);
-    try std.testing.expectEqualSlices(u8, "url", output.actions.items[0].osc_dispatch.payload);
+    try std.testing.expectEqual(OscTerminator.st, output.actions.items[0].osc_dispatch.term());
+    try std.testing.expectEqual(std.meta.Tag(OscAction).raw_title, std.meta.activeTag(output.actions.items[0].osc_dispatch));
+    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command());
+    try std.testing.expectEqualSlices(u8, "url", output.actions.items[0].osc_dispatch.payload());
 }
 
 test "parser: APC with ST terminator" {
@@ -252,7 +253,7 @@ test "parser: stray ESC in OSC (marker dropped, byte appended)" {
     for ("\x1b]ab\x1bcd\x1b\\") |byte| output.appendPhases(parser.next(byte));
     try expectActionCount(output.actions.items, 1);
     try std.testing.expect(output.actions.items[0] == .osc_dispatch);
-    try std.testing.expectEqualSlices(u8, "abcd", output.actions.items[0].osc_dispatch.payload);
+    try std.testing.expectEqualSlices(u8, "abcd", output.actions.items[0].osc_dispatch.payload());
 }
 
 test "parser: OSC invalid command with separator stays raw other payload" {
@@ -265,9 +266,9 @@ test "parser: OSC invalid command with separator stays raw other payload" {
     for ("\x1b]foo;bar\x07") |byte| output.appendPhases(parser.next(byte));
     try expectActionCount(output.actions.items, 1);
     try std.testing.expect(output.actions.items[0] == .osc_dispatch);
-    try std.testing.expectEqual(parser_mod.OscKind.other, output.actions.items[0].osc_dispatch.kind);
-    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command);
-    try std.testing.expectEqualSlices(u8, "foo;bar", output.actions.items[0].osc_dispatch.payload);
+    try std.testing.expectEqual(std.meta.Tag(OscAction).raw_other, std.meta.activeTag(output.actions.items[0].osc_dispatch));
+    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command());
+    try std.testing.expectEqualSlices(u8, "foo;bar", output.actions.items[0].osc_dispatch.payload());
 }
 
 test "parser: OSC invalid numeric prefix without separator stays raw title payload" {
@@ -280,9 +281,9 @@ test "parser: OSC invalid numeric prefix without separator stays raw title paylo
     for ("\x1b]12x\x07") |byte| output.appendPhases(parser.next(byte));
     try expectActionCount(output.actions.items, 1);
     try std.testing.expect(output.actions.items[0] == .osc_dispatch);
-    try std.testing.expectEqual(parser_mod.OscKind.title, output.actions.items[0].osc_dispatch.kind);
-    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command);
-    try std.testing.expectEqualSlices(u8, "12x", output.actions.items[0].osc_dispatch.payload);
+    try std.testing.expectEqual(std.meta.Tag(OscAction).raw_title, std.meta.activeTag(output.actions.items[0].osc_dispatch));
+    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command());
+    try std.testing.expectEqualSlices(u8, "12x", output.actions.items[0].osc_dispatch.payload());
 }
 
 test "parser: OSC overlong numeric prefix stays raw payload" {
@@ -295,9 +296,9 @@ test "parser: OSC overlong numeric prefix stays raw payload" {
     for ("\x1b]999999999;abc\x07") |byte| output.appendPhases(parser.next(byte));
     try expectActionCount(output.actions.items, 1);
     try std.testing.expect(output.actions.items[0] == .osc_dispatch);
-    try std.testing.expectEqual(parser_mod.OscKind.other, output.actions.items[0].osc_dispatch.kind);
-    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command);
-    try std.testing.expectEqualSlices(u8, "999999999;abc", output.actions.items[0].osc_dispatch.payload);
+    try std.testing.expectEqual(std.meta.Tag(OscAction).raw_other, std.meta.activeTag(output.actions.items[0].osc_dispatch));
+    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command());
+    try std.testing.expectEqualSlices(u8, "999999999;abc", output.actions.items[0].osc_dispatch.payload());
 }
 
 test "parser: explicit OSC ladder recognizes full Ghostty command list" {
@@ -359,7 +360,7 @@ test "parser: explicit OSC ladder recognizes full Ghostty command list" {
         for (case.seq) |byte| output.appendPhases(parser.next(byte));
         try expectActionCount(output.actions.items, 1);
         try std.testing.expect(output.actions.items[0] == .osc_dispatch);
-        try std.testing.expectEqual(case.command, output.actions.items[0].osc_dispatch.command);
+        try std.testing.expectEqual(case.command, output.actions.items[0].osc_dispatch.command());
     }
 }
 

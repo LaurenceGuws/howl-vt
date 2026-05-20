@@ -51,8 +51,6 @@ pub const CsiSeparatorList = std.StaticBitSet(csi_max_params);
 pub const max_metadata_control_bytes = metadata_control_max_bytes;
 pub const max_large_osc_control_bytes = large_osc_control_max_bytes;
 pub const max_apc_control_bytes = apc_max_bytes;
-pub const OscKind = string_control_mod.OscKind;
-
 pub const OscTerminator = enum {
     bel,
     st,
@@ -64,13 +62,123 @@ pub const EscAction = struct {
     intermediates_len: u8,
 };
 
-pub const OscAction = struct {
-    // Borrowed parser-owned payload slice. Callers that retain it past the
-    // next `Parser.next` call must copy.
-    kind: OscKind,
-    command: ?u16,
+pub const OscText = struct {
     payload: []const u8,
     term: OscTerminator,
+};
+
+pub const OscCommandText = struct {
+    command: u16,
+    payload: []const u8,
+    term: OscTerminator,
+};
+
+pub const OscAction = union(enum) {
+    raw_title: OscText,
+    raw_other: OscText,
+    title: OscCommandText,
+    icon: OscText,
+    palette_control: OscCommandText,
+    palette_reset: OscCommandText,
+    dynamic_color: OscCommandText,
+    dynamic_reset: OscCommandText,
+    report_pwd: OscText,
+    hyperlink: OscText,
+    notification: OscCommandText,
+    pointer_shape: OscText,
+    clipboard: OscCommandText,
+    kitty_color: OscCommandText,
+    kitty_text_size: OscText,
+    shell_mark: OscText,
+    rxvt_extension: OscText,
+    iterm2: OscText,
+    context_signal: OscText,
+    kitty_color_stack_push: OscTerminator,
+    kitty_color_stack_pop: OscTerminator,
+    kitty_file_transfer: OscText,
+    kitty_clipboard: OscText,
+
+    pub fn payload(self: OscAction) []const u8 {
+        return switch (self) {
+            .raw_title => |v| v.payload,
+            .raw_other => |v| v.payload,
+            .title => |v| v.payload,
+            .icon => |v| v.payload,
+            .palette_control => |v| v.payload,
+            .palette_reset => |v| v.payload,
+            .dynamic_color => |v| v.payload,
+            .dynamic_reset => |v| v.payload,
+            .report_pwd => |v| v.payload,
+            .hyperlink => |v| v.payload,
+            .notification => |v| v.payload,
+            .pointer_shape => |v| v.payload,
+            .clipboard => |v| v.payload,
+            .kitty_color => |v| v.payload,
+            .kitty_text_size => |v| v.payload,
+            .shell_mark => |v| v.payload,
+            .rxvt_extension => |v| v.payload,
+            .iterm2 => |v| v.payload,
+            .context_signal => |v| v.payload,
+            .kitty_color_stack_push, .kitty_color_stack_pop => "",
+            .kitty_file_transfer => |v| v.payload,
+            .kitty_clipboard => |v| v.payload,
+        };
+    }
+
+    pub fn command(self: OscAction) ?u16 {
+        return switch (self) {
+            .raw_title, .raw_other => null,
+            .title => |v| v.command,
+            .icon => 1,
+            .palette_control => |v| v.command,
+            .palette_reset => |v| v.command,
+            .dynamic_color => |v| v.command,
+            .dynamic_reset => |v| v.command,
+            .kitty_color => |v| v.command,
+            .report_pwd => 7,
+            .hyperlink => 8,
+            .notification => |v| v.command,
+            .pointer_shape => 22,
+            .clipboard => |v| v.command,
+            .kitty_text_size => 66,
+            .shell_mark => 133,
+            .rxvt_extension => 777,
+            .iterm2 => 1337,
+            .context_signal => 3008,
+            .kitty_color_stack_push => 30001,
+            .kitty_color_stack_pop => 30101,
+            .kitty_file_transfer => 5113,
+            .kitty_clipboard => 5522,
+        };
+    }
+
+    pub fn term(self: OscAction) OscTerminator {
+        return switch (self) {
+            .raw_title => |v| v.term,
+            .raw_other => |v| v.term,
+            .title => |v| v.term,
+            .icon => |v| v.term,
+            .palette_control => |v| v.term,
+            .palette_reset => |v| v.term,
+            .dynamic_color => |v| v.term,
+            .dynamic_reset => |v| v.term,
+            .report_pwd => |v| v.term,
+            .hyperlink => |v| v.term,
+            .notification => |v| v.term,
+            .pointer_shape => |v| v.term,
+            .clipboard => |v| v.term,
+            .kitty_color => |v| v.term,
+            .kitty_text_size => |v| v.term,
+            .shell_mark => |v| v.term,
+            .rxvt_extension => |v| v.term,
+            .iterm2 => |v| v.term,
+            .context_signal => |v| v.term,
+            .kitty_color_stack_push => |v| v,
+            .kitty_color_stack_pop => |v| v,
+            .kitty_file_transfer => |v| v.term,
+            .kitty_clipboard => |v| v.term,
+        };
+    }
 };
 
 pub const DcsHook = struct {
@@ -290,13 +398,7 @@ pub const Parser = struct {
                     '\\', 0x9C => OscTerminator.st,
                     else => break :exit null,
                 };
-                const osc = self.osc.snapshot();
-                break :exit .{ .osc_dispatch = .{
-                    .kind = osc.kind,
-                    .command = osc.command,
-                    .payload = osc.payload,
-                    .term = term,
-                } };
+                break :exit .{ .osc_dispatch = self.osc.snapshot(term) };
             },
             .dcs_passthrough => dcs: {
                 self.dcs.clearFinished();

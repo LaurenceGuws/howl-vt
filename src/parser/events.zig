@@ -34,20 +34,13 @@ pub const Event = union(enum) {
     codepoint: u21,
     control: u8,
     style_change: StyleChange,
-    osc: struct {
-        kind: OscKind,
-        command: ?u16,
-        payload: []const u8,
-        terminator: parser_mod.OscTerminator,
-    },
+    osc: parser_mod.OscAction,
     apc: []const u8,
     dcs: DcsEvent,
     pm: []const u8,
     esc_dispatch: parser_mod.EscAction,
     invalid_sequence,
 };
-
-pub const OscKind = parser_mod.OscKind;
 
 /// Parsed-event queue for parser callbacks.
 pub const ParsedEvents = struct {
@@ -93,7 +86,7 @@ pub const ParsedEvents = struct {
             intermediates_len: u8,
         },
         osc: struct {
-            kind: OscKind,
+            tag: std.meta.Tag(parser_mod.OscAction),
             command: ?u16,
             payload_len: u32,
             terminator: parser_mod.OscTerminator,
@@ -110,6 +103,8 @@ pub const ParsedEvents = struct {
         esc_dispatch: parser_mod.EscAction,
         invalid_sequence,
     };
+
+    const OscMeta = @FieldType(EventMeta, "osc");
 
     const DcsHookState = struct {
         final: u8,
@@ -370,12 +365,12 @@ pub const ParsedEvents = struct {
     }
 
     fn appendOsc(self: *ParsedEvents, action: parser_mod.OscAction) error{ OutOfMemory, ParsedEventLimit }!void {
-        try self.bytes.appendSlice(self.allocator, action.payload);
+        try self.bytes.appendSlice(self.allocator, action.payload());
         try self.appendMeta(.{ .osc = .{
-            .kind = action.kind,
-            .command = action.command,
-            .payload_len = boundedLen(action.payload.len),
-            .terminator = action.term,
+            .tag = std.meta.activeTag(action),
+            .command = action.command(),
+            .payload_len = boundedLen(action.payload().len),
+            .terminator = action.term(),
         } });
     }
 
@@ -515,12 +510,7 @@ pub const ParsedEvents = struct {
                 .intermediates = self.aux.items[aux_start .. aux_start + index(sc.intermediates_len)],
                 .intermediates_len = sc.intermediates_len,
             } },
-            .osc => |osc| .{ .osc = .{
-                .kind = osc.kind,
-                .command = osc.command,
-                .payload = self.bytes.items[byte_start .. byte_start + index(osc.payload_len)],
-                .terminator = osc.terminator,
-            } },
+            .osc => |osc| .{ .osc = oscActionFromMeta(osc, self.bytes.items[byte_start .. byte_start + index(osc.payload_len)]) },
             .apc => |len| .{ .apc = self.bytes.items[byte_start .. byte_start + index(len)] },
             .dcs => |dcs| .{ .dcs = .{
                 .body = self.bytes.items[byte_start .. byte_start + index(dcs.body_len)],
@@ -564,6 +554,34 @@ fn advanceCursor(meta: ParsedEvents.EventMeta, byte_idx: *u32, int_idx: *u32, au
         .pm => |len| byte_idx.* += len,
         .codepoint, .control, .esc_dispatch, .invalid_sequence => {},
     }
+}
+
+fn oscActionFromMeta(meta: ParsedEvents.OscMeta, payload: []const u8) parser_mod.OscAction {
+    return switch (meta.tag) {
+        .raw_title => .{ .raw_title = .{ .payload = payload, .term = meta.terminator } },
+        .raw_other => .{ .raw_other = .{ .payload = payload, .term = meta.terminator } },
+        .title => .{ .title = .{ .command = meta.command.?, .payload = payload, .term = meta.terminator } },
+        .icon => .{ .icon = .{ .payload = payload, .term = meta.terminator } },
+        .palette_control => .{ .palette_control = .{ .command = meta.command.?, .payload = payload, .term = meta.terminator } },
+        .palette_reset => .{ .palette_reset = .{ .command = meta.command.?, .payload = payload, .term = meta.terminator } },
+        .dynamic_color => .{ .dynamic_color = .{ .command = meta.command.?, .payload = payload, .term = meta.terminator } },
+        .dynamic_reset => .{ .dynamic_reset = .{ .command = meta.command.?, .payload = payload, .term = meta.terminator } },
+        .report_pwd => .{ .report_pwd = .{ .payload = payload, .term = meta.terminator } },
+        .hyperlink => .{ .hyperlink = .{ .payload = payload, .term = meta.terminator } },
+        .notification => .{ .notification = .{ .command = meta.command.?, .payload = payload, .term = meta.terminator } },
+        .pointer_shape => .{ .pointer_shape = .{ .payload = payload, .term = meta.terminator } },
+        .clipboard => .{ .clipboard = .{ .command = meta.command.?, .payload = payload, .term = meta.terminator } },
+        .kitty_color => .{ .kitty_color = .{ .command = meta.command.?, .payload = payload, .term = meta.terminator } },
+        .kitty_text_size => .{ .kitty_text_size = .{ .payload = payload, .term = meta.terminator } },
+        .shell_mark => .{ .shell_mark = .{ .payload = payload, .term = meta.terminator } },
+        .rxvt_extension => .{ .rxvt_extension = .{ .payload = payload, .term = meta.terminator } },
+        .iterm2 => .{ .iterm2 = .{ .payload = payload, .term = meta.terminator } },
+        .context_signal => .{ .context_signal = .{ .payload = payload, .term = meta.terminator } },
+        .kitty_color_stack_push => .{ .kitty_color_stack_push = meta.terminator },
+        .kitty_color_stack_pop => .{ .kitty_color_stack_pop = meta.terminator },
+        .kitty_file_transfer => .{ .kitty_file_transfer = .{ .payload = payload, .term = meta.terminator } },
+        .kitty_clipboard => .{ .kitty_clipboard = .{ .payload = payload, .term = meta.terminator } },
+    };
 }
 
 fn maybeCompactStore(comptime T: type, list: *std.ArrayList(T), head: *u32, min_reclaim: u32) void {
@@ -741,9 +759,9 @@ test "parsed events: maps OSC title command to typed osc event" {
     defer gpa.free(events);
     try std.testing.expect(events.len == 1);
     try std.testing.expect(events[0] == .osc);
-    try std.testing.expectEqual(OscKind.title, events[0].osc.kind);
-    try std.testing.expectEqual(@as(?u16, 0), events[0].osc.command);
-    try std.testing.expectEqualSlices(u8, "My Window", events[0].osc.payload);
+    try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).title, std.meta.activeTag(events[0].osc));
+    try std.testing.expectEqual(@as(?u16, 0), events[0].osc.command());
+    try std.testing.expectEqualSlices(u8, "My Window", events[0].osc.payload());
 }
 
 test "parsed events: preserves OSC clipboard transport" {
@@ -757,9 +775,9 @@ test "parsed events: preserves OSC clipboard transport" {
     defer gpa.free(events);
     try std.testing.expect(events.len == 1);
     try std.testing.expect(events[0] == .osc);
-    try std.testing.expectEqual(OscKind.clipboard, events[0].osc.kind);
-    try std.testing.expectEqual(@as(?u16, 52), events[0].osc.command);
-    try std.testing.expectEqualSlices(u8, "c;Zm9v", events[0].osc.payload);
+    try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).clipboard, std.meta.activeTag(events[0].osc));
+    try std.testing.expectEqual(@as(?u16, 52), events[0].osc.command());
+    try std.testing.expectEqualSlices(u8, "c;Zm9v", events[0].osc.payload());
 }
 
 test "parsed events: parses OSC command without semicolon payload" {
@@ -773,9 +791,9 @@ test "parsed events: parses OSC command without semicolon payload" {
     defer gpa.free(events);
     try std.testing.expect(events.len == 1);
     try std.testing.expect(events[0] == .osc);
-    try std.testing.expectEqual(OscKind.other, events[0].osc.kind);
-    try std.testing.expectEqual(@as(?u16, 30001), events[0].osc.command);
-    try std.testing.expectEqualSlices(u8, "", events[0].osc.payload);
+    try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).kitty_color_stack_push, std.meta.activeTag(events[0].osc));
+    try std.testing.expectEqual(@as(?u16, 30001), events[0].osc.command());
+    try std.testing.expectEqualSlices(u8, "", events[0].osc.payload());
 }
 
 test "parsed events: preserves APC, DCS, PM, and ESC transport" {

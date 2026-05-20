@@ -130,6 +130,10 @@ fn makeDcs(comptime payload: []const u8) Event {
     } };
 }
 
+fn makeOsc(action_: parser_mod.OscAction) Event {
+    return .{ .osc = action_ };
+}
+
 test "actions: CUU explicit count" {
     const sem = process(makeStyleChange('A', 3, 0, 1)) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 3), sem.cursor_up);
@@ -623,36 +627,16 @@ test "actions: invalid_sequence returns null" {
 }
 
 test "actions: OSC title transport returns null" {
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .osc = .{
-        .kind = .title,
-        .command = @as(?u16, 0),
-        .payload = "My Title",
-        .terminator = .bel,
-    } }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(makeOsc(.{ .title = .{ .command = 0, .payload = "My Title", .term = .bel } })));
 }
 
 test "actions: OSC 8 maps to hyperlink set and clear" {
-    try std.testing.expectEqualStrings("https://example.com", process(Event{ .osc = .{
-        .kind = .hyperlink,
-        .command = @as(?u16, 8),
-        .payload = ";https://example.com",
-        .terminator = .bel,
-    } }).?.hyperlink_set);
-    try std.testing.expect(process(Event{ .osc = .{
-        .kind = .hyperlink,
-        .command = @as(?u16, 8),
-        .payload = ";",
-        .terminator = .bel,
-    } }).? == .hyperlink_clear);
+    try std.testing.expectEqualStrings("https://example.com", process(makeOsc(.{ .hyperlink = .{ .payload = ";https://example.com", .term = .bel } })).?.hyperlink_set);
+    try std.testing.expect(process(makeOsc(.{ .hyperlink = .{ .payload = ";", .term = .bel } })).? == .hyperlink_clear);
 }
 
 test "actions: OSC 52 maps to clipboard set" {
-    try std.testing.expectEqualStrings("c;Zm9v", process(Event{ .osc = .{
-        .kind = .clipboard,
-        .command = @as(?u16, 52),
-        .payload = "c;Zm9v",
-        .terminator = .bel,
-    } }).?.clipboard_set);
+    try std.testing.expectEqualStrings("c;Zm9v", process(makeOsc(.{ .clipboard = .{ .command = 52, .payload = "c;Zm9v", .term = .bel } })).?.clipboard_set);
 }
 
 test "actions: APC PM and unsupported ESC transport return null" {
@@ -1380,17 +1364,17 @@ test "actions: kitty graphics APC parses control keys and payload" {
 }
 
 test "actions: kitty shell integration OSC 133 parses mark and status" {
-    const sem = process(Event{ .osc = .{ .kind = .other, .command = 133, .payload = "D;7", .terminator = .bel } }) orelse return error.NoEvent;
+    const sem = process(makeOsc(.{ .shell_mark = .{ .payload = "D;7", .term = .bel } })) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u8, 'D'), sem.kitty_shell_mark.kind);
     try std.testing.expectEqual(@as(?i32, 7), sem.kitty_shell_mark.status);
 }
 
 test "actions: kitty notification OSC 99 splits metadata and payload" {
-    const sem = process(Event{ .osc = .{ .kind = .other, .command = 99, .payload = "i=1:p=body;Hello", .terminator = .st } }) orelse return error.NoEvent;
+    const sem = process(makeOsc(.{ .notification = .{ .command = 99, .payload = "i=1:p=body;Hello", .term = .st } })) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("i=1:p=body", sem.kitty_notification.metadata);
     try std.testing.expectEqualStrings("Hello", sem.kitty_notification.payload);
 
-    const alias = process(Event{ .osc = .{ .kind = .other, .command = 9, .payload = "i=2:p=body;Hi", .terminator = .st } }) orelse return error.NoEvent;
+    const alias = process(makeOsc(.{ .notification = .{ .command = 9, .payload = "i=2:p=body;Hi", .term = .st } })) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("i=2:p=body", alias.kitty_notification.metadata);
     try std.testing.expectEqualStrings("Hi", alias.kitty_notification.payload);
 }
@@ -1429,35 +1413,35 @@ test "actions: kitty multiple cursor query and clear mappings" {
 }
 
 test "actions: kitty pointer shape OSC 22 parses action and names" {
-    const sem = process(Event{ .osc = .{ .kind = .other, .command = 22, .payload = ">wait,pointer", .terminator = .st } }) orelse return error.NoEvent;
+    const sem = process(makeOsc(.{ .pointer_shape = .{ .payload = ">wait,pointer", .term = .st } })) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u8, '>'), sem.kitty_pointer_shape.action);
     try std.testing.expectEqualStrings("wait,pointer", sem.kitty_pointer_shape.names);
 }
 
 test "actions: kitty color stack OSC codes map to commands" {
-    const push = process(Event{ .osc = .{ .kind = .other, .command = 30001, .payload = "", .terminator = .st } }) orelse return error.NoEvent;
-    const pop = process(Event{ .osc = .{ .kind = .other, .command = 30101, .payload = "", .terminator = .st } }) orelse return error.NoEvent;
+    const push = process(makeOsc(.{ .kitty_color_stack_push = .st })) orelse return error.NoEvent;
+    const pop = process(makeOsc(.{ .kitty_color_stack_pop = .st })) orelse return error.NoEvent;
     try std.testing.expect(push.kitty_color_stack == .push);
     try std.testing.expect(pop.kitty_color_stack == .pop);
 }
 
 test "actions: terminal color OSC commands preserve command and payload" {
-    const kitty = process(Event{ .osc = .{ .kind = .other, .command = 21, .payload = "foreground=?", .terminator = .st } }) orelse return error.NoEvent;
+    const kitty = process(makeOsc(.{ .kitty_color = .{ .command = 21, .payload = "foreground=?", .term = .st } })) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 21), kitty.color_control.command);
     try std.testing.expectEqualStrings("foreground=?", kitty.color_control.payload);
 
-    const xterm = process(Event{ .osc = .{ .kind = .other, .command = 4, .payload = "1;#ff0000", .terminator = .st } }) orelse return error.NoEvent;
+    const xterm = process(makeOsc(.{ .palette_control = .{ .command = 4, .payload = "1;#ff0000", .term = .st } })) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 4), xterm.color_control.command);
     try std.testing.expectEqualStrings("1;#ff0000", xterm.color_control.payload);
 }
 
 test "actions: modern kitty OSC payload protocols map to host-neutral events" {
-    const clipboard = process(Event{ .osc = .{ .kind = .other, .command = 5522, .payload = "type=write", .terminator = .st } }) orelse return error.NoEvent;
+    const clipboard = process(makeOsc(.{ .kitty_clipboard = .{ .payload = "type=write", .term = .st } })) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("type=write", clipboard.clipboard_set);
 
-    const transfer = process(Event{ .osc = .{ .kind = .other, .command = 5113, .payload = "cmd=data", .terminator = .st } }) orelse return error.NoEvent;
+    const transfer = process(makeOsc(.{ .kitty_file_transfer = .{ .payload = "cmd=data", .term = .st } })) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("cmd=data", transfer.kitty_file_transfer);
 
-    const size = process(Event{ .osc = .{ .kind = .other, .command = 66, .payload = "s=2;Big", .terminator = .st } }) orelse return error.NoEvent;
+    const size = process(makeOsc(.{ .kitty_text_size = .{ .payload = "s=2;Big", .term = .st } })) orelse return error.NoEvent;
     try std.testing.expectEqualStrings("s=2;Big", size.kitty_text_size);
 }

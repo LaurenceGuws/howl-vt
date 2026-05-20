@@ -169,8 +169,8 @@ test "queue: stray ESC in OSC dropped, byte appended" {
     const events = try collectQueueEvents(gpa, &queue);
     defer gpa.free(events);
     try std.testing.expect(events[0] == .osc);
-    try std.testing.expectEqual(.title, events[0].osc.kind);
-    try std.testing.expectEqualSlices(u8, "title", events[0].osc.payload);
+    try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).raw_title, std.meta.activeTag(events[0].osc));
+    try std.testing.expectEqualSlices(u8, "title", events[0].osc.payload());
 }
 
 test "feed/apply: queue clear drops pending parsed events before apply" {

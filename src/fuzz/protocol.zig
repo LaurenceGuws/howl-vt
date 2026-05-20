@@ -51,12 +51,7 @@ const Event = union(enum) {
         intermediates: [parser_mod.max_intermediates]u8,
         intermediates_len: u8,
     },
-    osc: struct {
-        kind: parser_mod.OscKind,
-        command: ?u16,
-        payload: []u8,
-        term: OscTerminator,
-    },
+    osc: parser_mod.OscAction,
     apc_start,
     apc_put: u8,
     apc_end,
@@ -89,7 +84,7 @@ const Harness = struct {
     fn deinit(self: *Harness) void {
         for (self.events.items) |event| {
             switch (event) {
-                .osc => |osc| self.allocator.free(osc.payload),
+                .osc => |osc| self.allocator.free(osc.payload()),
                 else => {},
             }
         }
@@ -111,14 +106,9 @@ const Harness = struct {
                 .intermediates_len = csi.intermediates_len,
             } }),
             .osc_dispatch => |osc| {
-                const owned = try self.allocator.dupe(u8, osc.payload);
+                const owned = try self.allocator.dupe(u8, osc.payload());
                 errdefer self.allocator.free(owned);
-                try self.events.append(self.allocator, Event{ .osc = .{
-                    .kind = osc.kind,
-                    .command = osc.command,
-                    .payload = owned,
-                    .term = osc.term,
-                } });
+                try self.events.append(self.allocator, Event{ .osc = cloneOscAction(osc, owned) });
             },
             .apc_start => try self.events.append(self.allocator, .apc_start),
             .apc_put => |byte| try self.events.append(self.allocator, Event{ .apc_put = byte }),
@@ -616,11 +606,39 @@ fn hashCsiEvent(hasher: *std.hash.Wyhash, csi: CsiEvent) void {
 
 fn hashOscEvent(hasher: *std.hash.Wyhash, osc: OscEvent) void {
     hashValue(hasher, @as(u8, 5));
-    hashValue(hasher, @intFromEnum(osc.kind));
-    hashValue(hasher, osc.command orelse std.math.maxInt(u16));
-    hashValue(hasher, @intFromEnum(osc.term));
-    hashValue(hasher, osc.payload.len);
-    hasher.update(osc.payload);
+    hashValue(hasher, @intFromEnum(std.meta.activeTag(osc)));
+    hashValue(hasher, osc.command() orelse std.math.maxInt(u16));
+    hashValue(hasher, @intFromEnum(osc.term()));
+    hashValue(hasher, osc.payload().len);
+    hasher.update(osc.payload());
+}
+
+fn cloneOscAction(osc: parser_mod.OscAction, payload: []u8) parser_mod.OscAction {
+    return switch (osc) {
+        .raw_title => .{ .raw_title = .{ .payload = payload, .term = osc.term() } },
+        .raw_other => .{ .raw_other = .{ .payload = payload, .term = osc.term() } },
+        .title => |v| .{ .title = .{ .command = v.command, .payload = payload, .term = v.term } },
+        .icon => .{ .icon = .{ .payload = payload, .term = osc.term() } },
+        .palette_control => |v| .{ .palette_control = .{ .command = v.command, .payload = payload, .term = v.term } },
+        .palette_reset => |v| .{ .palette_reset = .{ .command = v.command, .payload = payload, .term = v.term } },
+        .dynamic_color => |v| .{ .dynamic_color = .{ .command = v.command, .payload = payload, .term = v.term } },
+        .dynamic_reset => |v| .{ .dynamic_reset = .{ .command = v.command, .payload = payload, .term = v.term } },
+        .report_pwd => .{ .report_pwd = .{ .payload = payload, .term = osc.term() } },
+        .hyperlink => .{ .hyperlink = .{ .payload = payload, .term = osc.term() } },
+        .notification => |v| .{ .notification = .{ .command = v.command, .payload = payload, .term = v.term } },
+        .pointer_shape => .{ .pointer_shape = .{ .payload = payload, .term = osc.term() } },
+        .clipboard => |v| .{ .clipboard = .{ .command = v.command, .payload = payload, .term = v.term } },
+        .kitty_color => |v| .{ .kitty_color = .{ .command = v.command, .payload = payload, .term = v.term } },
+        .kitty_text_size => .{ .kitty_text_size = .{ .payload = payload, .term = osc.term() } },
+        .shell_mark => .{ .shell_mark = .{ .payload = payload, .term = osc.term() } },
+        .rxvt_extension => .{ .rxvt_extension = .{ .payload = payload, .term = osc.term() } },
+        .iterm2 => .{ .iterm2 = .{ .payload = payload, .term = osc.term() } },
+        .context_signal => .{ .context_signal = .{ .payload = payload, .term = osc.term() } },
+        .kitty_color_stack_push => .{ .kitty_color_stack_push = osc.term() },
+        .kitty_color_stack_pop => .{ .kitty_color_stack_pop = osc.term() },
+        .kitty_file_transfer => .{ .kitty_file_transfer = .{ .payload = payload, .term = osc.term() } },
+        .kitty_clipboard => .{ .kitty_clipboard = .{ .payload = payload, .term = osc.term() } },
+    };
 }
 
 fn hashDcsHookEvent(hasher: *std.hash.Wyhash, hook: @FieldType(Event, "dcs_hook")) void {

@@ -114,7 +114,7 @@ sqlite3 protocol_coverage.db \
 | VT52/Tektronix legacy controls | deferred | VT52 cursor/erase aliases and Tektronix plot controls are intentionally outside normal ANSI/VT100 terminal parity until explicit VT52/Tektronix mode ownership exists. |
 | Charset designation: `ESC (`, `ESC )`, DEC Special Graphics select | partial | Parser tracks G0/G1 designation and DEC Special Graphics maps through visible cells. Broader charset families remain unsupported. |
 | Shift in/out charset use: `SI`, `SO` | partial | G0/G1 GL switching is wired for the supported charset set, including DEC Special Graphics. |
-| OSC transport | partial | Parser transports OSC with BEL/ST terminators and now emits typed OSC command/payload records directly before queue append, including command-only OSC forms such as kitty color stack push/pop. Action/host handling is still narrow. |
+| OSC transport | partial | Parser transports OSC with BEL/ST terminators and now emits a typed OSC union directly before queue append, including command-only OSC forms such as kitty color stack push/pop. Action/host handling is still selective by supported family. |
 | OSC window title/icon title | partial | Parser-event handling recognizes title OSC selectors and `applyLimit(...)` reports the latest queued title payload, but no broader host callback surface exists yet. |
 | OSC 8 hyperlinks | partial | OSC 8 drives stable `link_id` cell metadata, `Terminal` URI lookup, render surface propagation, and Linux-host `Ctrl+left click` opening behind explicit policy. Hover polish remains pending. |
 | OSC 52 clipboard | partial | OSC 52 surfaces pending clipboard requests and Linux-host applies explicit allow/deny policy. Queries and broader selector behavior remain unsupported. |

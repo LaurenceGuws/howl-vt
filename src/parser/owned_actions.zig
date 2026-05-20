@@ -47,12 +47,31 @@ fn appendOwnedAction(
             } });
         },
         .osc_dispatch => |osc| {
-            const owned = try arena.dupe(u8, osc.payload);
-            try actions.append(allocator, .{ .osc_dispatch = .{
-                .kind = osc.kind,
-                .command = osc.command,
-                .payload = owned,
-                .term = osc.term,
+            const owned = try arena.dupe(u8, osc.payload());
+            try actions.append(allocator, .{ .osc_dispatch = switch (osc) {
+                .raw_title => .{ .raw_title = .{ .payload = owned, .term = osc.term() } },
+                .raw_other => .{ .raw_other = .{ .payload = owned, .term = osc.term() } },
+                .title => |v| .{ .title = .{ .command = v.command, .payload = owned, .term = v.term } },
+                .icon => .{ .icon = .{ .payload = owned, .term = osc.term() } },
+                .palette_control => |v| .{ .palette_control = .{ .command = v.command, .payload = owned, .term = v.term } },
+                .palette_reset => |v| .{ .palette_reset = .{ .command = v.command, .payload = owned, .term = v.term } },
+                .dynamic_color => |v| .{ .dynamic_color = .{ .command = v.command, .payload = owned, .term = v.term } },
+                .dynamic_reset => |v| .{ .dynamic_reset = .{ .command = v.command, .payload = owned, .term = v.term } },
+                .report_pwd => .{ .report_pwd = .{ .payload = owned, .term = osc.term() } },
+                .hyperlink => .{ .hyperlink = .{ .payload = owned, .term = osc.term() } },
+                .notification => |v| .{ .notification = .{ .command = v.command, .payload = owned, .term = v.term } },
+                .pointer_shape => .{ .pointer_shape = .{ .payload = owned, .term = osc.term() } },
+                .clipboard => |v| .{ .clipboard = .{ .command = v.command, .payload = owned, .term = v.term } },
+                .kitty_color => |v| .{ .kitty_color = .{ .command = v.command, .payload = owned, .term = v.term } },
+                .kitty_text_size => .{ .kitty_text_size = .{ .payload = owned, .term = osc.term() } },
+                .shell_mark => .{ .shell_mark = .{ .payload = owned, .term = osc.term() } },
+                .rxvt_extension => .{ .rxvt_extension = .{ .payload = owned, .term = osc.term() } },
+                .iterm2 => .{ .iterm2 = .{ .payload = owned, .term = osc.term() } },
+                .context_signal => .{ .context_signal = .{ .payload = owned, .term = osc.term() } },
+                .kitty_color_stack_push => .{ .kitty_color_stack_push = osc.term() },
+                .kitty_color_stack_pop => .{ .kitty_color_stack_pop = osc.term() },
+                .kitty_file_transfer => .{ .kitty_file_transfer = .{ .payload = owned, .term = osc.term() } },
+                .kitty_clipboard => .{ .kitty_clipboard = .{ .payload = owned, .term = osc.term() } },
             } });
         },
         else => try actions.append(allocator, action),

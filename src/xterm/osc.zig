@@ -7,32 +7,28 @@ const kitty = @import("../kitty/protocol.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
-pub fn process(kind: parser_mod.OscKind, command: ?u16, payload: []const u8) ?SemanticEvent {
-    if (command) |cmd| switch (cmd) {
-        22 => return SemanticEvent{ .kitty_pointer_shape = kitty.parsePointerShape(payload) },
-        4, 5,
-        10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-        21,
-        104,
-        110, 111, 112, 113, 114, 115, 116, 117, 118, 119,
-        => return SemanticEvent{ .color_control = .{ .command = cmd, .payload = payload } },
-        9, 99 => if (kitty.parseNotification(payload)) |notification| return SemanticEvent{ .kitty_notification = notification },
-        133 => if (kitty.parseShellMark(payload)) |mark| return SemanticEvent{ .kitty_shell_mark = mark },
-        66 => return SemanticEvent{ .kitty_text_size = payload },
-        5522 => return SemanticEvent{ .clipboard_set = payload },
-        5113 => return SemanticEvent{ .kitty_file_transfer = payload },
-        30001 => return SemanticEvent{ .kitty_color_stack = .push },
-        30101 => return SemanticEvent{ .kitty_color_stack = .pop },
-        else => {},
-    };
-    return switch (kind) {
-        .hyperlink => blk: {
-            const separator = std.mem.indexOfScalar(u8, payload, ';') orelse break :blk null;
-            const uri = payload[separator + 1 ..];
+pub fn process(osc: parser_mod.OscAction) ?SemanticEvent {
+    return switch (osc) {
+        .pointer_shape => |v| SemanticEvent{ .kitty_pointer_shape = kitty.parsePointerShape(v.payload) },
+        .palette_control => |v| SemanticEvent{ .color_control = .{ .command = v.command, .payload = v.payload } },
+        .palette_reset => |v| SemanticEvent{ .color_control = .{ .command = v.command, .payload = v.payload } },
+        .dynamic_color => |v| SemanticEvent{ .color_control = .{ .command = v.command, .payload = v.payload } },
+        .dynamic_reset => |v| SemanticEvent{ .color_control = .{ .command = v.command, .payload = v.payload } },
+        .kitty_color => |v| SemanticEvent{ .color_control = .{ .command = v.command, .payload = v.payload } },
+        .notification => |v| if (kitty.parseNotification(v.payload)) |notification| SemanticEvent{ .kitty_notification = notification } else null,
+        .shell_mark => |v| if (kitty.parseShellMark(v.payload)) |mark| SemanticEvent{ .kitty_shell_mark = mark } else null,
+        .kitty_text_size => |v| SemanticEvent{ .kitty_text_size = v.payload },
+        .kitty_clipboard => |v| SemanticEvent{ .clipboard_set = v.payload },
+        .kitty_file_transfer => |v| SemanticEvent{ .kitty_file_transfer = v.payload },
+        .kitty_color_stack_push => SemanticEvent{ .kitty_color_stack = .push },
+        .kitty_color_stack_pop => SemanticEvent{ .kitty_color_stack = .pop },
+        .hyperlink => |v| blk: {
+            const separator = std.mem.indexOfScalar(u8, v.payload, ';') orelse break :blk null;
+            const uri = v.payload[separator + 1 ..];
             if (uri.len == 0) break :blk SemanticEvent.hyperlink_clear;
             break :blk SemanticEvent{ .hyperlink_set = uri };
         },
-        .clipboard => SemanticEvent{ .clipboard_set = payload },
+        .clipboard => |v| SemanticEvent{ .clipboard_set = v.payload },
         else => null,
     };
 }

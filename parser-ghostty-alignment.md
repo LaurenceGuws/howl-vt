@@ -104,3 +104,5 @@ Closed result so far:
   of the old generic numeric-prefix accumulator path
 - Howl's explicit OSC ladder now copies Ghostty's full parser command list, and parser validation
   covers every command in that copied list
+- parser no longer exports OSC as a normalized `{ command, kind, payload, terminator }` record;
+  OSC now leaves the parser as a typed union with per-family variants

@@ -49,8 +49,11 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
 fn latestTitle(vt: anytype, current: ?[]const u8, event: action_mod.Event) ?[]const u8 {
     switch (event) {
         .osc => |osc_event| {
-            if (osc_event.kind != .title) return current;
-            const owned = vt.allocator.dupe(u8, osc_event.payload) catch return current;
+            switch (osc_event) {
+                .title, .raw_title => {},
+                else => return current,
+            }
+            const owned = vt.allocator.dupe(u8, osc_event.payload()) catch return current;
             if (vt.host.current_title) |old| vt.allocator.free(old);
             vt.host.current_title = owned;
             return owned;

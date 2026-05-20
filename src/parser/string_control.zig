@@ -1,13 +1,7 @@
 //! String-control parser state owners.
 
 const std = @import("std");
-
-pub const OscKind = enum {
-    title,
-    clipboard,
-    hyperlink,
-    other,
-};
+const parser_mod = @import("main.zig");
 
 /// String-control terminator.
 pub const Finish = enum {
@@ -124,14 +118,34 @@ pub const OscControl = struct {
 
     const CommandPolicy = struct {
         command: ?u16,
-        kind: OscKind,
+        class: OscClass,
         max_len: usize,
     };
 
-    pub const Snapshot = struct {
-        command: ?u16,
-        kind: OscKind,
-        payload: []const u8,
+    const OscClass = enum {
+        raw_title,
+        raw_other,
+        title,
+        icon,
+        palette_control,
+        palette_reset,
+        dynamic_color,
+        dynamic_reset,
+        report_pwd,
+        hyperlink,
+        notification,
+        pointer_shape,
+        clipboard,
+        kitty_color,
+        kitty_text_size,
+        shell_mark,
+        rxvt_extension,
+        iterm2,
+        context_signal,
+        kitty_color_stack_push,
+        kitty_color_stack_pop,
+        kitty_file_transfer,
+        kitty_clipboard,
     };
 
     allocator: std.mem.Allocator,
@@ -228,7 +242,7 @@ pub const OscControl = struct {
             .buffer = try std.ArrayList(u8).initCapacity(allocator, capacity),
             .metadata_max_len = metadata_max_len,
             .large_max_len = large_max_len,
-            .policy = .{ .command = null, .kind = .title, .max_len = metadata_max_len },
+            .policy = .{ .command = null, .class = .raw_title, .max_len = metadata_max_len },
         };
     }
 
@@ -241,7 +255,7 @@ pub const OscControl = struct {
         self.prefix = .start;
         self.alloc_failed = false;
         self.overflowed = false;
-        self.policy = .{ .command = null, .kind = .title, .max_len = self.metadata_max_len };
+        self.policy = .{ .command = null, .class = .raw_title, .max_len = self.metadata_max_len };
         self.buffer.clearRetainingCapacity();
     }
 
@@ -261,11 +275,31 @@ pub const OscControl = struct {
         };
     }
 
-    pub fn snapshot(self: *const OscControl) Snapshot {
-        return .{
-            .command = self.policy.command,
-            .kind = self.policy.kind,
-            .payload = self.buffer.items,
+    pub fn snapshot(self: *const OscControl, term: parser_mod.OscTerminator) parser_mod.OscAction {
+        return switch (self.policy.class) {
+            .raw_title => .{ .raw_title = .{ .payload = self.buffer.items, .term = term } },
+            .raw_other => .{ .raw_other = .{ .payload = self.buffer.items, .term = term } },
+            .title => .{ .title = .{ .command = self.policy.command.?, .payload = self.buffer.items, .term = term } },
+            .icon => .{ .icon = .{ .payload = self.buffer.items, .term = term } },
+            .palette_control => .{ .palette_control = .{ .command = self.policy.command.?, .payload = self.buffer.items, .term = term } },
+            .palette_reset => .{ .palette_reset = .{ .command = self.policy.command.?, .payload = self.buffer.items, .term = term } },
+            .dynamic_color => .{ .dynamic_color = .{ .command = self.policy.command.?, .payload = self.buffer.items, .term = term } },
+            .dynamic_reset => .{ .dynamic_reset = .{ .command = self.policy.command.?, .payload = self.buffer.items, .term = term } },
+            .report_pwd => .{ .report_pwd = .{ .payload = self.buffer.items, .term = term } },
+            .hyperlink => .{ .hyperlink = .{ .payload = self.buffer.items, .term = term } },
+            .notification => .{ .notification = .{ .command = self.policy.command.?, .payload = self.buffer.items, .term = term } },
+            .pointer_shape => .{ .pointer_shape = .{ .payload = self.buffer.items, .term = term } },
+            .clipboard => .{ .clipboard = .{ .command = self.policy.command.?, .payload = self.buffer.items, .term = term } },
+            .kitty_color => .{ .kitty_color = .{ .command = self.policy.command.?, .payload = self.buffer.items, .term = term } },
+            .kitty_text_size => .{ .kitty_text_size = .{ .payload = self.buffer.items, .term = term } },
+            .shell_mark => .{ .shell_mark = .{ .payload = self.buffer.items, .term = term } },
+            .rxvt_extension => .{ .rxvt_extension = .{ .payload = self.buffer.items, .term = term } },
+            .iterm2 => .{ .iterm2 = .{ .payload = self.buffer.items, .term = term } },
+            .context_signal => .{ .context_signal = .{ .payload = self.buffer.items, .term = term } },
+            .kitty_color_stack_push => .{ .kitty_color_stack_push = term },
+            .kitty_color_stack_pop => .{ .kitty_color_stack_pop = term },
+            .kitty_file_transfer => .{ .kitty_file_transfer = .{ .payload = self.buffer.items, .term = term } },
+            .kitty_clipboard => .{ .kitty_clipboard = .{ .payload = self.buffer.items, .term = term } },
         };
     }
 
@@ -349,7 +383,7 @@ pub const OscControl = struct {
                     self.state = bodyEscState(kind);
                     return null;
                 }
-                if (kind == .raw and byte == ';') self.policy.kind = .other;
+                if (kind == .raw and byte == ';') self.policy.class = .raw_other;
                 self.append(byte);
                 return .{ .put = byte };
             },
@@ -359,7 +393,7 @@ pub const OscControl = struct {
                     return .{ .finish = .st };
                 }
                 self.state = bodyState(kind);
-                if (kind == .raw and byte == ';') self.policy.kind = .other;
+                if (kind == .raw and byte == ';') self.policy.class = .raw_other;
                 self.append(byte);
                 return .{ .put = byte };
             },
@@ -369,7 +403,7 @@ pub const OscControl = struct {
 
     fn finishPrefix(self: *OscControl) void {
         if (!self.promoteRecognizedPrefix(.idle)) {
-            self.policy = .{ .command = null, .kind = .title, .max_len = self.metadata_max_len };
+            self.policy = .{ .command = null, .class = .raw_title, .max_len = self.metadata_max_len };
         }
         self.prefix = .start;
         self.state = .idle;
@@ -397,12 +431,12 @@ pub const OscControl = struct {
     fn enterRawFromPrefix(self: *OscControl, byte: u8, has_separator: bool) void {
         self.policy = .{
             .command = null,
-            .kind = if (has_separator) .other else .title,
+            .class = if (has_separator) .raw_other else .raw_title,
             .max_len = self.metadata_max_len,
         };
         self.prefix = .start;
         self.state = .raw;
-        if (byte == ';') self.policy.kind = .other;
+        if (byte == ';') self.policy.class = .raw_other;
         self.append(byte);
     }
 
@@ -605,11 +639,28 @@ pub const OscControl = struct {
 
     fn commandPolicy(self: *const OscControl, command: u16) CommandPolicy {
         return switch (command) {
-            52 => .{ .command = command, .kind = .clipboard, .max_len = self.large_max_len },
-            66, 5113, 5522 => .{ .command = command, .kind = .other, .max_len = self.large_max_len },
-            0, 1, 2 => .{ .command = command, .kind = .title, .max_len = self.metadata_max_len },
-            8 => .{ .command = command, .kind = .hyperlink, .max_len = self.metadata_max_len },
-            else => .{ .command = command, .kind = .other, .max_len = self.metadata_max_len },
+            0, 2 => .{ .command = command, .class = .title, .max_len = self.metadata_max_len },
+            1 => .{ .command = command, .class = .icon, .max_len = self.metadata_max_len },
+            4, 5 => .{ .command = command, .class = .palette_control, .max_len = self.metadata_max_len },
+            10, 11, 12, 13, 14, 15, 16, 17, 18, 19 => .{ .command = command, .class = .dynamic_color, .max_len = self.metadata_max_len },
+            21 => .{ .command = command, .class = .kitty_color, .max_len = self.metadata_max_len },
+            22 => .{ .command = command, .class = .pointer_shape, .max_len = self.metadata_max_len },
+            52 => .{ .command = command, .class = .clipboard, .max_len = self.large_max_len },
+            66 => .{ .command = command, .class = .kitty_text_size, .max_len = self.large_max_len },
+            99, 9 => .{ .command = command, .class = .notification, .max_len = self.metadata_max_len },
+            104 => .{ .command = command, .class = .palette_reset, .max_len = self.metadata_max_len },
+            110, 111, 112, 113, 114, 115, 116, 117, 118, 119 => .{ .command = command, .class = .dynamic_reset, .max_len = self.metadata_max_len },
+            133 => .{ .command = command, .class = .shell_mark, .max_len = self.metadata_max_len },
+            777 => .{ .command = command, .class = .rxvt_extension, .max_len = self.metadata_max_len },
+            1337 => .{ .command = command, .class = .iterm2, .max_len = self.metadata_max_len },
+            3008 => .{ .command = command, .class = .context_signal, .max_len = self.metadata_max_len },
+            30001 => .{ .command = command, .class = .kitty_color_stack_push, .max_len = self.metadata_max_len },
+            30101 => .{ .command = command, .class = .kitty_color_stack_pop, .max_len = self.metadata_max_len },
+            5113 => .{ .command = command, .class = .kitty_file_transfer, .max_len = self.large_max_len },
+            5522 => .{ .command = command, .class = .kitty_clipboard, .max_len = self.large_max_len },
+            7 => .{ .command = command, .class = .report_pwd, .max_len = self.metadata_max_len },
+            8 => .{ .command = command, .class = .hyperlink, .max_len = self.metadata_max_len },
+            else => .{ .command = command, .class = .raw_other, .max_len = self.metadata_max_len },
         };
     }
 };
@@ -719,10 +770,10 @@ test "osc control: title payload keeps metadata limit" {
     osc.start();
     for ("0;hello") |byte| _ = osc.feed(byte);
     _ = osc.feed(0x07);
-    const snapshot = osc.snapshot();
-    try std.testing.expectEqual(@as(?u16, 0), snapshot.command);
-    try std.testing.expectEqual(OscKind.title, snapshot.kind);
-    try std.testing.expectEqualStrings("hell", snapshot.payload);
+    const snapshot = osc.snapshot(.bel);
+    try std.testing.expectEqual(@as(?u16, 0), snapshot.command());
+    try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).title, std.meta.activeTag(snapshot));
+    try std.testing.expectEqualStrings("hell", snapshot.payload());
     try std.testing.expectEqual(error.StringControlLimit, osc.takeFailure().?);
 }
 
@@ -732,9 +783,9 @@ test "osc control: clipboard payload uses large limit" {
     osc.start();
     for ("52;c;abcdefgh") |byte| _ = osc.feed(byte);
     _ = osc.feed(0x07);
-    const snapshot = osc.snapshot();
-    try std.testing.expectEqual(@as(?u16, 52), snapshot.command);
-    try std.testing.expectEqual(OscKind.clipboard, snapshot.kind);
-    try std.testing.expectEqualStrings("c;abcdefgh", snapshot.payload);
+    const snapshot = osc.snapshot(.bel);
+    try std.testing.expectEqual(@as(?u16, 52), snapshot.command());
+    try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).clipboard, std.meta.activeTag(snapshot));
+    try std.testing.expectEqualStrings("c;abcdefgh", snapshot.payload());
     try std.testing.expectEqual(@as(?(error{ OutOfMemory, StringControlLimit }), null), osc.takeFailure());
 }
