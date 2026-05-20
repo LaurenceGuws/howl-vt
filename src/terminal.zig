@@ -119,6 +119,7 @@ test "terminal visible view projects scrollback rows" {
 
 test {
     _ = @import("test/queue_regression.zig");
+    _ = @import("test/pty_feed_record.zig");
     _ = @import("test/terminal_graphics.zig");
     _ = @import("test/terminal_modes_reports.zig");
     _ = @import("test/terminal_osc_colors.zig");

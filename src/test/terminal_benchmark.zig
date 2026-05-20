@@ -3,6 +3,7 @@
 const std = @import("std");
 const action = @import("../action.zig");
 const terminal_mod = @import("../terminal.zig");
+const pty_feed_record = @import("pty_feed_record.zig");
 
 const WorkloadResult = struct {
     name: []const u8,
@@ -418,6 +419,56 @@ fn runQueueGrowthChunkedWorkload(
     return try summarizeObservations(base_allocator, name, fixture.len, observations);
 }
 
+fn runReplayRecordWorkload(
+    io: std.Io,
+    base_allocator: std.mem.Allocator,
+    name: []const u8,
+    record: *const pty_feed_record.Record,
+    rows: u16,
+    cols: u16,
+    history_capacity: u16,
+    runs: u32,
+) !WorkloadResult {
+    const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
+    defer base_allocator.free(observations);
+
+    for (observations) |*obs| {
+        var counting = CountingAllocator.init(base_allocator);
+        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
+            counting.allocator(),
+            rows,
+            cols,
+            history_capacity,
+        );
+        defer terminal.deinit();
+
+        counting.resetWindow();
+        var max_queue_depth: u32 = 0;
+        const start = nowNs(io);
+        for (record.chunks.items) |chunk| {
+            try terminal.parser.feedSlice(chunk);
+            max_queue_depth = @max(max_queue_depth, action.applyLimit(&terminal, 0).remaining_events);
+        }
+        action.apply(&terminal);
+        const end = nowNs(io);
+        obs.* = .{
+            .ns = end - start,
+            .alloc_count = counting.window_alloc_count,
+            .alloc_bytes = counting.window_alloc_bytes,
+            .peak_live_bytes = counting.window_peak_live_bytes,
+            .max_queue_depth = max_queue_depth,
+        };
+    }
+    return try summarizeObservations(base_allocator, name, @intCast(pty_feed_record.byteLen(record)), observations);
+}
+
+fn loadReplayRecordIfPresent(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !?pty_feed_record.Record {
+    return pty_feed_record.load(io, allocator, path) catch |err| switch (err) {
+        error.FileNotFound => null,
+        else => |e| return e,
+    };
+}
+
 fn printTextResult(result: WorkloadResult) void {
     const median_ms = @as(f64, @floatFromInt(result.median_ns)) / 1_000_000.0;
     const p95_ms = @as(f64, @floatFromInt(result.p95_ns)) / 1_000_000.0;
@@ -593,6 +644,20 @@ pub fn main(init: std.process.Init) !void {
         runs,
     );
 
+    var replay_lsd_never = try loadReplayRecordIfPresent(init.io, allocator, "../howl-linux-host/artifacts/replay/lsd-never.hex");
+    defer if (replay_lsd_never) |*record| record.deinit();
+    const replay_lsd_never_result = if (replay_lsd_never) |*record|
+        try runReplayRecordWorkload(init.io, allocator, "replay_lsd_never", record, 40, 120, 1_000, @intCast(runs))
+    else
+        null;
+
+    var replay_lsd_always = try loadReplayRecordIfPresent(init.io, allocator, "../howl-linux-host/artifacts/replay/lsd-always.hex");
+    defer if (replay_lsd_always) |*record| record.deinit();
+    const replay_lsd_always_result = if (replay_lsd_always) |*record|
+        try runReplayRecordWorkload(init.io, allocator, "replay_lsd_always", record, 40, 120, 1_000, @intCast(runs))
+    else
+        null;
+
     if (options.format == .text) {
         std.debug.print("vt_core_benchmark_v2\n", .{});
         std.debug.print("rows=40 cols=120 runs={d}\n", .{runs});
@@ -608,4 +673,6 @@ pub fn main(init: std.process.Init) !void {
     printResult(snapshot_result, options.format);
     printResult(queue_growth_ascii, options.format);
     printResult(queue_growth_scroll, options.format);
+    if (replay_lsd_never_result) |result| printResult(result, options.format);
+    if (replay_lsd_always_result) |result| printResult(result, options.format);
 }

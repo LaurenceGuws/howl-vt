@@ -64,6 +64,8 @@ throughput truth, and zero tolerance for stale doc or code posture.
   - re-derive it again if queue shape or host proof changes.
 - colored-output throughput
   - `lsd -la --color=never` vs `lsd -la --color=always` remains the real host-facing repro.
+  - exact `PTY -> VT` chunk capture now uses the `howl-pty-vt-hex-v1` fixture format so replay
+    tests can feed the same chunk boundaries inside `src/test/pty_feed_record.zig`.
 
 ## Throughput Rules
 
