@@ -142,7 +142,6 @@ const VtDigest = struct {
 
 const EventDigest = struct {
     hash: u64,
-    token_count: usize,
 };
 
 const ParserOutput = struct {
@@ -313,7 +312,7 @@ fn runTerminal(
     var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(gpa, 24, 80, 256);
     defer terminal.deinit();
 
-    feedBytesToTerminal(&terminal, bytes, mode, rand, max_chunk_len);
+    try feedBytesToTerminal(&terminal, bytes, mode, rand, max_chunk_len);
     action.apply(&terminal);
     return digestTerminal(&terminal);
 }
@@ -344,16 +343,16 @@ fn feedBytesToParser(parser: *parser_mod.Parser, output: *ParserOutput, harness:
     }
 }
 
-fn feedBytesToTerminal(terminal: *terminal_mod.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) void {
+fn feedBytesToTerminal(terminal: *terminal_mod.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) error{ OutOfMemory, ParsedEventLimit, StringControlLimit }!void {
     switch (mode) {
-        .whole_slice => terminal.parser.feedSlice(bytes) catch unreachable,
-        .bytewise => for (bytes) |byte| terminal.parser.feedSlice(&.{byte}) catch unreachable,
+        .whole_slice => try terminal.parser.feedSlice(bytes),
+        .bytewise => for (bytes) |byte| try terminal.parser.feedSlice(&.{byte}),
         .chunked => {
             var offset: usize = 0;
             while (offset < bytes.len) {
                 const remaining = bytes.len - offset;
                 const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
-                terminal.parser.feedSlice(bytes[offset..][0..chunk_len]) catch unreachable;
+                try terminal.parser.feedSlice(bytes[offset..][0..chunk_len]);
                 offset += chunk_len;
             }
         },
@@ -380,7 +379,7 @@ fn digestTerminal(terminal: *const terminal_mod.Terminal) VtDigest {
         }
     }
 
-    const history_count = screen_set.visibleView(&terminal.screen_state, .{}).history_count;
+    const history_count = view.history_count;
     hashValue(&hasher, history_count);
     var history_idx: u32 = 0;
     while (history_idx < history_count) : (history_idx += 1) {
@@ -542,23 +541,19 @@ fn pickAssetStart(rand: std.Random) usize {
 
 fn digestEvents(events: []const Event) EventDigest {
     var hasher = std.hash.Wyhash.init(0);
-    var token_count: usize = 0;
 
     for (events) |event| {
         switch (event) {
             .print => |cp| {
                 hashValue(&hasher, @as(u8, 1));
                 hashValue(&hasher, cp);
-                token_count += 1;
             },
             .execute => |ctrl| {
                 hashValue(&hasher, @as(u8, 2));
                 hashValue(&hasher, ctrl);
-                token_count += 1;
             },
             .invalid => {
                 hashValue(&hasher, @as(u8, 3));
-                token_count += 1;
             },
             .csi => |csi| {
                 hashValue(&hasher, @as(u8, 4));
@@ -569,27 +564,22 @@ fn digestEvents(events: []const Event) EventDigest {
                 hashValue(&hasher, csi.intermediates_len);
                 for (csi.params) |param| hashValue(&hasher, param);
                 for (csi.intermediates) |byte| hashValue(&hasher, byte);
-                token_count += 1;
             },
             .osc => |osc| {
                 hashValue(&hasher, @as(u8, 5));
                 hashValue(&hasher, @intFromEnum(osc.term));
                 hashValue(&hasher, osc.data.len);
                 hasher.update(osc.data);
-                token_count += 1;
             },
             .apc_start => {
                 hashValue(&hasher, @as(u8, 6));
-                token_count += 1;
             },
             .apc_put => |byte| {
                 hashValue(&hasher, @as(u8, 7));
                 hashValue(&hasher, byte);
-                token_count += 1;
             },
             .apc_end => {
                 hashValue(&hasher, @as(u8, 8));
-                token_count += 1;
             },
             .dcs_hook => |hook| {
                 hashValue(&hasher, @as(u8, 9));
@@ -598,29 +588,23 @@ fn digestEvents(events: []const Event) EventDigest {
                 hashValue(&hasher, hook.intermediates_len);
                 for (hook.params) |param| hashValue(&hasher, param);
                 for (hook.intermediates) |byte| hashValue(&hasher, byte);
-                token_count += 1;
             },
             .dcs_put => |byte| {
                 hashValue(&hasher, @as(u8, 10));
                 hashValue(&hasher, byte);
-                token_count += 1;
             },
             .dcs_unhook => {
                 hashValue(&hasher, @as(u8, 11));
-                token_count += 1;
             },
             .pm_start => {
                 hashValue(&hasher, @as(u8, 12));
-                token_count += 1;
             },
             .pm_put => |byte| {
                 hashValue(&hasher, @as(u8, 13));
                 hashValue(&hasher, byte);
-                token_count += 1;
             },
             .pm_end => {
                 hashValue(&hasher, @as(u8, 14));
-                token_count += 1;
             },
             .esc_dispatch => |esc| {
                 hashValue(&hasher, @as(u8, 15));
@@ -628,10 +612,9 @@ fn digestEvents(events: []const Event) EventDigest {
                 hashValue(&hasher, esc.final);
                 hashValue(&hasher, esc.intermediates_len);
                 for (esc.intermediates) |byte| hashValue(&hasher, byte);
-                token_count += 1;
             },
         }
     }
 
-    return .{ .hash = hasher.final(), .token_count = token_count };
+    return .{ .hash = hasher.final() };
 }
