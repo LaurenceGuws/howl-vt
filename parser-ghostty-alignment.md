@@ -92,3 +92,5 @@ Closed result so far:
   promotion to payload or command-only completion
 - OSC no longer keeps a separate prefix-length counter; prefix truth now comes directly from the
   shared parser-owned buffer
+- OSC no longer keeps a separate numeric-prefix validity flag; validity now lives in the optional
+  accumulator state itself

@@ -83,6 +83,7 @@ throughput truth, and zero tolerance for stale doc or code posture.
   - OSC no longer keeps duplicate prefix-byte storage separate from raw fallback storage.
   - OSC no longer keeps a separate prefix-length counter; the shared prefix/raw buffer is the source
     of truth.
+  - OSC no longer keeps a separate numeric-prefix validity flag.
   - next parser-reference pressure is Ghostty's exact OSC command-state ladder and per-command
     capture shape, not queue-side reparsing, a second metadata copy layer, or duplicate APC/DCS/PM
     payload owner.

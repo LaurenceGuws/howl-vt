@@ -135,8 +135,7 @@ pub const OscControl = struct {
     policy: CommandPolicy,
     alloc_failed: bool = false,
     overflowed: bool = false,
-    command_acc: u16 = 0,
-    command_ok: bool = false,
+    command_acc: ?u16 = null,
     command: ?u16 = null,
 
     const OscState = enum {
@@ -172,8 +171,7 @@ pub const OscControl = struct {
         self.state = .idle;
         self.alloc_failed = false;
         self.overflowed = false;
-        self.command_acc = 0;
-        self.command_ok = false;
+        self.command_acc = null;
         self.command = null;
         self.policy = .{ .kind = .title, .max_len = self.metadata_max_len };
         self.buffer.clearRetainingCapacity();
@@ -368,26 +366,24 @@ pub const OscControl = struct {
 
     fn currentPrefixCommand(self: *const OscControl) ?u16 {
         if (self.buffer.items.len == 0) return null;
-        if (!self.command_ok) return null;
         return self.command_acc;
     }
 
     fn pushCommandDigit(self: *OscControl, byte: u8) void {
         if (self.buffer.items.len == 1) {
             self.command_acc = byte - '0';
-            self.command_ok = true;
             return;
         }
-        if (!self.command_ok) return;
+        const current = self.command_acc orelse return;
         const digit: u16 = byte - '0';
-        const next, const mul_overflow = @mulWithOverflow(self.command_acc, 10);
+        const next, const mul_overflow = @mulWithOverflow(current, 10);
         if (mul_overflow != 0) {
-            self.command_ok = false;
+            self.command_acc = null;
             return;
         }
         const value, const add_overflow = @addWithOverflow(next, digit);
         if (add_overflow != 0) {
-            self.command_ok = false;
+            self.command_acc = null;
             return;
         }
         self.command_acc = value;
