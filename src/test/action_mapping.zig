@@ -8,62 +8,68 @@ const Event = action.Event;
 const SemanticEvent = action.SemanticEvent;
 const process = action.process;
 const csi_max_params = parser_mod.max_params;
-fn makeStyleChange(final: u8, p0: i32, p1: i32, count: u8) Event {
-    var params = [_]i32{0} ** csi_max_params;
-    params[0] = p0;
-    params[1] = p1;
+const empty_params = [_]i32{0} ** csi_max_params;
+const zero_separators = [_]u8{0} ** csi_max_params;
+const empty_intermediates = [_]u8{0} ** parser_mod.max_intermediates;
+
+fn makeStyleChange(comptime final: u8, comptime p0: i32, comptime p1: i32, comptime count: u8) Event {
+    const params = [_]i32{ p0, p1 } ++ [_]i32{0} ** (csi_max_params - 2);
     return Event{ .style_change = .{
         .final = final,
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = count,
         .leader = 0,
         .private = false,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
 }
 
-fn makeStyleChangeWithIntermediate(final: u8, intermediate: u8) Event {
+fn makeStyleChangeWithIntermediate(comptime final: u8, comptime intermediate: u8) Event {
     const params = [_]i32{0} ** csi_max_params;
-    var intermediates = [_]u8{0} ** 4;
-    intermediates[0] = intermediate;
+    const intermediates = [_]u8{ intermediate } ++ [_]u8{0} ** (parser_mod.max_intermediates - 1);
     return Event{ .style_change = .{
         .final = final,
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 0,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } };
 }
 
-fn makeStyleChangeWithParamAndIntermediate(final: u8, p0: i32, intermediate: u8) Event {
-    var params = [_]i32{0} ** csi_max_params;
-    params[0] = p0;
-    var intermediates = [_]u8{0} ** 4;
-    intermediates[0] = intermediate;
+fn makeStyleChangeWithParamAndIntermediate(comptime final: u8, comptime p0: i32, comptime intermediate: u8) Event {
+    const params = [_]i32{ p0 } ++ [_]i32{0} ** (csi_max_params - 1);
+    const intermediates = [_]u8{ intermediate } ++ [_]u8{0} ** (parser_mod.max_intermediates - 1);
     return Event{ .style_change = .{
         .final = final,
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } };
 }
 
-fn makePrivateStyleChange(final: u8, params_in: []const i32) Event {
-    var params = [_]i32{0} ** csi_max_params;
-    for (params_in, 0..) |value, idx| params[idx] = value;
+fn makePrivateStyleChange(comptime final: u8, comptime params_in: []const i32) Event {
+    const params = comptime blk: {
+        var out = [_]i32{0} ** csi_max_params;
+        for (params_in, 0..) |value, idx| out[idx] = value;
+        break :blk out;
+    };
     return Event{ .style_change = .{
         .final = final,
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = @intCast(params_in.len),
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
 }
@@ -76,9 +82,9 @@ fn makeEscFinal(final: u8) Event {
     } };
 }
 
-fn makeDcs(payload: []const u8) Event {
+fn makeDcs(comptime payload: []const u8) Event {
     var params = [_]i32{0} ** csi_max_params;
-    var intermediates = [_]u8{0} ** 4;
+    var intermediates = [_]u8{0} ** parser_mod.max_intermediates;
     var param_count: u8 = 0;
     var in_param = false;
     var payload_start: usize = 0;
@@ -105,9 +111,9 @@ fn makeDcs(payload: []const u8) Event {
                 .body = payload,
                 .payload = payload[payload_start + 1 ..],
                 .final = byte,
-                .params = params,
+                .params = params[0..],
                 .param_count = param_count,
-                .intermediates = intermediates,
+                .intermediates = intermediates[0..],
                 .intermediates_len = if (intermediates[0] == 0) 0 else 1,
             } };
         }
@@ -117,9 +123,9 @@ fn makeDcs(payload: []const u8) Event {
         .body = payload,
         .payload = payload,
         .final = 0,
-        .params = params,
+        .params = params[0..],
         .param_count = param_count,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 0,
     } };
 }
@@ -302,13 +308,15 @@ test "actions: SD defaults to one line" {
 test "actions: kitty unscroll maps plus modified SD" {
     var intermediates = [_]u8{0} ** 4;
     intermediates[0] = '+';
+    const params = [_]i32{3} ++ [_]i32{0} ** (csi_max_params - 1);
     const sem = process(Event{ .style_change = .{
         .final = 'T',
-        .params = .{3} ++ [_]i32{0} ** (csi_max_params - 1),
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 3), sem.scroll_down_lines);
@@ -327,7 +335,7 @@ test "actions: DECSTBM with omitted bottom resets to viewport bottom" {
 }
 
 test "actions: CUP explicit row and col" {
-    const sem = process(makeStyleChange('H', 3, 5, 1)) orelse return error.NoEvent;
+    const sem = process(makeStyleChange('H', 3, 5, 2)) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 2), sem.cursor_position.row);
     try std.testing.expectEqual(@as(u16, 4), sem.cursor_position.col);
 }
@@ -352,11 +360,12 @@ test "actions: DEC private cursor show maps to cursor_visible true" {
     params[0] = 25;
     const ev = Event{ .style_change = .{
         .final = 'h',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).?.cursor_visible);
@@ -367,11 +376,12 @@ test "actions: DEC private cursor hide maps to cursor_visible false" {
     params[0] = 25;
     const ev = Event{ .style_change = .{
         .final = 'l',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(!process(ev).?.cursor_visible);
@@ -382,11 +392,12 @@ test "actions: DEC private wrap enable maps to auto_wrap true" {
     params[0] = 7;
     const ev = Event{ .style_change = .{
         .final = 'h',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).?.auto_wrap);
@@ -397,11 +408,12 @@ test "actions: DEC private origin mode enable maps true" {
     params[0] = 6;
     const ev = Event{ .style_change = .{
         .final = 'h',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).?.origin_mode);
@@ -412,11 +424,12 @@ test "actions: DEC private wrap disable maps to auto_wrap false" {
     params[0] = 7;
     const ev = Event{ .style_change = .{
         .final = 'l',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(!process(ev).?.auto_wrap);
@@ -482,11 +495,12 @@ test "actions: rectangular erase fill copy and column ops map" {
     intermediates[0] = '$';
     const fill = process(Event{ .style_change = .{
         .final = 'x',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 5,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u21, 88), fill.rect_fill.ch);
@@ -504,35 +518,40 @@ test "actions: rectangular erase fill copy and column ops map" {
     params[7] = 1;
     const copy = process(Event{ .style_change = .{
         .final = 'v',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 8,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 2), copy.rect_copy.dest_top);
     try std.testing.expectEqual(@as(u16, 3), copy.rect_copy.dest_left);
 
     intermediates[0] = '\'';
+    const insert_params = [_]i32{2} ++ [_]i32{0} ** (csi_max_params - 1);
     const insert = process(Event{ .style_change = .{
         .final = '}',
-        .params = .{2} ++ [_]i32{0} ** (csi_max_params - 1),
+        .params = insert_params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 2), insert.insert_columns);
 
+    const delete_params = [_]i32{3} ++ [_]i32{0} ** (csi_max_params - 1);
     const delete = process(Event{ .style_change = .{
         .final = '~',
-        .params = .{3} ++ [_]i32{0} ** (csi_max_params - 1),
+        .params = delete_params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 3), delete.delete_columns);
@@ -549,11 +568,12 @@ test "actions: rectangular attr ops and margin controls map" {
     intermediates[0] = '$';
     const change = process(Event{ .style_change = .{
         .final = 'r',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 5,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expect(!change.rect_attrs_change.reverse);
@@ -561,23 +581,26 @@ test "actions: rectangular attr ops and margin controls map" {
 
     const reverse = process(Event{ .style_change = .{
         .final = 't',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 5,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expect(reverse.rect_attrs_change.reverse);
 
     intermediates[0] = '*';
+    const extent_params = [_]i32{2} ++ [_]i32{0} ** (csi_max_params - 1);
     const extent = process(Event{ .style_change = .{
         .final = 'x',
-        .params = .{2} ++ [_]i32{0} ** (csi_max_params - 1),
+        .params = extent_params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expect(extent.attr_change_extent_rect);
@@ -717,11 +740,12 @@ test "actions: DEC private application cursor enable maps true" {
     params[0] = 1;
     const ev = Event{ .style_change = .{
         .final = 'h',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).?.application_cursor_keys);
@@ -732,11 +756,12 @@ test "actions: DEC private focus reporting enable maps true" {
     params[0] = 1004;
     const ev = Event{ .style_change = .{
         .final = 'h',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).?.focus_reporting);
@@ -747,11 +772,12 @@ test "actions: DEC private bracketed paste disable maps false" {
     params[0] = 2004;
     const ev = Event{ .style_change = .{
         .final = 'l',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(!process(ev).?.bracketed_paste);
@@ -765,13 +791,15 @@ test "actions: DEC private synchronized output maps enable disable" {
 test "actions: kitty clipboard mode maps enable disable and query" {
     var params = [_]i32{0} ** csi_max_params;
     params[0] = 5522;
+    var intermediates = [_]u8{0} ** parser_mod.max_intermediates;
     var ev = Event{ .style_change = .{
         .final = 'h',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).?.kitty_clipboard_mode);
@@ -780,7 +808,7 @@ test "actions: kitty clipboard mode maps enable disable and query" {
     try std.testing.expect(!process(ev).?.kitty_clipboard_mode);
 
     ev.style_change.final = 'p';
-    ev.style_change.intermediates[0] = '$';
+    intermediates[0] = '$';
     ev.style_change.intermediates_len = 1;
     try std.testing.expectEqual(@as(u16, 5522), process(ev).?.dec_mode_query);
 }
@@ -790,31 +818,32 @@ test "actions: DEC private mouse tracking mode mappings" {
     params[0] = 9;
     var ev = Event{ .style_change = .{
         .final = 'h',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).? == .mouse_tracking_x10);
     params[0] = 1000;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expect(process(ev).? == .mouse_tracking_normal);
     params[0] = 1002;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expect(process(ev).? == .mouse_tracking_button_event);
     params[0] = 1003;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expect(process(ev).? == .mouse_tracking_any_event);
     params[0] = 1006;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expect(process(ev).?.mouse_protocol_sgr);
     params[0] = 1005;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expect(process(ev).?.mouse_protocol_utf8);
     params[0] = 1015;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expect(process(ev).?.mouse_protocol_urxvt);
 }
 
@@ -822,29 +851,30 @@ test "actions: low priority DEC private modes and media copy map" {
     var params = [_]i32{0} ** csi_max_params;
     var ev = Event{ .style_change = .{
         .final = 'h',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
 
     params[0] = 80;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expect(process(ev).?.sixel_display_mode);
 
     params[0] = 45;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expect(process(ev).?.reverse_wraparound_mode);
 
     params[0] = 1045;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expect(process(ev).?.extended_reverse_wraparound_mode);
 
     params[0] = 5;
     ev.style_change.final = 'i';
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expectEqual(@as(u16, 5), process(ev).?.media_copy_request);
 }
 
@@ -856,11 +886,12 @@ test "actions: application keypad and modifyOtherKeys mappings" {
     params[0] = 66;
     var ev = Event{ .style_change = .{
         .final = 'h',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).?.application_keypad);
@@ -869,11 +900,12 @@ test "actions: application keypad and modifyOtherKeys mappings" {
     params[1] = 2;
     ev = Event{ .style_change = .{
         .final = 'm',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 2,
         .leader = '>',
         .private = false,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expectEqual(@as(i8, 2), process(ev).?.modify_other_keys_set);
@@ -894,11 +926,12 @@ test "actions: xterm key format set reset and query mappings" {
     params[1] = 1;
     var ev = Event{ .style_change = .{
         .final = 'f',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 2,
         .leader = '>',
         .private = false,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
 
@@ -928,17 +961,18 @@ test "actions: xterm pointer mode maps bounded value" {
     params[0] = 2;
     var ev = Event{ .style_change = .{
         .final = 'p',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '>',
         .private = false,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expectEqual(@as(u2, 2), process(ev).?.pointer_mode);
 
     params[0] = 9;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expectEqual(@as(u2, 3), process(ev).?.pointer_mode);
 
     ev.style_change.param_count = 0;
@@ -977,11 +1011,12 @@ test "actions: DA2 maps to secondary device attributes" {
     const params = [_]i32{0} ** csi_max_params;
     const ev = Event{ .style_change = .{
         .final = 'c',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 0,
         .leader = '>',
         .private = false,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).? == .secondary_device_attributes);
@@ -992,11 +1027,12 @@ test "actions: XTVERSION maps to xtversion report" {
     params[0] = 0;
     const ev = Event{ .style_change = .{
         .final = 'q',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '>',
         .private = false,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).? == .xtversion);
@@ -1007,11 +1043,12 @@ test "actions: XTTITLEPOS maps to title stack report" {
     intermediates[0] = '#';
     const ev = Event{ .style_change = .{
         .final = 'S',
-        .params = [_]i32{0} ** csi_max_params,
+        .params = empty_params[0..],
+        .separators = zero_separators[0..],
         .param_count = 0,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } };
     try std.testing.expect(process(ev).? == .xttitlepos);
@@ -1021,11 +1058,12 @@ test "actions: DA3 maps to tertiary device attributes" {
     const params = [_]i32{0} ** csi_max_params;
     const ev = Event{ .style_change = .{
         .final = 'c',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 0,
         .leader = '=',
         .private = false,
-        .intermediates = [_]u8{0} ** 4,
+        .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
     try std.testing.expect(process(ev).? == .tertiary_device_attributes);
@@ -1047,11 +1085,12 @@ test "actions: ANSI mode set reset and query map" {
     intermediates[0] = '$';
     const query = process(Event{ .style_change = .{
         .final = 'p',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 4), query.ansi_mode_query);
@@ -1064,11 +1103,12 @@ test "actions: report and checksum requests map" {
     intermediates[0] = '"';
     try std.testing.expect(process(Event{ .style_change = .{
         .final = 'v',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 0,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }).? == .displayed_extent_report);
 
@@ -1076,11 +1116,12 @@ test "actions: report and checksum requests map" {
     params[0] = 2;
     const psr = process(Event{ .style_change = .{
         .final = 'w',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 2), psr.presentation_state_report);
@@ -1089,11 +1130,12 @@ test "actions: report and checksum requests map" {
     params[0] = 3;
     const xt = process(Event{ .style_change = .{
         .final = 'y',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 3), xt.xtchecksum);
@@ -1108,11 +1150,12 @@ test "actions: report and checksum requests map" {
     params[5] = 5;
     const crc = process(Event{ .style_change = .{
         .final = 'y',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 6,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 7), crc.rect_checksum_request.request_id);
@@ -1124,11 +1167,12 @@ test "actions: report and checksum requests map" {
     intermediates[0] = '#';
     try std.testing.expect(process(Event{ .style_change = .{
         .final = 'R',
-        .params = [_]i32{0} ** csi_max_params,
+        .params = empty_params[0..],
+        .separators = zero_separators[0..],
         .param_count = 0,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }).? == .xtreportcolors);
 }
@@ -1143,11 +1187,12 @@ test "actions: XTREPORTSGR maps to selected graphic rendition report" {
     params[3] = 4;
     const sgr = process(Event{ .style_change = .{
         .final = '|',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 4,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 0), sgr.selected_graphic_rendition_report.top);
@@ -1164,11 +1209,12 @@ test "actions: locator controls map" {
     intermediates[0] = '\'';
     const elr = process(Event{ .style_change = .{
         .final = 'z',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 2,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 2), elr.locator_reporting.mode);
@@ -1178,11 +1224,12 @@ test "actions: locator controls map" {
     params[0] = 3;
     const req = process(Event{ .style_change = .{
         .final = '|',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 3), req.locator_request);
@@ -1194,11 +1241,12 @@ test "actions: locator controls map" {
     params[3] = 5;
     const filter = process(Event{ .style_change = .{
         .final = 'w',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 4,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(?u16, 1), filter.locator_filter.top);
@@ -1210,11 +1258,12 @@ test "actions: locator controls map" {
     params[1] = 3;
     const sle = process(Event{ .style_change = .{
         .final = '{',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 2,
         .leader = 0,
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 2,
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u8, 2), sle.locator_events.param_count);
@@ -1227,11 +1276,12 @@ test "actions: DECRQM maps to dec mode query" {
     intermediates[0] = '$';
     const ev = Event{ .style_change = .{
         .final = 'p',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 1,
         .leader = '?',
         .private = true,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } };
     try std.testing.expectEqual(@as(u16, 1004), process(ev).?.dec_mode_query);
@@ -1352,28 +1402,29 @@ test "actions: kitty multiple cursor query and clear mappings" {
 
     var ev = Event{ .style_change = .{
         .final = 'q',
-        .params = params,
+        .params = params[0..],
+        .separators = zero_separators[0..],
         .param_count = 0,
         .leader = '>',
         .private = false,
-        .intermediates = intermediates,
+        .intermediates = intermediates[0..],
         .intermediates_len = 1,
     } };
     try std.testing.expect(process(ev).?.kitty_multiple_cursor == .support_query);
 
     params[0] = 0;
     params[1] = 4;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     ev.style_change.param_count = 2;
     try std.testing.expect(process(ev).?.kitty_multiple_cursor == .clear_all);
 
     params[0] = 100;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     ev.style_change.param_count = 1;
     try std.testing.expect(process(ev).?.kitty_multiple_cursor == .cursor_query);
 
     params[0] = 101;
-    ev.style_change.params = params;
+    ev.style_change.params = params[0..];
     try std.testing.expect(process(ev).?.kitty_multiple_cursor == .color_query);
 }
 

@@ -21,10 +21,11 @@ pub const DeccirCharsetState = struct {
 };
 
 // Ghostty raised this from 16 to 24 after hitting real 17-parameter SGR input
-// from Kakoune. Howl keeps 16 for now because queued style-change events still
-// carry this bound inline today, and widening it regresses the current hot
-// path until that event shape is slimmer.
-const csi_max_params = 16;
+// from Kakoune. Howl now matches 24 because queued CSI and DCS events no longer
+// carry this bound inline in the parsed-event union. Keep this aligned with the
+// Ghostty reference unless fresh benchmark proof says the wider contract hurts
+// the current hot path again.
+const csi_max_params = 24;
 const csi_max_intermediates = 4;
 // Start metadata controls small so ordinary title, report, and color traffic
 // avoids immediate growth without preallocating the full metadata ceiling for
@@ -37,6 +38,7 @@ const metadata_control_max_bytes = 4096;
 // APC is the one owned string-control family that legitimately carries large
 // Kitty payload chunks, so keep its bound aligned to the same 1 MiB burst scale
 // already derived from Alacritty's PTY read buffer and the host transport path.
+// Re-derive it only if those owners stop sharing that burst scale.
 const apc_max_bytes = 1024 * 1024;
 
 pub const max_params = csi_max_params;
@@ -55,20 +57,20 @@ pub const EscAction = struct {
 
 pub const DcsHook = struct {
     final: u8,
-    params: [csi_max_params]i32,
+    params: []const i32,
     count: u8,
-    intermediates: [csi_max_intermediates]u8,
+    intermediates: []const u8,
     intermediates_len: u8,
 };
 
 const CsiActionData = struct {
     final: u8,
-    params: [csi_max_params]i32,
-    separators: [csi_max_params]u8,
+    params: []const i32,
+    separators: []const u8,
     count: u8,
     leader: u8,
     private: bool,
-    intermediates: [csi_max_intermediates]u8,
+    intermediates: []const u8,
     intermediates_len: u8,
 };
 
@@ -103,6 +105,9 @@ pub const Parser = struct {
     csi_count: u8,
     intermediates: [csi_max_intermediates]u8,
     intermediates_len: u8,
+    emit_params: [csi_max_params]i32,
+    emit_separators: [csi_max_params]u8,
+    emit_intermediates: [csi_max_intermediates]u8,
     csi_in_param: bool,
     osc: string_control_mod.StringControl,
     apc: string_control_mod.StringControl,
@@ -131,6 +136,9 @@ pub const Parser = struct {
             .csi_count = 0,
             .intermediates = [_]u8{0} ** csi_max_intermediates,
             .intermediates_len = 0,
+            .emit_params = [_]i32{0} ** csi_max_params,
+            .emit_separators = [_]u8{0} ** csi_max_params,
+            .emit_intermediates = [_]u8{0} ** csi_max_intermediates,
             .csi_in_param = false,
             .osc = osc,
             .apc = apc,
@@ -350,9 +358,9 @@ pub const Parser = struct {
         if (self.csi_in_param) final_count += 1;
         const hook = DcsHook{
             .final = byte,
-            .params = self.csi_params,
+            .params = self.captureParams(final_count),
             .count = final_count,
-            .intermediates = self.intermediates,
+            .intermediates = self.captureIntermediates(self.intermediates_len, 0),
             .intermediates_len = self.intermediates_len,
         };
         self.clear();
@@ -500,19 +508,13 @@ pub const Parser = struct {
 
         var leader: u8 = 0;
         var private = false;
-        var intermediates = self.intermediates;
-        var intermediates_len = self.intermediates_len;
-        if (intermediates_len > 0) {
-            switch (intermediates[0]) {
+        var intermediate_start: u8 = 0;
+        if (self.intermediates_len > 0) {
+            switch (self.intermediates[0]) {
                 '<', '>', '=', '?' => {
-                    leader = intermediates[0];
+                    leader = self.intermediates[0];
                     private = leader == '?';
-                    intermediates_len -= 1;
-
-                    var i: u8 = 0;
-                    while (i < intermediates_len) : (i += 1) {
-                        intermediates[i] = intermediates[i + 1];
-                    }
+                    intermediate_start = 1;
                 },
                 else => {},
             }
@@ -520,17 +522,37 @@ pub const Parser = struct {
 
         var final_count = self.csi_count;
         if (self.csi_in_param) final_count += 1;
+        const intermediates_len = self.intermediates_len - intermediate_start;
         const action = CsiActionData{
             .final = byte,
-            .params = self.csi_params,
-            .separators = self.csi_separators,
+            .params = self.captureParams(final_count),
+            .separators = self.captureSeparators(final_count),
             .count = final_count,
             .leader = leader,
             .private = private,
-            .intermediates = intermediates,
+            .intermediates = self.captureIntermediates(intermediates_len, intermediate_start),
             .intermediates_len = intermediates_len,
         };
         self.clear();
         return .{ .csi_dispatch = action };
+    }
+
+    fn captureParams(self: *Parser, count: u8) []const i32 {
+        std.debug.assert(count <= self.emit_params.len);
+        std.mem.copyForwards(i32, self.emit_params[0..count], self.csi_params[0..count]);
+        return self.emit_params[0..count];
+    }
+
+    fn captureSeparators(self: *Parser, count: u8) []const u8 {
+        std.debug.assert(count <= self.emit_separators.len);
+        std.mem.copyForwards(u8, self.emit_separators[0..count], self.csi_separators[0..count]);
+        return self.emit_separators[0..count];
+    }
+
+    fn captureIntermediates(self: *Parser, count: u8, start: u8) []const u8 {
+        std.debug.assert(count <= self.emit_intermediates.len);
+        std.debug.assert(start <= self.intermediates.len);
+        std.mem.copyForwards(u8, self.emit_intermediates[0..count], self.intermediates[start .. start + count]);
+        return self.emit_intermediates[0..count];
     }
 };

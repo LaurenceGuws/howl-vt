@@ -10,20 +10,32 @@ const dec_special_designation: u8 = '0';
 const ascii_designation: u8 = 'B';
 
 /// Parser output event.
+pub const StyleChange = struct {
+    final: u8,
+    params: []const i32,
+    separators: []const u8,
+    param_count: u8,
+    leader: u8,
+    private: bool,
+    intermediates: []const u8,
+    intermediates_len: u8,
+};
+
+pub const DcsEvent = struct {
+    body: []const u8,
+    payload: []const u8,
+    final: u8,
+    params: []const i32,
+    param_count: u8,
+    intermediates: []const u8,
+    intermediates_len: u8,
+};
+
 pub const Event = union(enum) {
     text: []const u8,
     codepoint: u21,
     control: u8,
-    style_change: struct {
-        final: u8,
-        params: [parser_mod.max_params]i32,
-        separators: [parser_mod.max_params]u8 = [_]u8{0} ** parser_mod.max_params,
-        param_count: u8,
-        leader: u8,
-        private: bool,
-        intermediates: [parser_mod.max_intermediates]u8,
-        intermediates_len: u8,
-    },
+    style_change: StyleChange,
     osc: struct {
         kind: OscKind,
         command: ?u16,
@@ -31,15 +43,7 @@ pub const Event = union(enum) {
         terminator: parser_mod.OscTerminator,
     },
     apc: []const u8,
-    dcs: struct {
-        body: []const u8,
-        payload: []const u8,
-        final: u8,
-        params: [parser_mod.max_params]i32,
-        param_count: u8,
-        intermediates: [parser_mod.max_intermediates]u8,
-        intermediates_len: u8,
-    },
+    dcs: DcsEvent,
     pm: []const u8,
     esc_dispatch: parser_mod.EscAction,
     invalid_sequence,
@@ -50,10 +54,11 @@ pub const OscKind = osc_parse.Kind;
 /// Arena-backed event queue for parser callbacks.
 pub const ParsedEvents = struct {
     // Alacritty forces a terminal synchronization point after a 1 MiB PTY read
-    // burst. The PTY owner keeps the same burst scale, and the current Howl
+    // burst. The PTY owner keeps that burst scale, and the current Howl
     // parser/event shape can still materialize one queued event per input byte.
-    // Keep one full reference burst buffered, but fail the next byte instead of
-    // silently letting queue growth outrun the owner thread.
+    // Keep exactly one reference burst buffered, then fail the next byte
+    // explicitly instead of letting queue growth outrun the owner thread. If
+    // the PTY burst or queued-event shape changes, re-derive this bound.
     pub const max_queued_events: u32 = 1024 * 1024;
 
     allocator: std.mem.Allocator,
@@ -193,15 +198,19 @@ pub const ParsedEvents = struct {
     }
 
     fn appendCsi(self: *ParsedEvents, action: parser_mod.CsiAction) error{OutOfMemory}!void {
+        const arena_allocator = self.arena.allocator();
+        const params = try dupeArenaSlice(arena_allocator, i32, action.params[0..action.count]);
+        const separators = try dupeArenaSlice(arena_allocator, u8, action.separators[0..action.count]);
+        const intermediates = try dupeArenaSlice(arena_allocator, u8, action.intermediates[0..action.intermediates_len]);
         try self.events.append(self.allocator, Event{
             .style_change = .{
                 .final = action.final,
-                .params = action.params,
-                .separators = action.separators,
+                .params = params,
+                .separators = separators,
                 .param_count = action.count,
                 .leader = action.leader,
                 .private = action.private,
-                .intermediates = action.intermediates,
+                .intermediates = intermediates,
                 .intermediates_len = action.intermediates_len,
             },
         });
@@ -232,6 +241,8 @@ pub const ParsedEvents = struct {
         const hook = self.dcs_hook orelse return;
         const arena_allocator = self.arena.allocator();
         const payload = try arena_allocator.dupe(u8, self.dcs_bytes.items);
+        const params = try dupeArenaSlice(arena_allocator, i32, hook.params[0..hook.count]);
+        const intermediates = try dupeArenaSlice(arena_allocator, u8, hook.intermediates[0..hook.intermediates_len]);
         var body = try std.ArrayList(u8).initCapacity(arena_allocator, self.dcs_bytes.items.len + 32);
         var idx: usize = 0;
         while (idx < hook.count) : (idx += 1) {
@@ -246,13 +257,18 @@ pub const ParsedEvents = struct {
             .body = body.items,
             .payload = payload,
             .final = hook.final,
-            .params = hook.params,
+            .params = params,
             .param_count = hook.count,
-            .intermediates = hook.intermediates,
+            .intermediates = intermediates,
             .intermediates_len = hook.intermediates_len,
         } });
         self.dcs_bytes.clearRetainingCapacity();
         self.dcs_hook = null;
+    }
+
+    fn dupeArenaSlice(allocator: std.mem.Allocator, comptime T: type, data: []const T) error{OutOfMemory}![]const T {
+        if (data.len == 0) return &.{};
+        return try allocator.dupe(T, data);
     }
 
     fn apcBytesAppend(self: *ParsedEvents, byte: u8) error{OutOfMemory}!void {

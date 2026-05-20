@@ -1,5 +1,7 @@
 //! Parser event to semantic event mapping.
 
+const std = @import("std");
+const parser_mod = @import("../parser.zig");
 const events = @import("vocabulary.zig");
 const apc = @import("../kitty/apc.zig");
 const parsed_events = @import("../parser/events.zig");
@@ -30,7 +32,16 @@ pub const HostAction = events.HostAction;
 /// Map parsed event to terminal event when supported.
 pub fn process(event: Event) ?SemanticEvent {
     switch (event) {
-        .style_change => |sc| return csi.process(sc.final, sc.params, sc.separators, sc.param_count, sc.leader, sc.private, sc.intermediates, sc.intermediates_len),
+        .style_change => |sc| return csi.process(
+            sc.final,
+            fixedCsiParams(sc.params[0..sc.param_count]),
+            fixedCsiSeparators(sc.separators[0..sc.param_count]),
+            sc.param_count,
+            sc.leader,
+            sc.private,
+            fixedIntermediates(sc.intermediates[0..sc.intermediates_len]),
+            sc.intermediates_len,
+        ),
         .text => |s| return SemanticEvent{ .write_text = s },
         .codepoint => |cp| return SemanticEvent{ .write_codepoint = cp },
         .control => |c| return c0.process(c),
@@ -40,6 +51,27 @@ pub fn process(event: Event) ?SemanticEvent {
         .dcs => |dcs_data| return dcs.process(dcs_data),
         .pm, .invalid_sequence => return null,
     }
+}
+
+fn fixedCsiParams(params: []const i32) [parser_mod.max_params]i32 {
+    std.debug.assert(params.len <= parser_mod.max_params);
+    var out = [_]i32{0} ** parser_mod.max_params;
+    std.mem.copyForwards(i32, out[0..params.len], params);
+    return out;
+}
+
+fn fixedCsiSeparators(separators: []const u8) [parser_mod.max_params]u8 {
+    std.debug.assert(separators.len <= parser_mod.max_params);
+    var out = [_]u8{0} ** parser_mod.max_params;
+    std.mem.copyForwards(u8, out[0..separators.len], separators);
+    return out;
+}
+
+fn fixedIntermediates(intermediates: []const u8) [parser_mod.max_intermediates]u8 {
+    std.debug.assert(intermediates.len <= parser_mod.max_intermediates);
+    var out = [_]u8{0} ** parser_mod.max_intermediates;
+    std.mem.copyForwards(u8, out[0..intermediates.len], intermediates);
+    return out;
 }
 
 pub fn screenAction(event: SemanticEvent) ?ScreenAction {

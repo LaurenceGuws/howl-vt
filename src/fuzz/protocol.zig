@@ -58,7 +58,13 @@ const Event = union(enum) {
     apc_start,
     apc_put: u8,
     apc_end,
-    dcs_hook: parser_mod.DcsHook,
+    dcs_hook: struct {
+        final: u8,
+        params: [parser_mod.max_params]i32,
+        count: u8,
+        intermediates: [parser_mod.max_intermediates]u8,
+        intermediates_len: u8,
+    },
     dcs_put: u8,
     dcs_unhook,
     pm_start,
@@ -97,9 +103,9 @@ const Harness = struct {
                 .final = csi.final,
                 .leader = csi.leader,
                 .private = csi.private,
-                .params = csi.params,
+                .params = copyFixedI32(csi.params),
                 .count = csi.count,
-                .intermediates = csi.intermediates,
+                .intermediates = copyFixedU8(csi.intermediates),
                 .intermediates_len = csi.intermediates_len,
             } }),
             .osc_dispatch => |osc| {
@@ -113,7 +119,13 @@ const Harness = struct {
             .apc_start => try self.events.append(self.allocator, .apc_start),
             .apc_put => |byte| try self.events.append(self.allocator, Event{ .apc_put = byte }),
             .apc_end => try self.events.append(self.allocator, .apc_end),
-            .dcs_hook => |hook| try self.events.append(self.allocator, Event{ .dcs_hook = hook }),
+            .dcs_hook => |hook| try self.events.append(self.allocator, Event{ .dcs_hook = .{
+                .final = hook.final,
+                .params = copyFixedI32(hook.params),
+                .count = hook.count,
+                .intermediates = copyFixedU8(hook.intermediates),
+                .intermediates_len = hook.intermediates_len,
+            } }),
             .dcs_put => |byte| try self.events.append(self.allocator, Event{ .dcs_put = byte }),
             .dcs_unhook => try self.events.append(self.allocator, .dcs_unhook),
             .pm_start => try self.events.append(self.allocator, .pm_start),
@@ -180,6 +192,20 @@ pub fn runSmoke(gpa: std.mem.Allocator) !void {
     for (seeds) |seed| {
         try runDeterminism(gpa, seed, defaultOptions(null));
     }
+}
+
+fn copyFixedI32(data: []const i32) [parser_mod.max_params]i32 {
+    std.debug.assert(data.len <= parser_mod.max_params);
+    var out = [_]i32{0} ** parser_mod.max_params;
+    std.mem.copyForwards(i32, out[0..data.len], data);
+    return out;
+}
+
+fn copyFixedU8(data: []const u8) [parser_mod.max_intermediates]u8 {
+    std.debug.assert(data.len <= parser_mod.max_intermediates);
+    var out = [_]u8{0} ** parser_mod.max_intermediates;
+    std.mem.copyForwards(u8, out[0..data.len], data);
+    return out;
 }
 
 pub fn runDeterminism(gpa: std.mem.Allocator, seed: u64, options: Options) !void {
@@ -591,7 +617,7 @@ fn hashOscEvent(hasher: *std.hash.Wyhash, osc: OscEvent) void {
     hasher.update(osc.data);
 }
 
-fn hashDcsHookEvent(hasher: *std.hash.Wyhash, hook: parser_mod.DcsHook) void {
+fn hashDcsHookEvent(hasher: *std.hash.Wyhash, hook: @FieldType(Event, "dcs_hook")) void {
     hashValue(hasher, @as(u8, 9));
     hashValue(hasher, hook.final);
     hashValue(hasher, hook.count);

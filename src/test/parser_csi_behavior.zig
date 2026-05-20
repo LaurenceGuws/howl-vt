@@ -3,8 +3,18 @@ const owned_actions = @import("../parser/owned_actions.zig");
 const parser_mod = @import("../parser.zig");
 
 const CsiAction = parser_mod.CsiAction;
+const OwnedCsiAction = struct {
+    final: u8,
+    params: [parser_mod.max_params]i32,
+    separators: [parser_mod.max_params]u8,
+    count: u8,
+    leader: u8,
+    private: bool,
+    intermediates: [parser_mod.max_intermediates]u8,
+    intermediates_len: u8,
+};
 
-fn feedCsiBytes(bytes: []const u8) !CsiAction {
+fn feedCsiBytes(bytes: []const u8) !OwnedCsiAction {
     const gpa = std.testing.allocator;
     var parser = try parser_mod.Parser.init(gpa);
     defer parser.deinit();
@@ -20,9 +30,28 @@ fn feedCsiBytes(bytes: []const u8) !CsiAction {
     }
 
     for (actions.items) |action| {
-        if (action == .csi_dispatch) return action.csi_dispatch;
+        if (action == .csi_dispatch) return ownCsiAction(action.csi_dispatch);
     }
     return error.NoAction;
+}
+
+fn ownCsiAction(action: CsiAction) OwnedCsiAction {
+    var params = [_]i32{0} ** parser_mod.max_params;
+    std.mem.copyForwards(i32, params[0..action.count], action.params[0..action.count]);
+    var separators = [_]u8{0} ** parser_mod.max_params;
+    std.mem.copyForwards(u8, separators[0..action.count], action.separators[0..action.count]);
+    var intermediates = [_]u8{0} ** parser_mod.max_intermediates;
+    std.mem.copyForwards(u8, intermediates[0..action.intermediates_len], action.intermediates[0..action.intermediates_len]);
+    return .{
+        .final = action.final,
+        .params = params,
+        .separators = separators,
+        .count = action.count,
+        .leader = action.leader,
+        .private = action.private,
+        .intermediates = intermediates,
+        .intermediates_len = action.intermediates_len,
+    };
 }
 
 test "CSI parser captures ansi DECRQM intermediate $" {
