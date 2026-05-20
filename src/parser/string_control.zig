@@ -122,12 +122,17 @@ pub const OscControl = struct {
     const Failure = error{ OutOfMemory, StringControlLimit };
     const prefix_max_bytes = 8;
 
+    const CommandPolicy = struct {
+        kind: OscKind,
+        max_len: usize,
+    };
+
     allocator: std.mem.Allocator,
     state: OscState = .idle,
     buffer: std.ArrayList(u8),
     metadata_max_len: usize,
     large_max_len: usize,
-    payload_max_len: usize,
+    policy: CommandPolicy,
     alloc_failed: bool = false,
     overflowed: bool = false,
     raw_has_separator: bool = false,
@@ -159,7 +164,7 @@ pub const OscControl = struct {
             .buffer = try std.ArrayList(u8).initCapacity(allocator, capacity),
             .metadata_max_len = metadata_max_len,
             .large_max_len = large_max_len,
-            .payload_max_len = metadata_max_len,
+            .policy = .{ .kind = .title, .max_len = metadata_max_len },
         };
     }
 
@@ -176,8 +181,7 @@ pub const OscControl = struct {
         self.command_acc = 0;
         self.command_ok = false;
         self.command = null;
-        self.kind = .title;
-        self.payload_max_len = self.metadata_max_len;
+        self.policy = .{ .kind = .title, .max_len = self.metadata_max_len };
         self.buffer.clearRetainingCapacity();
     }
 
@@ -209,7 +213,7 @@ pub const OscControl = struct {
         if (self.state == .raw or self.state == .raw_esc) {
             return if (self.raw_has_separator) .other else .title;
         }
-        return self.kind;
+        return self.policy.kind;
     }
 
     pub fn takeFailure(self: *OscControl) ?Failure {
@@ -336,27 +340,29 @@ pub const OscControl = struct {
 
     fn finishPrefix(self: *OscControl) void {
         if (self.currentPrefixCommand()) |command| {
-            self.command = command;
-            self.kind = classifyCommand(command);
-            self.payload_max_len = self.payloadMaxLen(command);
+            self.setCommandPolicy(command);
         } else {
             self.command = null;
-            self.kind = if (self.raw_has_separator) .other else .title;
+            self.policy = .{
+                .kind = if (self.raw_has_separator) .other else .title,
+                .max_len = self.metadata_max_len,
+            };
         }
         self.state = .idle;
     }
 
     fn finishRaw(self: *OscControl) void {
         self.command = null;
-        self.kind = if (self.raw_has_separator) .other else .title;
+        self.policy = .{
+            .kind = if (self.raw_has_separator) .other else .title,
+            .max_len = self.metadata_max_len,
+        };
         self.state = .idle;
     }
 
     fn enterPayloadFromPrefix(self: *OscControl) bool {
         if (self.currentPrefixCommand()) |command| {
-            self.command = command;
-            self.kind = classifyCommand(command);
-            self.payload_max_len = self.payloadMaxLen(command);
+            self.setCommandPolicy(command);
             self.state = .payload;
             return true;
         }
@@ -366,7 +372,6 @@ pub const OscControl = struct {
 
     fn enterRawFromPrefix(self: *OscControl, byte: u8, has_separator: bool) void {
         self.command = null;
-        self.kind = .other;
         self.raw_has_separator = has_separator;
         self.state = .raw;
         var idx: u8 = 0;
@@ -404,7 +409,7 @@ pub const OscControl = struct {
     }
 
     fn append(self: *OscControl, byte: u8) void {
-        if (self.buffer.items.len >= self.payload_max_len) {
+        if (self.buffer.items.len >= self.policy.max_len) {
             self.overflowed = true;
             return;
         }
@@ -413,25 +418,24 @@ pub const OscControl = struct {
         };
     }
 
-    fn payloadMaxLen(self: *const OscControl, command: u16) usize {
+    fn setCommandPolicy(self: *OscControl, command: u16) void {
+        self.command = command;
+        self.policy = self.commandPolicy(command);
+    }
+
+    fn commandPolicy(self: *const OscControl, command: u16) CommandPolicy {
         return switch (command) {
-            52, 66, 5113, 5522 => self.large_max_len,
-            else => self.metadata_max_len,
+            52 => .{ .kind = .clipboard, .max_len = self.large_max_len },
+            66, 5113, 5522 => .{ .kind = .other, .max_len = self.large_max_len },
+            0, 1, 2 => .{ .kind = .title, .max_len = self.metadata_max_len },
+            8 => .{ .kind = .hyperlink, .max_len = self.metadata_max_len },
+            else => .{ .kind = .other, .max_len = self.metadata_max_len },
         };
     }
 };
 
 fn isDigit(byte: u8) bool {
     return byte >= '0' and byte <= '9';
-}
-
-fn classifyCommand(command: u16) OscKind {
-    return switch (command) {
-        0, 1, 2 => .title,
-        8 => .hyperlink,
-        52 => .clipboard,
-        else => .other,
-    };
 }
 
 /// Incremental string-control parser state without payload ownership.

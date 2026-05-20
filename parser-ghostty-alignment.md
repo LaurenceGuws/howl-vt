@@ -83,3 +83,5 @@ Closed result so far:
   OSC keeps separate command/raw ownership on top of that shared delimiter rule
 - OSC payload limits now follow per-command owner policy instead of one generic metadata bound;
   large clipboard/text-size/file-transfer families use the large string-control ceiling
+- OSC command policy now lives in one parser-owned rule mapping command -> kind + payload bound,
+  including raw invalid/title fallback on finish
