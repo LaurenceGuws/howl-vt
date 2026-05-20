@@ -140,10 +140,6 @@ const VtDigest = struct {
     alt_active: bool,
 };
 
-const EventDigest = struct {
-    hash: u64,
-};
-
 const ParserOutput = struct {
     allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
@@ -250,9 +246,9 @@ fn assertParserDeterminism(
             seed,
             case_index,
             bytes.len,
-            whole_digest.hash,
-            bytewise_digest.hash,
-            chunked_digest.hash,
+            whole_digest,
+            bytewise_digest,
+            chunked_digest,
         });
         return error.ParserDeterminismMismatch;
     }
@@ -539,7 +535,7 @@ fn pickAssetStart(rand: std.Random) usize {
     return rand.uintLessThan(usize, xterm_ctlseqs.len);
 }
 
-fn digestEvents(events: []const Event) EventDigest {
+fn digestEvents(events: []const Event) u64 {
     var hasher = std.hash.Wyhash.init(0);
 
     for (events) |event| {
@@ -616,5 +612,5 @@ fn digestEvents(events: []const Event) EventDigest {
         }
     }
 
-    return .{ .hash = hasher.final() };
+    return hasher.final();
 }
