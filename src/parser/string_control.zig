@@ -123,6 +123,7 @@ pub const OscControl = struct {
     const prefix_max_bytes = 8;
 
     const CommandPolicy = struct {
+        command: ?u16,
         kind: OscKind,
         max_len: usize,
     };
@@ -136,7 +137,6 @@ pub const OscControl = struct {
     alloc_failed: bool = false,
     overflowed: bool = false,
     command_acc: ?u16 = null,
-    command: ?u16 = null,
 
     const OscState = enum {
         idle,
@@ -159,7 +159,7 @@ pub const OscControl = struct {
             .buffer = try std.ArrayList(u8).initCapacity(allocator, capacity),
             .metadata_max_len = metadata_max_len,
             .large_max_len = large_max_len,
-            .policy = .{ .kind = .title, .max_len = metadata_max_len },
+            .policy = .{ .command = null, .kind = .title, .max_len = metadata_max_len },
         };
     }
 
@@ -172,8 +172,7 @@ pub const OscControl = struct {
         self.alloc_failed = false;
         self.overflowed = false;
         self.command_acc = null;
-        self.command = null;
-        self.policy = .{ .kind = .title, .max_len = self.metadata_max_len };
+        self.policy = .{ .command = null, .kind = .title, .max_len = self.metadata_max_len };
         self.buffer.clearRetainingCapacity();
     }
 
@@ -198,7 +197,7 @@ pub const OscControl = struct {
     }
 
     pub fn currentCommand(self: *const OscControl) ?u16 {
-        return self.command;
+        return self.policy.command;
     }
 
     pub fn currentKind(self: *const OscControl) OscKind {
@@ -331,14 +330,13 @@ pub const OscControl = struct {
             self.setCommandPolicy(command);
             self.buffer.clearRetainingCapacity();
         } else {
-            self.command = null;
-            self.policy = .{ .kind = .title, .max_len = self.metadata_max_len };
+            self.policy = .{ .command = null, .kind = .title, .max_len = self.metadata_max_len };
         }
         self.state = .idle;
     }
 
     fn finishRaw(self: *OscControl) void {
-        self.command = null;
+        self.policy.command = null;
         self.state = .idle;
     }
 
@@ -354,8 +352,8 @@ pub const OscControl = struct {
     }
 
     fn enterRawFromPrefix(self: *OscControl, byte: u8, has_separator: bool) void {
-        self.command = null;
         self.policy = .{
+            .command = null,
             .kind = if (has_separator) .other else .title,
             .max_len = self.metadata_max_len,
         };
@@ -400,17 +398,16 @@ pub const OscControl = struct {
     }
 
     fn setCommandPolicy(self: *OscControl, command: u16) void {
-        self.command = command;
         self.policy = self.commandPolicy(command);
     }
 
     fn commandPolicy(self: *const OscControl, command: u16) CommandPolicy {
         return switch (command) {
-            52 => .{ .kind = .clipboard, .max_len = self.large_max_len },
-            66, 5113, 5522 => .{ .kind = .other, .max_len = self.large_max_len },
-            0, 1, 2 => .{ .kind = .title, .max_len = self.metadata_max_len },
-            8 => .{ .kind = .hyperlink, .max_len = self.metadata_max_len },
-            else => .{ .kind = .other, .max_len = self.metadata_max_len },
+            52 => .{ .command = command, .kind = .clipboard, .max_len = self.large_max_len },
+            66, 5113, 5522 => .{ .command = command, .kind = .other, .max_len = self.large_max_len },
+            0, 1, 2 => .{ .command = command, .kind = .title, .max_len = self.metadata_max_len },
+            8 => .{ .command = command, .kind = .hyperlink, .max_len = self.metadata_max_len },
+            else => .{ .command = command, .kind = .other, .max_len = self.metadata_max_len },
         };
     }
 };

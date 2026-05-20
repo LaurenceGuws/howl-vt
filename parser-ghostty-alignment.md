@@ -94,3 +94,5 @@ Closed result so far:
   shared parser-owned buffer
 - OSC no longer keeps a separate numeric-prefix validity flag; validity now lives in the optional
   accumulator state itself
+- OSC no longer keeps recognized command value outside the command-policy owner; command, kind, and
+  payload bound now live together in the same parser-owned policy record
