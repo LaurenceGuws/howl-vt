@@ -100,3 +100,5 @@ Closed result so far:
   its real extra rule that `;` flips kind to `.other`
 - OSC final dispatch data now comes from one parser-owned snapshot instead of separate command/kind/
   payload queries, and recognized-prefix promotion is centralized in one helper
+- Howl now uses an explicit prefix-state ladder for its actual supported OSC command surface instead
+  of the old generic numeric-prefix accumulator path

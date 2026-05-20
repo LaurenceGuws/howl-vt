@@ -136,13 +136,13 @@ pub const OscControl = struct {
 
     allocator: std.mem.Allocator,
     state: OscState = .idle,
+    prefix: PrefixState = .start,
     buffer: std.ArrayList(u8),
     metadata_max_len: usize,
     large_max_len: usize,
     policy: CommandPolicy,
     alloc_failed: bool = false,
     overflowed: bool = false,
-    command_acc: ?u16 = null,
 
     const OscState = enum {
         idle,
@@ -157,6 +157,51 @@ pub const OscControl = struct {
     const BodyKind = enum {
         payload,
         raw,
+    };
+
+    const PrefixState = enum {
+        start,
+        c0,
+        c1,
+        c2,
+        c3,
+        c4,
+        c5,
+        c6,
+        c7,
+        c8,
+        c9,
+        c10,
+        c11,
+        c12,
+        c13,
+        c21,
+        c22,
+        c30,
+        c51,
+        c52,
+        c55,
+        c66,
+        c77,
+        c99,
+        c104,
+        c110,
+        c111,
+        c112,
+        c133,
+        c300,
+        c301,
+        c511,
+        c552,
+        c777,
+        c1337,
+        c3008,
+        c3000,
+        c30001,
+        c3010,
+        c30101,
+        c5113,
+        c5522,
     };
 
     pub fn init(
@@ -180,9 +225,9 @@ pub const OscControl = struct {
 
     pub fn reset(self: *OscControl) void {
         self.state = .idle;
+        self.prefix = .start;
         self.alloc_failed = false;
         self.overflowed = false;
-        self.command_acc = null;
         self.policy = .{ .command = null, .kind = .title, .max_len = self.metadata_max_len };
         self.buffer.clearRetainingCapacity();
     }
@@ -250,9 +295,9 @@ pub const OscControl = struct {
             if (!self.enterPayloadFromPrefix()) return .{ .put = byte };
             return .{ .put = byte };
         }
-        if (isDigit(byte) and self.buffer.items.len < prefix_max_bytes) {
+        if (self.advancePrefix(byte)) |next| {
             self.append(byte);
-            self.pushCommandDigit(byte);
+            self.prefix = next;
             return .{ .put = byte };
         }
         self.enterRawFromPrefix(byte, false);
@@ -313,11 +358,13 @@ pub const OscControl = struct {
         if (!self.promoteRecognizedPrefix(.idle)) {
             self.policy = .{ .command = null, .kind = .title, .max_len = self.metadata_max_len };
         }
+        self.prefix = .start;
         self.state = .idle;
     }
 
     fn finishRaw(self: *OscControl) void {
         self.policy.command = null;
+        self.prefix = .start;
         self.state = .idle;
     }
 
@@ -340,42 +387,19 @@ pub const OscControl = struct {
             .kind = if (has_separator) .other else .title,
             .max_len = self.metadata_max_len,
         };
+        self.prefix = .start;
         self.state = .raw;
         if (byte == ';') self.policy.kind = .other;
         self.append(byte);
     }
 
-    fn currentPrefixCommand(self: *const OscControl) ?u16 {
-        if (self.buffer.items.len == 0) return null;
-        return self.command_acc;
-    }
-
     fn promoteRecognizedPrefix(self: *OscControl, next_state: OscState) bool {
-        const command = self.currentPrefixCommand() orelse return false;
+        const command = self.prefixCommand() orelse return false;
         self.setCommandPolicy(command);
         self.buffer.clearRetainingCapacity();
+        self.prefix = .start;
         self.state = next_state;
         return true;
-    }
-
-    fn pushCommandDigit(self: *OscControl, byte: u8) void {
-        if (self.buffer.items.len == 1) {
-            self.command_acc = byte - '0';
-            return;
-        }
-        const current = self.command_acc orelse return;
-        const digit: u16 = byte - '0';
-        const next, const mul_overflow = @mulWithOverflow(current, 10);
-        if (mul_overflow != 0) {
-            self.command_acc = null;
-            return;
-        }
-        const value, const add_overflow = @addWithOverflow(next, digit);
-        if (add_overflow != 0) {
-            self.command_acc = null;
-            return;
-        }
-        self.command_acc = value;
     }
 
     fn append(self: *OscControl, byte: u8) void {
@@ -390,6 +414,152 @@ pub const OscControl = struct {
 
     fn setCommandPolicy(self: *OscControl, command: u16) void {
         self.policy = self.commandPolicy(command);
+    }
+
+    fn advancePrefix(self: *const OscControl, byte: u8) ?PrefixState {
+        return switch (self.prefix) {
+            .start => switch (byte) {
+                '0' => .c0,
+                '1' => .c1,
+                '2' => .c2,
+                '3' => .c3,
+                '4' => .c4,
+                '5' => .c5,
+                '6' => .c6,
+                '7' => .c7,
+                '8' => .c8,
+                '9' => .c9,
+                else => null,
+            },
+            .c1 => switch (byte) {
+                '0' => .c10,
+                '1' => .c11,
+                '2' => .c12,
+                '3' => .c13,
+                else => null,
+            },
+            .c2 => switch (byte) {
+                '1' => .c21,
+                '2' => .c22,
+                else => null,
+            },
+            .c3 => switch (byte) {
+                '0' => .c30,
+                else => null,
+            },
+            .c5 => switch (byte) {
+                '1' => .c51,
+                '2' => .c52,
+                '5' => .c55,
+                else => null,
+            },
+            .c6 => switch (byte) {
+                '6' => .c66,
+                else => null,
+            },
+            .c7 => switch (byte) {
+                '7' => .c77,
+                else => null,
+            },
+            .c9 => switch (byte) {
+                '9' => .c99,
+                else => null,
+            },
+            .c10 => switch (byte) {
+                '4' => .c104,
+                else => null,
+            },
+            .c11 => switch (byte) {
+                '0' => .c110,
+                '1' => .c111,
+                '2' => .c112,
+                else => null,
+            },
+            .c13 => switch (byte) {
+                '3' => .c133,
+                else => null,
+            },
+            .c30 => switch (byte) {
+                '0' => .c300,
+                '1' => .c301,
+                else => null,
+            },
+            .c51 => switch (byte) {
+                '1' => .c511,
+                else => null,
+            },
+            .c55 => switch (byte) {
+                '2' => .c552,
+                else => null,
+            },
+            .c77 => switch (byte) {
+                '7' => .c777,
+                else => null,
+            },
+            .c133 => switch (byte) {
+                '7' => .c1337,
+                else => null,
+            },
+            .c300 => switch (byte) {
+                '0' => .c3000,
+                '8' => .c3008,
+                else => null,
+            },
+            .c301 => switch (byte) {
+                '0' => .c3010,
+                else => null,
+            },
+            .c511 => switch (byte) {
+                '3' => .c5113,
+                else => null,
+            },
+            .c552 => switch (byte) {
+                '2' => .c5522,
+                else => null,
+            },
+            .c3000 => switch (byte) {
+                '1' => .c30001,
+                else => null,
+            },
+            .c3010 => switch (byte) {
+                '1' => .c30101,
+                else => null,
+            },
+            else => null,
+        };
+    }
+
+    fn prefixCommand(self: *const OscControl) ?u16 {
+        return switch (self.prefix) {
+            .c0 => 0,
+            .c1 => 1,
+            .c2 => 2,
+            .c4 => 4,
+            .c7 => 7,
+            .c8 => 8,
+            .c9 => 9,
+            .c10 => 10,
+            .c11 => 11,
+            .c12 => 12,
+            .c21 => 21,
+            .c22 => 22,
+            .c52 => 52,
+            .c66 => 66,
+            .c99 => 99,
+            .c104 => 104,
+            .c110 => 110,
+            .c111 => 111,
+            .c112 => 112,
+            .c133 => 133,
+            .c777 => 777,
+            .c1337 => 1337,
+            .c3008 => 3008,
+            .c30001 => 30001,
+            .c30101 => 30101,
+            .c5113 => 5113,
+            .c5522 => 5522,
+            else => null,
+        };
     }
 
     fn commandPolicy(self: *const OscControl, command: u16) CommandPolicy {

@@ -89,6 +89,8 @@ throughput truth, and zero tolerance for stale doc or code posture.
     classification difference.
   - OSC final dispatch data now comes from one parser-owned snapshot, and recognized-prefix
     promotion is centralized in one helper.
+  - OSC prefix progression now uses an explicit state ladder for the supported command surface rather
+    than a generic numeric accumulator path.
   - next parser-reference pressure is Ghostty's exact OSC command-state ladder and per-command
     capture shape, not queue-side reparsing, a second metadata copy layer, or duplicate APC/DCS/PM
     payload owner.
