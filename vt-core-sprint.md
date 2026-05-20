@@ -95,6 +95,7 @@ throughput truth, and zero tolerance for stale doc or code posture.
     every command in that copied list.
   - OSC no longer leaves the parser as a normalized record; parser, queue, routing, and fuzz now use
     a typed OSC union with per-family variants.
+  - recognized OSC prefix states now promote directly to the final parser-owned policy record.
   - next parser-reference pressure is Ghostty's exact OSC command-state ladder and per-command
     capture shape, not queue-side reparsing, a second metadata copy layer, or duplicate APC/DCS/PM
     payload owner.

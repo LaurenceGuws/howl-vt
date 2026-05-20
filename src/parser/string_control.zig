@@ -441,8 +441,7 @@ pub const OscControl = struct {
     }
 
     fn promoteRecognizedPrefix(self: *OscControl, next_state: OscState) bool {
-        const command = self.prefixCommand() orelse return false;
-        self.setCommandPolicy(command);
+        self.policy = self.prefixPolicy() orelse return false;
         self.buffer.clearRetainingCapacity();
         self.prefix = .start;
         self.state = next_state;
@@ -457,10 +456,6 @@ pub const OscControl = struct {
         self.buffer.append(self.allocator, byte) catch {
             self.alloc_failed = true;
         };
-    }
-
-    fn setCommandPolicy(self: *OscControl, command: u16) void {
-        self.policy = self.commandPolicy(command);
     }
 
     fn advancePrefix(self: *const OscControl, byte: u8) ?PrefixState {
@@ -589,81 +584,60 @@ pub const OscControl = struct {
         };
     }
 
-    fn prefixCommand(self: *const OscControl) ?u16 {
+    fn prefixPolicy(self: *const OscControl) ?CommandPolicy {
         return switch (self.prefix) {
-            .c0 => 0,
-            .c1 => 1,
-            .c2 => 2,
-            .c4 => 4,
-            .c5 => 5,
-            .c7 => 7,
-            .c8 => 8,
-            .c9 => 9,
-            .c10 => 10,
-            .c11 => 11,
-            .c12 => 12,
-            .c13 => 13,
-            .c14 => 14,
-            .c15 => 15,
-            .c16 => 16,
-            .c17 => 17,
-            .c18 => 18,
-            .c19 => 19,
-            .c21 => 21,
-            .c22 => 22,
-            .c52 => 52,
-            .c66 => 66,
-            .c99 => 99,
-            .c104 => 104,
-            .c110 => 110,
-            .c111 => 111,
-            .c112 => 112,
-            .c113 => 113,
-            .c114 => 114,
-            .c115 => 115,
-            .c116 => 116,
-            .c117 => 117,
-            .c118 => 118,
-            .c119 => 119,
-            .c133 => 133,
-            .c777 => 777,
-            .c1337 => 1337,
-            .c3008 => 3008,
-            .c30001 => 30001,
-            .c30101 => 30101,
-            .c5113 => 5113,
-            .c5522 => 5522,
+            .c0 => .{ .command = 0, .class = .title, .max_len = self.metadata_max_len },
+            .c1 => .{ .command = 1, .class = .icon, .max_len = self.metadata_max_len },
+            .c2 => .{ .command = 2, .class = .title, .max_len = self.metadata_max_len },
+            .c4, .c5 => |state| .{ .command = if (state == .c4) 4 else 5, .class = .palette_control, .max_len = self.metadata_max_len },
+            .c7 => .{ .command = 7, .class = .report_pwd, .max_len = self.metadata_max_len },
+            .c8 => .{ .command = 8, .class = .hyperlink, .max_len = self.metadata_max_len },
+            .c9, .c99 => |state| .{ .command = if (state == .c9) 9 else 99, .class = .notification, .max_len = self.metadata_max_len },
+            .c10, .c11, .c12, .c13, .c14, .c15, .c16, .c17, .c18, .c19 => .{ .command = prefixDynamicCommand(self.prefix), .class = .dynamic_color, .max_len = self.metadata_max_len },
+            .c21 => .{ .command = 21, .class = .kitty_color, .max_len = self.metadata_max_len },
+            .c22 => .{ .command = 22, .class = .pointer_shape, .max_len = self.metadata_max_len },
+            .c52 => .{ .command = 52, .class = .clipboard, .max_len = self.large_max_len },
+            .c66 => .{ .command = 66, .class = .kitty_text_size, .max_len = self.large_max_len },
+            .c104 => .{ .command = 104, .class = .palette_reset, .max_len = self.metadata_max_len },
+            .c110, .c111, .c112, .c113, .c114, .c115, .c116, .c117, .c118, .c119 => .{ .command = prefixDynamicCommand(self.prefix), .class = .dynamic_reset, .max_len = self.metadata_max_len },
+            .c133 => .{ .command = 133, .class = .shell_mark, .max_len = self.metadata_max_len },
+            .c777 => .{ .command = 777, .class = .rxvt_extension, .max_len = self.metadata_max_len },
+            .c1337 => .{ .command = 1337, .class = .iterm2, .max_len = self.metadata_max_len },
+            .c3008 => .{ .command = 3008, .class = .context_signal, .max_len = self.metadata_max_len },
+            .c30001 => .{ .command = 30001, .class = .kitty_color_stack_push, .max_len = self.metadata_max_len },
+            .c30101 => .{ .command = 30101, .class = .kitty_color_stack_pop, .max_len = self.metadata_max_len },
+            .c5113 => .{ .command = 5113, .class = .kitty_file_transfer, .max_len = self.large_max_len },
+            .c5522 => .{ .command = 5522, .class = .kitty_clipboard, .max_len = self.large_max_len },
             else => null,
         };
     }
-
-    fn commandPolicy(self: *const OscControl, command: u16) CommandPolicy {
-        return switch (command) {
-            0, 2 => .{ .command = command, .class = .title, .max_len = self.metadata_max_len },
-            1 => .{ .command = command, .class = .icon, .max_len = self.metadata_max_len },
-            4, 5 => .{ .command = command, .class = .palette_control, .max_len = self.metadata_max_len },
-            10, 11, 12, 13, 14, 15, 16, 17, 18, 19 => .{ .command = command, .class = .dynamic_color, .max_len = self.metadata_max_len },
-            21 => .{ .command = command, .class = .kitty_color, .max_len = self.metadata_max_len },
-            22 => .{ .command = command, .class = .pointer_shape, .max_len = self.metadata_max_len },
-            52 => .{ .command = command, .class = .clipboard, .max_len = self.large_max_len },
-            66 => .{ .command = command, .class = .kitty_text_size, .max_len = self.large_max_len },
-            99, 9 => .{ .command = command, .class = .notification, .max_len = self.metadata_max_len },
-            104 => .{ .command = command, .class = .palette_reset, .max_len = self.metadata_max_len },
-            110, 111, 112, 113, 114, 115, 116, 117, 118, 119 => .{ .command = command, .class = .dynamic_reset, .max_len = self.metadata_max_len },
-            133 => .{ .command = command, .class = .shell_mark, .max_len = self.metadata_max_len },
-            777 => .{ .command = command, .class = .rxvt_extension, .max_len = self.metadata_max_len },
-            1337 => .{ .command = command, .class = .iterm2, .max_len = self.metadata_max_len },
-            3008 => .{ .command = command, .class = .context_signal, .max_len = self.metadata_max_len },
-            30001 => .{ .command = command, .class = .kitty_color_stack_push, .max_len = self.metadata_max_len },
-            30101 => .{ .command = command, .class = .kitty_color_stack_pop, .max_len = self.metadata_max_len },
-            5113 => .{ .command = command, .class = .kitty_file_transfer, .max_len = self.large_max_len },
-            5522 => .{ .command = command, .class = .kitty_clipboard, .max_len = self.large_max_len },
-            7 => .{ .command = command, .class = .report_pwd, .max_len = self.metadata_max_len },
-            8 => .{ .command = command, .class = .hyperlink, .max_len = self.metadata_max_len },
-            else => .{ .command = command, .class = .raw_other, .max_len = self.metadata_max_len },
-        };
-    }
 };
+
+fn prefixDynamicCommand(prefix: OscControl.PrefixState) u16 {
+    return switch (prefix) {
+        .c10 => 10,
+        .c11 => 11,
+        .c12 => 12,
+        .c13 => 13,
+        .c14 => 14,
+        .c15 => 15,
+        .c16 => 16,
+        .c17 => 17,
+        .c18 => 18,
+        .c19 => 19,
+        .c110 => 110,
+        .c111 => 111,
+        .c112 => 112,
+        .c113 => 113,
+        .c114 => 114,
+        .c115 => 115,
+        .c116 => 116,
+        .c117 => 117,
+        .c118 => 118,
+        .c119 => 119,
+        else => unreachable,
+    };
+}
 
 fn bodyState(comptime kind: OscControl.BodyKind) OscControl.OscState {
     return switch (kind) {

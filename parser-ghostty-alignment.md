@@ -106,3 +106,5 @@ Closed result so far:
   covers every command in that copied list
 - parser no longer exports OSC as a normalized `{ command, kind, payload, terminator }` record;
   OSC now leaves the parser as a typed union with per-family variants
+- recognized OSC prefix states now promote directly to the final parser-owned policy record instead
+  of converting through a separate `prefix -> command -> policy` control path
