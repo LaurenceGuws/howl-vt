@@ -72,6 +72,8 @@ throughput truth, and zero tolerance for stale doc or code posture.
   - OSC command/payload classification now happens in the parser instead of queue-side reparsing.
   - valid numeric OSC commands now buffer payload bytes only instead of reparsing a full raw OSC
     buffer at exit.
+  - numeric OSC command values now track incrementally in parser state instead of being reparsed
+    from stored prefix bytes.
   - next parser-reference pressure is Ghostty's exact OSC command-state ladder and per-command
     capture shape, not queue-side reparsing, a second metadata copy layer, or duplicate APC/DCS/PM
     payload owner.

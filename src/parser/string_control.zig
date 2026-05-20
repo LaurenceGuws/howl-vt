@@ -150,6 +150,8 @@ pub const OscControl = struct {
     raw_has_separator: bool = false,
     prefix: [prefix_max_bytes]u8 = undefined,
     prefix_len: u8 = 0,
+    command_acc: u16 = 0,
+    command_ok: bool = false,
     command: ?u16 = null,
     kind: OscKind = .title,
 
@@ -181,6 +183,8 @@ pub const OscControl = struct {
         self.overflowed = false;
         self.raw_has_separator = false;
         self.prefix_len = 0;
+        self.command_acc = 0;
+        self.command_ok = false;
         self.command = null;
         self.kind = .title;
         self.buffer.clearRetainingCapacity();
@@ -261,6 +265,7 @@ pub const OscControl = struct {
         if (isDigit(byte) and self.prefix_len < prefix_max_bytes) {
             self.prefix[self.prefix_len] = byte;
             self.prefix_len += 1;
+            self.pushCommandDigit(byte);
             return .{ .put = byte };
         }
         self.enterRawFromPrefix(byte, false);
@@ -333,7 +338,7 @@ pub const OscControl = struct {
     }
 
     fn finishPrefix(self: *OscControl) void {
-        if (self.parsePrefixCommand()) |command| {
+        if (self.currentPrefixCommand()) |command| {
             self.command = command;
             self.kind = classifyCommand(command);
         } else {
@@ -350,7 +355,7 @@ pub const OscControl = struct {
     }
 
     fn enterPayloadFromPrefix(self: *OscControl) bool {
-        if (self.parsePrefixCommand()) |command| {
+        if (self.currentPrefixCommand()) |command| {
             self.command = command;
             self.kind = classifyCommand(command);
             self.state = .payload;
@@ -372,9 +377,31 @@ pub const OscControl = struct {
         self.append(byte);
     }
 
-    fn parsePrefixCommand(self: *const OscControl) ?u16 {
+    fn currentPrefixCommand(self: *const OscControl) ?u16 {
         if (self.prefix_len == 0) return null;
-        return std.fmt.parseUnsigned(u16, self.prefix[0..self.prefix_len], 10) catch null;
+        if (!self.command_ok) return null;
+        return self.command_acc;
+    }
+
+    fn pushCommandDigit(self: *OscControl, byte: u8) void {
+        if (self.prefix_len == 1) {
+            self.command_acc = byte - '0';
+            self.command_ok = true;
+            return;
+        }
+        if (!self.command_ok) return;
+        const digit: u16 = byte - '0';
+        const next, const mul_overflow = @mulWithOverflow(self.command_acc, 10);
+        if (mul_overflow != 0) {
+            self.command_ok = false;
+            return;
+        }
+        const value, const add_overflow = @addWithOverflow(next, digit);
+        if (add_overflow != 0) {
+            self.command_ok = false;
+            return;
+        }
+        self.command_acc = value;
     }
 
     fn append(self: *OscControl, byte: u8) void {

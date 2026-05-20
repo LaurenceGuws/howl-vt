@@ -77,3 +77,5 @@ Closed result so far:
   at exit
 - valid numeric OSC commands now buffer payload bytes only; invalid/raw OSC forms still fall back to
   one raw buffer
+- parser now tracks numeric OSC command values incrementally instead of reparsing the numeric prefix
+  from stored bytes

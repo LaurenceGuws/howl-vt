@@ -285,6 +285,21 @@ test "parser: OSC invalid numeric prefix without separator stays raw title paylo
     try std.testing.expectEqualSlices(u8, "12x", output.actions.items[0].osc_dispatch.payload);
 }
 
+test "parser: OSC overlong numeric prefix stays raw payload" {
+    const gpa = std.testing.allocator;
+    var parser = try Parser.init(gpa);
+    defer parser.deinit();
+    var output = try Output.init(gpa);
+    defer output.deinit(gpa);
+
+    for ("\x1b]999999999;abc\x07") |byte| output.appendPhases(parser.next(byte));
+    try expectActionCount(output.actions.items, 1);
+    try std.testing.expect(output.actions.items[0] == .osc_dispatch);
+    try std.testing.expectEqual(parser_mod.OscKind.other, output.actions.items[0].osc_dispatch.kind);
+    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command);
+    try std.testing.expectEqualSlices(u8, "999999999;abc", output.actions.items[0].osc_dispatch.payload);
+}
+
 test "parser: CSI with multiple parameters exact order" {
     const gpa = std.testing.allocator;
     var parser = try Parser.init(gpa);
