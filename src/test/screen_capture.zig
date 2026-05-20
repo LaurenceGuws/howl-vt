@@ -17,7 +17,6 @@ pub const Capture = struct {
     history: ?[]u21,
     history_count: u32,
     history_capacity: u16,
-    history_write_idx: usize,
     selection: ?Selection.TerminalSelection,
 
     pub fn captureFromScreen(allocator: std.mem.Allocator, screen: *const Screen, selection: ?Selection.TerminalSelection) !Capture {
@@ -34,7 +33,6 @@ pub const Capture = struct {
             .history = null,
             .history_count = history_count,
             .history_capacity = screen.history_capacity,
-            .history_write_idx = screen.history_write_idx,
             .selection = selection,
         };
         errdefer {
