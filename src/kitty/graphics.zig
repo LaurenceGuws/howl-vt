@@ -8,6 +8,9 @@ pub const RenderCursorView = struct {
     col: u16,
 };
 
+pub const Count = u32;
+pub const Index = u32;
+
 pub const Image = struct {
     image_id: u32,
     image_number: u32,
@@ -63,31 +66,31 @@ pub const State = struct {
         if (self.upload) |*upload| upload.data.deinit(allocator);
     }
 
-    pub fn imageCount(self: *const State) usize {
-        return self.images.items.len;
+    pub fn imageCount(self: *const State) Count {
+        return countForLen(self.images.items.len);
     }
 
-    pub fn imageAt(self: *const State, idx: usize) ?Image {
-        if (idx >= self.images.items.len) return null;
-        return self.images.items[idx];
+    pub fn imageAt(self: *const State, idx: Index) ?Image {
+        if (idx >= self.imageCount()) return null;
+        return self.images.items[listIndex(idx)];
     }
 
-    pub fn placementCount(self: *const State) usize {
-        return self.placements.items.len;
+    pub fn placementCount(self: *const State) Count {
+        return countForLen(self.placements.items.len);
     }
 
-    pub fn placementAt(self: *const State, idx: usize) ?Placement {
-        if (idx >= self.placements.items.len) return null;
-        return self.placements.items[idx];
+    pub fn placementAt(self: *const State, idx: Index) ?Placement {
+        if (idx >= self.placementCount()) return null;
+        return self.placements.items[listIndex(idx)];
     }
 
-    pub fn frameCount(self: *const State) usize {
-        return self.frames.items.len;
+    pub fn frameCount(self: *const State) Count {
+        return countForLen(self.frames.items.len);
     }
 
-    pub fn frameAt(self: *const State, idx: usize) ?Frame {
-        if (idx >= self.frames.items.len) return null;
-        return self.frames.items[idx];
+    pub fn frameAt(self: *const State, idx: Index) ?Frame {
+        if (idx >= self.frameCount()) return null;
+        return self.frames.items[listIndex(idx)];
     }
 
     pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) void {
@@ -138,7 +141,7 @@ pub const State = struct {
                 if (cmd.placement_id != 0) self.deletePlacement(image_id, cmd.placement_id) else self.deleteImage(allocator, image_id);
             },
             'n', 'N' => if (self.findNewestImageByNumber(cmd.image_number)) |idx| {
-                const image_id = self.images.items[idx].image_id;
+                const image_id = self.images.items[listIndex(idx)].image_id;
                 if (cmd.placement_id != 0) self.deletePlacement(image_id, cmd.placement_id) else self.deleteImage(allocator, image_id);
             },
             'c', 'C' => {
@@ -251,19 +254,19 @@ pub const State = struct {
         self.frames.append(allocator, frame) catch allocator.free(owned);
     }
 
-    fn findImage(self: *const State, image_id: u32) ?usize {
+    fn findImage(self: *const State, image_id: u32) ?Index {
         for (self.images.items, 0..) |image, idx| {
-            if (image.image_id == image_id) return idx;
+            if (image.image_id == image_id) return @intCast(idx);
         }
         return null;
     }
 
-    fn findNewestImageByNumber(self: *const State, image_number: u32) ?usize {
+    fn findNewestImageByNumber(self: *const State, image_number: u32) ?Index {
         if (image_number == 0) return null;
         var idx = self.images.items.len;
         while (idx > 0) {
             idx -= 1;
-            if (self.images.items[idx].image_number == image_number) return idx;
+            if (self.images.items[idx].image_number == image_number) return @intCast(idx);
         }
         return null;
     }
@@ -273,7 +276,7 @@ pub const State = struct {
         if (cmd.image_id != 0) return if (self.findImage(cmd.image_id) != null) cmd.image_id else null;
         if (cmd.image_number != 0) {
             const idx = self.findNewestImageByNumber(cmd.image_number) orelse return null;
-            return self.images.items[idx].image_id;
+            return self.images.items[listIndex(idx)].image_id;
         }
         return null;
     }
@@ -390,6 +393,16 @@ pub const State = struct {
         }
     }
 };
+
+fn countForLen(len: usize) Count {
+    std.debug.assert(len <= std.math.maxInt(Count));
+    return @intCast(len);
+}
+
+fn listIndex(idx: Index) usize {
+    return @intCast(idx);
+}
+
 fn appendReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, msg: []const u8) void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b_Gi={d};{s}\x1b\\", .{ image_id, msg }) catch return;
     output.appendSlice(allocator, text) catch {};

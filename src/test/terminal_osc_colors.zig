@@ -136,7 +136,7 @@ test "kitty notification OSC 99 queues host-neutral request" {
 
     try stream.nextSlice("\x1b]99;i=1:d=0;Hello\x1b\\\x1b]99;i=1:p=body;World\x1b\\");
 
-    try std.testing.expectEqual(@as(usize, 2), KittyState.notificationCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 2), KittyState.notificationCount(&terminal));
     try std.testing.expectEqualStrings("i=1:d=0", KittyState.notificationAt(&terminal, 0).?.metadata);
     try std.testing.expectEqualStrings("Hello", KittyState.notificationAt(&terminal, 0).?.payload);
     try std.testing.expectEqualStrings("i=1:p=body", KittyState.notificationAt(&terminal, 1).?.metadata);
@@ -152,7 +152,7 @@ test "kitty notification OSC 9 alias queues host-neutral request" {
 
     try stream.nextSlice("\x1b]9;i=3:p=body;Alias\x1b\\");
 
-    try std.testing.expectEqual(@as(usize, 1), KittyState.notificationCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.notificationCount(&terminal));
     try std.testing.expectEqualStrings("i=3:p=body", KittyState.notificationAt(&terminal, 0).?.metadata);
     try std.testing.expectEqualStrings("Alias", KittyState.notificationAt(&terminal, 0).?.payload);
 }

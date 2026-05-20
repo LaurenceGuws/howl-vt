@@ -1,6 +1,8 @@
 const std = @import("std");
 const KittyNs = @import("types.zig");
 
+const NotificationIndex = u32;
+
 pub const State = struct {
     main: KittyNs.ScreenState = .{},
     alt: KittyNs.ScreenState = .{},
@@ -29,13 +31,14 @@ pub fn shellMark(vt: anytype) KittyNs.ShellMark {
     return vt.kitty.global.shell_mark;
 }
 
-pub fn notificationCount(vt: anytype) usize {
-    return vt.kitty.global.notifications.items.len;
+pub fn notificationCount(vt: anytype) NotificationIndex {
+    std.debug.assert(vt.kitty.global.notifications.items.len <= std.math.maxInt(NotificationIndex));
+    return @intCast(vt.kitty.global.notifications.items.len);
 }
 
-pub fn notificationAt(vt: anytype, idx: usize) ?KittyNs.NotificationRequest {
-    if (idx >= vt.kitty.global.notifications.items.len) return null;
-    return vt.kitty.global.notifications.items[idx];
+pub fn notificationAt(vt: anytype, idx: NotificationIndex) ?KittyNs.NotificationRequest {
+    if (idx >= notificationCount(vt)) return null;
+    return vt.kitty.global.notifications.items[@intCast(idx)];
 }
 
 pub fn fileTransferRequest(vt: anytype) ?[]const u8 {
@@ -58,26 +61,26 @@ pub fn colorStackDepth(vt: anytype) u16 {
     return vt.kitty.global.color_stack_depth;
 }
 
-pub fn graphicsImageCount(vt: anytype) usize {
+pub fn graphicsImageCount(vt: anytype) KittyNs.Graphics.Count {
     return vt.kitty.global.graphics.imageCount();
 }
 
-pub fn graphicsImageAt(vt: anytype, idx: usize) ?KittyNs.Graphics.Image {
+pub fn graphicsImageAt(vt: anytype, idx: KittyNs.Graphics.Index) ?KittyNs.Graphics.Image {
     return vt.kitty.global.graphics.imageAt(idx);
 }
 
-pub fn graphicsPlacementCount(vt: anytype) usize {
+pub fn graphicsPlacementCount(vt: anytype) KittyNs.Graphics.Count {
     return vt.kitty.global.graphics.placementCount();
 }
 
-pub fn graphicsPlacementAt(vt: anytype, idx: usize) ?KittyNs.Graphics.Placement {
+pub fn graphicsPlacementAt(vt: anytype, idx: KittyNs.Graphics.Index) ?KittyNs.Graphics.Placement {
     return vt.kitty.global.graphics.placementAt(idx);
 }
 
-pub fn graphicsFrameCount(vt: anytype) usize {
+pub fn graphicsFrameCount(vt: anytype) KittyNs.Graphics.Count {
     return vt.kitty.global.graphics.frameCount();
 }
 
-pub fn graphicsFrameAt(vt: anytype, idx: usize) ?KittyNs.Graphics.Frame {
+pub fn graphicsFrameAt(vt: anytype, idx: KittyNs.Graphics.Index) ?KittyNs.Graphics.Frame {
     return vt.kitty.global.graphics.frameAt(idx);
 }
