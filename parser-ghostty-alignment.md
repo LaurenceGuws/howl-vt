@@ -98,3 +98,5 @@ Closed result so far:
   payload bound now live together in the same parser-owned policy record
 - OSC payload and raw body stepping now share one explicit parser-owned body helper; raw keeps only
   its real extra rule that `;` flips kind to `.other`
+- OSC final dispatch data now comes from one parser-owned snapshot instead of separate command/kind/
+  payload queries, and recognized-prefix promotion is centralized in one helper

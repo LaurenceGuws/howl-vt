@@ -128,6 +128,12 @@ pub const OscControl = struct {
         max_len: usize,
     };
 
+    pub const Snapshot = struct {
+        command: ?u16,
+        kind: OscKind,
+        payload: []const u8,
+    };
+
     allocator: std.mem.Allocator,
     state: OscState = .idle,
     buffer: std.ArrayList(u8),
@@ -197,16 +203,12 @@ pub const OscControl = struct {
         };
     }
 
-    pub fn payload(self: *const OscControl) []const u8 {
-        return self.buffer.items;
-    }
-
-    pub fn currentCommand(self: *const OscControl) ?u16 {
-        return self.policy.command;
-    }
-
-    pub fn currentKind(self: *const OscControl) OscKind {
-        return self.policy.kind;
+    pub fn snapshot(self: *const OscControl) Snapshot {
+        return .{
+            .command = self.policy.command,
+            .kind = self.policy.kind,
+            .payload = self.buffer.items,
+        };
     }
 
     pub fn takeFailure(self: *OscControl) ?Failure {
@@ -308,10 +310,7 @@ pub const OscControl = struct {
     }
 
     fn finishPrefix(self: *OscControl) void {
-        if (self.currentPrefixCommand()) |command| {
-            self.setCommandPolicy(command);
-            self.buffer.clearRetainingCapacity();
-        } else {
+        if (!self.promoteRecognizedPrefix(.idle)) {
             self.policy = .{ .command = null, .kind = .title, .max_len = self.metadata_max_len };
         }
         self.state = .idle;
@@ -330,12 +329,7 @@ pub const OscControl = struct {
     }
 
     fn enterPayloadFromPrefix(self: *OscControl) bool {
-        if (self.currentPrefixCommand()) |command| {
-            self.setCommandPolicy(command);
-            self.buffer.clearRetainingCapacity();
-            self.state = .payload;
-            return true;
-        }
+        if (self.promoteRecognizedPrefix(.payload)) return true;
         self.enterRawFromPrefix(';', true);
         return false;
     }
@@ -354,6 +348,14 @@ pub const OscControl = struct {
     fn currentPrefixCommand(self: *const OscControl) ?u16 {
         if (self.buffer.items.len == 0) return null;
         return self.command_acc;
+    }
+
+    fn promoteRecognizedPrefix(self: *OscControl, next_state: OscState) bool {
+        const command = self.currentPrefixCommand() orelse return false;
+        self.setCommandPolicy(command);
+        self.buffer.clearRetainingCapacity();
+        self.state = next_state;
+        return true;
     }
 
     fn pushCommandDigit(self: *OscControl, byte: u8) void {
@@ -506,9 +508,10 @@ test "osc control: title payload keeps metadata limit" {
     osc.start();
     for ("0;hello") |byte| _ = osc.feed(byte);
     _ = osc.feed(0x07);
-    try std.testing.expectEqual(@as(?u16, 0), osc.currentCommand());
-    try std.testing.expectEqual(OscKind.title, osc.currentKind());
-    try std.testing.expectEqualStrings("hell", osc.payload());
+    const snapshot = osc.snapshot();
+    try std.testing.expectEqual(@as(?u16, 0), snapshot.command);
+    try std.testing.expectEqual(OscKind.title, snapshot.kind);
+    try std.testing.expectEqualStrings("hell", snapshot.payload);
     try std.testing.expectEqual(error.StringControlLimit, osc.takeFailure().?);
 }
 
@@ -518,8 +521,9 @@ test "osc control: clipboard payload uses large limit" {
     osc.start();
     for ("52;c;abcdefgh") |byte| _ = osc.feed(byte);
     _ = osc.feed(0x07);
-    try std.testing.expectEqual(@as(?u16, 52), osc.currentCommand());
-    try std.testing.expectEqual(OscKind.clipboard, osc.currentKind());
-    try std.testing.expectEqualStrings("c;abcdefgh", osc.payload());
+    const snapshot = osc.snapshot();
+    try std.testing.expectEqual(@as(?u16, 52), snapshot.command);
+    try std.testing.expectEqual(OscKind.clipboard, snapshot.kind);
+    try std.testing.expectEqualStrings("c;abcdefgh", snapshot.payload);
     try std.testing.expectEqual(@as(?(error{ OutOfMemory, StringControlLimit }), null), osc.takeFailure());
 }

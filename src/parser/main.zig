@@ -290,10 +290,11 @@ pub const Parser = struct {
                     '\\', 0x9C => OscTerminator.st,
                     else => break :exit null,
                 };
+                const osc = self.osc.snapshot();
                 break :exit .{ .osc_dispatch = .{
-                    .kind = self.osc.currentKind(),
-                    .command = self.osc.currentCommand(),
-                    .payload = self.osc.payload(),
+                    .kind = osc.kind,
+                    .command = osc.command,
+                    .payload = osc.payload,
                     .term = term,
                 } };
             },
