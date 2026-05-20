@@ -10,7 +10,6 @@ const screen_set = howl_vt.screen_set;
 const terminal_mod = howl_vt.terminal;
 
 const OscTerminator = parser_mod.OscTerminator;
-const CsiAction = parser_mod.CsiAction;
 const xterm_ctlseqs = @embedFile("assets/xterm-ctlseqs.ms");
 
 pub const Options = struct {
@@ -92,8 +91,23 @@ const Harness = struct {
             .print => |cp| try self.events.append(self.allocator, Event{ .print = cp }),
             .execute => |ctrl| try self.events.append(self.allocator, Event{ .execute = ctrl }),
             .invalid => try self.events.append(self.allocator, .invalid),
-            .csi_dispatch => |csi| try self.appendCsi(csi),
-            .osc_dispatch => |osc| try self.appendOsc(osc.data, osc.term),
+            .csi_dispatch => |csi| try self.events.append(self.allocator, Event{ .csi = .{
+                .final = csi.final,
+                .leader = csi.leader,
+                .private = csi.private,
+                .params = csi.params,
+                .count = csi.count,
+                .intermediates = csi.intermediates,
+                .intermediates_len = csi.intermediates_len,
+            } }),
+            .osc_dispatch => |osc| {
+                const owned = try self.allocator.dupe(u8, osc.data);
+                errdefer self.allocator.free(owned);
+                try self.events.append(self.allocator, Event{ .osc = .{
+                    .data = owned,
+                    .term = osc.term,
+                } });
+            },
             .apc_start => try self.events.append(self.allocator, .apc_start),
             .apc_put => |byte| try self.events.append(self.allocator, Event{ .apc_put = byte }),
             .apc_end => try self.events.append(self.allocator, .apc_end),
@@ -105,27 +119,6 @@ const Harness = struct {
             .pm_end => try self.events.append(self.allocator, .pm_end),
             .esc_dispatch => |esc| try self.events.append(self.allocator, Event{ .esc_dispatch = esc }),
         };
-    }
-
-    fn appendCsi(self: *Harness, csi_action: CsiAction) error{OutOfMemory}!void {
-        try self.events.append(self.allocator, Event{ .csi = .{
-            .final = csi_action.final,
-            .leader = csi_action.leader,
-            .private = csi_action.private,
-            .params = csi_action.params,
-            .count = csi_action.count,
-            .intermediates = csi_action.intermediates,
-            .intermediates_len = csi_action.intermediates_len,
-        } });
-    }
-
-    fn appendOsc(self: *Harness, data: []const u8, term: OscTerminator) error{OutOfMemory}!void {
-        const owned = try self.allocator.dupe(u8, data);
-        errdefer self.allocator.free(owned);
-        try self.events.append(self.allocator, Event{ .osc = .{
-            .data = owned,
-            .term = term,
-        } });
     }
 
 };
