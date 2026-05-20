@@ -41,10 +41,6 @@ pub fn isCellContinuation(cell: Cell) bool {
     return cell.x != 0 or cell.y != 0;
 }
 
-pub fn isMultiRowCellRoot(cell: Cell) bool {
-    return cell.height > 1 and cell.x == 0 and cell.y == 0;
-}
-
 pub const default_fg = color.default_fg;
 pub const default_bg = color.default_bg;
 pub const default_underline_color = color.default_underline_color;

@@ -178,10 +178,6 @@ fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
     };
 }
 
-fn cursorShapeByte(shape: screen.Screen.CursorShape) u8 {
-    return @intFromEnum(shape);
-}
-
 fn mouseKindIn(kind: u8) ?input.MouseEventKind {
     return switch (kind) {
         @intFromEnum(input.mouse_press) => .press,
@@ -342,7 +338,7 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
             .dirty_rows = .{ .ptr = dirty_rows_ptr, .len = view.rows },
             .dirty_cols_start = .{ .ptr = cols_start_ptr, .len = dirty_needed },
             .dirty_cols_end = .{ .ptr = cols_end_ptr, .len = dirty_needed },
-            .cursor = .{ .row = view.cursor_row, .col = view.cursor_col, .visible = boolByte(view.cursor_visible), .shape = cursorShapeByte(view.cursor_shape) },
+            .cursor = .{ .row = view.cursor_row, .col = view.cursor_col, .visible = boolByte(view.cursor_visible), .shape = @intFromEnum(view.cursor_shape) },
         },
     };
 
