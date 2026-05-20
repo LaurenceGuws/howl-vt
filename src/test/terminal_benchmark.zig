@@ -220,6 +220,45 @@ fn buildScrollFixture(allocator: std.mem.Allocator) ![]u8 {
     return owned;
 }
 
+fn summarizeObservations(
+    base_allocator: std.mem.Allocator,
+    name: []const u8,
+    bytes_per_run: usize,
+    observations: []const RunObservation,
+) !WorkloadResult {
+    const runs = observations.len;
+    const ns_values = try base_allocator.alloc(u64, runs);
+    defer base_allocator.free(ns_values);
+    const alloc_count_values = try base_allocator.alloc(usize, runs);
+    defer base_allocator.free(alloc_count_values);
+    const alloc_bytes_values = try base_allocator.alloc(usize, runs);
+    defer base_allocator.free(alloc_bytes_values);
+    const peak_live_values = try base_allocator.alloc(usize, runs);
+    defer base_allocator.free(peak_live_values);
+    const queue_depth_values = try base_allocator.alloc(u32, runs);
+    defer base_allocator.free(queue_depth_values);
+
+    for (observations, 0..) |obs, idx| {
+        ns_values[idx] = obs.ns;
+        alloc_count_values[idx] = obs.alloc_count;
+        alloc_bytes_values[idx] = obs.alloc_bytes;
+        peak_live_values[idx] = obs.peak_live_bytes;
+        queue_depth_values[idx] = obs.max_queue_depth;
+    }
+
+    return .{
+        .name = name,
+        .bytes_per_run = bytes_per_run,
+        .runs = runs,
+        .median_ns = medianU64(ns_values),
+        .p95_ns = p95U64(ns_values),
+        .median_alloc_count = medianUsize(alloc_count_values),
+        .median_alloc_bytes = medianUsize(alloc_bytes_values),
+        .median_peak_live_bytes = medianUsize(peak_live_values),
+        .median_max_queue_depth = medianU32(queue_depth_values),
+    };
+}
+
 fn runFeedApplyWorkload(
     io: std.Io,
     base_allocator: std.mem.Allocator,
@@ -256,37 +295,7 @@ fn runFeedApplyWorkload(
             .max_queue_depth = max_queue_depth,
         };
     }
-
-    const ns_values = try base_allocator.alloc(u64, runs);
-    defer base_allocator.free(ns_values);
-    const alloc_count_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(alloc_count_values);
-    const alloc_bytes_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(alloc_bytes_values);
-    const peak_live_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(peak_live_values);
-    const queue_depth_values = try base_allocator.alloc(u32, runs);
-    defer base_allocator.free(queue_depth_values);
-
-    for (observations, 0..) |obs, idx| {
-        ns_values[idx] = obs.ns;
-        alloc_count_values[idx] = obs.alloc_count;
-        alloc_bytes_values[idx] = obs.alloc_bytes;
-        peak_live_values[idx] = obs.peak_live_bytes;
-        queue_depth_values[idx] = obs.max_queue_depth;
-    }
-
-    return .{
-        .name = name,
-        .bytes_per_run = fixture.len,
-        .runs = runs,
-        .median_ns = medianU64(ns_values),
-        .p95_ns = p95U64(ns_values),
-        .median_alloc_count = medianUsize(alloc_count_values),
-        .median_alloc_bytes = medianUsize(alloc_bytes_values),
-        .median_peak_live_bytes = medianUsize(peak_live_values),
-        .median_max_queue_depth = medianU32(queue_depth_values),
-    };
+    return try summarizeObservations(base_allocator, name, fixture.len, observations);
 }
 
 fn runMixedInteractiveWorkload(
@@ -327,37 +336,7 @@ fn runMixedInteractiveWorkload(
             .max_queue_depth = max_queue_depth,
         };
     }
-
-    const ns_values = try base_allocator.alloc(u64, runs);
-    defer base_allocator.free(ns_values);
-    const alloc_count_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(alloc_count_values);
-    const alloc_bytes_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(alloc_bytes_values);
-    const peak_live_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(peak_live_values);
-    const queue_depth_values = try base_allocator.alloc(u32, runs);
-    defer base_allocator.free(queue_depth_values);
-
-    for (observations, 0..) |obs, idx| {
-        ns_values[idx] = obs.ns;
-        alloc_count_values[idx] = obs.alloc_count;
-        alloc_bytes_values[idx] = obs.alloc_bytes;
-        peak_live_values[idx] = obs.peak_live_bytes;
-        queue_depth_values[idx] = obs.max_queue_depth;
-    }
-
-    return .{
-        .name = "mixed_interactive",
-        .bytes_per_run = bursts_per_run * burst.len,
-        .runs = runs,
-        .median_ns = medianU64(ns_values),
-        .p95_ns = p95U64(ns_values),
-        .median_alloc_count = medianUsize(alloc_count_values),
-        .median_alloc_bytes = medianUsize(alloc_bytes_values),
-        .median_peak_live_bytes = medianUsize(peak_live_values),
-        .median_max_queue_depth = medianU32(queue_depth_values),
-    };
+    return try summarizeObservations(base_allocator, "mixed_interactive", bursts_per_run * burst.len, observations);
 }
 
 fn runSnapshotWorkload(
@@ -402,37 +381,7 @@ fn runSnapshotWorkload(
             .max_queue_depth = 0,
         };
     }
-
-    const ns_values = try base_allocator.alloc(u64, runs);
-    defer base_allocator.free(ns_values);
-    const alloc_count_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(alloc_count_values);
-    const alloc_bytes_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(alloc_bytes_values);
-    const peak_live_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(peak_live_values);
-    const queue_depth_values = try base_allocator.alloc(u32, runs);
-    defer base_allocator.free(queue_depth_values);
-
-    for (observations, 0..) |obs, idx| {
-        ns_values[idx] = obs.ns;
-        alloc_count_values[idx] = obs.alloc_count;
-        alloc_bytes_values[idx] = obs.alloc_bytes;
-        peak_live_values[idx] = obs.peak_live_bytes;
-        queue_depth_values[idx] = obs.max_queue_depth;
-    }
-
-    return .{
-        .name = "snapshot_opt_in",
-        .bytes_per_run = snapshot_calls_per_run,
-        .runs = runs,
-        .median_ns = medianU64(ns_values),
-        .p95_ns = p95U64(ns_values),
-        .median_alloc_count = medianUsize(alloc_count_values),
-        .median_alloc_bytes = medianUsize(alloc_bytes_values),
-        .median_peak_live_bytes = medianUsize(peak_live_values),
-        .median_max_queue_depth = medianU32(queue_depth_values),
-    };
+    return try summarizeObservations(base_allocator, "snapshot_opt_in", snapshot_calls_per_run, observations);
 }
 
 fn runQueueGrowthChunkedWorkload(
@@ -480,37 +429,7 @@ fn runQueueGrowthChunkedWorkload(
             .max_queue_depth = max_queue_depth,
         };
     }
-
-    const ns_values = try base_allocator.alloc(u64, runs);
-    defer base_allocator.free(ns_values);
-    const alloc_count_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(alloc_count_values);
-    const alloc_bytes_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(alloc_bytes_values);
-    const peak_live_values = try base_allocator.alloc(usize, runs);
-    defer base_allocator.free(peak_live_values);
-    const queue_depth_values = try base_allocator.alloc(u32, runs);
-    defer base_allocator.free(queue_depth_values);
-
-    for (observations, 0..) |obs, idx| {
-        ns_values[idx] = obs.ns;
-        alloc_count_values[idx] = obs.alloc_count;
-        alloc_bytes_values[idx] = obs.alloc_bytes;
-        peak_live_values[idx] = obs.peak_live_bytes;
-        queue_depth_values[idx] = obs.max_queue_depth;
-    }
-
-    return .{
-        .name = name,
-        .bytes_per_run = fixture.len,
-        .runs = runs,
-        .median_ns = medianU64(ns_values),
-        .p95_ns = p95U64(ns_values),
-        .median_alloc_count = medianUsize(alloc_count_values),
-        .median_alloc_bytes = medianUsize(alloc_bytes_values),
-        .median_peak_live_bytes = medianUsize(peak_live_values),
-        .median_max_queue_depth = medianU32(queue_depth_values),
-    };
+    return try summarizeObservations(base_allocator, name, fixture.len, observations);
 }
 
 fn printTextResult(result: WorkloadResult) void {
