@@ -85,3 +85,5 @@ Closed result so far:
   large clipboard/text-size/file-transfer families use the large string-control ceiling
 - OSC command policy now lives in one parser-owned rule mapping command -> kind + payload bound,
   including raw invalid/title fallback on finish
+- raw OSC fallback no longer keeps a separate side-channel for kind classification; it updates the
+  same parser-owned policy state used by command-recognized OSC paths

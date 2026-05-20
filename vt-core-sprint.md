@@ -78,6 +78,8 @@ throughput truth, and zero tolerance for stale doc or code posture.
     passthrough controls; OSC still keeps its separate command/raw owner shape above that rule.
   - OSC payload limits now follow per-command policy instead of one generic metadata ceiling.
   - OSC command policy now lives in one parser-owned mapping from command to kind and payload bound.
+  - raw OSC fallback now updates that same policy state directly instead of keeping a separate raw
+    kind side-channel.
   - next parser-reference pressure is Ghostty's exact OSC command-state ladder and per-command
     capture shape, not queue-side reparsing, a second metadata copy layer, or duplicate APC/DCS/PM
     payload owner.

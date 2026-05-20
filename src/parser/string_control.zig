@@ -135,13 +135,11 @@ pub const OscControl = struct {
     policy: CommandPolicy,
     alloc_failed: bool = false,
     overflowed: bool = false,
-    raw_has_separator: bool = false,
     prefix: [prefix_max_bytes]u8 = undefined,
     prefix_len: u8 = 0,
     command_acc: u16 = 0,
     command_ok: bool = false,
     command: ?u16 = null,
-    kind: OscKind = .title,
 
     const OscState = enum {
         idle,
@@ -176,7 +174,6 @@ pub const OscControl = struct {
         self.state = .idle;
         self.alloc_failed = false;
         self.overflowed = false;
-        self.raw_has_separator = false;
         self.prefix_len = 0;
         self.command_acc = 0;
         self.command_ok = false;
@@ -210,9 +207,6 @@ pub const OscControl = struct {
     }
 
     pub fn currentKind(self: *const OscControl) OscKind {
-        if (self.state == .raw or self.state == .raw_esc) {
-            return if (self.raw_has_separator) .other else .title;
-        }
         return self.policy.kind;
     }
 
@@ -320,7 +314,7 @@ pub const OscControl = struct {
                     self.state = .raw_esc;
                     return null;
                 }
-                if (byte == ';') self.raw_has_separator = true;
+                if (byte == ';') self.policy.kind = .other;
                 self.append(byte);
                 return .{ .put = byte };
             },
@@ -330,7 +324,7 @@ pub const OscControl = struct {
                     return .{ .finish = .st };
                 }
                 self.state = .raw;
-                if (byte == ';') self.raw_has_separator = true;
+                if (byte == ';') self.policy.kind = .other;
                 self.append(byte);
                 return .{ .put = byte };
             },
@@ -343,20 +337,13 @@ pub const OscControl = struct {
             self.setCommandPolicy(command);
         } else {
             self.command = null;
-            self.policy = .{
-                .kind = if (self.raw_has_separator) .other else .title,
-                .max_len = self.metadata_max_len,
-            };
+            self.policy = .{ .kind = .title, .max_len = self.metadata_max_len };
         }
         self.state = .idle;
     }
 
     fn finishRaw(self: *OscControl) void {
         self.command = null;
-        self.policy = .{
-            .kind = if (self.raw_has_separator) .other else .title,
-            .max_len = self.metadata_max_len,
-        };
         self.state = .idle;
     }
 
@@ -372,12 +359,15 @@ pub const OscControl = struct {
 
     fn enterRawFromPrefix(self: *OscControl, byte: u8, has_separator: bool) void {
         self.command = null;
-        self.raw_has_separator = has_separator;
+        self.policy = .{
+            .kind = if (has_separator) .other else .title,
+            .max_len = self.metadata_max_len,
+        };
         self.state = .raw;
         var idx: u8 = 0;
         while (idx < self.prefix_len) : (idx += 1) self.append(self.prefix[idx]);
         self.prefix_len = 0;
-        if (byte == ';') self.raw_has_separator = true;
+        if (byte == ';') self.policy.kind = .other;
         self.append(byte);
     }
 
