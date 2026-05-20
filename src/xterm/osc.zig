@@ -34,14 +34,31 @@ pub fn process(osc: parser_mod.OscAction) ?SemanticEvent {
 }
 
 pub fn decodeClipboardSet(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
-    const sep = std.mem.indexOfScalar(u8, raw, ';') orelse return error.InvalidOsc52Payload;
-    const data = raw[sep + 1 ..];
+    const decoded_len = try decodedClipboardSetSize(raw);
+    const out = try allocator.alloc(u8, @intCast(decoded_len));
+    errdefer allocator.free(out);
+    _ = try decodeClipboardSetInto(raw, out);
+    return out;
+}
+
+pub fn decodedClipboardSetSize(raw: []const u8) !u64 {
+    const data = clipboardData(raw) orelse return error.InvalidOsc52Payload;
+    if (std.mem.eql(u8, data, "?")) return error.UnsupportedOsc52Query;
+    return @intCast(try std.base64.standard.Decoder.calcSizeForSlice(data));
+}
+
+pub fn decodeClipboardSetInto(raw: []const u8, out: []u8) !u64 {
+    const data = clipboardData(raw) orelse return error.InvalidOsc52Payload;
     if (std.mem.eql(u8, data, "?")) return error.UnsupportedOsc52Query;
     const decoded_len = try std.base64.standard.Decoder.calcSizeForSlice(data);
-    const out = try allocator.alloc(u8, decoded_len);
-    errdefer allocator.free(out);
-    try std.base64.standard.Decoder.decode(out, data);
-    return out;
+    if (out.len < decoded_len) return error.ShortBuffer;
+    try std.base64.standard.Decoder.decode(out[0..decoded_len], data);
+    return @intCast(decoded_len);
+}
+
+fn clipboardData(raw: []const u8) ?[]const u8 {
+    const sep = std.mem.indexOfScalar(u8, raw, ';') orelse return null;
+    return raw[sep + 1 ..];
 }
 
 test "OSC 52 clipboard set payload decodes" {

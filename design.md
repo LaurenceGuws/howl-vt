@@ -99,6 +99,9 @@ classDiagram
 - `src/screen/` owns screen leaf mutation only.
 - `src/input/` keeps key, mouse, token, and encoding owners separate.
 - `src/terminal.zig` is the real terminal state owner.
+- `src/ffi.zig` translates the shipped C ABI only. Feed, surface snapshot, and clipboard-drain
+  behavior live under `src/terminal.zig`, `src/screen_set.zig`, `src/host/state.zig`, and
+  `src/xterm/osc.zig`.
 - `src/howl_vt.zig` is the curated repo-local root, in the same role Ghostty gives `src/terminal/main.zig`.
 - `howl-vt` does not define PTY or host runtime control-signal vocabulary.
 - `protocol_coverage.db` is the protocol source of truth. `unit_test_filters` must stay executable.

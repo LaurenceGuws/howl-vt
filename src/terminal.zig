@@ -9,6 +9,8 @@ const stream_terminal = @import("stream_terminal.zig");
 
 const ScreenNs = screen.Screen;
 const TerminalModeNs = mode;
+const FeedSummary = stream_terminal.FeedSummary;
+const FeedError = stream_terminal.FeedError;
 
 /// Host-neutral terminal state and protocol engine.
 pub const Terminal = struct {
@@ -92,6 +94,33 @@ pub const Terminal = struct {
 
     pub fn vtStream(self: *Terminal) Stream {
         return .init(self);
+    }
+
+    pub fn feed(self: *Terminal, bytes: []const u8) FeedError!FeedSummary {
+        var stream = self.vtStream();
+        const summary = try stream.nextSliceSummary(bytes);
+        if (summary.state_changed) self.dirty_generation +%= 1;
+        return summary;
+    }
+
+    pub fn resize(self: *Terminal, rows: u16, cols: u16) !void {
+        try self.screen_state.resize(self.allocator, rows, cols);
+        self.screen_state.activeSelection().clearIfInvalidatedByGrid(
+            self.screen_state.activeConst(),
+        );
+        self.dirty_generation +%= 1;
+    }
+
+    pub fn ackSurface(self: *Terminal, dirty_generation: u64) bool {
+        if (dirty_generation == 0) return false;
+        if (self.dirty_generation == dirty_generation) {
+            screen_set.clearDirtyRows(&self.screen_state);
+        }
+        return true;
+    }
+
+    pub fn surfaceSnapshot(self: *const Terminal, scrollback_offset: u64) screen_set.SurfaceSnapshot {
+        return screen_set.surfaceSnapshot(&self.screen_state, scrollback_offset);
     }
 
     pub fn deccirCharsetState(self: *const Terminal) parser_mod.DeccirCharsetState {

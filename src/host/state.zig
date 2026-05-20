@@ -12,6 +12,18 @@ pub const ClipboardRequest = struct {
     raw: []u8,
 };
 
+pub const CopyIntoResult = union(enum) {
+    copied: u64,
+    short: u64,
+};
+
+pub const ClipboardDrainResult = union(enum) {
+    none,
+    copied: u64,
+    short: u64,
+    failed,
+};
+
 pub const State = struct {
     pub const DcsPayloadOwned = struct {
         kind: action.DcsPayloadKind,
@@ -49,6 +61,13 @@ pub fn pendingOutput(vt: anytype) []const u8 {
     return vt.host.pending_output.items;
 }
 
+pub fn copyPendingOutputInto(vt: anytype, out: []u8) CopyIntoResult {
+    const pending = pendingOutput(vt);
+    if (out.len < pending.len) return .{ .short = @intCast(pending.len) };
+    if (pending.len != 0) @memcpy(out[0..pending.len], pending);
+    return .{ .copied = @intCast(pending.len) };
+}
+
 pub fn clearPendingOutput(vt: anytype) void {
     vt.host.pending_output.clearRetainingCapacity();
 }
@@ -77,6 +96,15 @@ pub fn drainPendingClipboardSet(vt: anytype, allocator: std.mem.Allocator) !?[]u
         error.OutOfMemory => return error.OutOfMemory,
         else => null,
     };
+}
+
+pub fn drainPendingClipboardSetInto(vt: anytype, out: []u8) ClipboardDrainResult {
+    const pending = pendingClipboardSet(vt) orelse return .none;
+    const decoded_len = osc.decodedClipboardSetSize(pending) catch return .failed;
+    if (out.len < decoded_len) return .{ .short = decoded_len };
+    const written = osc.decodeClipboardSetInto(pending, out) catch return .failed;
+    clearPendingClipboardSet(vt);
+    return .{ .copied = written };
 }
 
 pub fn mediaCopyRequest(vt: anytype) ?u16 {

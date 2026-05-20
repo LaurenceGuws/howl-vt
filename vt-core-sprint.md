@@ -113,7 +113,10 @@ throughput truth, and zero tolerance for stale doc or code posture.
 - `src/terminal.zig`
   - keep shrinking it toward the smallest honest VT aggregate owner.
   - do not let it grow convenience facades or runtime policy back in.
-- `src/ffi.zig`, `src/screen.zig`, and `src/screen/history.zig`
+- `src/ffi.zig`
+  - feed, surface snapshot, and clipboard-drain behavior must stay behind `terminal`,
+    `screen_set`, `host/state`, and `xterm/osc` owners; FFI keeps contract translation only.
+- `src/screen.zig` and `src/screen/history.zig`
   - remaining owner-path style-density hotspots.
 - `howl-linux-host/src/terminal/runtime/progress.zig`
   - host loop now owns one bounded PTY slice per turn, and VT mutation happens during feed.

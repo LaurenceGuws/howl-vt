@@ -71,6 +71,12 @@ pub const View = struct {
     }
 };
 
+pub const SurfaceSnapshot = struct {
+    view: View,
+    dirty: ?Screen.DirtyRows,
+    dirty_needed: u16,
+};
+
 pub const Set = struct {
     const CursorSnapshot = struct {
         row: u16,
@@ -180,8 +186,52 @@ pub fn visibleView(screen_state: *const Set, options: Options) View {
     };
 }
 
+pub fn surfaceSnapshot(screen_state: *const Set, scrollback_offset: u64) SurfaceSnapshot {
+    const history_count: u64 = if (screen_state.alt_active)
+        0
+    else
+        screen_state.activeConst().historyCount();
+    const offset: u32 = @intCast(@min(scrollback_offset, history_count));
+    const view = visibleView(screen_state, .{ .scrollback_offset = offset });
+    const dirty = peekDirtyRows(screen_state);
+    return .{
+        .view = view,
+        .dirty = dirty,
+        .dirty_needed = dirtyNeeded(dirty),
+    };
+}
+
 pub fn peekDirtyRows(screen_state: *const Set) ?Screen.DirtyRows {
     return screen_state.activeConst().peekDirtyRows();
+}
+
+pub fn copyViewCells(view: View, out: anytype, map: anytype) void {
+    std.debug.assert(out.len >= @as(@TypeOf(out.len), @intCast(@as(u32, view.rows) * @as(u32, view.cols))));
+    var row: u16 = 0;
+    while (row < view.rows) : (row += 1) {
+        var col: u16 = 0;
+        while (col < view.cols) : (col += 1) {
+            const idx: u32 = @as(u32, row) * @as(u32, view.cols) + col;
+            out[@intCast(idx)] = map(view.cellInfoAt(row, col));
+        }
+    }
+}
+
+pub fn copyDirtyRows(
+    dirty_rows_out: []u8,
+    cols_start: []u16,
+    cols_end: []u16,
+    dirty: ?Screen.DirtyRows,
+) void {
+    @memset(dirty_rows_out, 0);
+    if (dirty) |value| {
+        @memcpy(cols_start, value.dirty_cols_start[@intCast(value.start_row)..@intCast(value.end_row + 1)]);
+        @memcpy(cols_end, value.dirty_cols_end[@intCast(value.start_row)..@intCast(value.end_row + 1)]);
+        var dirty_row = value.start_row;
+        while (dirty_row <= value.end_row and dirty_row < dirty_rows_out.len) : (dirty_row += 1) {
+            dirty_rows_out[dirty_row] = 1;
+        }
+    }
 }
 
 pub fn clearDirtyRows(screen_state: *Set) void {
@@ -204,4 +254,11 @@ pub fn historyCapacity(screen_state: *const Set) u16 {
 
 fn rowIndex(row: u16) u32 {
     return row;
+}
+
+fn dirtyNeeded(dirty: ?Screen.DirtyRows) u16 {
+    const value = dirty orelse return 0;
+    const needed: u17 = @as(u17, value.end_row) - @as(u17, value.start_row) + 1;
+    std.debug.assert(needed <= std.math.maxInt(u16));
+    return @intCast(needed);
 }

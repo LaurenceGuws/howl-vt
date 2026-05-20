@@ -210,25 +210,6 @@ fn copyBytes(out: []u8, bytes: []const u8) FfiBytesResult {
     };
 }
 
-fn decodeClipboardBytes(raw: []const u8, out: []u8) FfiBytesResult {
-    const sep = std.mem.indexOfScalar(u8, raw, ';') orelse return .{ .status = @intFromEnum(HowlVtCallStatus.failed) };
-    const data = raw[sep + 1 ..];
-    if (std.mem.eql(u8, data, "?")) return .{ .status = @intFromEnum(HowlVtCallStatus.failed) };
-    const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(data) catch return .{ .status = @intFromEnum(HowlVtCallStatus.failed) };
-    if (out.len < decoded_len) {
-        return .{
-            .status = @intFromEnum(HowlVtCallStatus.short_buffer),
-            .needed = decoded_len,
-        };
-    }
-    std.base64.standard.Decoder.decode(out[0..decoded_len], data) catch return .{ .status = @intFromEnum(HowlVtCallStatus.failed) };
-    return .{
-        .status = @intFromEnum(HowlVtCallStatus.ok),
-        .written = decoded_len,
-        .needed = decoded_len,
-    };
-}
-
 fn surfaceResult(
     view: screen_set.View,
     dirty_generation: u64,
@@ -262,29 +243,6 @@ fn surfaceResult(
     };
 }
 
-fn copySurfaceCells(cells_out: []FfiSurfaceCell, view: screen_set.View) void {
-    var row: u16 = 0;
-    while (row < view.rows) : (row += 1) {
-        var col: u16 = 0;
-        while (col < view.cols) : (col += 1) {
-            const idx = @as(usize, row) * @as(usize, view.cols) + @as(usize, col);
-            cells_out[idx] = cellOut(view.cellInfoAt(row, col));
-        }
-    }
-}
-
-fn copyDirtyOutput(dirty_rows_out: []u8, cols_start: []u16, cols_end: []u16, dirty: ?screen.Screen.DirtyRows) void {
-    @memset(dirty_rows_out, 0);
-    if (dirty) |value| {
-        @memcpy(cols_start, value.dirty_cols_start[@intCast(value.start_row)..@intCast(value.end_row + 1)]);
-        @memcpy(cols_end, value.dirty_cols_end[@intCast(value.start_row)..@intCast(value.end_row + 1)]);
-        var dirty_row = value.start_row;
-        while (dirty_row <= value.end_row and dirty_row < dirty_rows_out.len) : (dirty_row += 1) {
-            dirty_rows_out[dirty_row] = 1;
-        }
-    }
-}
-
 pub fn terminalInit(rows: u16, cols: u16, history_capacity: u16) callconv(.c) VtHandle {
     const owned = std.heap.c_allocator.create(terminal.Terminal) catch return null;
     owned.* = terminal.Terminal.initWithCellsAndHistory(std.heap.c_allocator, rows, cols, history_capacity) catch {
@@ -303,16 +261,12 @@ pub fn terminalDeinit(handle: VtHandle) callconv(.c) void {
 pub fn terminalFeed(handle: VtHandle, ptr: ?[*]const u8, len: usize) callconv(.c) FfiFeedResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const bytes = bytesIn(ptr, len) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    if (bytes.len == 0) return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
-
-    var stream = owned.vtStream();
-    const summary = stream.nextSliceSummary(bytes) catch |err| {
+    const summary = owned.feed(bytes) catch |err| {
         return .{ .status = @intFromEnum(switch (err) {
             error.ParsedEventLimit, error.StringControlLimit => HowlVtCallStatus.limit_reached,
             error.OutOfMemory => HowlVtCallStatus.failed,
         }) };
     };
-    if (summary.state_changed) owned.dirty_generation +%= 1;
     return .{
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .state_changed = boolByte(summary.state_changed),
@@ -328,30 +282,25 @@ pub fn terminalCopyTitle(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c)
 
 pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
-    owned.screen_state.resize(owned.allocator, rows, cols) catch return @intFromEnum(HowlVtCallStatus.failed);
-    owned.screen_state.activeSelection().clearIfInvalidatedByGrid(owned.screen_state.activeConst());
-    owned.dirty_generation +%= 1;
+    owned.resize(rows, cols) catch return @intFromEnum(HowlVtCallStatus.failed);
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
 pub fn terminalAckSurface(handle: VtHandle, dirty_generation: u64) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
-    if (dirty_generation == 0) return @intFromEnum(HowlVtCallStatus.invalid_argument);
-    if (owned.dirty_generation == dirty_generation) {
-        screen_set.clearDirtyRows(&owned.screen_state);
-    }
-    return @intFromEnum(HowlVtCallStatus.ok);
+    return if (owned.ackSurface(dirty_generation))
+        @intFromEnum(HowlVtCallStatus.ok)
+    else
+        @intFromEnum(HowlVtCallStatus.invalid_argument);
 }
 
 pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize, full_damage: u8, scroll_up_rows: u16) callconv(.c) FfiSurfaceResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const history_count: u32 = if (owned.screen_state.alt_active) 0 else owned.screen_state.activeConst().historyCount();
-    const offset: u32 = @intCast(@min(scrollback_offset, @as(u64, history_count)));
-    const view = screen_set.visibleView(&owned.screen_state, .{ .scrollback_offset = offset });
-    const dirty = screen_set.peekDirtyRows(&owned.screen_state);
+    const snapshot = owned.surfaceSnapshot(scrollback_offset);
+    const view = snapshot.view;
     const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
-    const dirty_needed: usize = if (dirty) |value| @as(usize, value.end_row) - @as(usize, value.start_row) + 1 else 0;
-    var result = surfaceResult(view, owned.dirty_generation, @intCast(dirty_needed), cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr, full_damage, scroll_up_rows);
+    const dirty_needed: usize = snapshot.dirty_needed;
+    var result = surfaceResult(view, owned.dirty_generation, snapshot.dirty_needed, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr, full_damage, scroll_up_rows);
 
     if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < dirty_needed or cols_end_cap < dirty_needed) {
         result.status = @intFromEnum(HowlVtCallStatus.short_buffer);
@@ -379,8 +328,8 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
         };
     }
 
-    copySurfaceCells(cells_out, view);
-    copyDirtyOutput(dirty_rows_out[0..view.rows], cols_start, cols_end, dirty);
+    screen_set.copyViewCells(view, cells_out, cellOut);
+    screen_set.copyDirtyRows(dirty_rows_out[0..view.rows], cols_start, cols_end, snapshot.dirty);
 
     return result;
 }
@@ -388,7 +337,17 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
 pub fn terminalCopyPendingOutput(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    return copyBytes(out, host_state.pendingOutput(owned));
+    return switch (host_state.copyPendingOutputInto(owned, out)) {
+        .copied => |written| .{
+            .status = @intFromEnum(HowlVtCallStatus.ok),
+            .written = written,
+            .needed = written,
+        },
+        .short => |needed| .{
+            .status = @intFromEnum(HowlVtCallStatus.short_buffer),
+            .needed = needed,
+        },
+    };
 }
 
 pub fn terminalClearPendingOutput(handle: VtHandle) callconv(.c) void {
@@ -399,10 +358,19 @@ pub fn terminalClearPendingOutput(handle: VtHandle) callconv(.c) void {
 pub fn terminalDrainPendingClipboard(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const raw = host_state.pendingClipboardSet(owned) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
-    const result = decodeClipboardBytes(raw, out);
-    if (result.status == @intFromEnum(HowlVtCallStatus.ok)) host_state.clearPendingClipboardSet(owned);
-    return result;
+    return switch (host_state.drainPendingClipboardSetInto(owned, out)) {
+        .none => .{ .status = @intFromEnum(HowlVtCallStatus.ok) },
+        .copied => |written| .{
+            .status = @intFromEnum(HowlVtCallStatus.ok),
+            .written = written,
+            .needed = written,
+        },
+        .short => |needed| .{
+            .status = @intFromEnum(HowlVtCallStatus.short_buffer),
+            .needed = needed,
+        },
+        .failed => .{ .status = @intFromEnum(HowlVtCallStatus.failed) },
+    };
 }
 
 pub fn terminalEncodeKey(handle: VtHandle, key: u32, mods: u8, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
