@@ -261,7 +261,7 @@ fn cloneAuthorityLine(allocator: std.mem.Allocator, cells: []const Cell) !Histor
 fn appendProjectionRows(self: anytype, allocator: std.mem.Allocator, cells: []const Cell, continues_to_visible: bool) !void {
     const cols = colCount(self.cols);
     if (cols == 0) return;
-    const row_count = rowCountForCells(cells.len, cols);
+    const row_count = rowCountForCells(@intCast(cells.len), self.cols);
     std.debug.assert(row_count > 0);
 
     var row_idx: u32 = 0;
@@ -381,9 +381,8 @@ fn projectedCapacity(self: anytype) u32 {
 }
 
 fn projectedRowCountForCells(self: anytype, cells: []const Cell) u32 {
-    const cols = colCount(self.cols);
-    if (cols == 0) return 0;
-    return rowCountForCells(cells.len, cols);
+    if (self.cols == 0) return 0;
+    return rowCountForCells(@intCast(cells.len), self.cols);
 }
 
 fn dropOldestProjectedRows(self: anytype, row_count: u32) void {
@@ -411,10 +410,8 @@ fn listIndex(value: u32) usize {
     return @intCast(value);
 }
 
-fn rowCountForCells(cell_count: usize, cols: usize) u32 {
-    const rows = @max(1, std.math.divCeil(usize, cell_count, cols) catch unreachable);
-    std.debug.assert(rows <= std.math.maxInt(u32));
-    return @intCast(rows);
+fn rowCountForCells(cell_count: u32, cols: u16) u32 {
+    return @max(@as(u32, 1), std.math.divCeil(u32, cell_count, cols) catch unreachable);
 }
 
 fn historyLineCount(self: anytype) u32 {

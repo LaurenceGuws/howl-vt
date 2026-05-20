@@ -1,8 +1,13 @@
+const std = @import("std");
 const input_mod = @import("../input.zig");
 const action_mod = @import("../action.zig");
 
 const Input = input_mod;
 const ModeAction = action_mod.ModeAction;
+
+const saved_dec_mode_limit = 16;
+const SavedDecModeCount = u8;
+const SavedDecModeSlot = u8;
 
 pub const State = struct {
     keyboard_action_mode: bool = false,
@@ -22,8 +27,8 @@ pub const State = struct {
     mouse_tracking: Input.MouseTrackingMode = .off,
     mouse_protocol: Input.MouseProtocol = .none,
     pointer_mode: u2 = 1,
-    saved_dec_modes: [16]SavedDecMode = [_]SavedDecMode{.{ .mode = 0, .state = 0 }} ** 16,
-    saved_dec_mode_count: u8 = 0,
+    saved_dec_modes: [saved_dec_mode_limit]SavedDecMode = [_]SavedDecMode{.{ .mode = 0, .state = 0 }} ** saved_dec_mode_limit,
+    saved_dec_mode_count: SavedDecModeCount = 0,
 };
 
 pub fn apply(vt: anytype, mode_action: ModeAction) void {
@@ -122,7 +127,8 @@ pub fn ansiModeState(vt: anytype, mode: u16) u8 {
 pub fn saveDecModes(vt: anytype, modes: []const u16) void {
     for (modes) |mode| {
         if (!canSetDecMode(mode)) continue;
-        vt.modes.saved_dec_modes[savedDecModeSlot(vt.modes.saved_dec_modes[0..], &vt.modes.saved_dec_mode_count, mode)] = .{
+        const slot = savedDecModeSlot(vt.modes.saved_dec_modes[0..], &vt.modes.saved_dec_mode_count, mode);
+        vt.modes.saved_dec_modes[savedIndex(slot)] = .{
             .mode = mode,
             .state = decModeState(vt, mode),
         };
@@ -225,22 +231,24 @@ pub fn boolToDecModeState(enabled: bool) u8 {
     return if (enabled) 1 else 2;
 }
 
-pub fn savedDecModeSlot(saved_modes: []SavedDecMode, saved_count: *u8, mode: u16) usize {
-    var idx: usize = 0;
-    while (idx < saved_count.*) : (idx += 1) {
-        if (saved_modes[idx].mode == mode) return idx;
+pub fn savedDecModeSlot(saved_modes: []SavedDecMode, saved_count: *SavedDecModeCount, mode: u16) SavedDecModeSlot {
+    const cap = savedDecModeCap(saved_modes);
+    var slot: SavedDecModeSlot = 0;
+    while (slot < saved_count.*) : (slot += 1) {
+        if (saved_modes[savedIndex(slot)].mode == mode) return slot;
     }
-    if (saved_count.* < saved_modes.len) {
-        const slot = saved_count.*;
+    if (saved_count.* < cap) {
+        const new_slot = saved_count.*;
         saved_count.* += 1;
-        return slot;
+        return new_slot;
     }
-    return saved_modes.len - 1;
+    return cap - 1;
 }
 
-pub fn savedDecModeState(saved_modes: []const SavedDecMode, saved_count: u8, mode: u16) ?u8 {
-    var idx: usize = 0;
-    while (idx < saved_count) : (idx += 1) {
+pub fn savedDecModeState(saved_modes: []const SavedDecMode, saved_count: SavedDecModeCount, mode: u16) ?u8 {
+    var slot: SavedDecModeSlot = 0;
+    while (slot < saved_count) : (slot += 1) {
+        const idx = savedIndex(slot);
         if (saved_modes[idx].mode == mode) return saved_modes[idx].state;
     }
     return null;
@@ -255,4 +263,39 @@ pub fn canSetDecMode(mode: u16) bool {
 
 fn isKeyFormatResource(resource: u8) bool {
     return resource <= 4 or resource == 6 or resource == 7;
+}
+
+fn savedIndex(slot: SavedDecModeSlot) usize {
+    return @intCast(slot);
+}
+
+fn savedDecModeCap(saved_modes: []const SavedDecMode) SavedDecModeCount {
+    std.debug.assert(saved_modes.len <= std.math.maxInt(SavedDecModeCount));
+    return @intCast(saved_modes.len);
+}
+
+test "saved dec mode slot reuses existing entry" {
+    var saved = [_]SavedDecMode{.{ .mode = 0, .state = 0 }} ** saved_dec_mode_limit;
+    saved[0] = .{ .mode = 7, .state = 1 };
+    var count: SavedDecModeCount = 1;
+    try std.testing.expectEqual(@as(SavedDecModeSlot, 0), savedDecModeSlot(saved[0..], &count, 7));
+    try std.testing.expectEqual(@as(SavedDecModeCount, 1), count);
+}
+
+test "saved dec mode slot appends and saturates" {
+    var saved = [_]SavedDecMode{.{ .mode = 0, .state = 0 }} ** saved_dec_mode_limit;
+    var count: SavedDecModeCount = 0;
+    try std.testing.expectEqual(@as(SavedDecModeSlot, 0), savedDecModeSlot(saved[0..], &count, 7));
+    try std.testing.expectEqual(@as(SavedDecModeCount, 1), count);
+    count = saved_dec_mode_limit;
+    try std.testing.expectEqual(@as(SavedDecModeSlot, saved_dec_mode_limit - 1), savedDecModeSlot(saved[0..], &count, 2004));
+}
+
+test "saved dec mode state scans only saved entries" {
+    var saved = [_]SavedDecMode{.{ .mode = 0, .state = 0 }} ** saved_dec_mode_limit;
+    saved[0] = .{ .mode = 7, .state = 1 };
+    saved[1] = .{ .mode = 1004, .state = 2 };
+    saved[2] = .{ .mode = 2004, .state = 1 };
+    try std.testing.expectEqual(@as(?u8, 2), savedDecModeState(saved[0..], 2, 1004));
+    try std.testing.expectEqual(@as(?u8, null), savedDecModeState(saved[0..], 2, 2004));
 }

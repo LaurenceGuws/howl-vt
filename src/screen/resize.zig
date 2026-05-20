@@ -72,7 +72,7 @@ pub fn resizeWithReflow(self: anytype, allocator: std.mem.Allocator, rows: u16, 
     var reflow = try reflowLogicalLines(allocator, lines, cols);
     defer reflow.deinit(allocator);
 
-    const viewport = projectViewport(lines.logical_lines.items.len, reflow, rows);
+    const viewport = projectViewport(@intCast(lines.logical_lines.items.len), reflow, rows);
     const buffers = try allocResizeBuffers(allocator, rows, cols, old.tab_stops);
     errdefer freeResizeBuffers(allocator, buffers);
 
@@ -147,7 +147,7 @@ fn reflowLogicalLines(allocator: std.mem.Allocator, lines: LogicalLinesState, co
         const rewrapped_before = result.rewrapped.items.len;
         const has_cursor = lines.cursor_found and lines.cursor_line_index == line_idx;
         const line_cursor_offset = boundedCursorOffset(line, has_cursor, lines.cursor_offset);
-        const row_count = lineRowCount(line.cells.items.len, cols);
+        const row_count = lineRowCount(@intCast(line.cells.items.len), cols);
         try result.line_row_starts.append(allocator, @intCast(result.rewrapped.items.len));
         try result.line_row_counts.append(allocator, row_count);
         updateCursor(&result, row_cursor_base, line_cursor_offset, cols, has_cursor);
@@ -233,7 +233,7 @@ fn updateCursor(result: *ReflowState, row_cursor_base: u32, line_cursor_offset: 
     result.next_wrap_pending = false;
 }
 
-fn projectViewport(logical_line_count: usize, reflow: ReflowState, rows: u16) ViewportState {
+fn projectViewport(logical_line_count: u32, reflow: ReflowState, rows: u16) ViewportState {
     const total_rows: u32 = @intCast(reflow.rewrapped.items.len);
     const visible_rows_kept: u16 = @intCast(@min(@as(u32, rows), total_rows));
     const visible_start = total_rows - visible_rows_kept;
@@ -241,7 +241,7 @@ fn projectViewport(logical_line_count: usize, reflow: ReflowState, rows: u16) Vi
         reflow.line_row_starts.items,
         reflow.line_row_counts.items,
         visible_start,
-    ) orelse @as(u32, @intCast(logical_line_count));
+    ) orelse logical_line_count;
     const hidden_rows_in_first_visible_line: u16 = if (first_visible_line < logical_line_count)
         @intCast(visible_start - reflow.line_row_starts.items[listIndex(first_visible_line)])
     else
@@ -482,9 +482,10 @@ fn lineCursorWraps(line_cursor_offset: u32, cols: u16) bool {
     return line_cursor_offset > 0 and line_cursor_offset % cols == 0;
 }
 
-fn lineRowCount(cell_count: usize, cols: u16) u16 {
+fn lineRowCount(cell_count: u32, cols: u16) u16 {
     if (cols == 0) return 0;
-    return @intCast(@max(1, std.math.divCeil(usize, cell_count, cols) catch unreachable));
+    const rows = @max(@as(u32, 1), std.math.divCeil(u32, cell_count, cols) catch unreachable);
+    return @intCast(rows);
 }
 
 fn flatRowSlice(flat_rows: []const Cell, row: RewrappedRow, cols: u16) []const Cell {
