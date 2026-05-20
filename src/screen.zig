@@ -329,10 +329,6 @@ pub const Screen = struct {
         if (self.dirty_cols_end) |buf| @memset(buf, 0);
     }
 
-    pub fn markAllDirty(self: *Screen) void {
-        self.markAllRowsDirty();
-    }
-
     /// Read visible cell value by row and column.
     pub fn cellAt(self: *const Screen, row: u16, col: u16) u21 {
         return @intCast(self.cellInfoAt(row, col).codepoint);

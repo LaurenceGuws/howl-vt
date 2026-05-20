@@ -127,7 +127,7 @@ pub const Set = struct {
         }
         if (clear_alt) self.alternate.reset();
         self.alt_active = true;
-        self.alternate.markAllDirty();
+        self.alternate.markAllRowsDirty();
         std.debug.assert(self.alt_active);
     }
 
@@ -144,7 +144,7 @@ pub const Set = struct {
             }
             self.saved_primary_cursor = null;
         }
-        self.primary.markAllDirty();
+        self.primary.markAllRowsDirty();
         std.debug.assert(!self.alt_active);
     }
 

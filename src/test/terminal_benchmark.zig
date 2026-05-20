@@ -4,8 +4,6 @@ const std = @import("std");
 const action = @import("../action.zig");
 const terminal_mod = @import("../terminal.zig");
 
-const Action = action;
-
 const WorkloadResult = struct {
     name: []const u8,
     bytes_per_run: usize,
@@ -247,8 +245,8 @@ fn runFeedApplyWorkload(
         counting.resetWindow();
         const start = nowNs(io);
         try terminal.parser.feedSlice(fixture);
-        const max_queue_depth = Action.applyLimit(&terminal, 0).remaining_events;
-        Action.apply(&terminal);
+        const max_queue_depth = action.applyLimit(&terminal, 0).remaining_events;
+        action.apply(&terminal);
         const end = nowNs(io);
         observations[i] = .{
             .ns = end - start,
@@ -317,8 +315,8 @@ fn runMixedInteractiveWorkload(
         var max_queue_depth: u32 = 0;
         while (j < bursts_per_run) : (j += 1) {
             try terminal.parser.feedSlice(burst);
-            max_queue_depth = @max(max_queue_depth, Action.applyLimit(&terminal, 0).remaining_events);
-            Action.apply(&terminal);
+            max_queue_depth = @max(max_queue_depth, action.applyLimit(&terminal, 0).remaining_events);
+            action.apply(&terminal);
         }
         const end = nowNs(io);
         observations[i] = .{
@@ -383,7 +381,7 @@ fn runSnapshotWorkload(
         );
         defer terminal.deinit();
         try terminal.parser.feedSlice(fixture);
-        Action.apply(&terminal);
+        action.apply(&terminal);
         counting.resetWindow();
         const start = nowNs(io);
         var j: usize = 0;
@@ -469,10 +467,10 @@ fn runQueueGrowthChunkedWorkload(
         while (offset < fixture.len) {
             const next = @min(offset + chunk_size, fixture.len);
             try terminal.parser.feedSlice(fixture[offset..next]);
-            max_queue_depth = @max(max_queue_depth, Action.applyLimit(&terminal, 0).remaining_events);
+            max_queue_depth = @max(max_queue_depth, action.applyLimit(&terminal, 0).remaining_events);
             offset = next;
         }
-        Action.apply(&terminal);
+        action.apply(&terminal);
         const end = nowNs(io);
         observations[i] = .{
             .ns = end - start,
