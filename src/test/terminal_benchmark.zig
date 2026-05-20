@@ -15,6 +15,7 @@ const WorkloadResult = struct {
     median_alloc_bytes: usize,
     median_peak_live_bytes: usize,
     median_max_queue_depth: u32,
+    median_max_remaining_after_slice: u32,
 
     fn throughputMibS(self: WorkloadResult) f64 {
         const median_seconds = @as(f64, @floatFromInt(self.median_ns)) / 1_000_000_000.0;
@@ -30,12 +31,29 @@ const Options = struct {
     format: OutputFormat = .ndjson,
 };
 
+// Keep this proof workload aligned with the current host fairness gate in
+// howl-linux-host/src/terminal/runtime/progress.zig.
+const host_vt_apply_events_per_turn: u32 = 1024;
+
+const ReplayFixture = struct {
+    allocator: std.mem.Allocator,
+    workload_name: []u8,
+    record: pty_feed_record.Record,
+
+    fn deinit(self: *ReplayFixture) void {
+        self.record.deinit();
+        self.allocator.free(self.workload_name);
+        self.* = undefined;
+    }
+};
+
 const RunObservation = struct {
     ns: u64,
     alloc_count: usize,
     alloc_bytes: usize,
     peak_live_bytes: usize,
     max_queue_depth: u32,
+    max_remaining_after_slice: u32,
 };
 
 const CountingAllocator = struct {
@@ -224,6 +242,8 @@ fn summarizeObservations(
     defer base_allocator.free(peak_live_values);
     const queue_depth_values = try base_allocator.alloc(u32, runs);
     defer base_allocator.free(queue_depth_values);
+    const remaining_values = try base_allocator.alloc(u32, runs);
+    defer base_allocator.free(remaining_values);
 
     for (observations, 0..) |obs, idx| {
         ns_values[idx] = obs.ns;
@@ -231,6 +251,7 @@ fn summarizeObservations(
         alloc_bytes_values[idx] = obs.alloc_bytes;
         peak_live_values[idx] = obs.peak_live_bytes;
         queue_depth_values[idx] = obs.max_queue_depth;
+        remaining_values[idx] = obs.max_remaining_after_slice;
     }
 
     return .{
@@ -243,6 +264,7 @@ fn summarizeObservations(
         .median_alloc_bytes = median(usize, alloc_bytes_values),
         .median_peak_live_bytes = median(usize, peak_live_values),
         .median_max_queue_depth = median(u32, queue_depth_values),
+        .median_max_remaining_after_slice = median(u32, remaining_values),
     };
 }
 
@@ -280,6 +302,7 @@ fn runFeedApplyWorkload(
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
             .max_queue_depth = max_queue_depth,
+            .max_remaining_after_slice = 0,
         };
     }
     return try summarizeObservations(base_allocator, name, fixture.len, observations);
@@ -321,6 +344,7 @@ fn runMixedInteractiveWorkload(
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
             .max_queue_depth = max_queue_depth,
+            .max_remaining_after_slice = 0,
         };
     }
     return try summarizeObservations(base_allocator, "mixed_interactive", bursts_per_run * burst.len, observations);
@@ -366,6 +390,7 @@ fn runSnapshotWorkload(
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
             .max_queue_depth = 0,
+            .max_remaining_after_slice = 0,
         };
     }
     return try summarizeObservations(base_allocator, "snapshot_opt_in", snapshot_calls_per_run, observations);
@@ -414,6 +439,7 @@ fn runQueueGrowthChunkedWorkload(
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
             .max_queue_depth = max_queue_depth,
+            .max_remaining_after_slice = 0,
         };
     }
     return try summarizeObservations(base_allocator, name, fixture.len, observations);
@@ -457,16 +483,146 @@ fn runReplayRecordWorkload(
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
             .max_queue_depth = max_queue_depth,
+            .max_remaining_after_slice = 0,
         };
     }
     return try summarizeObservations(base_allocator, name, @intCast(pty_feed_record.byteLen(record)), observations);
 }
 
-fn loadReplayRecordIfPresent(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !?pty_feed_record.Record {
-    return pty_feed_record.load(io, allocator, path) catch |err| switch (err) {
-        error.FileNotFound => null,
+fn runReplayRecordHostCadenceWorkload(
+    io: std.Io,
+    base_allocator: std.mem.Allocator,
+    name: []const u8,
+    record: *const pty_feed_record.Record,
+    rows: u16,
+    cols: u16,
+    history_capacity: u16,
+    runs: u32,
+) !WorkloadResult {
+    const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
+    defer base_allocator.free(observations);
+
+    for (observations) |*obs| {
+        var counting = CountingAllocator.init(base_allocator);
+        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
+            counting.allocator(),
+            rows,
+            cols,
+            history_capacity,
+        );
+        defer terminal.deinit();
+
+        counting.resetWindow();
+        var max_queue_depth: u32 = 0;
+        var max_remaining_after_slice: u32 = 0;
+        std.debug.assert(record.chunks.items.len <= std.math.maxInt(u32));
+        const chunk_count: u32 = @intCast(record.chunks.items.len);
+        var next_chunk: u32 = 0;
+        const start = nowNs(io);
+        while (true) {
+            var queued = action.applyLimit(&terminal, 0).remaining_events;
+            while (queued < host_vt_apply_events_per_turn and next_chunk < chunk_count) {
+                try terminal.parser.feedSlice(record.chunks.items[@intCast(next_chunk)]);
+                next_chunk += 1;
+                queued = action.applyLimit(&terminal, 0).remaining_events;
+            }
+
+            if (queued == 0 and next_chunk >= chunk_count) break;
+            max_queue_depth = @max(max_queue_depth, queued);
+            const applied = action.applyLimit(&terminal, host_vt_apply_events_per_turn);
+            max_remaining_after_slice = @max(max_remaining_after_slice, applied.remaining_events);
+            if (applied.applied == 0 and next_chunk >= chunk_count) break;
+        }
+        const end = nowNs(io);
+        obs.* = .{
+            .ns = end - start,
+            .alloc_count = counting.window_alloc_count,
+            .alloc_bytes = counting.window_alloc_bytes,
+            .peak_live_bytes = counting.window_peak_live_bytes,
+            .max_queue_depth = max_queue_depth,
+            .max_remaining_after_slice = max_remaining_after_slice,
+        };
+    }
+    return try summarizeObservations(base_allocator, name, @intCast(pty_feed_record.byteLen(record)), observations);
+}
+
+fn loadReplayFixtures(io: std.Io, allocator: std.mem.Allocator, dir_path: []const u8) ![]ReplayFixture {
+    var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| switch (err) {
+        error.FileNotFound => return &.{},
         else => |e| return e,
     };
+    defer dir.close(io);
+
+    var fixtures: std.ArrayList(ReplayFixture) = .empty;
+    errdefer {
+        for (fixtures.items) |*fixture| fixture.deinit();
+        fixtures.deinit(allocator);
+    }
+
+    var iter = dir.iterateAssumeFirstIteration();
+    while (try iter.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".hex")) continue;
+
+        const path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dir_path, entry.name });
+        defer allocator.free(path);
+
+        var record = try pty_feed_record.load(io, allocator, path);
+        errdefer record.deinit();
+        if (record.chunks.items.len == 0) {
+            record.deinit();
+            continue;
+        }
+        const workload_name = try replayWorkloadName(allocator, entry.name);
+        errdefer allocator.free(workload_name);
+        try fixtures.append(allocator, .{
+            .allocator = allocator,
+            .workload_name = workload_name,
+            .record = record,
+        });
+    }
+
+    std.sort.heap(ReplayFixture, fixtures.items, {}, lessThanReplayFixture);
+    return try fixtures.toOwnedSlice(allocator);
+}
+
+fn replayWorkloadName(allocator: std.mem.Allocator, file_name: []const u8) ![]u8 {
+    const stem = std.fs.path.stem(file_name);
+    const name = try allocator.alloc(u8, "replay_".len + stem.len);
+    @memcpy(name[0.."replay_".len], "replay_");
+    for (stem, 0..) |byte, idx| {
+        name["replay_".len + idx] = switch (byte) {
+            'a'...'z', 'A'...'Z', '0'...'9' => byte,
+            else => '_',
+        };
+    }
+    return name;
+}
+
+fn replayHostCadenceWorkloadName(allocator: std.mem.Allocator, replay_workload_name: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}_host_cadence", .{replay_workload_name});
+}
+
+fn lessThanReplayFixture(_: void, lhs: ReplayFixture, rhs: ReplayFixture) bool {
+    return std.mem.lessThan(u8, lhs.workload_name, rhs.workload_name);
+}
+
+fn deinitReplayFixtures(fixtures: []ReplayFixture) void {
+    for (fixtures) |*fixture| fixture.deinit();
+}
+
+test "replay workload name derives from fixture basename" {
+    const gpa = std.testing.allocator;
+    const name = try replayWorkloadName(gpa, "capture-1.hex");
+    defer gpa.free(name);
+    try std.testing.expectEqualStrings("replay_capture_1", name);
+}
+
+test "host cadence replay workload name adds suffix" {
+    const gpa = std.testing.allocator;
+    const name = try replayHostCadenceWorkloadName(gpa, "replay_capture_1");
+    defer gpa.free(name);
+    try std.testing.expectEqualStrings("replay_capture_1_host_cadence", name);
 }
 
 fn printTextResult(result: WorkloadResult) void {
@@ -483,12 +639,13 @@ fn printTextResult(result: WorkloadResult) void {
     std.debug.print("median_alloc_bytes={d}\n", .{result.median_alloc_bytes});
     std.debug.print("median_peak_live_bytes={d}\n", .{result.median_peak_live_bytes});
     std.debug.print("median_max_queue_depth={d}\n", .{result.median_max_queue_depth});
+    std.debug.print("median_max_remaining_after_slice={d}\n", .{result.median_max_remaining_after_slice});
     std.debug.print("---\n", .{});
 }
 
 fn printNdjsonResult(result: WorkloadResult) void {
     std.debug.print(
-        "{{\"type\":\"vt_core_benchmark\",\"schema\":2,\"workload\":\"{s}\",\"runs\":{d},\"bytes_per_run\":{d},\"median_ns\":{d},\"p95_ns\":{d},\"throughput_mib_s\":{d:.3},\"median_alloc_count\":{d},\"median_alloc_bytes\":{d},\"median_peak_live_bytes\":{d},\"median_max_queue_depth\":{d}}}\n",
+        "{{\"type\":\"vt_core_benchmark\",\"schema\":3,\"workload\":\"{s}\",\"runs\":{d},\"bytes_per_run\":{d},\"median_ns\":{d},\"p95_ns\":{d},\"throughput_mib_s\":{d:.3},\"median_alloc_count\":{d},\"median_alloc_bytes\":{d},\"median_peak_live_bytes\":{d},\"median_max_queue_depth\":{d},\"median_max_remaining_after_slice\":{d}}}\n",
         .{
             result.name,
             result.runs,
@@ -500,6 +657,7 @@ fn printNdjsonResult(result: WorkloadResult) void {
             result.median_alloc_bytes,
             result.median_peak_live_bytes,
             result.median_max_queue_depth,
+            result.median_max_remaining_after_slice,
         },
     );
 }
@@ -644,19 +802,9 @@ pub fn main(init: std.process.Init) !void {
         runs,
     );
 
-    var replay_lsd_never = try loadReplayRecordIfPresent(init.io, allocator, "../howl-linux-host/artifacts/replay/lsd-never.hex");
-    defer if (replay_lsd_never) |*record| record.deinit();
-    const replay_lsd_never_result = if (replay_lsd_never) |*record|
-        try runReplayRecordWorkload(init.io, allocator, "replay_lsd_never", record, 40, 120, 1_000, @intCast(runs))
-    else
-        null;
-
-    var replay_lsd_always = try loadReplayRecordIfPresent(init.io, allocator, "../howl-linux-host/artifacts/replay/lsd-always.hex");
-    defer if (replay_lsd_always) |*record| record.deinit();
-    const replay_lsd_always_result = if (replay_lsd_always) |*record|
-        try runReplayRecordWorkload(init.io, allocator, "replay_lsd_always", record, 40, 120, 1_000, @intCast(runs))
-    else
-        null;
+    const replay_fixture_dir = "../howl-linux-host/artifacts/replay";
+    const replay_fixtures = try loadReplayFixtures(init.io, allocator, replay_fixture_dir);
+    defer deinitReplayFixtures(replay_fixtures);
 
     if (options.format == .text) {
         std.debug.print("vt_core_benchmark_v2\n", .{});
@@ -673,6 +821,31 @@ pub fn main(init: std.process.Init) !void {
     printResult(snapshot_result, options.format);
     printResult(queue_growth_ascii, options.format);
     printResult(queue_growth_scroll, options.format);
-    if (replay_lsd_never_result) |result| printResult(result, options.format);
-    if (replay_lsd_always_result) |result| printResult(result, options.format);
+    for (replay_fixtures) |*fixture| {
+        const result = try runReplayRecordWorkload(
+            init.io,
+            allocator,
+            fixture.workload_name,
+            &fixture.record,
+            40,
+            120,
+            1_000,
+            @intCast(runs),
+        );
+        printResult(result, options.format);
+
+        const host_name = try replayHostCadenceWorkloadName(allocator, fixture.workload_name);
+        defer allocator.free(host_name);
+        const host_result = try runReplayRecordHostCadenceWorkload(
+            init.io,
+            allocator,
+            host_name,
+            &fixture.record,
+            40,
+            120,
+            1_000,
+            @intCast(runs),
+        );
+        printResult(host_result, options.format);
+    }
 }

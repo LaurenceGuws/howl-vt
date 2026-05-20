@@ -15,23 +15,18 @@ Rule: Ghostty is the parser bible. When Howl differs, the default action is to r
 
 ## Howl Current Step Loop
 
-1. Receive bytes through `handleByte(output, byte)` or `handleSlice(output, bytes)`.
-2. If a string control is active, feed its buffer directly and maybe emit a completed action.
-3. If batching is allowed, duplicate an ASCII slice into caller-owned output.
-4. Otherwise look up the table effect from `(byte, state)`.
-5. Apply the transition through `applyTransition(...)`.
-6. Run stream decoding, CSI accumulation, charset selection, and DEC-special mapping from parser-owned helpers.
-7. Append Howl parser actions into caller-owned output.
-8. Return no direct step result; outer code reads the caller-owned action list.
+1. Receive one byte through `next(byte)`.
+2. If a string control is active, feed that owner and maybe emit byte-step `*_put` or `*_end` actions.
+3. Otherwise look up the table effect from `(byte, state)`.
+4. Build ordered exit, transition, and entry phases directly.
+5. Return parser actions only.
+6. CSI and DCS-hook metadata now borrow parser-owned slices until the next `next(byte)` call.
+7. Queue batching and parsed-event ownership live in `src/parser/queue.zig` and `src/parser/events.zig`.
 
 ## Current Debt List
 
-1. Parser root API differs: Ghostty uses `next(byte)`, Howl still exposes `handleByte` and `handleSlice`.
-2. Parser root still batches ASCII slices; Ghostty emits byte-step parser actions.
-3. Parser root still owns charset and DEC-special interpretation that Ghostty does not keep in parser shape.
-4. CSI accumulation is still split into `CsiParser` instead of parser-root fields.
-5. String controls are emitted as completed payloads instead of Ghostty-style lifecycle/data steps.
-6. Howl does not model explicit exit/transition/entry actions.
+1. Howl still uses its own buffered OSC owner instead of Ghostty's exact OSC parser shape.
+2. Recompare parser-owner boundaries before moving more protocol consequences across parser/action seams.
 
 ## Strict Iteration Loop
 
@@ -42,11 +37,36 @@ Rule: Ghostty is the parser bible. When Howl differs, the default action is to r
 5. Run `zig build test` and `git diff --check`.
 6. Recompare both parser roots before starting the next cut.
 
+## Closed Iteration
+
+Iteration 1: parser root API and borrowed action slices.
+
+Closed result:
+- parser root exposes byte-step `next(...)`
+- slice feeding moved to `src/parser/queue.zig`
+- CSI and DCS-hook actions now borrow parser-owned metadata directly instead of copying into a
+  second emit buffer first
+- `src/parser.zig` no longer advertises slice orchestration as parser truth
+
+## Closed Iteration
+
+Iteration 2: CSI separator truth.
+
+Closed result:
+- parser CSI separators now use a Ghostty-like bitset instead of per-param separator bytes
+- `src/parser/events.zig` no longer stores per-param separator bytes in the queued parsed-event
+  payload path
+- SGR colon handling now reads separator truth from that bitset end-to-end
+
 ## Active Iteration
 
-Iteration 1: parser root API.
+Iteration 3: string-control owner shape.
 
 Target:
-- parser root exposes byte-step `next(...)`
-- slice feeding moves to `src/parser/queue.zig`
-- `src/parser.zig` stops advertising slice orchestration as parser truth
+- compare Howl's remaining buffered OSC owner against Ghostty's exact OSC parser shape
+- keep parser ownership syntax-only while making the next difference exact
+
+Closed result so far:
+- parser no longer owns APC/DCS/PM payload bytes
+- `src/parser/events.zig` is now the real payload owner for APC/DCS/PM queued bytes and limits
+- parser string-control state for APC/DCS/PM is now passthrough-only, closer to Ghostty's direct byte-step path

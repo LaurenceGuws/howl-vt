@@ -23,8 +23,7 @@ pub const DeccirCharsetState = struct {
 // Ghostty raised this from 16 to 24 after hitting real 17-parameter SGR input
 // from Kakoune. Howl now matches 24 because queued CSI and DCS events no longer
 // carry this bound inline in the parsed-event union. Keep this aligned with the
-// Ghostty reference unless fresh benchmark proof says the wider contract hurts
-// the current hot path again.
+// Ghostty reference unless later proof falsifies the current cut.
 const csi_max_params = 24;
 const csi_max_intermediates = 4;
 // Start metadata controls small so ordinary title, report, and color traffic
@@ -43,6 +42,9 @@ const apc_max_bytes = 1024 * 1024;
 
 pub const max_params = csi_max_params;
 pub const max_intermediates = csi_max_intermediates;
+pub const CsiSeparatorList = std.StaticBitSet(csi_max_params);
+pub const max_metadata_control_bytes = metadata_control_max_bytes;
+pub const max_apc_control_bytes = apc_max_bytes;
 
 pub const OscTerminator = enum {
     bel,
@@ -56,6 +58,8 @@ pub const EscAction = struct {
 };
 
 pub const DcsHook = struct {
+    // Borrowed parser-owned slices. Callers that retain them past the next
+    // `Parser.next` call must copy.
     final: u8,
     params: []const i32,
     count: u8,
@@ -64,9 +68,11 @@ pub const DcsHook = struct {
 };
 
 const CsiActionData = struct {
+    // Borrowed parser-owned slices. Callers that retain them past the next
+    // `Parser.next` call must copy.
     final: u8,
     params: []const i32,
-    separators: []const u8,
+    separators: CsiSeparatorList,
     count: u8,
     leader: u8,
     private: bool,
@@ -101,49 +107,34 @@ pub const Parser = struct {
     utf8: utf8_mod.Utf8Decoder,
     state: ParseState,
     csi_params: [csi_max_params]i32,
-    csi_separators: [csi_max_params]u8,
+    csi_separators: CsiSeparatorList,
     csi_count: u8,
     intermediates: [csi_max_intermediates]u8,
     intermediates_len: u8,
-    emit_params: [csi_max_params]i32,
-    emit_separators: [csi_max_params]u8,
-    emit_intermediates: [csi_max_intermediates]u8,
     csi_in_param: bool,
     osc: string_control_mod.StringControl,
-    apc: string_control_mod.StringControl,
-    dcs: string_control_mod.StringControl,
-    pm: string_control_mod.StringControl,
+    apc: string_control_mod.PassthroughControl,
+    dcs: string_control_mod.PassthroughControl,
+    pm: string_control_mod.PassthroughControl,
 
     /// Initialize parser state and owned buffers.
     pub fn init(allocator: std.mem.Allocator) !Parser {
         var osc = try string_control_mod.StringControl.init(allocator, control_init_capacity, metadata_control_max_bytes, true);
         errdefer osc.deinit();
 
-        var apc = try string_control_mod.StringControl.init(allocator, control_init_capacity, apc_max_bytes, false);
-        errdefer apc.deinit();
-
-        var dcs = try string_control_mod.StringControl.init(allocator, control_init_capacity, metadata_control_max_bytes, false);
-        errdefer dcs.deinit();
-
-        var pm = try string_control_mod.StringControl.init(allocator, control_init_capacity, metadata_control_max_bytes, false);
-        errdefer pm.deinit();
-
         return .{
             .utf8 = .{},
             .state = .ground,
             .csi_params = [_]i32{0} ** csi_max_params,
-            .csi_separators = [_]u8{0} ** csi_max_params,
+            .csi_separators = CsiSeparatorList.initEmpty(),
             .csi_count = 0,
             .intermediates = [_]u8{0} ** csi_max_intermediates,
             .intermediates_len = 0,
-            .emit_params = [_]i32{0} ** csi_max_params,
-            .emit_separators = [_]u8{0} ** csi_max_params,
-            .emit_intermediates = [_]u8{0} ** csi_max_intermediates,
             .csi_in_param = false,
             .osc = osc,
-            .apc = apc,
-            .dcs = dcs,
-            .pm = pm,
+            .apc = string_control_mod.PassthroughControl.init(false),
+            .dcs = string_control_mod.PassthroughControl.init(false),
+            .pm = string_control_mod.PassthroughControl.init(false),
         };
     }
 
@@ -168,9 +159,6 @@ pub const Parser = struct {
 
     pub fn takeStringControlFailed(self: *Parser) ?error{ OutOfMemory, StringControlLimit } {
         if (self.osc.takeFailure()) |failure| return failure;
-        if (self.apc.takeFailure()) |failure| return failure;
-        if (self.dcs.takeFailure()) |failure| return failure;
-        if (self.pm.takeFailure()) |failure| return failure;
         return null;
     }
 
@@ -358,12 +346,11 @@ pub const Parser = struct {
         if (self.csi_in_param) final_count += 1;
         const hook = DcsHook{
             .final = byte,
-            .params = self.captureParams(final_count),
+            .params = self.csi_params[0..final_count],
             .count = final_count,
-            .intermediates = self.captureIntermediates(self.intermediates_len, 0),
+            .intermediates = self.intermediates[0..self.intermediates_len],
             .intermediates_len = self.intermediates_len,
         };
-        self.clear();
         return .{ .dcs_hook = hook };
     }
 
@@ -425,7 +412,7 @@ pub const Parser = struct {
         };
     }
 
-    fn bufferedPut(self: *Parser, control: *string_control_mod.StringControl, byte: u8) ?u8 {
+    fn bufferedPut(self: *Parser, control: anytype, byte: u8) ?u8 {
         _ = self;
         const result = control.feed(byte) orelse return null;
         return switch (result) {
@@ -463,7 +450,7 @@ pub const Parser = struct {
     fn clear(self: *Parser) void {
         self.csi_params[0] = 0;
         self.csi_count = 0;
-        self.csi_separators[0] = 0;
+        self.csi_separators = CsiSeparatorList.initEmpty();
         self.intermediates_len = 0;
         self.csi_in_param = false;
     }
@@ -479,10 +466,10 @@ pub const Parser = struct {
     fn feedParamByte(self: *Parser, comptime kind: ParamKind, byte: u8) void {
         if (byte == ';' or byte == ':') {
             if (self.csi_count < self.csi_params.len) {
+                if (kind == .csi and byte == ':') self.csi_separators.set(self.csi_count);
                 self.csi_count += 1;
                 if (self.csi_count < self.csi_params.len) {
                     self.csi_params[self.csi_count] = 0;
-                    if (kind == .csi) self.csi_separators[self.csi_count] = byte;
                 }
             }
             self.csi_in_param = false;
@@ -525,34 +512,14 @@ pub const Parser = struct {
         const intermediates_len = self.intermediates_len - intermediate_start;
         const action = CsiActionData{
             .final = byte,
-            .params = self.captureParams(final_count),
-            .separators = self.captureSeparators(final_count),
+            .params = self.csi_params[0..final_count],
+            .separators = self.csi_separators,
             .count = final_count,
             .leader = leader,
             .private = private,
-            .intermediates = self.captureIntermediates(intermediates_len, intermediate_start),
+            .intermediates = self.intermediates[intermediate_start .. intermediate_start + intermediates_len],
             .intermediates_len = intermediates_len,
         };
-        self.clear();
         return .{ .csi_dispatch = action };
-    }
-
-    fn captureParams(self: *Parser, count: u8) []const i32 {
-        std.debug.assert(count <= self.emit_params.len);
-        std.mem.copyForwards(i32, self.emit_params[0..count], self.csi_params[0..count]);
-        return self.emit_params[0..count];
-    }
-
-    fn captureSeparators(self: *Parser, count: u8) []const u8 {
-        std.debug.assert(count <= self.emit_separators.len);
-        std.mem.copyForwards(u8, self.emit_separators[0..count], self.csi_separators[0..count]);
-        return self.emit_separators[0..count];
-    }
-
-    fn captureIntermediates(self: *Parser, count: u8, start: u8) []const u8 {
-        std.debug.assert(count <= self.emit_intermediates.len);
-        std.debug.assert(start <= self.intermediates.len);
-        std.mem.copyForwards(u8, self.emit_intermediates[0..count], self.intermediates[start .. start + count]);
-        return self.emit_intermediates[0..count];
     }
 };

@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const action_mod = @import("action.zig");
+const parser_mod = @import("parser.zig");
 const cell = @import("screen/cell.zig");
 const color = @import("screen/color.zig");
 const cursor = @import("screen/cursor.zig");
@@ -513,7 +514,7 @@ pub const Screen = struct {
         write.repeatPreceding(self, count);
     }
 
-    pub fn applySgr(self: *Screen, params: []const i32, separators: []const u8) void {
+    pub fn applySgr(self: *Screen, params: []const i32, separators: parser_mod.CsiSeparatorList) void {
         style_mod.applySgr(self, params, separators);
     }
 

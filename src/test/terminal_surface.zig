@@ -2,6 +2,7 @@
 
 const std = @import("std");
 const action_mod = @import("../action.zig");
+const parser_mod = @import("../parser.zig");
 const terminal_mod = @import("../terminal.zig");
 const ffi = @import("../ffi.zig");
 const parsed_events_mod = @import("../parser/events.zig");
@@ -402,6 +403,35 @@ test "terminal feed fails overlong OSC instead of truncating it" {
     try bytes.appendSlice(allocator, "\x1b]0;");
     try bytes.appendNTimes(allocator, 'A', 4_097);
     try bytes.append(allocator, 0x07);
+
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)),
+        ffi.terminalFeed(handle, bytes.items.ptr, bytes.items.len),
+    );
+
+    const queued = ffi.terminalApply(handle, 0, null, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), queued.status);
+    try std.testing.expectEqual(@as(u64, 0), queued.remaining_events);
+
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
+        ffi.terminalFeed(handle, "A".ptr, 1),
+    );
+    const applied = ffi.terminalApply(handle, 64, null, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), applied.status);
+    try std.testing.expect(applied.applied > 0);
+}
+
+test "terminal feed fails overlong APC instead of truncating it" {
+    const allocator = std.testing.allocator;
+    const handle = ffi.terminalInit(2, 4, 4);
+    defer ffi.terminalDeinit(handle);
+
+    var bytes = try std.ArrayList(u8).initCapacity(allocator, parser_mod.max_apc_control_bytes + 5);
+    defer bytes.deinit(allocator);
+    try bytes.appendSlice(allocator, "\x1b_");
+    try bytes.appendNTimes(allocator, 'A', parser_mod.max_apc_control_bytes + 1);
+    try bytes.appendSlice(allocator, "\x1b\\");
 
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)),

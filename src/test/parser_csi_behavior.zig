@@ -6,7 +6,7 @@ const CsiAction = parser_mod.CsiAction;
 const OwnedCsiAction = struct {
     final: u8,
     params: [parser_mod.max_params]i32,
-    separators: [parser_mod.max_params]u8,
+    separators: parser_mod.CsiSeparatorList,
     count: u8,
     leader: u8,
     private: bool,
@@ -38,14 +38,12 @@ fn feedCsiBytes(bytes: []const u8) !OwnedCsiAction {
 fn ownCsiAction(action: CsiAction) OwnedCsiAction {
     var params = [_]i32{0} ** parser_mod.max_params;
     std.mem.copyForwards(i32, params[0..action.count], action.params[0..action.count]);
-    var separators = [_]u8{0} ** parser_mod.max_params;
-    std.mem.copyForwards(u8, separators[0..action.count], action.separators[0..action.count]);
     var intermediates = [_]u8{0} ** parser_mod.max_intermediates;
     std.mem.copyForwards(u8, intermediates[0..action.intermediates_len], action.intermediates[0..action.intermediates_len]);
     return .{
         .final = action.final,
         .params = params,
-        .separators = separators,
+        .separators = action.separators,
         .count = action.count,
         .leader = action.leader,
         .private = action.private,
@@ -113,7 +111,8 @@ test "CSI parser preserves colon subparameter separators" {
     try std.testing.expectEqual(@as(u8, 2), action.count);
     try std.testing.expectEqual(@as(i32, 4), action.params[0]);
     try std.testing.expectEqual(@as(i32, 3), action.params[1]);
-    try std.testing.expectEqual(@as(u8, ':'), action.separators[1]);
+    try std.testing.expect(action.separators.isSet(0));
+    try std.testing.expect(!action.separators.isSet(1));
 }
 
 test "CSI parser: empty params stay defaulted after reset" {

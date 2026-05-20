@@ -22,6 +22,7 @@ pub const State = struct {
     pending_output: std.ArrayList(u8),
     hyperlink_targets: std.ArrayList([]u8),
     pending_clipboard: ?ClipboardRequest = null,
+    current_title: ?[]u8 = null,
     locator: LocatorNs.State = .{},
     media_copy_request: ?u16 = null,
     dcs_payload: ?DcsPayloadOwned = null,
@@ -38,6 +39,7 @@ pub const State = struct {
         for (self.hyperlink_targets.items) |uri| allocator.free(uri);
         self.hyperlink_targets.deinit(allocator);
         if (self.pending_clipboard) |req| allocator.free(req.raw);
+        if (self.current_title) |title| allocator.free(title);
         if (self.dcs_payload) |payload| allocator.free(payload.payload);
         self.pending_output.deinit(allocator);
     }

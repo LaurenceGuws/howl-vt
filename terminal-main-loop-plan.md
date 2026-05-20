@@ -14,6 +14,8 @@ Mapping target:
 - Do not preserve convenience facades once deeper owners exist.
 - Prefer Ghostty's owner split and TigerBeetle simplicity.
 - If a responsibility is really host runtime or PTY work, move it up.
+- Harnesses and benchmarks may falsify assumptions after a design cut. They do not pick the next
+  design.
 - Each loop closes only with proof and doc updates.
 
 ## Closed Moves
@@ -49,13 +51,15 @@ Goal:
 - remove the hot-path cost that still justifies extra host fairness gates
 
 Work:
-- shrink `src/parser/events.zig` style-change and related inline payloads
-- keep `csi_max_params = 24` only while the slimmer queue and parser-action shapes keep benchmark
-  proof honest
-- keep the current blocker exact instead of hand-waving it
+- remove fake parser-action staging and arena lifetime coupling from `src/parser/events.zig` /
+  `src/parser/queue.zig`
+- keep `csi_max_params = 24` only while the direct parsed-event shape stays Ghostty-aligned and
+  proof does not falsify it
+- keep the next blocker exact instead of hand-waving it
 
 Close signal:
-- Ghostty's `24` ceiling is live without reopening the old queue-shape regression
+- Ghostty's `24` ceiling is live on the direct queue path without reopening the old queue-shape
+  regression
 
 ### Loop 3: Re-Derive The Host VT Apply Budget
 
@@ -63,7 +67,7 @@ Goal:
 - stop carrying a stale host VT gate longer than needed
 
 Work:
-- benchmark after queue slimming
+- measure only after the reference-backed queue cut lands
 - compare against colored-output repro and `terminal-benchmark`
 - either keep the number with proof or change it with proof
 

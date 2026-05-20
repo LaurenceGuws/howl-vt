@@ -9,7 +9,7 @@ const SemanticEvent = action.SemanticEvent;
 const process = action.process;
 const csi_max_params = parser_mod.max_params;
 const empty_params = [_]i32{0} ** csi_max_params;
-const zero_separators = [_]u8{0} ** csi_max_params;
+const empty_separators = parser_mod.CsiSeparatorList.initEmpty();
 const empty_intermediates = [_]u8{0} ** parser_mod.max_intermediates;
 
 fn makeStyleChange(comptime final: u8, comptime p0: i32, comptime p1: i32, comptime count: u8) Event {
@@ -17,7 +17,7 @@ fn makeStyleChange(comptime final: u8, comptime p0: i32, comptime p1: i32, compt
     return Event{ .style_change = .{
         .final = final,
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = count,
         .leader = 0,
         .private = false,
@@ -32,7 +32,7 @@ fn makeStyleChangeWithIntermediate(comptime final: u8, comptime intermediate: u8
     return Event{ .style_change = .{
         .final = final,
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 0,
         .leader = 0,
         .private = false,
@@ -47,7 +47,7 @@ fn makeStyleChangeWithParamAndIntermediate(comptime final: u8, comptime p0: i32,
     return Event{ .style_change = .{
         .final = final,
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -65,7 +65,7 @@ fn makePrivateStyleChange(comptime final: u8, comptime params_in: []const i32) E
     return Event{ .style_change = .{
         .final = final,
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = @intCast(params_in.len),
         .leader = '?',
         .private = true,
@@ -312,7 +312,7 @@ test "actions: kitty unscroll maps plus modified SD" {
     const sem = process(Event{ .style_change = .{
         .final = 'T',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -361,7 +361,7 @@ test "actions: DEC private cursor show maps to cursor_visible true" {
     const ev = Event{ .style_change = .{
         .final = 'h',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -377,7 +377,7 @@ test "actions: DEC private cursor hide maps to cursor_visible false" {
     const ev = Event{ .style_change = .{
         .final = 'l',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -393,7 +393,7 @@ test "actions: DEC private wrap enable maps to auto_wrap true" {
     const ev = Event{ .style_change = .{
         .final = 'h',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -409,7 +409,7 @@ test "actions: DEC private origin mode enable maps true" {
     const ev = Event{ .style_change = .{
         .final = 'h',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -425,7 +425,7 @@ test "actions: DEC private wrap disable maps to auto_wrap false" {
     const ev = Event{ .style_change = .{
         .final = 'l',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -496,7 +496,7 @@ test "actions: rectangular erase fill copy and column ops map" {
     const fill = process(Event{ .style_change = .{
         .final = 'x',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 5,
         .leader = 0,
         .private = false,
@@ -519,7 +519,7 @@ test "actions: rectangular erase fill copy and column ops map" {
     const copy = process(Event{ .style_change = .{
         .final = 'v',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 8,
         .leader = 0,
         .private = false,
@@ -534,7 +534,7 @@ test "actions: rectangular erase fill copy and column ops map" {
     const insert = process(Event{ .style_change = .{
         .final = '}',
         .params = insert_params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -547,7 +547,7 @@ test "actions: rectangular erase fill copy and column ops map" {
     const delete = process(Event{ .style_change = .{
         .final = '~',
         .params = delete_params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -569,7 +569,7 @@ test "actions: rectangular attr ops and margin controls map" {
     const change = process(Event{ .style_change = .{
         .final = 'r',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 5,
         .leader = 0,
         .private = false,
@@ -582,7 +582,7 @@ test "actions: rectangular attr ops and margin controls map" {
     const reverse = process(Event{ .style_change = .{
         .final = 't',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 5,
         .leader = 0,
         .private = false,
@@ -596,7 +596,7 @@ test "actions: rectangular attr ops and margin controls map" {
     const extent = process(Event{ .style_change = .{
         .final = 'x',
         .params = extent_params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -741,7 +741,7 @@ test "actions: DEC private application cursor enable maps true" {
     const ev = Event{ .style_change = .{
         .final = 'h',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -757,7 +757,7 @@ test "actions: DEC private focus reporting enable maps true" {
     const ev = Event{ .style_change = .{
         .final = 'h',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -773,7 +773,7 @@ test "actions: DEC private bracketed paste disable maps false" {
     const ev = Event{ .style_change = .{
         .final = 'l',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -795,7 +795,7 @@ test "actions: kitty clipboard mode maps enable disable and query" {
     var ev = Event{ .style_change = .{
         .final = 'h',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -819,7 +819,7 @@ test "actions: DEC private mouse tracking mode mappings" {
     var ev = Event{ .style_change = .{
         .final = 'h',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -852,7 +852,7 @@ test "actions: low priority DEC private modes and media copy map" {
     var ev = Event{ .style_change = .{
         .final = 'h',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -887,7 +887,7 @@ test "actions: application keypad and modifyOtherKeys mappings" {
     var ev = Event{ .style_change = .{
         .final = 'h',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -901,7 +901,7 @@ test "actions: application keypad and modifyOtherKeys mappings" {
     ev = Event{ .style_change = .{
         .final = 'm',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 2,
         .leader = '>',
         .private = false,
@@ -927,7 +927,7 @@ test "actions: xterm key format set reset and query mappings" {
     var ev = Event{ .style_change = .{
         .final = 'f',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 2,
         .leader = '>',
         .private = false,
@@ -962,7 +962,7 @@ test "actions: xterm pointer mode maps bounded value" {
     var ev = Event{ .style_change = .{
         .final = 'p',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '>',
         .private = false,
@@ -1012,7 +1012,7 @@ test "actions: DA2 maps to secondary device attributes" {
     const ev = Event{ .style_change = .{
         .final = 'c',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 0,
         .leader = '>',
         .private = false,
@@ -1028,7 +1028,7 @@ test "actions: XTVERSION maps to xtversion report" {
     const ev = Event{ .style_change = .{
         .final = 'q',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '>',
         .private = false,
@@ -1044,7 +1044,7 @@ test "actions: XTTITLEPOS maps to title stack report" {
     const ev = Event{ .style_change = .{
         .final = 'S',
         .params = empty_params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 0,
         .leader = 0,
         .private = false,
@@ -1059,7 +1059,7 @@ test "actions: DA3 maps to tertiary device attributes" {
     const ev = Event{ .style_change = .{
         .final = 'c',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 0,
         .leader = '=',
         .private = false,
@@ -1086,7 +1086,7 @@ test "actions: ANSI mode set reset and query map" {
     const query = process(Event{ .style_change = .{
         .final = 'p',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -1104,7 +1104,7 @@ test "actions: report and checksum requests map" {
     try std.testing.expect(process(Event{ .style_change = .{
         .final = 'v',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 0,
         .leader = 0,
         .private = false,
@@ -1117,7 +1117,7 @@ test "actions: report and checksum requests map" {
     const psr = process(Event{ .style_change = .{
         .final = 'w',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -1131,7 +1131,7 @@ test "actions: report and checksum requests map" {
     const xt = process(Event{ .style_change = .{
         .final = 'y',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -1151,7 +1151,7 @@ test "actions: report and checksum requests map" {
     const crc = process(Event{ .style_change = .{
         .final = 'y',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 6,
         .leader = 0,
         .private = false,
@@ -1168,7 +1168,7 @@ test "actions: report and checksum requests map" {
     try std.testing.expect(process(Event{ .style_change = .{
         .final = 'R',
         .params = empty_params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 0,
         .leader = 0,
         .private = false,
@@ -1188,7 +1188,7 @@ test "actions: XTREPORTSGR maps to selected graphic rendition report" {
     const sgr = process(Event{ .style_change = .{
         .final = '|',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 4,
         .leader = 0,
         .private = false,
@@ -1210,7 +1210,7 @@ test "actions: locator controls map" {
     const elr = process(Event{ .style_change = .{
         .final = 'z',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 2,
         .leader = 0,
         .private = false,
@@ -1225,7 +1225,7 @@ test "actions: locator controls map" {
     const req = process(Event{ .style_change = .{
         .final = '|',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = 0,
         .private = false,
@@ -1242,7 +1242,7 @@ test "actions: locator controls map" {
     const filter = process(Event{ .style_change = .{
         .final = 'w',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 4,
         .leader = 0,
         .private = false,
@@ -1259,7 +1259,7 @@ test "actions: locator controls map" {
     const sle = process(Event{ .style_change = .{
         .final = '{',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 2,
         .leader = 0,
         .private = false,
@@ -1277,7 +1277,7 @@ test "actions: DECRQM maps to dec mode query" {
     const ev = Event{ .style_change = .{
         .final = 'p',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 1,
         .leader = '?',
         .private = true,
@@ -1403,7 +1403,7 @@ test "actions: kitty multiple cursor query and clear mappings" {
     var ev = Event{ .style_change = .{
         .final = 'q',
         .params = params[0..],
-        .separators = zero_separators[0..],
+        .separators = empty_separators,
         .param_count = 0,
         .leader = '>',
         .private = false,

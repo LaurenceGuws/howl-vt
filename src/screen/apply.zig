@@ -108,7 +108,7 @@ pub fn applyScreen(self: anytype, event: ScreenAction) void {
         .insert_mode => |enabled| self.insert_mode = enabled,
         .save_cursor => self.saveCursor(),
         .restore_cursor => self.restoreCursor(),
-        .sgr => |sgr| self.applySgr(sgr.params[0..sgr.param_count], sgr.separators[0..sgr.param_count]),
+        .sgr => |sgr| self.applySgr(sgr.params, sgr.separators),
         .insert_lines => |count| {
             self.wrap_pending = false;
             self.insertLines(count);

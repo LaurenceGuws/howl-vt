@@ -16,6 +16,8 @@ throughput truth, and zero tolerance for stale doc or code posture.
 - TigerBeetle first for bounds, assertions, simplicity, and hygiene.
 - Ghostty second for VT-core split, parser shape, and lib-vt layering lessons.
 - Alacritty third for outer-loop burst discipline and host fairness pressure.
+- Harnesses and benchmarks are proof only. They may falsify assumptions after a
+  reference-backed design cut, but they do not choose the design.
 
 ## Current Truths
 
@@ -37,6 +39,15 @@ throughput truth, and zero tolerance for stale doc or code posture.
 - `interpret` was deleted in favor of explicit `action/`, `xterm/`, `kitty/`, `host/`, `input/`,
   `selection/`, and parser owners.
 - parser byte feed and parsed-event queue now live under `src/parser/`.
+- the parsed-event queue no longer stages parser actions through a second arena-owned copy layer.
+- `src/parser/events.zig` now owns one explicit FIFO metadata queue plus explicit shared payload stores,
+  so bounded apply can retire front events without arena lifetime fights.
+- `src/parser/main.zig` now returns CSI and DCS-hook metadata as borrowed parser-owned slices,
+  matching Ghostty's action-lifetime shape instead of copying through a second emit buffer.
+- CSI separator truth now follows a Ghostty-like bitset shape end-to-end, so the parsed-event queue
+  no longer stores per-param separator bytes.
+- parser no longer owns APC/DCS/PM payload bytes; `src/parser/events.zig` now owns those queued
+  payload stores and limits directly.
 - bounded apply control spine now lives under `src/action/dispatch.zig`.
 - input encoding no longer hangs off terminal facade methods.
 - visible view, history projection, dirty export, and resize ownership now live under
@@ -48,12 +59,16 @@ throughput truth, and zero tolerance for stale doc or code posture.
 ## Active Seams
 
 - `src/parser/events.zig`
-  - queued style-change and DCS payload shapes are still too heavy inline.
+  - queue ownership is now explicit and no longer arena-shaped.
   - the parsed-event queue no longer carries CSI or DCS max-sized arrays inline.
+  - next pressure is actual queued payload volume and apply cost, not fake staging posture.
 - `src/parser/main.zig`
   - `csi_max_params = 24` now matches Ghostty again.
-  - keep it only while the slimmer queue and parser-action shapes still hold the current benchmark
-    path.
+  - CSI and DCS-hook actions now borrow parser-owned metadata directly.
+  - CSI separator truth now uses a Ghostty-like bitset instead of per-param separator bytes.
+  - APC/DCS/PM parser state is now passthrough-only instead of owning payload bytes.
+  - next parser-reference pressure is exact buffered OSC owner shape, not a second metadata copy
+    layer or duplicate APC/DCS/PM payload owner.
 - `src/terminal.zig`
   - keep shrinking it toward the smallest honest VT aggregate owner.
   - do not let it grow convenience facades or runtime policy back in.
@@ -61,11 +76,17 @@ throughput truth, and zero tolerance for stale doc or code posture.
   - remaining owner-path style-density hotspots.
 - `howl-linux-host/src/terminal/runtime/progress.zig`
   - `vt_apply_events_per_turn = 1024` is the current measured fairness gate.
-  - re-derive it again if queue shape or host proof changes.
+  - re-derive it only after a reference-backed VT design change or host proof falsifies the
+    current gate.
 - colored-output throughput
   - `lsd -la --color=never` vs `lsd -la --color=always` remains the real host-facing repro.
   - exact `PTY -> VT` chunk capture now uses the `howl-pty-vt-hex-v1` fixture format so replay
     tests can feed the same chunk boundaries inside `src/test/pty_feed_record.zig`.
+  - `src/test/terminal_benchmark.zig` now scans `../howl-linux-host/artifacts/replay/*.hex`
+    generically instead of hardcoding one payload.
+  - replay proof now has two shapes:
+    - whole-stream replay for upper-bound queue growth
+    - `_host_cadence` replay that mirrors the host `1024`-event VT slice
 
 ## Throughput Rules
 

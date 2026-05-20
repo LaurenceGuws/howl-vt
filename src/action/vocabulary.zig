@@ -3,6 +3,7 @@
 const parser_mod = @import("../parser.zig");
 
 const csi_max_params = parser_mod.max_params;
+pub const CsiSeparatorList = parser_mod.CsiSeparatorList;
 
 pub const KittyGraphicsCommand = struct {
     action: u8,
@@ -231,9 +232,8 @@ pub const SemanticEvent = union(enum) {
     media_copy_request: u16,
     legacy_control: LegacyControlKind,
     sgr: struct {
-        params: [csi_max_params]i32,
-        separators: [csi_max_params]u8,
-        param_count: u8,
+        params: []const i32,
+        separators: CsiSeparatorList,
     },
     kitty_graphics: KittyGraphicsCommand,
     enter_alt_screen: struct { clear: bool, save_cursor: bool },
@@ -304,9 +304,8 @@ pub const ScreenAction = union(enum) {
     save_cursor,
     restore_cursor,
     sgr: struct {
-        params: [csi_max_params]i32,
-        separators: [csi_max_params]u8,
-        param_count: u8,
+        params: []const i32,
+        separators: CsiSeparatorList,
     },
     insert_lines: u16,
     delete_lines: u16,

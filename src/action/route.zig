@@ -32,16 +32,11 @@ pub const HostAction = events.HostAction;
 /// Map parsed event to terminal event when supported.
 pub fn process(event: Event) ?SemanticEvent {
     switch (event) {
-        .style_change => |sc| return csi.process(
-            sc.final,
-            fixedCsiParams(sc.params[0..sc.param_count]),
-            fixedCsiSeparators(sc.separators[0..sc.param_count]),
-            sc.param_count,
-            sc.leader,
-            sc.private,
-            fixedIntermediates(sc.intermediates[0..sc.intermediates_len]),
-            sc.intermediates_len,
-        ),
+        .style_change => |sc| {
+            const params = sc.params[0..sc.param_count];
+            const intermediates = sc.intermediates[0..sc.intermediates_len];
+            return csi.process(sc.final, params, sc.separators, sc.leader, sc.private, intermediates);
+        },
         .text => |s| return SemanticEvent{ .write_text = s },
         .codepoint => |cp| return SemanticEvent{ .write_codepoint = cp },
         .control => |c| return c0.process(c),
@@ -51,27 +46,6 @@ pub fn process(event: Event) ?SemanticEvent {
         .dcs => |dcs_data| return dcs.process(dcs_data),
         .pm, .invalid_sequence => return null,
     }
-}
-
-fn fixedCsiParams(params: []const i32) [parser_mod.max_params]i32 {
-    std.debug.assert(params.len <= parser_mod.max_params);
-    var out = [_]i32{0} ** parser_mod.max_params;
-    std.mem.copyForwards(i32, out[0..params.len], params);
-    return out;
-}
-
-fn fixedCsiSeparators(separators: []const u8) [parser_mod.max_params]u8 {
-    std.debug.assert(separators.len <= parser_mod.max_params);
-    var out = [_]u8{0} ** parser_mod.max_params;
-    std.mem.copyForwards(u8, out[0..separators.len], separators);
-    return out;
-}
-
-fn fixedIntermediates(intermediates: []const u8) [parser_mod.max_intermediates]u8 {
-    std.debug.assert(intermediates.len <= parser_mod.max_intermediates);
-    var out = [_]u8{0} ** parser_mod.max_intermediates;
-    std.mem.copyForwards(u8, out[0..intermediates.len], intermediates);
-    return out;
 }
 
 pub fn screenAction(event: SemanticEvent) ?ScreenAction {
@@ -106,7 +80,7 @@ pub fn screenAction(event: SemanticEvent) ?ScreenAction {
         .insert_mode => |v| ScreenAction{ .insert_mode = v },
         .save_cursor => .save_cursor,
         .restore_cursor => .restore_cursor,
-        .sgr => |v| ScreenAction{ .sgr = .{ .params = v.params, .separators = v.separators, .param_count = v.param_count } },
+        .sgr => |v| ScreenAction{ .sgr = .{ .params = v.params, .separators = v.separators } },
         .insert_lines => |v| ScreenAction{ .insert_lines = v },
         .delete_lines => |v| ScreenAction{ .delete_lines = v },
         .insert_chars => |v| ScreenAction{ .insert_chars = v },

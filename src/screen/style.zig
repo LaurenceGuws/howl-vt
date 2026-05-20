@@ -1,5 +1,6 @@
 //! Grid text style and SGR color decoding.
 
+const parser_mod = @import("../parser.zig");
 const cell_mod = @import("cell.zig");
 const color_mod = @import("color.zig");
 
@@ -8,7 +9,7 @@ const Color = color_mod.Color;
 const default_cell_attrs = cell_mod.default_cell_attrs;
 const default_underline_color = color_mod.default_underline_color;
 
-pub fn applySgr(self: anytype, params: []const i32, separators: []const u8) void {
+pub fn applySgr(self: anytype, params: []const i32, separators: parser_mod.CsiSeparatorList) void {
     if (params.len == 0) {
         self.current_attrs = default_cell_attrs;
         return;
@@ -21,7 +22,7 @@ pub fn applySgr(self: anytype, params: []const i32, separators: []const u8) void
             0 => self.current_attrs = default_cell_attrs,
             1 => self.current_attrs.bold = true,
             4 => {
-                if (i + 1 < params.len and separators[i + 1] == ':') {
+                if (i + 1 < params.len and separators.isSet(i)) {
                     switch (params[i + 1]) {
                         0 => self.current_attrs.underline = false,
                         1 => {

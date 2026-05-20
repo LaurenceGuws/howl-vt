@@ -22,7 +22,10 @@ fn applyQueue(queue: *Queue, screen: *Screen) void {
 fn applyQueueLimit(queue: *Queue, screen: *Screen, max_events: u32) u32 {
     if (max_events == 0) return 0;
     const count = @min(max_events, queue.eventCount());
-    for (queue.prefix(count)) |ev| {
+    var it = queue.iterator();
+    var remaining = count;
+    while (remaining > 0) : (remaining -= 1) {
+        const ev = it.next() orelse unreachable;
         if (ActionRoot.process(ev)) |sem_ev| {
             if (ActionRoot.screenAction(sem_ev)) |screen_ev| screen.applyScreen(screen_ev);
         }
@@ -51,8 +54,12 @@ fn feedQueueSlice(queue: *Queue, bytes: []const u8) void {
     queue.feedSlice(bytes) catch unreachable;
 }
 
-fn queuePrefixAll(queue: *const Queue) []const action_root.Event {
-    return queue.prefix(queue.eventCount());
+fn collectQueueEvents(allocator: std.mem.Allocator, queue: *const Queue) ![]action_root.Event {
+    var out: std.ArrayList(action_root.Event) = .empty;
+    defer out.deinit(allocator);
+    var it = queue.iterator();
+    while (it.next()) |event| try out.append(allocator, event);
+    return try out.toOwnedSlice(allocator);
 }
 
 fn queueIsEmpty(queue: *const Queue) bool {
@@ -116,7 +123,8 @@ test "queue: mixed text and CSI and text" {
     defer queue.deinit();
     feedQueueSlice(&queue, "hello\x1b[1mworld");
     try std.testing.expectEqual(@as(u32, 3), queue.eventCount());
-    const events = queuePrefixAll(&queue);
+    const events = try collectQueueEvents(gpa, &queue);
+    defer gpa.free(events);
     try std.testing.expect(events[0] == .text);
     try std.testing.expectEqualSlices(u8, "hello", events[0].text);
     try std.testing.expect(events[1] == .style_change);
@@ -134,7 +142,8 @@ test "queue: reset clears events and parser state" {
     try std.testing.expect(queueIsEmpty(&queue));
     feedQueueSlice(&queue, "xyz");
     try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
-    const events = queuePrefixAll(&queue);
+    const events = try collectQueueEvents(gpa, &queue);
+    defer gpa.free(events);
     try std.testing.expectEqualSlices(u8, "xyz", events[0].text);
 }
 
@@ -145,7 +154,8 @@ test "queue: split CSI across feeds" {
     feedQueueSlice(&queue, "\x1b[");
     feedQueueSlice(&queue, "31m");
     try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
-    const events = queuePrefixAll(&queue);
+    const events = try collectQueueEvents(gpa, &queue);
+    defer gpa.free(events);
     try std.testing.expect(events[0] == .style_change);
     try std.testing.expectEqual(@as(i32, 31), events[0].style_change.params[0]);
 }
@@ -156,7 +166,8 @@ test "queue: stray ESC in OSC dropped, byte appended" {
     defer queue.deinit();
     feedQueueSlice(&queue, "\x1b]ti\x1btle\x07");
     try std.testing.expectEqual(@as(u32, 1), queue.eventCount());
-    const events = queuePrefixAll(&queue);
+    const events = try collectQueueEvents(gpa, &queue);
+    defer gpa.free(events);
     try std.testing.expect(events[0] == .osc);
     try std.testing.expectEqual(.title, events[0].osc.kind);
     try std.testing.expectEqualSlices(u8, "title", events[0].osc.payload);

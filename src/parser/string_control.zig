@@ -1,4 +1,4 @@
-//! OSC/APC/DCS/PM byte accumulation.
+//! String-control parser state owners.
 
 const std = @import("std");
 
@@ -127,5 +127,70 @@ pub const StringControl = struct {
         self.buffer.append(self.allocator, byte) catch {
             self.alloc_failed = true;
         };
+    }
+};
+
+/// Incremental string-control parser state without payload ownership.
+pub const PassthroughControl = struct {
+    state: State = .idle,
+    bel_terminates: bool,
+
+    pub fn init(bel_terminates: bool) PassthroughControl {
+        return .{ .bel_terminates = bel_terminates };
+    }
+
+    pub fn deinit(self: *PassthroughControl) void {
+        _ = self;
+    }
+
+    pub fn reset(self: *PassthroughControl) void {
+        self.state = .idle;
+    }
+
+    pub fn clearFinished(self: *PassthroughControl) void {
+        _ = self;
+    }
+
+    pub fn start(self: *PassthroughControl) void {
+        self.state = .payload;
+    }
+
+    pub fn active(self: *const PassthroughControl) bool {
+        return self.state != .idle;
+    }
+
+    pub fn escaping(self: *const PassthroughControl) bool {
+        return self.state == .esc;
+    }
+
+    pub fn feed(self: *PassthroughControl, byte: u8) ?FeedResult {
+        switch (self.state) {
+            .idle => return null,
+            .payload => {
+                if (self.bel_terminates and byte == 0x07) {
+                    self.state = .idle;
+                    return .{ .finish = .bel };
+                }
+                if (byte == 0x9C) {
+                    self.state = .idle;
+                    return .{ .finish = .st };
+                }
+                if (byte == 0x1B) {
+                    self.state = .esc;
+                    return null;
+                }
+                return .{ .put = byte };
+            },
+            .esc => {
+                if (byte == '\\') {
+                    self.state = .idle;
+                    return .{ .finish = .st };
+                }
+
+                // Stray ESC marker is dropped; following byte stays payload.
+                self.state = .payload;
+                return .{ .put = byte };
+            },
+        }
     }
 };

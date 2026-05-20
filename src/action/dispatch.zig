@@ -33,8 +33,11 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
     std.debug.assert(count <= queued);
 
     var latest_title: ?[]const u8 = null;
-    for (vt.parser.prefix(count)) |ev| {
-        latest_title = latestTitle(latest_title, ev);
+    var iter = vt.parser.iterator();
+    var remaining_to_apply = count;
+    while (remaining_to_apply > 0) : (remaining_to_apply -= 1) {
+        const ev = iter.next() orelse unreachable;
+        latest_title = latestTitle(vt, latest_title, ev);
         applyEvent(vt, ev);
     }
     vt.parser.dropPrefix(count);
@@ -43,10 +46,14 @@ pub fn applyLimit(vt: anytype, max_events: u32) ApplySummary {
     return .{ .applied = count, .remaining_events = remaining, .latest_title = latest_title };
 }
 
-fn latestTitle(current: ?[]const u8, event: action_mod.Event) ?[]const u8 {
+fn latestTitle(vt: anytype, current: ?[]const u8, event: action_mod.Event) ?[]const u8 {
     switch (event) {
         .osc => |osc_event| {
-            if (osc_event.kind == .title) return osc_event.payload;
+            if (osc_event.kind != .title) return current;
+            const owned = vt.allocator.dupe(u8, osc_event.payload) catch return current;
+            if (vt.host.current_title) |old| vt.allocator.free(old);
+            vt.host.current_title = owned;
+            return owned;
         },
         else => {},
     }

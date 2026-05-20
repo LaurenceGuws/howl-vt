@@ -23,12 +23,11 @@ fn appendOwnedAction(
     switch (action) {
         .csi_dispatch => |csi| {
             const params = try dupeArenaSlice(arena, i32, csi.params[0..csi.count]);
-            const separators = try dupeArenaSlice(arena, u8, csi.separators[0..csi.count]);
             const intermediates = try dupeArenaSlice(arena, u8, csi.intermediates[0..csi.intermediates_len]);
             try actions.append(allocator, .{ .csi_dispatch = .{
                 .final = csi.final,
                 .params = params,
-                .separators = separators,
+                .separators = csi.separators,
                 .count = csi.count,
                 .leader = csi.leader,
                 .private = csi.private,

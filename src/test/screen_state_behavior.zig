@@ -9,6 +9,17 @@ const Screen = screen_mod.Screen;
 const Grid = Screen;
 const SemanticEvent = action.SemanticEvent;
 const csi_max_params = parser_mod.max_params;
+
+fn emptySeparators() parser_mod.CsiSeparatorList {
+    return parser_mod.CsiSeparatorList.initEmpty();
+}
+
+fn colonSeparator(after_param_idx: usize) parser_mod.CsiSeparatorList {
+    var separators = parser_mod.CsiSeparatorList.initEmpty();
+    separators.set(after_param_idx);
+    return separators;
+}
+
 test "screen: initial cursor at origin" {
     const s = Screen.init(24, 80);
     try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
@@ -176,8 +187,10 @@ test "screen: sgr applies ansi and 256-color attrs to written cells" {
     var s = try Screen.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 38, 5, 196 } ++ [_]i32{0} ** (csi_max_params - 3), .separators = [_]u8{0} ** csi_max_params, .param_count = 3 } });
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 48, 5, 23 } ++ [_]i32{0} ** (csi_max_params - 3), .separators = [_]u8{0} ** csi_max_params, .param_count = 3 } });
+    const fg_params = [_]i32{ 38, 5, 196 };
+    s.apply(SemanticEvent{ .sgr = .{ .params = fg_params[0..], .separators = emptySeparators() } });
+    const bg_params = [_]i32{ 48, 5, 23 };
+    s.apply(SemanticEvent{ .sgr = .{ .params = bg_params[0..], .separators = emptySeparators() } });
     s.apply(SemanticEvent{ .write_text = "X" });
 
     const cell = s.cellInfoAt(0, 0);
@@ -195,9 +208,11 @@ test "screen: sgr reset restores default attrs for later writes" {
     var s = try Grid.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{31} ++ [_]i32{0} ** (csi_max_params - 1), .separators = [_]u8{0} ** csi_max_params, .param_count = 1 } });
+    const red_params = [_]i32{31};
+    s.apply(SemanticEvent{ .sgr = .{ .params = red_params[0..], .separators = emptySeparators() } });
     s.apply(SemanticEvent{ .write_text = "A" });
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{0} ++ [_]i32{0} ** (csi_max_params - 1), .separators = [_]u8{0} ** csi_max_params, .param_count = 1 } });
+    const reset_params = [_]i32{0};
+    s.apply(SemanticEvent{ .sgr = .{ .params = reset_params[0..], .separators = emptySeparators() } });
     s.apply(SemanticEvent{ .write_text = "B" });
 
     const a = s.cellInfoAt(0, 0);
@@ -213,14 +228,12 @@ test "screen: kitty colon SGR sets underline styles without stealing semicolon p
     var s = try Screen.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
-    var colon = [_]u8{0} ** csi_max_params;
-    colon[1] = ':';
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 4, 3 } ++ [_]i32{0} ** (csi_max_params - 2), .separators = colon, .param_count = 2 } });
+    const colon_params = [_]i32{ 4, 3 };
+    s.apply(SemanticEvent{ .sgr = .{ .params = colon_params[0..], .separators = colonSeparator(0) } });
     s.apply(SemanticEvent{ .write_text = "C" });
 
-    var semicolon = [_]u8{0} ** csi_max_params;
-    semicolon[1] = ';';
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 4, 5 } ++ [_]i32{0} ** (csi_max_params - 2), .separators = semicolon, .param_count = 2 } });
+    const semicolon_params = [_]i32{ 4, 5 };
+    s.apply(SemanticEvent{ .sgr = .{ .params = semicolon_params[0..], .separators = emptySeparators() } });
     s.apply(SemanticEvent{ .write_text = "S" });
 
     const curly = s.cellInfoAt(0, 0);
@@ -237,9 +250,11 @@ test "screen: kitty underline color SGR sets and resets color" {
     var s = try Grid.initWithCells(gpa, 2, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{ 4, 58, 2, 1, 2, 3 } ++ [_]i32{0} ** (csi_max_params - 6), .separators = [_]u8{0} ** csi_max_params, .param_count = 6 } });
+    const color_params = [_]i32{ 4, 58, 2, 1, 2, 3 };
+    s.apply(SemanticEvent{ .sgr = .{ .params = color_params[0..], .separators = emptySeparators() } });
     s.apply(SemanticEvent{ .write_text = "C" });
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{59} ++ [_]i32{0} ** (csi_max_params - 1), .separators = [_]u8{0} ** csi_max_params, .param_count = 1 } });
+    const reset_underline_params = [_]i32{59};
+    s.apply(SemanticEvent{ .sgr = .{ .params = reset_underline_params[0..], .separators = emptySeparators() } });
     s.apply(SemanticEvent{ .write_text = "R" });
 
     const colored = s.cellInfoAt(0, 0);
@@ -985,7 +1000,8 @@ test "screen: DECRARA toggles supported attrs" {
     var s = try Grid.initWithCells(gpa, 2, 3);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .sgr = .{ .params = .{4} ++ [_]i32{0} ** (csi_max_params - 1), .separators = [_]u8{0} ** csi_max_params, .param_count = 1 } });
+    const underline_params = [_]i32{4};
+    s.apply(SemanticEvent{ .sgr = .{ .params = underline_params[0..], .separators = emptySeparators() } });
     s.apply(SemanticEvent{ .write_text = "ABCDEF" });
     s.apply(SemanticEvent{ .rect_attrs_change = .{
         .area = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 },
