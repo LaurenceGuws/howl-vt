@@ -6,7 +6,6 @@ const host_state = @import("../host/state.zig");
 const kitty_state = @import("../kitty/state.zig");
 const terminal_mod = @import("../terminal.zig");
 
-const Action = action;
 const HostState = host_state;
 const KittyState = kitty_state;
 const Terminal = terminal_mod.Terminal;
@@ -16,7 +15,7 @@ fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
 }
 
 fn apply(terminal: *Terminal) void {
-    Action.apply(terminal);
+    action.apply(terminal);
 }
 
 fn pendingOutput(terminal: *const Terminal) []const u8 {

@@ -12,7 +12,6 @@ const selection = @import("../selection.zig");
 const input_mod = @import("../input.zig");
 
 const Terminal = terminal_mod.Terminal;
-const Action = action_mod;
 const ParsedEvents = parsed_events_mod.ParsedEvents;
 const Screen = screen.Screen;
 const Selection = selection;
@@ -82,7 +81,7 @@ fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
 }
 
 fn apply(terminal: *Terminal) void {
-    Action.apply(terminal);
+    action_mod.apply(terminal);
 }
 
 fn clear(terminal: *Terminal) void {
@@ -94,8 +93,8 @@ fn reset(terminal: *Terminal) void {
     terminal.parser.parser.reset();
 }
 
-fn applyLimit(terminal: *Terminal, max_events: u32) Action.ApplySummary {
-    return Action.applyLimit(terminal, max_events);
+fn applyLimit(terminal: *Terminal, max_events: u32) action_mod.ApplySummary {
+    return action_mod.applyLimit(terminal, max_events);
 }
 
 fn copySurfaceOk(
@@ -144,7 +143,7 @@ test "Terminal method signatures remain host-facing" {
     const apply_fn: fn (*Terminal) void = apply;
     const clear_fn: fn (*Terminal) void = clear;
     const reset_fn: fn (*Terminal) void = reset;
-    const apply_limit_fn: fn (*Terminal, u32) Action.ApplySummary = applyLimit;
+    const apply_limit_fn: fn (*Terminal, u32) action_mod.ApplySummary = applyLimit;
     _ = .{ init_fn, init_cells_fn, deinit_fn, feed_byte_fn, feed_slice_fn, apply_fn, clear_fn, reset_fn, apply_limit_fn };
 }
 

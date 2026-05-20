@@ -10,7 +10,6 @@ const terminal_mod = @import("../terminal.zig");
 const input_mod = @import("../input.zig");
 
 const Terminal = terminal_mod.Terminal;
-const Action = action_mod;
 const HostState = host_state;
 const Input = input_mod;
 
@@ -57,7 +56,7 @@ fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
 }
 
 fn apply(terminal: *Terminal) void {
-    Action.apply(terminal);
+    action_mod.apply(terminal);
 }
 
 fn pendingOutput(terminal: *const Terminal) []const u8 {

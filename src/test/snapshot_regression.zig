@@ -8,7 +8,6 @@ const selection = @import("../selection.zig");
 const terminal_mod = @import("../terminal.zig");
 
 const Terminal = terminal_mod.Terminal;
-const Action = action_mod;
 fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
     return screen_capture.Capture.captureFromScreen(
         terminal.allocator,
@@ -30,7 +29,7 @@ fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
 }
 
 fn apply(terminal: *Terminal) void {
-    Action.apply(terminal);
+    action_mod.apply(terminal);
 }
 test "snapshot: capture from simple text" {
     const gpa = std.testing.allocator;

@@ -4,7 +4,6 @@ const std = @import("std");
 const action = @import("../action.zig");
 const terminal_mod = @import("../terminal.zig");
 
-const Action = action;
 const Terminal = terminal_mod.Terminal;
 
 test "terminal: parser queue applies bytes to grid state deterministically" {
@@ -15,7 +14,7 @@ test "terminal: parser queue applies bytes to grid state deterministically" {
     try terminal.parser.feedSlice("ab");
     try terminal.parser.feedSlice(&.{ 'c' });
     try terminal.parser.feedSlice("\r\nxy");
-    Action.apply(&terminal);
+    action.apply(&terminal);
 
     const s = terminal.screen_state.activeConst();
     try std.testing.expectEqual(@as(u21, 'a'), s.cellAt(0, 0));

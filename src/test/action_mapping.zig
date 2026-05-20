@@ -4,10 +4,9 @@ const std = @import("std");
 const action = @import("../action.zig");
 const parser_mod = @import("../parser.zig");
 
-const Action = action;
-const Event = Action.Event;
-const SemanticEvent = Action.SemanticEvent;
-const process = Action.process;
+const Event = action.Event;
+const SemanticEvent = action.SemanticEvent;
+const process = action.process;
 const csi_max_params = parser_mod.max_params;
 fn makeStyleChange(final: u8, p0: i32, p1: i32, count: u8) Event {
     var params = [_]i32{0} ** csi_max_params;
