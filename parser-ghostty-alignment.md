@@ -21,7 +21,8 @@ Rule: Ghostty is the parser bible. When Howl differs, the default action is to r
 4. Build ordered exit, transition, and entry phases directly.
 5. Return parser actions only.
 6. CSI and DCS-hook metadata now borrow parser-owned slices until the next `next(byte)` call.
-7. Queue batching and parsed-event ownership live in `src/parser/queue.zig` and `src/parser/events.zig`.
+7. Direct stream feed lives in `src/stream_terminal.zig`, and parser-event materialization lives in
+   `src/parser/events.zig`.
 
 ## Current Debt List
 
@@ -44,7 +45,7 @@ Iteration 1: parser root API and borrowed action slices.
 
 Closed result:
 - parser root exposes byte-step `next(...)`
-- slice feeding moved to `src/parser/queue.zig`
+- slice feeding moved to `src/stream_terminal.zig`
 - CSI and DCS-hook actions now borrow parser-owned metadata directly instead of copying into a
   second emit buffer first
 - `src/parser.zig` no longer advertises slice orchestration as parser truth

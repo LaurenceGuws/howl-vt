@@ -3,7 +3,6 @@
 const std = @import("std");
 const howl_vt = @import("howl_vt");
 
-const action = howl_vt.Action;
 const owned_actions = howl_vt.ParserOwnedActions;
 const parser_mod = howl_vt.Parser;
 const screen_set = howl_vt.ScreenSet;
@@ -324,7 +323,6 @@ fn runTerminal(
     defer terminal.deinit();
 
     try feedBytesToTerminal(&terminal, bytes, mode, rand, max_chunk_len);
-    action.apply(&terminal);
     return digestTerminal(&terminal);
 }
 
@@ -355,15 +353,17 @@ fn feedBytesToParser(parser: *parser_mod.Parser, output: *ParserOutput, harness:
 }
 
 fn feedBytesToTerminal(terminal: *Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) error{ OutOfMemory, ParsedEventLimit, StringControlLimit }!void {
+    var stream = terminal.vtStream();
+    defer stream.deinit();
     switch (mode) {
-        .whole_slice => try terminal.parser.feedSlice(bytes),
-        .bytewise => for (bytes) |byte| try terminal.parser.feedSlice(&.{byte}),
+        .whole_slice => try stream.nextSlice(bytes),
+        .bytewise => for (bytes) |byte| try stream.next(byte),
         .chunked => {
             var offset: usize = 0;
             while (offset < bytes.len) {
                 const remaining = bytes.len - offset;
                 const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
-                try terminal.parser.feedSlice(bytes[offset..][0..chunk_len]);
+                try stream.nextSlice(bytes[offset..][0..chunk_len]);
                 offset += chunk_len;
             }
         },

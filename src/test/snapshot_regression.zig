@@ -1,13 +1,14 @@
 //! Snapshot capture regression tests.
 
 const std = @import("std");
-const action_mod = @import("../action.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
 const terminal_mod = @import("../terminal.zig");
+const stream_harness = @import("stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;
+const StreamHarness = stream_harness.Harness;
 fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
     return screen_capture.Capture.captureFromScreen(
         terminal.allocator,
@@ -20,24 +21,14 @@ fn visibleView(terminal: *const Terminal) screen_set.View {
     return screen_set.visibleView(&terminal.screen_state, .{});
 }
 
-fn feedByte(terminal: *Terminal, byte: u8) void {
-    terminal.parser.feedSlice(&.{byte}) catch unreachable;
-}
-
-fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    terminal.parser.feedSlice(bytes) catch unreachable;
-}
-
-fn apply(terminal: *Terminal) void {
-    action_mod.apply(terminal);
-}
 test "snapshot: capture from simple text" {
     const gpa = std.testing.allocator;
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "HELLO");
-    apply(&terminal);
+    try stream.nextSlice("HELLO");
 
     var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
@@ -60,15 +51,17 @@ test "snapshot: determinism across identical state" {
 
     var vt_core1 = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core1.deinit();
-    feedSlice(&vt_core1, "TEST");
-    apply(&vt_core1);
+    var stream1 = try StreamHarness.init(&vt_core1);
+    defer stream1.deinit();
+    try stream1.nextSlice("TEST");
     var snap1 = try captureSnapshot(&vt_core1);
     defer snap1.deinit();
 
     var vt_core2 = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core2.deinit();
-    feedSlice(&vt_core2, "TEST");
-    apply(&vt_core2);
+    var stream2 = try StreamHarness.init(&vt_core2);
+    defer stream2.deinit();
+    try stream2.nextSlice("TEST");
     var snap2 = try captureSnapshot(&vt_core2);
     defer snap2.deinit();
 
@@ -88,18 +81,20 @@ test "snapshot: split-feed equivalence" {
 
     var vt_core_atomic = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core_atomic.deinit();
-    feedSlice(&vt_core_atomic, "ABCDEFGHIJ");
-    apply(&vt_core_atomic);
+    var atomic_stream = try StreamHarness.init(&vt_core_atomic);
+    defer atomic_stream.deinit();
+    try atomic_stream.nextSlice("ABCDEFGHIJ");
     var snap_atomic = try captureSnapshot(&vt_core_atomic);
     defer snap_atomic.deinit();
 
     var vt_core_chunked = try Terminal.initWithCells(gpa, 5, 10);
     defer vt_core_chunked.deinit();
-    feedByte(&vt_core_chunked, 'A');
-    feedByte(&vt_core_chunked, 'B');
-    feedSlice(&vt_core_chunked, "CD");
-    feedSlice(&vt_core_chunked, "EFGHIJ");
-    apply(&vt_core_chunked);
+    var chunked_stream = try StreamHarness.init(&vt_core_chunked);
+    defer chunked_stream.deinit();
+    try chunked_stream.next('A');
+    try chunked_stream.next('B');
+    try chunked_stream.nextSlice("CD");
+    try chunked_stream.nextSlice("EFGHIJ");
     var snap_chunked = try captureSnapshot(&vt_core_chunked);
     defer snap_chunked.deinit();
 
@@ -116,9 +111,10 @@ test "snapshot: history capture when history is enabled" {
     const gpa = std.testing.allocator;
     var terminal = try Terminal.initWithCellsAndHistory(gpa, 3, 5, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "AAA\nBBB\nCCC\nDDD");
-    apply(&terminal);
+    try stream.nextSlice("AAA\nBBB\nCCC\nDDD");
 
     var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
@@ -137,10 +133,11 @@ test "snapshot: historyRowAt matches terminal after wraparound" {
     const gpa = std.testing.allocator;
     var terminal = try Terminal.initWithCellsAndHistory(gpa, 2, 3, 2);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
     // Force history ring-buffer wraparound (capacity 2, scroll more than 2 rows).
-    feedSlice(&terminal, "111\n222\n333\n444\n555");
-    apply(&terminal);
+    try stream.nextSlice("111\n222\n333\n444\n555");
 
     var snap = try captureSnapshot(&terminal);
     defer snap.deinit();
@@ -161,9 +158,10 @@ test "snapshot: selection state is included" {
     const gpa = std.testing.allocator;
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "HELLO");
-    apply(&terminal);
+    try stream.nextSlice("HELLO");
 
     selection.terminalStart(&terminal, 0, 0);
     selection.terminalUpdate(&terminal, 0, 4);
@@ -186,9 +184,10 @@ test "snapshot: parity with direct screen state" {
     const gpa = std.testing.allocator;
     var terminal = try Terminal.initWithCells(gpa, 5, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "TEST");
-    apply(&terminal);
+    try stream.nextSlice("TEST");
 
     var snap = try captureSnapshot(&terminal);
     defer snap.deinit();

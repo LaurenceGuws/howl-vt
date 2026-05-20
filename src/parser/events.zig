@@ -33,6 +33,8 @@ pub const Event = union(enum) {
     text: []const u8,
     codepoint: u21,
     control: u8,
+    invoke_charset: u8,
+    configure_charset: struct { slot: u8, designation: u8 },
     style_change: StyleChange,
     osc: parser_mod.OscAction,
     apc: []const u8,
@@ -42,14 +44,11 @@ pub const Event = union(enum) {
     invalid_sequence,
 };
 
-/// Parsed-event queue for parser callbacks.
+/// Parsed-event store for parser callbacks.
 pub const ParsedEvents = struct {
-    // Alacritty forces a terminal synchronization point after a 1 MiB PTY read
-    // burst. The PTY owner keeps that burst scale, and the current Howl
-    // parser/event shape can still materialize one queued event per input byte.
-    // Keep exactly one reference burst buffered, then fail the next byte
-    // explicitly instead of letting queue growth outrun the owner thread. If
-    // the PTY burst or queued-event shape changes, re-derive this bound.
+    // Keep parser-event materialization explicitly bounded. The live VT feed
+    // path drains these events immediately, but parser-event proofs may still
+    // materialize large slices here.
     pub const max_queued_events: u32 = 1024 * 1024;
 
     allocator: std.mem.Allocator,
@@ -77,6 +76,8 @@ pub const ParsedEvents = struct {
         text: u32,
         codepoint: u21,
         control: u8,
+        invoke_charset: u8,
+        configure_charset: struct { slot: u8, designation: u8 },
         style_change: struct {
             final: u8,
             separators: parser_mod.CsiSeparatorList,
@@ -444,10 +445,12 @@ pub const ParsedEvents = struct {
         switch (ctrl) {
             0x0E => {
                 self.gl_index = 1;
+                try self.appendMeta(.{ .invoke_charset = 1 });
                 return;
             },
             0x0F => {
                 self.gl_index = 0;
+                try self.appendMeta(.{ .invoke_charset = 0 });
                 return;
             },
             else => {},
@@ -460,10 +463,12 @@ pub const ParsedEvents = struct {
             switch (esc.intermediates[0]) {
                 '(' => {
                     self.g0_designation = esc.final;
+                    try self.appendMeta(.{ .configure_charset = .{ .slot = 0, .designation = esc.final } });
                     return;
                 },
                 ')' => {
                     self.g1_designation = esc.final;
+                    try self.appendMeta(.{ .configure_charset = .{ .slot = 1, .designation = esc.final } });
                     return;
                 },
                 else => {},
@@ -500,6 +505,8 @@ pub const ParsedEvents = struct {
             .text => |len| .{ .text = self.bytes.items[byte_start .. byte_start + index(len)] },
             .codepoint => |cp| .{ .codepoint = cp },
             .control => |ctrl| .{ .control = ctrl },
+            .invoke_charset => |slot| .{ .invoke_charset = slot },
+            .configure_charset => |cfg| .{ .configure_charset = .{ .slot = cfg.slot, .designation = cfg.designation } },
             .style_change => |sc| .{ .style_change = .{
                 .final = sc.final,
                 .params = self.ints.items[int_start .. int_start + index(sc.param_count)],
@@ -552,7 +559,7 @@ fn advanceCursor(meta: ParsedEvents.EventMeta, byte_idx: *u32, int_idx: *u32, au
             aux_idx.* += dcs.intermediates_len;
         },
         .pm => |len| byte_idx.* += len,
-        .codepoint, .control, .esc_dispatch, .invalid_sequence => {},
+        .codepoint, .control, .invoke_charset, .configure_charset, .esc_dispatch, .invalid_sequence => {},
     }
 }
 

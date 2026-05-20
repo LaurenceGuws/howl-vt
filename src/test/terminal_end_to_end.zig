@@ -1,20 +1,22 @@
 //! End-to-end terminal flow tests.
 
 const std = @import("std");
-const action = @import("../action.zig");
 const terminal_mod = @import("../terminal.zig");
+const stream_harness = @import("stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;
+const StreamHarness = stream_harness.Harness;
 
-test "terminal: parser queue applies bytes to grid state deterministically" {
+test "terminal: stream applies bytes to grid state deterministically" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    try terminal.parser.feedSlice("ab");
-    try terminal.parser.feedSlice(&.{ 'c' });
-    try terminal.parser.feedSlice("\r\nxy");
-    action.apply(&terminal);
+    try stream.nextSlice("ab");
+    try stream.next('c');
+    try stream.nextSlice("\r\nxy");
 
     const s = terminal.screen_state.activeConst();
     try std.testing.expectEqual(@as(u21, 'a'), s.cellAt(0, 0));

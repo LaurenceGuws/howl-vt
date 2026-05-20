@@ -1,9 +1,9 @@
 //! Deterministic M7 baseline smoke test.
 
 const std = @import("std");
-const action = @import("../action.zig");
 const terminal_mod = @import("../terminal.zig");
 const pty_feed_record = @import("pty_feed_record.zig");
+const stream_harness = @import("stream_harness.zig");
 
 const WorkloadResult = struct {
     name: []const u8,
@@ -14,8 +14,6 @@ const WorkloadResult = struct {
     median_alloc_count: usize,
     median_alloc_bytes: usize,
     median_peak_live_bytes: usize,
-    median_max_queue_depth: u32,
-    median_max_remaining_after_slice: u32,
 
     fn throughputMibS(self: WorkloadResult) f64 {
         const median_seconds = @as(f64, @floatFromInt(self.median_ns)) / 1_000_000_000.0;
@@ -30,10 +28,6 @@ const Options = struct {
     runs: usize = 10,
     format: OutputFormat = .ndjson,
 };
-
-// Keep this proof workload aligned with the current host fairness gate in
-// howl-linux-host/src/terminal/runtime/progress.zig.
-const host_vt_apply_events_per_turn: u32 = 1024;
 
 const ReplayFixture = struct {
     allocator: std.mem.Allocator,
@@ -52,9 +46,9 @@ const RunObservation = struct {
     alloc_count: usize,
     alloc_bytes: usize,
     peak_live_bytes: usize,
-    max_queue_depth: u32,
-    max_remaining_after_slice: u32,
 };
+
+const StreamHarness = stream_harness.Harness;
 
 const CountingAllocator = struct {
     child: std.mem.Allocator,
@@ -240,18 +234,12 @@ fn summarizeObservations(
     defer base_allocator.free(alloc_bytes_values);
     const peak_live_values = try base_allocator.alloc(usize, runs);
     defer base_allocator.free(peak_live_values);
-    const queue_depth_values = try base_allocator.alloc(u32, runs);
-    defer base_allocator.free(queue_depth_values);
-    const remaining_values = try base_allocator.alloc(u32, runs);
-    defer base_allocator.free(remaining_values);
 
     for (observations, 0..) |obs, idx| {
         ns_values[idx] = obs.ns;
         alloc_count_values[idx] = obs.alloc_count;
         alloc_bytes_values[idx] = obs.alloc_bytes;
         peak_live_values[idx] = obs.peak_live_bytes;
-        queue_depth_values[idx] = obs.max_queue_depth;
-        remaining_values[idx] = obs.max_remaining_after_slice;
     }
 
     return .{
@@ -263,12 +251,10 @@ fn summarizeObservations(
         .median_alloc_count = median(usize, alloc_count_values),
         .median_alloc_bytes = median(usize, alloc_bytes_values),
         .median_peak_live_bytes = median(usize, peak_live_values),
-        .median_max_queue_depth = median(u32, queue_depth_values),
-        .median_max_remaining_after_slice = median(u32, remaining_values),
     };
 }
 
-fn runFeedApplyWorkload(
+fn runStreamWorkload(
     io: std.Io,
     base_allocator: std.mem.Allocator,
     name: []const u8,
@@ -290,19 +276,17 @@ fn runFeedApplyWorkload(
             history_capacity,
         );
         defer terminal.deinit();
+        var stream = try StreamHarness.init(&terminal);
+        defer stream.deinit();
         counting.resetWindow();
         const start = nowNs(io);
-        try terminal.parser.feedSlice(fixture);
-        const max_queue_depth = action.applyLimit(&terminal, 0).remaining_events;
-        action.apply(&terminal);
+        try stream.nextSlice(fixture);
         const end = nowNs(io);
         observations[i] = .{
             .ns = end - start,
             .alloc_count = counting.window_alloc_count,
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
-            .max_queue_depth = max_queue_depth,
-            .max_remaining_after_slice = 0,
         };
     }
     return try summarizeObservations(base_allocator, name, fixture.len, observations);
@@ -328,14 +312,13 @@ fn runMixedInteractiveWorkload(
             1_000,
         );
         defer terminal.deinit();
+        var stream = try StreamHarness.init(&terminal);
+        defer stream.deinit();
         counting.resetWindow();
         const start = nowNs(io);
         var j: usize = 0;
-        var max_queue_depth: u32 = 0;
         while (j < bursts_per_run) : (j += 1) {
-            try terminal.parser.feedSlice(burst);
-            max_queue_depth = @max(max_queue_depth, action.applyLimit(&terminal, 0).remaining_events);
-            action.apply(&terminal);
+            try stream.nextSlice(burst);
         }
         const end = nowNs(io);
         observations[i] = .{
@@ -343,8 +326,6 @@ fn runMixedInteractiveWorkload(
             .alloc_count = counting.window_alloc_count,
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
-            .max_queue_depth = max_queue_depth,
-            .max_remaining_after_slice = 0,
         };
     }
     return try summarizeObservations(base_allocator, "mixed_interactive", bursts_per_run * burst.len, observations);
@@ -370,8 +351,9 @@ fn runSnapshotWorkload(
             1_000,
         );
         defer terminal.deinit();
-        try terminal.parser.feedSlice(fixture);
-        action.apply(&terminal);
+        var stream = try StreamHarness.init(&terminal);
+        defer stream.deinit();
+        try stream.nextSlice(fixture);
         counting.resetWindow();
         const start = nowNs(io);
         var j: usize = 0;
@@ -389,60 +371,9 @@ fn runSnapshotWorkload(
             .alloc_count = counting.window_alloc_count,
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
-            .max_queue_depth = 0,
-            .max_remaining_after_slice = 0,
         };
     }
     return try summarizeObservations(base_allocator, "snapshot_opt_in", snapshot_calls_per_run, observations);
-}
-
-fn runQueueGrowthChunkedWorkload(
-    io: std.Io,
-    base_allocator: std.mem.Allocator,
-    name: []const u8,
-    fixture: []const u8,
-    chunk_size: usize,
-    rows: u16,
-    cols: u16,
-    history_capacity: u16,
-    runs: usize,
-) !WorkloadResult {
-    const observations = try base_allocator.alloc(RunObservation, runs);
-    defer base_allocator.free(observations);
-
-    var i: usize = 0;
-    while (i < runs) : (i += 1) {
-        var counting = CountingAllocator.init(base_allocator);
-        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
-            counting.allocator(),
-            rows,
-            cols,
-            history_capacity,
-        );
-        defer terminal.deinit();
-
-        counting.resetWindow();
-        var offset: usize = 0;
-        var max_queue_depth: u32 = 0;
-        const start = nowNs(io);
-        while (offset < fixture.len) {
-            const next = @min(offset + chunk_size, fixture.len);
-            try terminal.parser.feedSlice(fixture[offset..next]);
-            max_queue_depth = @max(max_queue_depth, action.applyLimit(&terminal, 0).remaining_events);
-            offset = next;
-        }
-        action.apply(&terminal);
-        const end = nowNs(io);
-        observations[i] = .{
-            .ns = end - start,
-            .alloc_count = counting.window_alloc_count,
-            .alloc_bytes = counting.window_alloc_bytes,
-            .peak_live_bytes = counting.window_peak_live_bytes,
-            .max_queue_depth = max_queue_depth,
-            .max_remaining_after_slice = 0,
-        };
-    }
-    return try summarizeObservations(base_allocator, name, fixture.len, observations);
 }
 
 fn runReplayRecordWorkload(
@@ -467,71 +398,13 @@ fn runReplayRecordWorkload(
             history_capacity,
         );
         defer terminal.deinit();
+        var stream = try StreamHarness.init(&terminal);
+        defer stream.deinit();
 
         counting.resetWindow();
-        var max_queue_depth: u32 = 0;
         const start = nowNs(io);
         for (record.chunks.items) |chunk| {
-            try terminal.parser.feedSlice(chunk);
-            max_queue_depth = @max(max_queue_depth, action.applyLimit(&terminal, 0).remaining_events);
-        }
-        action.apply(&terminal);
-        const end = nowNs(io);
-        obs.* = .{
-            .ns = end - start,
-            .alloc_count = counting.window_alloc_count,
-            .alloc_bytes = counting.window_alloc_bytes,
-            .peak_live_bytes = counting.window_peak_live_bytes,
-            .max_queue_depth = max_queue_depth,
-            .max_remaining_after_slice = 0,
-        };
-    }
-    return try summarizeObservations(base_allocator, name, @intCast(pty_feed_record.byteLen(record)), observations);
-}
-
-fn runReplayRecordHostCadenceWorkload(
-    io: std.Io,
-    base_allocator: std.mem.Allocator,
-    name: []const u8,
-    record: *const pty_feed_record.Record,
-    rows: u16,
-    cols: u16,
-    history_capacity: u16,
-    runs: u32,
-) !WorkloadResult {
-    const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
-    defer base_allocator.free(observations);
-
-    for (observations) |*obs| {
-        var counting = CountingAllocator.init(base_allocator);
-        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
-            counting.allocator(),
-            rows,
-            cols,
-            history_capacity,
-        );
-        defer terminal.deinit();
-
-        counting.resetWindow();
-        var max_queue_depth: u32 = 0;
-        var max_remaining_after_slice: u32 = 0;
-        std.debug.assert(record.chunks.items.len <= std.math.maxInt(u32));
-        const chunk_count: u32 = @intCast(record.chunks.items.len);
-        var next_chunk: u32 = 0;
-        const start = nowNs(io);
-        while (true) {
-            var queued = action.applyLimit(&terminal, 0).remaining_events;
-            while (queued < host_vt_apply_events_per_turn and next_chunk < chunk_count) {
-                try terminal.parser.feedSlice(record.chunks.items[@intCast(next_chunk)]);
-                next_chunk += 1;
-                queued = action.applyLimit(&terminal, 0).remaining_events;
-            }
-
-            if (queued == 0 and next_chunk >= chunk_count) break;
-            max_queue_depth = @max(max_queue_depth, queued);
-            const applied = action.applyLimit(&terminal, host_vt_apply_events_per_turn);
-            max_remaining_after_slice = @max(max_remaining_after_slice, applied.remaining_events);
-            if (applied.applied == 0 and next_chunk >= chunk_count) break;
+            try stream.nextSlice(chunk);
         }
         const end = nowNs(io);
         obs.* = .{
@@ -539,8 +412,6 @@ fn runReplayRecordHostCadenceWorkload(
             .alloc_count = counting.window_alloc_count,
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
-            .max_queue_depth = max_queue_depth,
-            .max_remaining_after_slice = max_remaining_after_slice,
         };
     }
     return try summarizeObservations(base_allocator, name, @intCast(pty_feed_record.byteLen(record)), observations);
@@ -599,10 +470,6 @@ fn replayWorkloadName(allocator: std.mem.Allocator, file_name: []const u8) ![]u8
     return name;
 }
 
-fn replayHostCadenceWorkloadName(allocator: std.mem.Allocator, replay_workload_name: []const u8) ![]u8 {
-    return std.fmt.allocPrint(allocator, "{s}_host_cadence", .{replay_workload_name});
-}
-
 fn lessThanReplayFixture(_: void, lhs: ReplayFixture, rhs: ReplayFixture) bool {
     return std.mem.lessThan(u8, lhs.workload_name, rhs.workload_name);
 }
@@ -618,13 +485,6 @@ test "replay workload name derives from fixture basename" {
     try std.testing.expectEqualStrings("replay_capture_1", name);
 }
 
-test "host cadence replay workload name adds suffix" {
-    const gpa = std.testing.allocator;
-    const name = try replayHostCadenceWorkloadName(gpa, "replay_capture_1");
-    defer gpa.free(name);
-    try std.testing.expectEqualStrings("replay_capture_1_host_cadence", name);
-}
-
 fn printTextResult(result: WorkloadResult) void {
     const median_ms = @as(f64, @floatFromInt(result.median_ns)) / 1_000_000.0;
     const p95_ms = @as(f64, @floatFromInt(result.p95_ns)) / 1_000_000.0;
@@ -638,14 +498,12 @@ fn printTextResult(result: WorkloadResult) void {
     std.debug.print("median_alloc_count={d}\n", .{result.median_alloc_count});
     std.debug.print("median_alloc_bytes={d}\n", .{result.median_alloc_bytes});
     std.debug.print("median_peak_live_bytes={d}\n", .{result.median_peak_live_bytes});
-    std.debug.print("median_max_queue_depth={d}\n", .{result.median_max_queue_depth});
-    std.debug.print("median_max_remaining_after_slice={d}\n", .{result.median_max_remaining_after_slice});
     std.debug.print("---\n", .{});
 }
 
 fn printNdjsonResult(result: WorkloadResult) void {
     std.debug.print(
-        "{{\"type\":\"vt_core_benchmark\",\"schema\":3,\"workload\":\"{s}\",\"runs\":{d},\"bytes_per_run\":{d},\"median_ns\":{d},\"p95_ns\":{d},\"throughput_mib_s\":{d:.3},\"median_alloc_count\":{d},\"median_alloc_bytes\":{d},\"median_peak_live_bytes\":{d},\"median_max_queue_depth\":{d},\"median_max_remaining_after_slice\":{d}}}\n",
+        "{{\"type\":\"vt_core_benchmark\",\"schema\":4,\"workload\":\"{s}\",\"runs\":{d},\"bytes_per_run\":{d},\"median_ns\":{d},\"p95_ns\":{d},\"throughput_mib_s\":{d:.3},\"median_alloc_count\":{d},\"median_alloc_bytes\":{d},\"median_peak_live_bytes\":{d}}}\n",
         .{
             result.name,
             result.runs,
@@ -656,8 +514,6 @@ fn printNdjsonResult(result: WorkloadResult) void {
             result.median_alloc_count,
             result.median_alloc_bytes,
             result.median_peak_live_bytes,
-            result.median_max_queue_depth,
-            result.median_max_remaining_after_slice,
         },
     );
 }
@@ -717,7 +573,7 @@ pub fn main(init: std.process.Init) !void {
     const scroll_fixture = try buildScrollFixture(allocator);
     defer allocator.free(scroll_fixture);
 
-    const ascii_result = try runFeedApplyWorkload(
+    const ascii_result = try runStreamWorkload(
         init.io,
         allocator,
         "ascii_heavy",
@@ -727,7 +583,7 @@ pub fn main(init: std.process.Init) !void {
         0,
         runs,
     );
-    const csi_result = try runFeedApplyWorkload(
+    const csi_result = try runStreamWorkload(
         init.io,
         allocator,
         "csi_heavy",
@@ -737,7 +593,7 @@ pub fn main(init: std.process.Init) !void {
         0,
         runs,
     );
-    const unicode_result = try runFeedApplyWorkload(
+    const unicode_result = try runStreamWorkload(
         init.io,
         allocator,
         "unicode_heavy",
@@ -747,7 +603,7 @@ pub fn main(init: std.process.Init) !void {
         0,
         runs,
     );
-    const scroll_no_history = try runFeedApplyWorkload(
+    const scroll_no_history = try runStreamWorkload(
         init.io,
         allocator,
         "scroll_heavy_history0",
@@ -757,7 +613,7 @@ pub fn main(init: std.process.Init) !void {
         0,
         runs,
     );
-    const scroll_with_history = try runFeedApplyWorkload(
+    const scroll_with_history = try runStreamWorkload(
         init.io,
         allocator,
         "scroll_heavy_history1000",
@@ -767,7 +623,7 @@ pub fn main(init: std.process.Init) !void {
         1_000,
         runs,
     );
-    const scroll_with_default_history = try runFeedApplyWorkload(
+    const scroll_with_default_history = try runStreamWorkload(
         init.io,
         allocator,
         "scroll_heavy_history4096",
@@ -779,28 +635,6 @@ pub fn main(init: std.process.Init) !void {
     );
     const mixed_result = try runMixedInteractiveWorkload(init.io, allocator, runs);
     const snapshot_result = try runSnapshotWorkload(init.io, allocator, scroll_fixture, runs);
-    const queue_growth_ascii = try runQueueGrowthChunkedWorkload(
-        init.io,
-        allocator,
-        "queue_growth_ascii_chunked_64",
-        ascii_fixture,
-        64,
-        40,
-        120,
-        0,
-        runs,
-    );
-    const queue_growth_scroll = try runQueueGrowthChunkedWorkload(
-        init.io,
-        allocator,
-        "queue_growth_scroll_chunked_16",
-        scroll_fixture,
-        16,
-        40,
-        120,
-        1_000,
-        runs,
-    );
 
     const replay_fixture_dir = "../howl-linux-host/artifacts/replay";
     const replay_fixtures = try loadReplayFixtures(init.io, allocator, replay_fixture_dir);
@@ -819,8 +653,6 @@ pub fn main(init: std.process.Init) !void {
     printResult(scroll_with_default_history, options.format);
     printResult(mixed_result, options.format);
     printResult(snapshot_result, options.format);
-    printResult(queue_growth_ascii, options.format);
-    printResult(queue_growth_scroll, options.format);
     for (replay_fixtures) |*fixture| {
         const result = try runReplayRecordWorkload(
             init.io,
@@ -833,19 +665,5 @@ pub fn main(init: std.process.Init) !void {
             @intCast(runs),
         );
         printResult(result, options.format);
-
-        const host_name = try replayHostCadenceWorkloadName(allocator, fixture.workload_name);
-        defer allocator.free(host_name);
-        const host_result = try runReplayRecordHostCadenceWorkload(
-            init.io,
-            allocator,
-            host_name,
-            &fixture.record,
-            40,
-            120,
-            1_000,
-            @intCast(runs),
-        );
-        printResult(host_result, options.format);
     }
 }

@@ -3,7 +3,6 @@
 const std = @import("std");
 const howl_vt = @import("howl_vt");
 
-const action = howl_vt.Action;
 const screen_set = howl_vt.ScreenSet;
 const Terminal = howl_vt.Terminal;
 
@@ -170,6 +169,8 @@ fn pickOp(rand: std.Random) OpKind {
 }
 
 fn applyWriteBurst(vt: *Terminal, rand: std.Random) !void {
+    var stream = vt.vtStream();
+    defer stream.deinit();
     const lines = rand.uintLessThan(u8, 8) + 1;
     var line_idx: u8 = 0;
     while (line_idx < lines) : (line_idx += 1) {
@@ -180,10 +181,9 @@ fn applyWriteBurst(vt: *Terminal, rand: std.Random) !void {
             const cp = "0123456789abcdefXYZ+-_=./[]{}()";
             buf[i] = cp[rand.uintLessThan(usize, cp.len)];
         }
-        try vt.parser.feedSlice(buf[0..len]);
-        try vt.parser.feedSlice(&.{ '\n' });
+        try stream.nextSlice(buf[0..len]);
+        try stream.next('\n');
     }
-    action.apply(vt);
 }
 
 fn applyResize(vt: *Terminal, rand: std.Random) !void {

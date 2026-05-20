@@ -4,7 +4,7 @@ comptime {
     @export(&ffi.terminalInit, .{ .name = "howl_vt_terminal_init" });
     @export(&ffi.terminalDeinit, .{ .name = "howl_vt_terminal_deinit" });
     @export(&ffi.terminalFeed, .{ .name = "howl_vt_terminal_feed" });
-    @export(&ffi.terminalApply, .{ .name = "howl_vt_terminal_apply" });
+    @export(&ffi.terminalCopyTitle, .{ .name = "howl_vt_terminal_copy_title" });
     @export(&ffi.terminalResize, .{ .name = "howl_vt_terminal_resize" });
     @export(&ffi.terminalAckSurface, .{ .name = "howl_vt_terminal_ack_surface" });
     @export(&ffi.terminalCopySurface, .{ .name = "howl_vt_terminal_copy_surface" });

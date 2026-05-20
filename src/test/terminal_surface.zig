@@ -1,22 +1,21 @@
 //! Public Terminal API and lifecycle tests.
 
 const std = @import("std");
-const action_mod = @import("../action.zig");
 const parser_mod = @import("../parser.zig");
 const terminal_mod = @import("../terminal.zig");
 const ffi = @import("../ffi.zig");
-const parsed_events_mod = @import("../parser/events.zig");
 const screen = @import("../screen.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
 const input_mod = @import("../input.zig");
+const stream_harness = @import("stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;
-const ParsedEvents = parsed_events_mod.ParsedEvents;
 const Screen = screen.Screen;
 const Selection = selection;
 const Input = input_mod;
+const StreamHarness = stream_harness.Harness;
 
 var encode_scratch: Input.Scratch = .{};
 
@@ -73,31 +72,6 @@ fn selectionClear(terminal: *Terminal) void {
     Selection.terminalClear(terminal);
 }
 
-fn feedByte(terminal: *Terminal, byte: u8) void {
-    terminal.parser.feedSlice(&.{byte}) catch unreachable;
-}
-
-fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    terminal.parser.feedSlice(bytes) catch unreachable;
-}
-
-fn apply(terminal: *Terminal) void {
-    action_mod.apply(terminal);
-}
-
-fn clear(terminal: *Terminal) void {
-    terminal.parser.parsed_events.clear();
-}
-
-fn reset(terminal: *Terminal) void {
-    terminal.parser.parsed_events.resetState();
-    terminal.parser.parser.reset();
-}
-
-fn applyLimit(terminal: *Terminal, max_events: u32) action_mod.ApplySummary {
-    return action_mod.applyLimit(terminal, max_events);
-}
-
 fn copySurfaceOk(
     handle: ffi.VtHandle,
     rows: u16,
@@ -131,21 +105,19 @@ test "Terminal public methods remain available" {
     try std.testing.expect(@hasDecl(Terminal, "init"));
     try std.testing.expect(@hasDecl(Terminal, "initWithCells"));
     try std.testing.expect(@hasDecl(Terminal, "deinit"));
-    _ = .{ feedByte, feedSlice, apply, clear, reset, applyLimit };
+    try std.testing.expect(@hasDecl(Terminal, "vtHandler"));
+    try std.testing.expect(@hasDecl(Terminal, "vtStream"));
 }
 
 test "Terminal method signatures remain host-facing" {
     const Allocator = std.mem.Allocator;
     const init_fn: fn (Allocator, u16, u16) anyerror!Terminal = Terminal.init;
     const init_cells_fn: fn (Allocator, u16, u16) anyerror!Terminal = Terminal.initWithCells;
+    const init_cells_history_fn: fn (Allocator, u16, u16, u16) anyerror!Terminal = Terminal.initWithCellsAndHistory;
     const deinit_fn: fn (*Terminal) void = Terminal.deinit;
-    const feed_byte_fn: fn (*Terminal, u8) void = feedByte;
-    const feed_slice_fn: fn (*Terminal, []const u8) void = feedSlice;
-    const apply_fn: fn (*Terminal) void = apply;
-    const clear_fn: fn (*Terminal) void = clear;
-    const reset_fn: fn (*Terminal) void = reset;
-    const apply_limit_fn: fn (*Terminal, u32) action_mod.ApplySummary = applyLimit;
-    _ = .{ init_fn, init_cells_fn, deinit_fn, feed_byte_fn, feed_slice_fn, apply_fn, clear_fn, reset_fn, apply_limit_fn };
+    const vt_handler_fn: fn (*Terminal) Terminal.Handler = Terminal.vtHandler;
+    const vt_stream_fn: fn (*Terminal) Terminal.Stream = Terminal.vtStream;
+    _ = .{ init_fn, init_cells_fn, init_cells_history_fn, deinit_fn, vt_handler_fn, vt_stream_fn };
 }
 
 test "const-read history and selection accessors stay stable" {
@@ -154,21 +126,21 @@ test "const-read history and selection accessors stay stable" {
 }
 
 test "lifecycle extension methods stay stable" {
-    const init_cells_history_fn: fn (std.mem.Allocator, u16, u16, u16) anyerror!Terminal = Terminal.initWithCellsAndHistory;
     const selection_start_fn: fn (*Terminal, i32, u16) void = selectionStart;
     const selection_update_fn: fn (*Terminal, i32, u16) void = selectionUpdate;
     const selection_finish_fn: fn (*Terminal) void = selectionFinish;
     const selection_clear_fn: fn (*Terminal) void = selectionClear;
-    _ = .{ init_cells_history_fn, selection_start_fn, selection_update_fn, selection_finish_fn, selection_clear_fn };
+    _ = .{ selection_start_fn, selection_update_fn, selection_finish_fn, selection_clear_fn };
 }
 
 test "snapshot capture remains deterministic" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "TEST");
-    apply(&terminal);
+    try stream.nextSlice("TEST");
 
     var snap1 = try captureSnapshot(&terminal);
     defer snap1.deinit();
@@ -186,9 +158,10 @@ test "resize keeps history enabled state" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCellsAndHistory(allocator, 1, 3, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "111\n222\n333");
-    apply(&terminal);
+    try stream.nextSlice("111\n222\n333");
     const before = visibleView(&terminal, .{}).history_count;
     try resizeTerminal(&terminal, 3, 3);
 
@@ -200,22 +173,21 @@ test "alternate screen exit preserves primary scrollback" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCellsAndHistory(allocator, 2, 4, 16);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "AAAA\nBBBB\nCCCC\nDDDD");
-    apply(&terminal);
+    try stream.nextSlice("AAAA\nBBBB\nCCCC\nDDDD");
     var before = try captureSnapshot(&terminal);
     defer before.deinit();
     const history_before = visibleView(&terminal, .{}).history_count;
     try std.testing.expect(history_before > 0);
 
-    feedSlice(&terminal, "\x1b[?1049hALT!");
-    apply(&terminal);
+    try stream.nextSlice("\x1b[?1049hALT!");
     try std.testing.expect(visibleView(&terminal, .{}).is_alternate_screen);
     try std.testing.expectEqual(@as(u32, 0), visibleView(&terminal, .{}).history_count);
     try std.testing.expectEqual(@as(u21, 'A'), activeScreen(&terminal).cellAt(0, 0));
 
-    feedSlice(&terminal, "\x1b[?1049l");
-    apply(&terminal);
+    try stream.nextSlice("\x1b[?1049l");
     var after = try captureSnapshot(&terminal);
     defer after.deinit();
     try std.testing.expect(!visibleView(&terminal, .{}).is_alternate_screen);
@@ -235,9 +207,10 @@ test "alternate screen 1049 restores primary cursor" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[3;4H\x1b[?1049h\x1b[2;2H\x1b[?1049l");
-    apply(&terminal);
+    try stream.nextSlice("\x1b[3;4H\x1b[?1049h\x1b[2;2H\x1b[?1049l");
     try std.testing.expectEqual(@as(u16, 2), activeScreen(&terminal).cursor_row);
     try std.testing.expectEqual(@as(u16, 3), activeScreen(&terminal).cursor_col);
 }
@@ -246,10 +219,11 @@ test "alternate screen switches mark active viewport fully dirty" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 4);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
     clearDirtyRows(&terminal);
-    feedSlice(&terminal, "\x1b[?1049h");
-    apply(&terminal);
+    try stream.nextSlice("\x1b[?1049h");
     const enter_dirty = activeScreen(&terminal).peekDirtyRows().?;
     try std.testing.expectEqual(@as(u16, 0), enter_dirty.start_row);
     try std.testing.expectEqual(@as(u16, 2), enter_dirty.end_row);
@@ -257,8 +231,7 @@ test "alternate screen switches mark active viewport fully dirty" {
     try std.testing.expectEqual(@as(u16, 3), enter_dirty.dirty_cols_end[2]);
 
     clearDirtyRows(&terminal);
-    feedSlice(&terminal, "\x1b[?1049l");
-    apply(&terminal);
+    try stream.nextSlice("\x1b[?1049l");
     const exit_dirty = activeScreen(&terminal).peekDirtyRows().?;
     try std.testing.expectEqual(@as(u16, 0), exit_dirty.start_row);
     try std.testing.expectEqual(@as(u16, 2), exit_dirty.end_row);
@@ -270,13 +243,13 @@ test "full-screen scroll dirties only exposed bottom row" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "AAAA\nBBBB\nCCCC");
-    apply(&terminal);
+    try stream.nextSlice("AAAA\nBBBB\nCCCC");
     clearDirtyRows(&terminal);
 
-    feedSlice(&terminal, "\nDDDD");
-    apply(&terminal);
+    try stream.nextSlice("\nDDDD");
 
     const dirty = activeScreen(&terminal).peekDirtyRows().?;
     try std.testing.expectEqual(@as(u16, 2), dirty.start_row);
@@ -317,18 +290,12 @@ test "stale surface source ack does not clear newer dirtiness" {
     var dirty_rows: [2]u8 = undefined;
     var cols_start: [2]u16 = undefined;
     var cols_end: [2]u16 = undefined;
-    var title: [16]u8 = undefined;
-
     const first = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expect(first.dirty_generation != 0);
 
-    try std.testing.expectEqual(
-        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalFeed(handle, "A".ptr, 1),
-    );
-    const applied = ffi.terminalApply(handle, 64, title[0..].ptr, title.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), applied.status);
-    try std.testing.expect(applied.applied > 0);
+    const fed = ffi.terminalFeed(handle, "A".ptr, 1);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), fed.status);
+    try std.testing.expectEqual(@as(u8, 1), fed.state_changed);
 
     const second = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expect(second.dirty_generation != first.dirty_generation);
@@ -351,23 +318,13 @@ test "older ack cannot retire newer published generation" {
     var dirty_rows: [2]u8 = undefined;
     var cols_start: [2]u16 = undefined;
     var cols_end: [2]u16 = undefined;
-    var title: [16]u8 = undefined;
-
     _ = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
-    try std.testing.expectEqual(
-        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalFeed(handle, "A".ptr, 1),
-    );
-    const first_apply = ffi.terminalApply(handle, 64, title[0..].ptr, title.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), first_apply.status);
+    const first_feed = ffi.terminalFeed(handle, "A".ptr, 1);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), first_feed.status);
     const second = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
 
-    try std.testing.expectEqual(
-        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalFeed(handle, "B".ptr, 1),
-    );
-    const second_apply = ffi.terminalApply(handle, 64, title[0..].ptr, title.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), second_apply.status);
+    const second_feed = ffi.terminalFeed(handle, "B".ptr, 1);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), second_feed.status);
     const third = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expect(third.dirty_generation != second.dirty_generation);
 
@@ -404,22 +361,12 @@ test "terminal feed fails overlong OSC instead of truncating it" {
     try bytes.appendNTimes(allocator, 'A', 4_097);
     try bytes.append(allocator, 0x07);
 
-    try std.testing.expectEqual(
-        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)),
-        ffi.terminalFeed(handle, bytes.items.ptr, bytes.items.len),
-    );
+    const failed = ffi.terminalFeed(handle, bytes.items.ptr, bytes.items.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)), failed.status);
 
-    const queued = ffi.terminalApply(handle, 0, null, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), queued.status);
-    try std.testing.expectEqual(@as(u64, 0), queued.remaining_events);
-
-    try std.testing.expectEqual(
-        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalFeed(handle, "A".ptr, 1),
-    );
-    const applied = ffi.terminalApply(handle, 64, null, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), applied.status);
-    try std.testing.expect(applied.applied > 0);
+    const recovered = ffi.terminalFeed(handle, "A".ptr, 1);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), recovered.status);
+    try std.testing.expectEqual(@as(u8, 1), recovered.state_changed);
 }
 
 test "terminal feed fails overlong APC instead of truncating it" {
@@ -433,50 +380,22 @@ test "terminal feed fails overlong APC instead of truncating it" {
     try bytes.appendNTimes(allocator, 'A', parser_mod.max_apc_control_bytes + 1);
     try bytes.appendSlice(allocator, "\x1b\\");
 
-    try std.testing.expectEqual(
-        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)),
-        ffi.terminalFeed(handle, bytes.items.ptr, bytes.items.len),
-    );
+    const failed = ffi.terminalFeed(handle, bytes.items.ptr, bytes.items.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)), failed.status);
 
-    const queued = ffi.terminalApply(handle, 0, null, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), queued.status);
-    try std.testing.expectEqual(@as(u64, 0), queued.remaining_events);
-
-    try std.testing.expectEqual(
-        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalFeed(handle, "A".ptr, 1),
-    );
-    const applied = ffi.terminalApply(handle, 64, null, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), applied.status);
-    try std.testing.expect(applied.applied > 0);
-}
-
-test "terminal feed fails queue-heavy burst at explicit event bound" {
-    const allocator = std.testing.allocator;
-    const handle = ffi.terminalInit(2, 4, 4);
-    defer ffi.terminalDeinit(handle);
-
-    var bytes = try std.ArrayList(u8).initCapacity(allocator, ParsedEvents.max_queued_events + 1);
-    defer bytes.deinit(allocator);
-    try bytes.appendNTimes(allocator, 0x07, ParsedEvents.max_queued_events + 1);
-
-    try std.testing.expectEqual(
-        @as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)),
-        ffi.terminalFeed(handle, bytes.items.ptr, bytes.items.len),
-    );
-
-    const queued = ffi.terminalApply(handle, 0, null, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), queued.status);
-    try std.testing.expectEqual(@as(u64, 0), queued.remaining_events);
+    const recovered = ffi.terminalFeed(handle, "A".ptr, 1);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), recovered.status);
+    try std.testing.expectEqual(@as(u8, 1), recovered.state_changed);
 }
 
 test "input encoding APIs are callable without terminal facade methods" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "TEST");
-    apply(&terminal);
+    try stream.nextSlice("TEST");
 
     var snap_before = try captureSnapshot(&terminal);
     defer snap_before.deinit();

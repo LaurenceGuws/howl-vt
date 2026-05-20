@@ -8,10 +8,12 @@ const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
 const terminal_mod = @import("../terminal.zig");
 const input_mod = @import("../input.zig");
+const stream_harness = @import("stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;
 const HostState = host_state;
 const Input = input_mod;
+const StreamHarness = stream_harness.Harness;
 
 var encode_scratch: Input.Scratch = .{};
 
@@ -51,12 +53,8 @@ fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
     );
 }
 
-fn feedSlice(terminal: *Terminal, bytes: []const u8) void {
-    terminal.parser.feedSlice(bytes) catch unreachable;
-}
-
-fn apply(terminal: *Terminal) void {
-    action_mod.apply(terminal);
+fn write(stream: *StreamHarness, bytes: []const u8) void {
+    stream.nextSlice(bytes) catch unreachable;
 }
 
 fn pendingOutput(terminal: *const Terminal) []const u8 {
@@ -99,9 +97,10 @@ test "encodeMouse returns empty output and does not mutate state" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "HELLO");
-    apply(&terminal);
+    write(&stream, "HELLO");
 
     var snap_before = try captureSnapshot(&terminal);
     defer snap_before.deinit();
@@ -134,6 +133,8 @@ test "mouse reporting is gated by DECSET mouse modes and SGR protocol" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
     const mouse_event = Input.MouseEvent{
         .kind = .press,
@@ -147,8 +148,7 @@ test "mouse reporting is gated by DECSET mouse modes and SGR protocol" {
     };
 
     try std.testing.expectEqualStrings("", encodeMouse(&terminal, mouse_event));
-    feedSlice(&terminal, "\x1b[?1000h\x1b[?1006h");
-    apply(&terminal);
+    write(&stream, "\x1b[?1000h\x1b[?1006h");
     try std.testing.expectEqualStrings("\x1b[<0;4;3M", encodeMouse(&terminal, mouse_event));
 
     const move_event = Input.MouseEvent{
@@ -162,11 +162,9 @@ test "mouse reporting is gated by DECSET mouse modes and SGR protocol" {
         .buttons_down = 1,
     };
     try std.testing.expectEqualStrings("", encodeMouse(&terminal, move_event));
-    feedSlice(&terminal, "\x1b[?1002h");
-    apply(&terminal);
+    write(&stream, "\x1b[?1002h");
     try std.testing.expectEqualStrings("\x1b[<32;4;3M", encodeMouse(&terminal, move_event));
-    feedSlice(&terminal, "\x1b[?1003h");
-    apply(&terminal);
+    write(&stream, "\x1b[?1003h");
     const hover_event = Input.MouseEvent{
         .kind = .move,
         .button = .none,
@@ -184,29 +182,27 @@ test "mouse reporting supports legacy x10 normal utf8 and urxvt encodings" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
     const press = Input.MouseEvent{ .kind = .press, .button = .left, .row = 2, .col = 3, .mod = Input.mod_shift | Input.mod_alt, .buttons_down = 1 };
     const release = Input.MouseEvent{ .kind = .release, .button = .left, .row = 2, .col = 3, .mod = 0, .buttons_down = 0 };
     const wheel = Input.MouseEvent{ .kind = .wheel, .button = .wheel_down, .row = 2, .col = 3, .mod = 0, .buttons_down = 0 };
 
-    feedSlice(&terminal, "\x1b[?9h");
-    apply(&terminal);
+    write(&stream, "\x1b[?9h");
     try std.testing.expectEqualStrings("\x1b[M $#", encodeMouse(&terminal, press));
     try std.testing.expectEqualStrings("", encodeMouse(&terminal, release));
 
-    feedSlice(&terminal, "\x1b[?1000h");
-    apply(&terminal);
+    write(&stream, "\x1b[?1000h");
     try std.testing.expectEqualStrings("\x1b[M,$#", encodeMouse(&terminal, press));
     try std.testing.expectEqualStrings("\x1b[M#$#", encodeMouse(&terminal, release));
     try std.testing.expectEqualStrings("\x1b[Ma$#", encodeMouse(&terminal, wheel));
 
-    feedSlice(&terminal, "\x1b[?1005h");
-    apply(&terminal);
+    write(&stream, "\x1b[?1005h");
     const far_press = Input.MouseEvent{ .kind = .press, .button = .left, .row = 240, .col = 240, .mod = 0, .buttons_down = 1 };
     try std.testing.expectEqualStrings("\x1b[M \xc4\x91\xc4\x91", encodeMouse(&terminal, far_press));
 
-    feedSlice(&terminal, "\x1b[?1015h");
-    apply(&terminal);
+    write(&stream, "\x1b[?1015h");
     try std.testing.expectEqualStrings("\x1b[32;241;241M", encodeMouse(&terminal, far_press));
 }
 
@@ -214,12 +210,13 @@ test "mouse mode queries and save restore include extended protocols" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[?1003h\x1b[?1005h\x1b[?1003;1005s");
-    feedSlice(&terminal, "\x1b[?1000h\x1b[?1006h");
-    feedSlice(&terminal, "\x1b[?1003;1005r");
-    feedSlice(&terminal, "\x1b[?9$p\x1b[?1000$p\x1b[?1003$p\x1b[?1005$p\x1b[?1006$p\x1b[?1015$p");
-    apply(&terminal);
+    write(&stream, "\x1b[?1003h\x1b[?1005h\x1b[?1003;1005s");
+    write(&stream, "\x1b[?1000h\x1b[?1006h");
+    write(&stream, "\x1b[?1003;1005r");
+    write(&stream, "\x1b[?9$p\x1b[?1000$p\x1b[?1003$p\x1b[?1005$p\x1b[?1006$p\x1b[?1015$p");
 
     try std.testing.expectEqualStrings("\x1b[?9;2$y\x1b[?1000;2$y\x1b[?1003;1$y\x1b[?1005;1$y\x1b[?1006;2$y\x1b[?1015;2$y", pendingOutput(&terminal));
 }
@@ -228,14 +225,14 @@ test "application cursor mode changes arrow key encoding" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
     try std.testing.expectEqualStrings("\x1b[A", encodeKey(&terminal, Input.key_up, Input.mod_none));
-    feedSlice(&terminal, "\x1b[?1h");
-    apply(&terminal);
+    write(&stream, "\x1b[?1h");
     try std.testing.expectEqualStrings("\x1bOA", encodeKey(&terminal, Input.key_up, Input.mod_none));
     try std.testing.expectEqualStrings("\x1b[1;5A", encodeKey(&terminal, Input.key_up, Input.mod_ctrl));
-    feedSlice(&terminal, "\x1b[?1l");
-    apply(&terminal);
+    write(&stream, "\x1b[?1l");
     try std.testing.expectEqualStrings("\x1b[A", encodeKey(&terminal, Input.key_up, Input.mod_none));
 }
 
@@ -243,21 +240,20 @@ test "kitty keyboard set query push and pop flags" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[=5u\x1b[?u");
-    apply(&terminal);
+    write(&stream, "\x1b[=5u\x1b[?u");
     try std.testing.expectEqual(@as(u32, 5), Input.kittyKeyboardFlags(&terminal));
     try std.testing.expectEqualStrings("\x1b[?5u", pendingOutput(&terminal));
     clearPendingOutput(&terminal);
 
-    feedSlice(&terminal, "\x1b[>1u\x1b[?u");
-    apply(&terminal);
+    write(&stream, "\x1b[>1u\x1b[?u");
     try std.testing.expectEqual(@as(u32, 1), Input.kittyKeyboardFlags(&terminal));
     try std.testing.expectEqualStrings("\x1b[?1u", pendingOutput(&terminal));
     clearPendingOutput(&terminal);
 
-    feedSlice(&terminal, "\x1b[<u\x1b[?u");
-    apply(&terminal);
+    write(&stream, "\x1b[<u\x1b[?u");
     try std.testing.expectEqual(@as(u32, 5), Input.kittyKeyboardFlags(&terminal));
     try std.testing.expectEqualStrings("\x1b[?5u", pendingOutput(&terminal));
 }
@@ -266,13 +262,13 @@ test "kitty keyboard flags stay separate across alternate screen" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[=1u\x1b[?1049h\x1b[=8u");
-    apply(&terminal);
+    write(&stream, "\x1b[=1u\x1b[?1049h\x1b[=8u");
     try std.testing.expect(visibleView(&terminal, .{}).is_alternate_screen);
     try std.testing.expectEqual(@as(u32, 8), Input.kittyKeyboardFlags(&terminal));
-    feedSlice(&terminal, "\x1b[?1049l");
-    apply(&terminal);
+    write(&stream, "\x1b[?1049l");
     try std.testing.expectEqual(@as(u32, 1), Input.kittyKeyboardFlags(&terminal));
 }
 
@@ -280,9 +276,10 @@ test "kitty keyboard mode switches existing keys to CSI-u family" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[=1u");
-    apply(&terminal);
+    write(&stream, "\x1b[=1u");
     try std.testing.expectEqualStrings("\x1b[27u", encodeKey(&terminal, Input.key_escape, Input.mod_none));
     try std.testing.expectEqualStrings("\x1b[127;5u", encodeKey(&terminal, Input.key_backspace, Input.mod_ctrl));
     try std.testing.expectEqualStrings("\x1b[1;5A", encodeKey(&terminal, Input.key_up, Input.mod_ctrl));
@@ -293,15 +290,15 @@ test "focus reports are gated by DECSET 1004" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
     try std.testing.expectEqualStrings("", encodeFocusIn(&terminal));
     try std.testing.expectEqualStrings("", encodeFocusOut(&terminal));
-    feedSlice(&terminal, "\x1b[?1004h");
-    apply(&terminal);
+    write(&stream, "\x1b[?1004h");
     try std.testing.expectEqualStrings("\x1b[I", encodeFocusIn(&terminal));
     try std.testing.expectEqualStrings("\x1b[O", encodeFocusOut(&terminal));
-    feedSlice(&terminal, "\x1b[?1004l");
-    apply(&terminal);
+    write(&stream, "\x1b[?1004l");
     try std.testing.expectEqualStrings("", encodeFocusIn(&terminal));
 }
 
@@ -309,15 +306,15 @@ test "bracketed paste wrappers are gated by DECSET 2004" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
     try std.testing.expectEqualStrings("", encodePasteStart(&terminal));
     try std.testing.expectEqualStrings("", encodePasteEnd(&terminal));
-    feedSlice(&terminal, "\x1b[?2004h");
-    apply(&terminal);
+    write(&stream, "\x1b[?2004h");
     try std.testing.expectEqualStrings("\x1b[200~", encodePasteStart(&terminal));
     try std.testing.expectEqualStrings("\x1b[201~", encodePasteEnd(&terminal));
-    feedSlice(&terminal, "\x1b[?2004l");
-    apply(&terminal);
+    write(&stream, "\x1b[?2004l");
     try std.testing.expectEqualStrings("", encodePasteStart(&terminal));
 }
 
@@ -325,9 +322,10 @@ test "report queries append pending host output" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[2;3H\x1b[5n\x1b[6n\x1b[c\x1b[>c\x1b[>0q\x1b[#S");
-    apply(&terminal);
+    write(&stream, "\x1b[2;3H\x1b[5n\x1b[6n\x1b[c\x1b[>c\x1b[>0q\x1b[#S");
     try std.testing.expectEqualStrings("\x1b[0n\x1b[2;3R\x1b[?62;22c\x1b[>1;10;0c\x1bP>|howl-vt dev\x1b\\\x1b[0;0#S", pendingOutput(&terminal));
 
     clearPendingOutput(&terminal);
@@ -338,9 +336,10 @@ test "ENQ default answerback is empty and printable space remains text" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 2, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "A \x05B");
-    apply(&terminal);
+    write(&stream, "A \x05B");
 
     try std.testing.expectEqualStrings("", pendingOutput(&terminal));
     const view = visibleView(&terminal, .{});
@@ -355,9 +354,10 @@ test "extended report queries append host output" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 18);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1bH\x1b[=c\x1b[\"v\x1b[0x\x1b[1x\x1b[2$w");
-    apply(&terminal);
+    write(&stream, "\x1bH\x1b[=c\x1b[\"v\x1b[0x\x1b[1x\x1b[2$w");
 
     try std.testing.expectEqualStrings("\x1bP!|00000000\x1b\\\x1b[4;18;1;1;1\"w\x1b[2;1;1;128;128;1;0x\x1b[3;1;1;128;128;1;0x\x1bP2$u1/9/17\x1b\\", pendingOutput(&terminal));
 }
@@ -366,9 +366,10 @@ test "ANSI mode queries and XTREPORTCOLORS append host output" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[2h\x1b[4h\x1b[12h\x1b[20h\x1b]30001\x1b\\\x1b[2$p\x1b[4$p\x1b[12$p\x1b[20$p\x1b[#R");
-    apply(&terminal);
+    write(&stream, "\x1b[2h\x1b[4h\x1b[12h\x1b[20h\x1b]30001\x1b\\\x1b[2$p\x1b[4$p\x1b[12$p\x1b[20$p\x1b[#R");
     try std.testing.expectEqualStrings("\x1b[2;1$y\x1b[4;1$y\x1b[12;1$y\x1b[20;1$y\x1b[1;1#Q", pendingOutput(&terminal));
 }
 
@@ -376,9 +377,10 @@ test "XTREPORTSGR reports common rectangle attrs conservatively" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 2, 4);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[31mAB\x1b[0mCD\x1b[1;1;1;2#|\x1b[1;1;1;4#|");
-    apply(&terminal);
+    write(&stream, "\x1b[31mAB\x1b[0mCD\x1b[1;1;1;2#|\x1b[1;1;1;4#|");
     try std.testing.expectEqualStrings("\x1b[0;31m\x1b[0m", pendingOutput(&terminal));
 }
 
@@ -386,18 +388,17 @@ test "ANSI modes affect key encoding and insert writes" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 2, 4);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
     try std.testing.expectEqualStrings("\r", encodeKey(&terminal, Input.key_enter, Input.mod_none));
-    feedSlice(&terminal, "\x1b[20h\x1b[2h");
-    apply(&terminal);
+    write(&stream, "\x1b[20h\x1b[2h");
     try std.testing.expectEqualStrings("", encodeKey(&terminal, 'a', Input.mod_none));
 
-    feedSlice(&terminal, "\x1b[2l");
-    apply(&terminal);
+    write(&stream, "\x1b[2l");
     try std.testing.expectEqualStrings("\r\n", encodeKey(&terminal, Input.key_enter, Input.mod_none));
 
-    feedSlice(&terminal, "ABCD\x1b[4h\x1b[1;2H!\x1b[4$p");
-    apply(&terminal);
+    write(&stream, "ABCD\x1b[4h\x1b[1;2H!\x1b[4$p");
     const view = visibleView(&terminal, .{});
     try std.testing.expectEqual(@as(u21, 'A'), view.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, '!'), view.cellAt(0, 1));
@@ -410,14 +411,14 @@ test "checksum extension affects rectangular checksum reply" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 2, 2);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "ABCD\x1b[0#y\x1b[7;1;1;1;1;2;2*y");
-    apply(&terminal);
+    write(&stream, "ABCD\x1b[0#y\x1b[7;1;1;1;1;2;2*y");
     try std.testing.expectEqualStrings("\x1bP7!~FF7C\x1b\\", pendingOutput(&terminal));
 
     clearPendingOutput(&terminal);
-    feedSlice(&terminal, "\x1b[1#y\x1b[8;1;1;1;1;2;2*y");
-    apply(&terminal);
+    write(&stream, "\x1b[1#y\x1b[8;1;1;1;1;2;2*y");
     try std.testing.expectEqualStrings("\x1bP8!~0083\x1b\\", pendingOutput(&terminal));
 }
 
@@ -425,26 +426,23 @@ test "locator requests reply unavailable, then current position, then disable on
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[0'|");
-    apply(&terminal);
+    write(&stream, "\x1b[0'|");
     try std.testing.expectEqualStrings("\x1b[0&w", pendingOutput(&terminal));
 
     clearPendingOutput(&terminal);
-    feedSlice(&terminal, "\x1b[1;0'z");
-    apply(&terminal);
+    write(&stream, "\x1b[1;0'z");
     _ = encodeMouse(&terminal, .{ .kind = .move, .button = .none, .row = 2, .col = 3, .mod = 0, .buttons_down = 1 });
-    feedSlice(&terminal, "\x1b[0'|");
-    apply(&terminal);
+    write(&stream, "\x1b[0'|");
     try std.testing.expectEqualStrings("\x1b[1;4;3;4;0&w", pendingOutput(&terminal));
 
     clearPendingOutput(&terminal);
-    feedSlice(&terminal, "\x1b[2;0'z\x1b[0'|");
-    apply(&terminal);
+    write(&stream, "\x1b[2;0'z\x1b[0'|");
     try std.testing.expectEqualStrings("\x1b[1;4;3;4;0&w", pendingOutput(&terminal));
     clearPendingOutput(&terminal);
-    feedSlice(&terminal, "\x1b[0'|");
-    apply(&terminal);
+    write(&stream, "\x1b[0'|");
     try std.testing.expectEqualStrings("\x1b[0&w", pendingOutput(&terminal));
 }
 
@@ -452,9 +450,10 @@ test "locator button and filter events append DECLRP" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[1;0'z\x1b[1;3'*{");
-    apply(&terminal);
+    write(&stream, "\x1b[1;0'z\x1b[1;3'*{");
 
     _ = encodeMouse(&terminal, .{ .kind = .press, .button = .left, .row = 1, .col = 2, .mod = 0, .buttons_down = 1 });
     try std.testing.expectEqualStrings("\x1b[2;4;2;3;0&w", pendingOutput(&terminal));
@@ -464,8 +463,7 @@ test "locator button and filter events append DECLRP" {
     try std.testing.expectEqualStrings("\x1b[3;0;2;3;0&w", pendingOutput(&terminal));
 
     clearPendingOutput(&terminal);
-    feedSlice(&terminal, "\x1b[2;2;2;2'w");
-    apply(&terminal);
+    write(&stream, "\x1b[2;2;2;2'w");
     _ = encodeMouse(&terminal, .{ .kind = .move, .button = .none, .row = 3, .col = 3, .mod = 0, .buttons_down = 0 });
     try std.testing.expectEqualStrings("\x1b[10;0;4;4;0&w", pendingOutput(&terminal));
 }
@@ -474,9 +472,10 @@ test "DECCIR reports default cursor information" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[1$w");
-    apply(&terminal);
+    write(&stream, "\x1b[1$w");
     try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;0;2;@;BBBB\x1b\\", pendingOutput(&terminal));
 }
 
@@ -484,9 +483,10 @@ test "DECCIR reports cursor position and rendition bits" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 5, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[3;7H\x1b[1m\x1b[4m\x1b[1$w");
-    apply(&terminal);
+    write(&stream, "\x1b[3;7H\x1b[1m\x1b[4m\x1b[1$w");
     try std.testing.expectEqualStrings("\x1bP1$u3;7;1;C;@;@;0;2;@;BBBB\x1b\\", pendingOutput(&terminal));
 }
 
@@ -494,9 +494,10 @@ test "DECCIR reports protection origin and wrap flags" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 1, 5);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[1\"q\x1b[?6hABCDE\x1b[1$w");
-    apply(&terminal);
+    write(&stream, "\x1b[1\"q\x1b[?6hABCDE\x1b[1$w");
     try std.testing.expectEqualStrings("\x1bP1$u1;5;1;@;A;I;0;2;@;BBBB\x1b\\", pendingOutput(&terminal));
 }
 
@@ -504,14 +505,14 @@ test "DECCIR reports charset designation and GL shift" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 10);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b(0\x1b[1$w");
-    apply(&terminal);
+    write(&stream, "\x1b(0\x1b[1$w");
     try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;0;2;@;0BBB\x1b\\", pendingOutput(&terminal));
 
     clearPendingOutput(&terminal);
-    feedSlice(&terminal, "\x1b)0\x0E\x1b[1$w");
-    apply(&terminal);
+    write(&stream, "\x1b)0\x0E\x1b[1$w");
     try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;1;2;@;00BB\x1b\\", pendingOutput(&terminal));
 }
 
@@ -519,9 +520,10 @@ test "DECXCPR appends DEC cursor position report" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[3;4H\x1b[?6n");
-    apply(&terminal);
+    write(&stream, "\x1b[3;4H\x1b[?6n");
     try std.testing.expectEqualStrings("\x1b[?3;4R", pendingOutput(&terminal));
 }
 
@@ -529,9 +531,10 @@ test "DEC locator DSR replies status and type" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[?55n\x1b[?56n");
-    apply(&terminal);
+    write(&stream, "\x1b[?55n\x1b[?56n");
     try std.testing.expectEqualStrings("\x1b[?50n\x1b[?57;1n", pendingOutput(&terminal));
 }
 
@@ -539,9 +542,10 @@ test "DEC mode queries append DECRPM replies" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[?1004h\x1b[?2004h\x1b[?1002h\x1b[?1006h\x1b[?1004$p\x1b[?2004$p\x1b[?1002$p\x1b[?1006$p\x1b[?25$p\x1b[?9999$p");
-    apply(&terminal);
+    write(&stream, "\x1b[?1004h\x1b[?2004h\x1b[?1002h\x1b[?1006h\x1b[?1004$p\x1b[?2004$p\x1b[?1002$p\x1b[?1006$p\x1b[?25$p\x1b[?9999$p");
     try std.testing.expectEqualStrings("\x1b[?1004;1$y\x1b[?2004;1$y\x1b[?1002;1$y\x1b[?1006;1$y\x1b[?25;1$y\x1b[?9999;0$y", pendingOutput(&terminal));
 }
 
@@ -549,10 +553,11 @@ test "DECRQSS replies for owned state and invalid requests" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[2;3r\x1b[?69h\x1b[2;7s\x1b[3 q\x1b[1\"q\x1b[2*x");
-    feedSlice(&terminal, "\x1bP$qr\x1b\\\x1bP$qs\x1b\\\x1bP$q q\x1b\\\x1bP$q\"q\x1b\\\x1bP$q*x\x1b\\\x1bP$qm\x1b\\");
-    apply(&terminal);
+    write(&stream, "\x1b[2;3r\x1b[?69h\x1b[2;7s\x1b[3 q\x1b[1\"q\x1b[2*x");
+    write(&stream, "\x1bP$qr\x1b\\\x1bP$qs\x1b\\\x1bP$q q\x1b\\\x1bP$q\"q\x1b\\\x1bP$q*x\x1b\\\x1bP$qm\x1b\\");
 
     try std.testing.expectEqualStrings(
         "\x1bP1$r2;3r\x1b\\\x1bP1$r2;7s\x1b\\\x1bP1$r3 q\x1b\\\x1bP1$r1\"q\x1b\\\x1bP1$r2*x\x1b\\\x1bP0$r\x1b\\",
@@ -564,9 +569,10 @@ test "DCS resource queries return conservative invalid replies" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1bP+q436F\x1b\\\x1bP+Q6E616D65\x1b\\");
-    apply(&terminal);
+    write(&stream, "\x1bP+q436F\x1b\\\x1bP+Q6E616D65\x1b\\");
 
     try std.testing.expectEqualStrings("\x1bP0+r\x1b\\\x1bP0+R6E616D65\x1b\\", pendingOutput(&terminal));
 }
@@ -575,19 +581,18 @@ test "DCS legacy payload protocols retain latest host-neutral payload" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1bP+p436F=7661\x1b\\");
-    apply(&terminal);
+    write(&stream, "\x1bP+p436F=7661\x1b\\");
     try std.testing.expect(dcsPayloadKind(&terminal).? == .xtsettcap);
     try std.testing.expectEqualStrings("436F=7661", dcsPayload(&terminal).?);
 
-    feedSlice(&terminal, "\x1bP0;0;0qdata\x1b\\");
-    apply(&terminal);
+    write(&stream, "\x1bP0;0;0qdata\x1b\\");
     try std.testing.expect(dcsPayloadKind(&terminal).? == .sixel);
     try std.testing.expectEqualStrings("0;0;0qdata", dcsPayload(&terminal).?);
 
-    feedSlice(&terminal, "\x1bP1pdraw\x1b\\");
-    apply(&terminal);
+    write(&stream, "\x1bP1pdraw\x1b\\");
     try std.testing.expect(dcsPayloadKind(&terminal).? == .regis);
     try std.testing.expectEqualStrings("1pdraw", dcsPayload(&terminal).?);
 }
@@ -596,13 +601,13 @@ test "legacy Tektronix C0 and ESC controls retain latest host-neutral state" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1c\x1d\x1e\x1f");
-    apply(&terminal);
+    write(&stream, "\x1c\x1d\x1e\x1f");
     try std.testing.expect(legacyControl(&terminal).? == .tek_alpha);
 
-    feedSlice(&terminal, "\x1b\x17\x1b\x1c\x1bl\x1bs");
-    apply(&terminal);
+    write(&stream, "\x1b\x17\x1b\x1c\x1bl\x1bs");
     try std.testing.expect(legacyControl(&terminal).? == .tek_write_thru_short_dashed);
 }
 
@@ -610,13 +615,14 @@ test "XTSAVE and XTRESTORE restore supported DEC private modes" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[?1h\x1b[?7l\x1b[?25l\x1b[?1004h\x1b[?2004h");
-    feedSlice(&terminal, "\x1b[?1;7;25;1004;2004s");
-    feedSlice(&terminal, "\x1b[?1l\x1b[?7h\x1b[?25h\x1b[?1004l\x1b[?2004l");
-    feedSlice(&terminal, "\x1b[?1;7;25;1004;2004r");
-    feedSlice(&terminal, "\x1b[?1$p\x1b[?7$p\x1b[?25$p\x1b[?1004$p\x1b[?2004$p");
-    apply(&terminal);
+    write(&stream, "\x1b[?1h\x1b[?7l\x1b[?25l\x1b[?1004h\x1b[?2004h");
+    write(&stream, "\x1b[?1;7;25;1004;2004s");
+    write(&stream, "\x1b[?1l\x1b[?7h\x1b[?25h\x1b[?1004l\x1b[?2004l");
+    write(&stream, "\x1b[?1;7;25;1004;2004r");
+    write(&stream, "\x1b[?1$p\x1b[?7$p\x1b[?25$p\x1b[?1004$p\x1b[?2004$p");
 
     const view = visibleView(&terminal, .{});
     try std.testing.expectEqualStrings("\x1bOA", encodeKey(&terminal, Input.key_up, Input.mod_none));
@@ -631,19 +637,19 @@ test "application keypad modes affect keypad encoding and DECRQM" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
     try std.testing.expectEqualStrings("1", encodeKey(&terminal, Input.key_kp_1, Input.mod_none));
     try std.testing.expectEqualStrings("\r", encodeKey(&terminal, Input.key_kp_enter, Input.mod_none));
 
-    feedSlice(&terminal, "\x1b=\x1b[?66$p");
-    apply(&terminal);
+    write(&stream, "\x1b=\x1b[?66$p");
     try std.testing.expect(Input.isApplicationKeypad(&terminal));
     try std.testing.expectEqualStrings("\x1b[?66;1$y", pendingOutput(&terminal));
     try std.testing.expectEqualStrings("\x1bOq", encodeKey(&terminal, Input.key_kp_1, Input.mod_none));
     try std.testing.expectEqualStrings("\x1bOM", encodeKey(&terminal, Input.key_kp_enter, Input.mod_none));
 
-    feedSlice(&terminal, "\x1b>");
-    apply(&terminal);
+    write(&stream, "\x1b>");
     try std.testing.expect(!Input.isApplicationKeypad(&terminal));
     try std.testing.expectEqualStrings("1", encodeKey(&terminal, Input.key_kp_1, Input.mod_none));
 }
@@ -652,21 +658,20 @@ test "modifyOtherKeys set query disable and encoding" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
     try std.testing.expectEqualStrings("a", encodeKey(&terminal, 'a', Input.mod_alt));
-    feedSlice(&terminal, "\x1b[>4;2m\x1b[?4m");
-    apply(&terminal);
+    write(&stream, "\x1b[>4;2m\x1b[?4m");
     try std.testing.expectEqual(@as(i8, 2), Input.modifyOtherKeys(&terminal));
     try std.testing.expectEqualStrings("\x1b[>4;2m", pendingOutput(&terminal));
     try std.testing.expectEqualStrings("\x1b[27;3;97~", encodeKey(&terminal, 'a', Input.mod_alt));
     try std.testing.expectEqualStrings("a", encodeKey(&terminal, 'a', Input.mod_none));
 
-    feedSlice(&terminal, "\x1b[>4;3m");
-    apply(&terminal);
+    write(&stream, "\x1b[>4;3m");
     try std.testing.expectEqualStrings("\x1b[27;1;97~", encodeKey(&terminal, 'a', Input.mod_none));
 
-    feedSlice(&terminal, "\x1b[>4n");
-    apply(&terminal);
+    write(&stream, "\x1b[>4n");
     try std.testing.expectEqual(@as(i8, -1), Input.modifyOtherKeys(&terminal));
 }
 
@@ -674,15 +679,15 @@ test "xterm key format query reset and other-key encoding" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[>4;1f\x1b[?4g\x1b[>4;1m");
-    apply(&terminal);
+    write(&stream, "\x1b[>4;1f\x1b[?4g\x1b[>4;1m");
     try std.testing.expectEqual(@as(u16, 1), Input.keyFormatOption(&terminal, 4));
     try std.testing.expectEqualStrings("\x1b[>4;1f", pendingOutput(&terminal));
     try std.testing.expectEqualStrings("\x1b[97;3u", encodeKey(&terminal, 'a', Input.mod_alt));
 
-    feedSlice(&terminal, "\x1b[>4f\x1b[?4g");
-    apply(&terminal);
+    write(&stream, "\x1b[>4f\x1b[?4g");
     try std.testing.expectEqual(@as(u16, 0), Input.keyFormatOption(&terminal, 4));
     try std.testing.expectEqualStrings("\x1b[>4;1f\x1b[>4;0f", pendingOutput(&terminal));
 }
@@ -691,16 +696,16 @@ test "low priority private modes and media copy retain host-neutral state" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
 
-    feedSlice(&terminal, "\x1b[?80h\x1b[?45h\x1b[?1045h\x1b[?5i");
-    apply(&terminal);
+    write(&stream, "\x1b[?80h\x1b[?45h\x1b[?1045h\x1b[?5i");
     try std.testing.expect(sixelDisplayMode(&terminal));
     try std.testing.expect(reverseWraparoundMode(&terminal));
     try std.testing.expect(extendedReverseWraparoundMode(&terminal));
     try std.testing.expectEqual(@as(?u16, 5), mediaCopyRequest(&terminal));
 
-    feedSlice(&terminal, "\x1b[?80l\x1b[?45l\x1b[?1045l");
-    apply(&terminal);
+    write(&stream, "\x1b[?80l\x1b[?45l\x1b[?1045l");
     try std.testing.expect(!sixelDisplayMode(&terminal));
     try std.testing.expect(!reverseWraparoundMode(&terminal));
     try std.testing.expect(!extendedReverseWraparoundMode(&terminal));

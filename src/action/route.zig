@@ -37,6 +37,7 @@ pub fn process(event: Event) ?SemanticEvent {
             const intermediates = sc.intermediates[0..sc.intermediates_len];
             return csi.process(sc.final, params, sc.separators, sc.leader, sc.private, intermediates);
         },
+        .invoke_charset, .configure_charset => return null,
         .text => |s| return SemanticEvent{ .write_text = s },
         .codepoint => |cp| return SemanticEvent{ .write_codepoint = cp },
         .control => |c| return c0.process(c),

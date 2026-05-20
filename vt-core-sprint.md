@@ -60,7 +60,8 @@ throughput truth, and zero tolerance for stale doc or code posture.
   payload stores and limits directly.
 - parser now classifies OSC command/payload metadata directly before queue append instead of letting
   the queue owner reparse raw OSC text.
-- bounded apply control spine now lives under `src/action/dispatch.zig`.
+- queued VT apply is gone; repo-local and C ABI feed now mutate terminal state directly through
+  `src/stream_terminal.zig`.
 - input encoding no longer hangs off terminal facade methods.
 - visible view, history projection, dirty export, and resize ownership now live under
   `screen.zig` and `screen_set.zig`.
@@ -115,25 +116,22 @@ throughput truth, and zero tolerance for stale doc or code posture.
 - `src/ffi.zig`, `src/screen.zig`, and `src/screen/history.zig`
   - remaining owner-path style-density hotspots.
 - `howl-linux-host/src/terminal/runtime/progress.zig`
-  - `vt_apply_events_per_turn = 1024` is the current measured fairness gate.
-  - re-derive it only after a reference-backed VT design change or host proof falsifies the
-    current gate.
+  - host loop now owns one bounded PTY slice per turn, and VT mutation happens during feed.
+  - keep those PTY slice limits reference-backed, and do not reintroduce a second VT apply phase.
 - colored-output throughput
   - `lsd -la --color=never` vs `lsd -la --color=always` remains the real host-facing repro.
   - exact `PTY -> VT` chunk capture now uses the `howl-pty-vt-hex-v1` fixture format so replay
     tests can feed the same chunk boundaries inside `src/test/pty_feed_record.zig`.
   - `src/test/terminal_benchmark.zig` now scans `../howl-linux-host/artifacts/replay/*.hex`
     generically instead of hardcoding one payload.
-  - replay proof now has two shapes:
-    - whole-stream replay for upper-bound queue growth
-    - `_host_cadence` replay that mirrors the host `1024`-event VT slice
+  - replay proof now runs through the stream-shaped terminal path, not a queue-centered VT story.
 
 ## Throughput Rules
 
 - PTY burst sizes follow Alacritty's `READ_BUFFER_SIZE = 1 MiB` and `MAX_LOCKED_READ ~= 64 KiB`.
 - Parser queue and APC bounds may reuse that burst scale only when the worst-case VT event
   materialization still matches it.
-- Host apply budgets must stay explicit, small, and justified by current VT shape.
+- Host PTY slice budgets must stay explicit, small, and justified by current VT feed shape.
 - Changing a throughput bound requires:
   - the reference source
   - the local rationale
@@ -183,5 +181,5 @@ This sprint closes only when:
 - doc truth and code truth agree
 - the remaining terminal owner story is simple and honest
 - throughput constants are either closed with reference and proof or explicitly marked open
-- the queued-event shape is slim enough that Ghostty-style VT simplification is no longer blocked
-  by fake baggage
+- the direct feed path is simple enough that Ghostty-style VT simplification is no longer blocked
+  by fake queue baggage

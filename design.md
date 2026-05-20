@@ -75,11 +75,12 @@ classDiagram
 - `src/parser.zig` is the curated repo-local parser root.
 - `src/howl_vt.zig` is a curated repo-local export root.
 - `src/action.zig` is a curated export root for parser-event, routing, and action vocabulary surfaces.
+- `src/stream_terminal.zig` owns the repo-local VT stream that applies parser work directly against
+  `Terminal` state in the same general role Ghostty uses for `stream_terminal.zig`.
 - `src/action/vocabulary.zig` owns terminal action vocabulary.
-- `src/action/dispatch.zig` owns the parent event-routing loop.
 - `src/action/route.zig` owns parsed-event routing into family owners and owner action slices.
-- `src/parser/events.zig` owns parser-event buffering and transport into current action routing.
-- `src/parser/queue.zig` owns parser feed plus parsed-event queue state.
+- `src/parser/events.zig` owns parser-event materialization plus direct string-control payload state
+  used by the live stream path and parser-event proofs.
 - `src/xterm/` owns current xterm-family routing.
 - `src/host/state.zig` owns host-facing consequence state.
 - `src/host/apply.zig` owns host-facing consequence application.
@@ -109,7 +110,6 @@ stateDiagram-v2
     [*] --> Uninitialized
     Uninitialized --> Ready: init/initWithCells/initWithCellsAndHistory
     Ready --> Ready: feedByte/feedSlice
-    Ready --> Ready: apply
     Ready --> Ready: resize
     Ready --> Ready: reset/resetScreen/clear
     Ready --> Destroyed: deinit
@@ -117,26 +117,26 @@ stateDiagram-v2
 ```
 
 ## Main Flows
-### Parse And Apply
+### Feed And Apply
 ```mermaid
 sequenceDiagram
     participant Host
     participant V as Terminal
-    participant F as Parser.Queue
-    participant D as Action.Dispatch
+    participant T as VT Stream
+    participant P as Parser
     participant A as Action Routing
     participant G as Screen
     participant S as SelectionState
 
     Host->>V: feedSlice(bytes)
-    V->>F: feedSlice(bytes)
-    Host->>V: apply()
-    V->>D: applyLimit(max_events)
-    D->>F: events()
-    D->>A: process(event)
-    A-->>D: semantic action
-    D->>G: apply screen-visible action
-    D->>S: clearIfInvalidatedByGrid(&state)
+    V->>T: vtStream.nextSlice(bytes)
+    loop each byte
+        T->>P: next(byte)
+        P-->>T: parser actions
+        T->>A: process(event)
+        A->>G: apply screen-visible action
+    end
+    T->>S: clearIfInvalidatedByGrid(&state)
     V-->>Host: visibleView()/screen()
 ```
 
@@ -159,10 +159,12 @@ sequenceDiagram
 - Hosts and embedders consume `howl-vt` through that header and those exported symbols only.
 - Zig root imports are not an acceptable host integration path and are not a preservation target.
 - `howl_vt_terminal_init` and `howl_vt_terminal_deinit` own opaque terminal-handle lifecycle.
-- `howl_vt_terminal_feed`, `howl_vt_terminal_apply`, and `howl_vt_terminal_resize` cover bounded parser/apply/geometry control.
+- `howl_vt_terminal_feed` directly parses and applies terminal input in one bounded call.
+- `howl_vt_terminal_copy_title` copies the current terminal title when host code needs it.
+- `howl_vt_terminal_resize` covers geometry control.
 - `howl_vt_terminal_feed` must fail instead of silently dropping parser work when parser-owned
   buffering cannot accept more bytes within its explicit bound, or when parser-owned buffering or
-  parser-event materialization cannot allocate. The parsed-event queue must stay explicitly bounded.
+  parser-event materialization cannot allocate.
 - `HowlVtSurface` and `HowlVtSurfaceResult` are the primary renderer-facing VT-surface contract types for visible surface cells, cursor state, and dirtiness truth.
 - `howl_vt_terminal_copy_surface` is the bounded VT-surface export call.
 - `howl_vt_terminal_ack_surface` is the only public dirty-retirement path. It retires dirty truth only for the captured dirty generation that the renderer-facing VT-surface copy reported.
@@ -173,9 +175,12 @@ sequenceDiagram
 
 ## Repo-Local Surface
 - `src/terminal.zig` may expose temporary migration APIs for tests, fuzzers, and internal seams only when they describe true owned state or mutation.
+- `src/terminal.zig` may expose repo-local `vtHandler` and `vtStream` entrypoints for direct VT
+  application against the terminal owner.
 - Root `src/*.zig` files are now curated exports or ABI roots only.
 - Repo-local callers should consume visible terminal state through `src/screen.zig` and `src/screen_set.zig`, not through terminal facade methods.
-- Repo-local callers should consume parser byte-step and queue feed surfaces through `src/parser.zig` and bounded apply through `src/action.zig`, not through terminal facade methods.
+- Repo-local callers should use `vtStream` for live terminal mutation. Parser byte-step proof and
+  parser-event proof still live under `src/parser.zig` and `src/action.zig`.
 - `src/input.zig` owns input vocabulary and repo-local input encoding entrypoints.
 - Repo-local callers should consume input encoding through `src/input.zig`, not through terminal facade methods.
 - Repo-local callers should consume selection mutation and selection queries through `src/selection.zig`, not through terminal facade methods.
@@ -189,8 +194,8 @@ sequenceDiagram
 ## Internal Invariants
 - The implementation still follows the same internal runtime invariants:
   - `init*` returns owned terminal state
-  - `feedByte` and `feedSlice` queue parser work only
-  - `apply` mutates terminal state and resolves queued host-facing protocol output
+  - `feedByte` and `feedSlice` parse and mutate terminal state directly through terminal-owned
+    stream state
   - `resize` preserves terminal semantics while updating visible geometry
 - selection validity is rechecked after screen-affecting operations
 
@@ -208,7 +213,7 @@ sequenceDiagram
 - Screen mutation owners must not know protocol families.
 - `Terminal` boundary owners must keep host consequences explicit.
 - Hosts should depend on the C ABI, not deep parser/screen leaves.
-- Bounded apply and throughput policy must stay explicit at the owning seam. If a limit changes,
+- Bounded feed and throughput policy must stay explicit at the owning seam. If a limit changes,
   lock the current Ghostty or Alacritty reference, the reason Howl keeps that value today, and proof
   of the changed host path in the same change.
 - Update `protocol_coverage.db` and test filters with the same change that adds protocol behavior.

@@ -1,7 +1,5 @@
 //! Parser events, action routing, and action vocabulary.
 
-const std = @import("std");
-const dispatch = @import("action/dispatch.zig");
 const parsed_events = @import("parser/events.zig");
 const route = @import("action/route.zig");
 const vocabulary = @import("action/vocabulary.zig");
@@ -19,7 +17,6 @@ pub const KittyNotificationCommand = vocabulary.KittyNotificationCommand;
 pub const KittyShellMark = vocabulary.KittyShellMark;
 pub const LegacyControlKind = route.LegacyControlKind;
 pub const EscAction = route.EscAction;
-pub const ApplySummary = dispatch.ApplySummary;
 
 pub const process = route.process;
 pub const screenAction = route.screenAction;
@@ -27,12 +24,3 @@ pub const reportAction = route.reportAction;
 pub const modeAction = route.modeAction;
 pub const kittyAction = route.kittyAction;
 pub const hostAction = route.hostAction;
-
-pub fn apply(vt: anytype) void {
-    while (true) {
-        const result = dispatch.applyLimit(vt, std.math.maxInt(u32));
-        if (result.applied == 0) return;
-    }
-}
-
-pub const applyLimit = dispatch.applyLimit;

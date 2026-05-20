@@ -1,7 +1,6 @@
 const std = @import("std");
 const screen = @import("screen.zig");
 const input = @import("input.zig");
-const action = @import("action.zig");
 const host_state = @import("host/state.zig");
 const screen_set = @import("screen_set.zig");
 const terminal = @import("terminal.zig");
@@ -62,15 +61,11 @@ pub const FfiBytesResult = extern struct {
     needed: u64 = 0,
 };
 
-pub const FfiApplyResult = extern struct {
+pub const FfiFeedResult = extern struct {
     status: i32 = @intFromEnum(HowlVtCallStatus.failed),
-    applied: u64 = 0,
-    remaining_events: u64 = 0,
     state_changed: u8 = 0,
-    reserved0: u8 = 0,
-    reserved1: u16 = 0,
-    title_written: u64 = 0,
-    title_needed: u64 = 0,
+    title_changed: u8 = 0,
+    reserved0: u16 = 0,
 };
 
 pub const FfiSurfaceCellSpan = extern struct {
@@ -305,51 +300,30 @@ pub fn terminalDeinit(handle: VtHandle) callconv(.c) void {
     std.heap.c_allocator.destroy(owned);
 }
 
-pub fn terminalFeed(handle: VtHandle, ptr: ?[*]const u8, len: usize) callconv(.c) i32 {
-    const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
-    const bytes = bytesIn(ptr, len) orelse return @intFromEnum(HowlVtCallStatus.invalid_argument);
-    owned.parser.feedSlice(bytes) catch |err| {
-        return @intFromEnum(switch (err) {
+pub fn terminalFeed(handle: VtHandle, ptr: ?[*]const u8, len: usize) callconv(.c) FfiFeedResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const bytes = bytesIn(ptr, len) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    if (bytes.len == 0) return .{ .status = @intFromEnum(HowlVtCallStatus.ok) };
+
+    var stream = owned.vtStream();
+    const summary = stream.nextSliceSummary(bytes) catch |err| {
+        return .{ .status = @intFromEnum(switch (err) {
             error.ParsedEventLimit, error.StringControlLimit => HowlVtCallStatus.limit_reached,
             error.OutOfMemory => HowlVtCallStatus.failed,
-        });
+        }) };
     };
-    return @intFromEnum(HowlVtCallStatus.ok);
-}
-
-pub fn terminalApply(handle: VtHandle, max_events: u32, title_ptr: ?[*]u8, title_cap: usize) callconv(.c) FfiApplyResult {
-    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const title_out = bytesOut(title_ptr, title_cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const result = action.applyLimit(owned, max_events);
-    const state_changed = result.applied != 0;
-    const remaining = result.remaining_events;
-    if (state_changed) owned.dirty_generation +%= 1;
-    if (result.latest_title) |title| {
-        if (title_out.len < title.len) {
-            return .{
-                .status = @intFromEnum(HowlVtCallStatus.short_buffer),
-                .applied = result.applied,
-                .remaining_events = remaining,
-                .state_changed = boolByte(state_changed),
-                .title_needed = title.len,
-            };
-        }
-        if (title.len != 0) @memcpy(title_out[0..title.len], title);
-        return .{
-            .status = @intFromEnum(HowlVtCallStatus.ok),
-            .applied = result.applied,
-            .remaining_events = remaining,
-            .state_changed = boolByte(state_changed),
-            .title_written = title.len,
-            .title_needed = title.len,
-        };
-    }
+    if (summary.state_changed) owned.dirty_generation +%= 1;
     return .{
         .status = @intFromEnum(HowlVtCallStatus.ok),
-        .applied = result.applied,
-        .remaining_events = remaining,
-        .state_changed = boolByte(state_changed),
+        .state_changed = boolByte(summary.state_changed),
+        .title_changed = boolByte(summary.latest_title != null),
     };
+}
+
+pub fn terminalCopyTitle(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    return copyBytes(out, owned.host.current_title orelse &.{});
 }
 
 pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
@@ -503,16 +477,14 @@ pub fn terminalEncodePaste(handle: VtHandle, text_ptr: ?[*]const u8, text_len: u
     };
 }
 
-test "vt ffi runtime surface covers apply encode and surface" {
+test "vt ffi runtime surface covers feed encode and surface" {
     const handle = terminalInit(2, 4, 8);
     defer terminalDeinit(handle);
     try std.testing.expect(handle != null);
 
-    try std.testing.expectEqual(@as(i32, 0), terminalFeed(handle, "abc".ptr, 3));
-    var title_buf: [32]u8 = undefined;
-    const applied = terminalApply(handle, 16, title_buf[0..].ptr, title_buf.len);
-    try std.testing.expectEqual(@as(i32, 0), applied.status);
-    try std.testing.expect(applied.applied != 0);
+    const fed = terminalFeed(handle, "abc".ptr, 3);
+    try std.testing.expectEqual(@as(i32, 0), fed.status);
+    try std.testing.expectEqual(@as(u8, 1), fed.state_changed);
 
     var key_buf: [16]u8 = undefined;
     const key = terminalEncodeKey(handle, input.key_enter, input.mod_none, key_buf[0..].ptr, key_buf.len);
@@ -531,11 +503,26 @@ test "vt ffi copy surface clamps oversized scrollback offset" {
     defer terminalDeinit(handle);
     try std.testing.expect(handle != null);
 
-    try std.testing.expectEqual(@as(i32, 0), terminalFeed(handle, "aa\r\nbb\r\ncc".ptr, 8));
-    const applied = terminalApply(handle, 64, null, 0);
-    try std.testing.expectEqual(@as(i32, 0), applied.status);
+    const fed = terminalFeed(handle, "aa\r\nbb\r\ncc".ptr, 8);
+    try std.testing.expectEqual(@as(i32, 0), fed.status);
 
     const source = terminalCopySurface(handle, std.math.maxInt(u64), null, 0, null, 0, null, 0, null, 0, 0, 0);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.short_buffer)), source.status);
     try std.testing.expectEqual(source.history_count, source.scrollback_offset);
+}
+
+test "vt ffi feed reports and copies title" {
+    const handle = terminalInit(2, 4, 8);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const seq = "\x1b]0;My Title\x07";
+    const fed = terminalFeed(handle, seq.ptr, seq.len);
+    try std.testing.expectEqual(@as(i32, 0), fed.status);
+    try std.testing.expectEqual(@as(u8, 1), fed.title_changed);
+
+    var title_buf: [32]u8 = undefined;
+    const title = terminalCopyTitle(handle, title_buf[0..].ptr, title_buf.len);
+    try std.testing.expectEqual(@as(i32, 0), title.status);
+    try std.testing.expectEqualStrings("My Title", title_buf[0..@intCast(title.written)]);
 }

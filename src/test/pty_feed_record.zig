@@ -1,10 +1,11 @@
 const std = @import("std");
-const action_mod = @import("../action.zig");
 const screen_capture = @import("screen_capture.zig");
 const terminal_mod = @import("../terminal.zig");
+const stream_harness = @import("stream_harness.zig");
 
 const record_header = "howl-pty-vt-hex-v1";
 const Terminal = terminal_mod.Terminal;
+const StreamHarness = stream_harness.Harness;
 
 pub const Record = struct {
     allocator: std.mem.Allocator,
@@ -43,7 +44,9 @@ pub fn parse(allocator: std.mem.Allocator, text: []const u8) !Record {
 }
 
 pub fn replay(terminal: *Terminal, record: *const Record) !void {
-    for (record.chunks.items) |chunk| try terminal.parser.feedSlice(chunk);
+    var stream = try StreamHarness.init(terminal);
+    defer stream.deinit();
+    for (record.chunks.items) |chunk| try stream.nextSlice(chunk);
 }
 
 pub fn byteLen(record: *const Record) u64 {
@@ -63,10 +66,6 @@ fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
         terminal.screen_state.activeConst(),
         terminal.screen_state.activeSelectionConst().state(),
     );
-}
-
-fn apply(terminal: *Terminal) void {
-    action_mod.apply(terminal);
 }
 
 test "pty feed record parses chunk lines" {
@@ -89,8 +88,9 @@ test "pty feed replay matches whole feed" {
 
     var whole = try Terminal.initWithCells(gpa, 4, 16);
     defer whole.deinit();
-    try whole.parser.feedSlice(fixture);
-    apply(&whole);
+    var whole_stream = try StreamHarness.init(&whole);
+    defer whole_stream.deinit();
+    try whole_stream.nextSlice(fixture);
     var whole_snap = try captureSnapshot(&whole);
     defer whole_snap.deinit();
 
@@ -105,7 +105,6 @@ test "pty feed replay matches whole feed" {
     var replayed = try Terminal.initWithCells(gpa, 4, 16);
     defer replayed.deinit();
     try replay(&replayed, &record);
-    apply(&replayed);
     var replay_snap = try captureSnapshot(&replayed);
     defer replay_snap.deinit();
 

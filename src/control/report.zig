@@ -42,7 +42,7 @@ pub const RectChecksumRequest = struct {
 pub fn apply(vt: anytype, report_action: ReportAction) void {
     var scratch: input.Scratch = .{};
     const active = vt.screen_state.activeConst();
-    const deccir_charset = vt.parser.deccirCharsetState();
+    const deccir_charset = vt.deccirCharsetState();
     const ctx = Context{
         .allocator = vt.allocator,
         .pending_output = &vt.host.pending_output,

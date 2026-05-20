@@ -176,19 +176,15 @@ typedef struct {
 
 typedef struct {
   int32_t status;
-  uint64_t applied;
-  uint64_t remaining_events;
   uint8_t state_changed;
-  uint8_t reserved0;
-  uint16_t reserved1;
-  uint64_t title_written;
-  uint64_t title_needed;
-} HowlVtApplyResult;
+  uint8_t title_changed;
+  uint16_t reserved0;
+} HowlVtFeedResult;
 
 HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t history_capacity);
 void howl_vt_terminal_deinit(HowlVtHandle handle);
-int32_t howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
-HowlVtApplyResult howl_vt_terminal_apply(HowlVtHandle handle, uint32_t max_events, uint8_t *title_ptr, size_t title_cap);
+HowlVtFeedResult howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
+HowlVtBytesResult howl_vt_terminal_copy_title(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_pending_output(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 void howl_vt_terminal_clear_pending_output(HowlVtHandle handle);
 HowlVtBytesResult howl_vt_terminal_drain_pending_clipboard(HowlVtHandle handle, uint8_t *ptr, size_t cap);

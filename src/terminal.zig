@@ -5,7 +5,7 @@ const host_state = @import("host/state.zig");
 const kitty_state = @import("kitty/state.zig");
 const parser_mod = @import("parser.zig");
 const screen_set = @import("screen_set.zig");
-const action = @import("action.zig");
+const stream_terminal = @import("stream_terminal.zig");
 
 const ScreenNs = screen.Screen;
 const TerminalModeNs = mode;
@@ -14,28 +14,32 @@ const TerminalModeNs = mode;
 pub const Terminal = struct {
     const HostState = host_state.State;
     const KittyState = kitty_state.State;
-    const ParserQueue = parser_mod.Queue;
+    pub const Stream = stream_terminal.Stream;
+    pub const Handler = stream_terminal.Handler;
 
     const ScreenSet = screen_set.Set;
 
     allocator: std.mem.Allocator,
-    parser: ParserQueue,
+    stream_state: stream_terminal.State,
     screen_state: ScreenSet,
     modes: TerminalModeNs.State = .{},
     kitty: KittyState = .{},
     xtchecksum_flags: u16 = 0,
     host: HostState,
+    gl_index: u8 = 0,
+    g0_designation: u8 = 'B',
+    g1_designation: u8 = 'B',
     dirty_generation: u64 = 1,
 
     /// Initialize Terminal without cell storage.
     pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
-        var parser = try ParserQueue.init(allocator);
-        errdefer parser.deinit();
+        var stream_state = try stream_terminal.State.initAlloc(allocator);
+        errdefer stream_state.deinit();
         const state = ScreenNs.init(rows, cols);
         const alt_state = ScreenNs.init(rows, cols);
         return Terminal{
             .allocator = allocator,
-            .parser = parser,
+            .stream_state = stream_state,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
         };
@@ -43,15 +47,15 @@ pub const Terminal = struct {
 
     /// Initialize Terminal with cell storage.
     pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
-        var parser = try ParserQueue.init(allocator);
-        errdefer parser.deinit();
+        var stream_state = try stream_terminal.State.initAlloc(allocator);
+        errdefer stream_state.deinit();
         var state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer state.deinit(allocator);
         var alt_state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return Terminal{
             .allocator = allocator,
-            .parser = parser,
+            .stream_state = stream_state,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
         };
@@ -59,15 +63,15 @@ pub const Terminal = struct {
 
     /// Initialize Terminal with cell and history storage.
     pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !Terminal {
-        var parser = try ParserQueue.init(allocator);
-        errdefer parser.deinit();
+        var stream_state = try stream_terminal.State.initAlloc(allocator);
+        errdefer stream_state.deinit();
         var state = try ScreenNs.initWithCellsAndHistory(allocator, rows, cols, history_capacity);
         errdefer state.deinit(allocator);
         var alt_state = try ScreenNs.initWithCells(allocator, rows, cols);
         errdefer alt_state.deinit(allocator);
         return Terminal{
             .allocator = allocator,
-            .parser = parser,
+            .stream_state = stream_state,
             .screen_state = ScreenSet.init(state, alt_state),
             .host = HostState.init(),
         };
@@ -79,30 +83,49 @@ pub const Terminal = struct {
         self.host.deinit(allocator);
         self.kitty.deinit(allocator);
         self.screen_state.deinit(allocator);
-        self.parser.deinit();
+        self.stream_state.deinit();
+    }
+
+    pub fn vtHandler(self: *Terminal) Handler {
+        return .init(self);
+    }
+
+    pub fn vtStream(self: *Terminal) Stream {
+        return .init(self);
+    }
+
+    pub fn deccirCharsetState(self: *const Terminal) parser_mod.DeccirCharsetState {
+        return .{
+            .gl_index = self.gl_index,
+            .g0_designation = self.g0_designation,
+            .g1_designation = self.g1_designation,
+        };
     }
 
 };
 
 test "terminal tracks synchronized output private mode" {
+    const stream_harness = @import("test/stream_harness.zig");
     var vt = try Terminal.init(std.testing.allocator, 2, 8);
     defer vt.deinit();
+    var stream = try stream_harness.Harness.init(&vt);
+    defer stream.deinit();
 
-    try vt.parser.feedSlice("\x1b[?2026h");
-    action.apply(&vt);
+    try stream.nextSlice("\x1b[?2026h");
     try std.testing.expect(vt.modes.synchronized_output);
 
-    try vt.parser.feedSlice("\x1b[?2026l");
-    action.apply(&vt);
+    try stream.nextSlice("\x1b[?2026l");
     try std.testing.expect(!vt.modes.synchronized_output);
 }
 
 test "terminal visible view projects scrollback rows" {
+    const stream_harness = @import("test/stream_harness.zig");
     var vt = try Terminal.initWithCellsAndHistory(std.testing.allocator, 2, 2, 4);
     defer vt.deinit();
+    var stream = try stream_harness.Harness.init(&vt);
+    defer stream.deinit();
 
-    try vt.parser.feedSlice("aa\r\nbb\r\ncc");
-    action.apply(&vt);
+    try stream.nextSlice("aa\r\nbb\r\ncc");
 
     const live = screen_set.visibleView(&vt.screen_state, .{});
     try std.testing.expectEqual(0, live.scrollback_offset);
@@ -118,7 +141,6 @@ test "terminal visible view projects scrollback rows" {
 }
 
 test {
-    _ = @import("test/queue_regression.zig");
     _ = @import("test/pty_feed_record.zig");
     _ = @import("test/terminal_graphics.zig");
     _ = @import("test/terminal_modes_reports.zig");

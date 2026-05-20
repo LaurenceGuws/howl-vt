@@ -45,34 +45,32 @@ Work:
 Close signal:
 - `src/terminal.zig` can be explained as one honest aggregate owner in one paragraph
 
-### Loop 2: Slim Queued-Event Pressure Before More Terminal Cuts
+### Loop 2: Keep Direct Feed Honest Before More Terminal Cuts
 
 Goal:
-- remove the hot-path cost that still justifies extra host fairness gates
+- keep the direct feed path honest
 
 Work:
-- remove fake parser-action staging and arena lifetime coupling from `src/parser/events.zig` /
-  `src/parser/queue.zig`
+- keep `src/stream_terminal.zig` as the only live VT mutation path
+- do not let a queued feed/apply phase grow back in code or docs
 - keep `csi_max_params = 24` only while the direct parsed-event shape stays Ghostty-aligned and
   proof does not falsify it
-- keep the next blocker exact instead of hand-waving it
 
 Close signal:
-- Ghostty's `24` ceiling is live on the direct queue path without reopening the old queue-shape
-  regression
+- Ghostty's `24` ceiling is live on the direct feed path with no queued feed/apply fallback
 
-### Loop 3: Re-Derive The Host VT Apply Budget
+### Loop 3: Keep The Host PTY Slice Reference-Backed
 
 Goal:
-- stop carrying a stale host VT gate longer than needed
+- keep host fairness explicit without reviving VT backlog phases
 
 Work:
-- measure only after the reference-backed queue cut lands
+- measure only after the reference-backed direct-feed cut lands
 - compare against colored-output repro and `terminal-benchmark`
-- either keep the number with proof or change it with proof
+- either keep the PTY slice limits with proof or change them with proof
 
 Close signal:
-- the host-side VT apply comment is reference-backed and no longer folklore
+- the host-side PTY slice comment is reference-backed and no folklore VT apply gate survives
 
 ### Loop 4: Reduce Remaining Root Posture
 
@@ -108,4 +106,4 @@ Close signal:
 - `src/terminal.zig` either remains the smallest honest VT aggregate owner or is replaced by a
   smaller honest owner
 - no stale facade or doc posture survives
-- host fairness gates no longer compensate for avoidable VT queue weight
+- no host runtime phase compensates for deleted VT queue baggage
