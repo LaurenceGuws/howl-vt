@@ -460,126 +460,214 @@ pub const OscControl = struct {
 
     fn advancePrefix(self: *const OscControl, byte: u8) ?PrefixState {
         return switch (self.prefix) {
-            .start => switch (byte) {
-                '0' => .c0,
-                '1' => .c1,
-                '2' => .c2,
-                '3' => .c3,
-                '4' => .c4,
-                '5' => .c5,
-                '6' => .c6,
-                '7' => .c7,
-                '8' => .c8,
-                '9' => .c9,
-                else => null,
-            },
-            .c1 => switch (byte) {
-                '0' => .c10,
-                '1' => .c11,
-                '2' => .c12,
-                '3' => .c13,
-                '4' => .c14,
-                '5' => .c15,
-                '6' => .c16,
-                '7' => .c17,
-                '8' => .c18,
-                '9' => .c19,
-                else => null,
-            },
-            .c2 => switch (byte) {
-                '1' => .c21,
-                '2' => .c22,
-                else => null,
-            },
-            .c3 => switch (byte) {
-                '0' => .c30,
-                else => null,
-            },
-            .c5 => switch (byte) {
-                '1' => .c51,
-                '2' => .c52,
-                '5' => .c55,
-                else => null,
-            },
-            .c6 => switch (byte) {
-                '6' => .c66,
-                else => null,
-            },
-            .c7 => switch (byte) {
-                '7' => .c77,
-                else => null,
-            },
-            .c9 => switch (byte) {
-                '9' => .c99,
-                else => null,
-            },
-            .c10 => switch (byte) {
-                '4' => .c104,
-                else => null,
-            },
-            .c11 => switch (byte) {
-                '0' => .c110,
-                '1' => .c111,
-                '2' => .c112,
-                '3' => .c113,
-                '4' => .c114,
-                '5' => .c115,
-                '6' => .c116,
-                '7' => .c117,
-                '8' => .c118,
-                '9' => .c119,
-                else => null,
-            },
-            .c13 => switch (byte) {
-                '3' => .c133,
-                else => null,
-            },
-            .c30 => switch (byte) {
-                '0' => .c300,
-                '1' => .c301,
-                else => null,
-            },
-            .c51 => switch (byte) {
-                '1' => .c511,
-                else => null,
-            },
-            .c55 => switch (byte) {
-                '2' => .c552,
-                else => null,
-            },
-            .c77 => switch (byte) {
-                '7' => .c777,
-                else => null,
-            },
-            .c133 => switch (byte) {
-                '7' => .c1337,
-                else => null,
-            },
-            .c300 => switch (byte) {
-                '0' => .c3000,
-                '8' => .c3008,
-                else => null,
-            },
-            .c301 => switch (byte) {
-                '0' => .c3010,
-                else => null,
-            },
-            .c511 => switch (byte) {
-                '3' => .c5113,
-                else => null,
-            },
-            .c552 => switch (byte) {
-                '2' => .c5522,
-                else => null,
-            },
-            .c3000 => switch (byte) {
-                '1' => .c30001,
-                else => null,
-            },
-            .c3010 => switch (byte) {
-                '1' => .c30101,
-                else => null,
-            },
+            .start => advanceStart(byte),
+            .c1 => advanceC1(byte),
+            .c2 => advanceC2(byte),
+            .c3 => advanceC3(byte),
+            .c5 => advanceC5(byte),
+            .c6 => advanceC6(byte),
+            .c7 => advanceC7(byte),
+            .c9 => advanceC9(byte),
+            .c10 => advanceC10(byte),
+            .c11 => advanceC11(byte),
+            .c13 => advanceC13(byte),
+            .c30 => advanceC30(byte),
+            .c51 => advanceC51(byte),
+            .c55 => advanceC55(byte),
+            .c77 => advanceC77(byte),
+            .c133 => advanceC133(byte),
+            .c300 => advanceC300(byte),
+            .c301 => advanceC301(byte),
+            .c511 => advanceC511(byte),
+            .c552 => advanceC552(byte),
+            .c3000 => advanceC3000(byte),
+            .c3010 => advanceC3010(byte),
+            else => null,
+        };
+    }
+
+    fn advanceStart(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '0' => .c0,
+            '1' => .c1,
+            '2' => .c2,
+            '3' => .c3,
+            '4' => .c4,
+            '5' => .c5,
+            '6' => .c6,
+            '7' => .c7,
+            '8' => .c8,
+            '9' => .c9,
+            else => null,
+        };
+    }
+
+    fn advanceC1(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '0' => .c10,
+            '1' => .c11,
+            '2' => .c12,
+            '3' => .c13,
+            '4' => .c14,
+            '5' => .c15,
+            '6' => .c16,
+            '7' => .c17,
+            '8' => .c18,
+            '9' => .c19,
+            else => null,
+        };
+    }
+
+    fn advanceC2(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '1' => .c21,
+            '2' => .c22,
+            else => null,
+        };
+    }
+
+    fn advanceC3(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '0' => .c30,
+            else => null,
+        };
+    }
+
+    fn advanceC5(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '1' => .c51,
+            '2' => .c52,
+            '5' => .c55,
+            else => null,
+        };
+    }
+
+    fn advanceC6(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '6' => .c66,
+            else => null,
+        };
+    }
+
+    fn advanceC7(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '7' => .c77,
+            else => null,
+        };
+    }
+
+    fn advanceC9(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '9' => .c99,
+            else => null,
+        };
+    }
+
+    fn advanceC10(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '4' => .c104,
+            else => null,
+        };
+    }
+
+    fn advanceC11(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '0' => .c110,
+            '1' => .c111,
+            '2' => .c112,
+            '3' => .c113,
+            '4' => .c114,
+            '5' => .c115,
+            '6' => .c116,
+            '7' => .c117,
+            '8' => .c118,
+            '9' => .c119,
+            else => null,
+        };
+    }
+
+    fn advanceC13(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '3' => .c133,
+            else => null,
+        };
+    }
+
+    fn advanceC30(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '0' => .c300,
+            '1' => .c301,
+            else => null,
+        };
+    }
+
+    fn advanceC51(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '1' => .c511,
+            else => null,
+        };
+    }
+
+    fn advanceC55(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '2' => .c552,
+            else => null,
+        };
+    }
+
+    fn advanceC77(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '7' => .c777,
+            else => null,
+        };
+    }
+
+    fn advanceC133(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '7' => .c1337,
+            else => null,
+        };
+    }
+
+    fn advanceC300(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '0' => .c3000,
+            '8' => .c3008,
+            else => null,
+        };
+    }
+
+    fn advanceC301(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '0' => .c3010,
+            else => null,
+        };
+    }
+
+    fn advanceC511(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '3' => .c5113,
+            else => null,
+        };
+    }
+
+    fn advanceC552(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '2' => .c5522,
+            else => null,
+        };
+    }
+
+    fn advanceC3000(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '1' => .c30001,
+            else => null,
+        };
+    }
+
+    fn advanceC3010(byte: u8) ?PrefixState {
+        return switch (byte) {
+            '1' => .c30101,
             else => null,
         };
     }
