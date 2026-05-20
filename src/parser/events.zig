@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const parser_mod = @import("main.zig");
-const osc_parse = @import("../xterm/osc_parse.zig");
 
 const ParserApi = parser_mod.Parser;
 const dec_special_designation: u8 = '0';
@@ -48,7 +47,7 @@ pub const Event = union(enum) {
     invalid_sequence,
 };
 
-pub const OscKind = osc_parse.Kind;
+pub const OscKind = parser_mod.OscKind;
 
 /// Parsed-event queue for parser callbacks.
 pub const ParsedEvents = struct {
@@ -322,7 +321,7 @@ pub const ParsedEvents = struct {
             .execute => |ctrl| try self.appendControl(ctrl),
             .invalid => try self.appendMeta(.invalid_sequence),
             .csi_dispatch => |csi| try self.appendCsi(csi),
-            .osc_dispatch => |osc| try self.appendOsc(osc.data, osc.term),
+            .osc_dispatch => |osc| try self.appendOsc(osc),
             .apc_start => self.apc_bytes.clearRetainingCapacity(),
             .apc_put => |byte| try self.apcBytesAppend(byte),
             .apc_end => try self.appendBufferedBytes(.apc, &self.apc_bytes),
@@ -370,14 +369,13 @@ pub const ParsedEvents = struct {
         } });
     }
 
-    fn appendOsc(self: *ParsedEvents, data: []const u8, term: parser_mod.OscTerminator) error{ OutOfMemory, ParsedEventLimit }!void {
-        const parsed = osc_parse.parse(data);
-        try self.bytes.appendSlice(self.allocator, parsed.payload);
+    fn appendOsc(self: *ParsedEvents, action: parser_mod.OscAction) error{ OutOfMemory, ParsedEventLimit }!void {
+        try self.bytes.appendSlice(self.allocator, action.payload);
         try self.appendMeta(.{ .osc = .{
-            .kind = parsed.kind,
-            .command = parsed.command,
-            .payload_len = boundedLen(parsed.payload.len),
-            .terminator = term,
+            .kind = action.kind,
+            .command = action.command,
+            .payload_len = boundedLen(action.payload.len),
+            .terminator = action.term,
         } });
     }
 

@@ -47,8 +47,13 @@ fn appendOwnedAction(
             } });
         },
         .osc_dispatch => |osc| {
-            const owned = try arena.dupe(u8, osc.data);
-            try actions.append(allocator, .{ .osc_dispatch = .{ .data = owned, .term = osc.term } });
+            const owned = try arena.dupe(u8, osc.payload);
+            try actions.append(allocator, .{ .osc_dispatch = .{
+                .kind = osc.kind,
+                .command = osc.command,
+                .payload = owned,
+                .term = osc.term,
+            } });
         },
         else => try actions.append(allocator, action),
     }

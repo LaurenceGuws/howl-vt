@@ -116,7 +116,9 @@ test "parser: OSC with BEL terminator" {
     try expectActionCount(output.actions.items, 1);
     try std.testing.expect(output.actions.items[0] == .osc_dispatch);
     try std.testing.expectEqual(OscTerminator.bel, output.actions.items[0].osc_dispatch.term);
-    try std.testing.expectEqualSlices(u8, "title", output.actions.items[0].osc_dispatch.data);
+    try std.testing.expectEqual(parser_mod.OscKind.title, output.actions.items[0].osc_dispatch.kind);
+    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command);
+    try std.testing.expectEqualSlices(u8, "title", output.actions.items[0].osc_dispatch.payload);
 }
 
 test "parser: OSC with ST terminator" {
@@ -130,7 +132,9 @@ test "parser: OSC with ST terminator" {
     try expectActionCount(output.actions.items, 1);
     try std.testing.expect(output.actions.items[0] == .osc_dispatch);
     try std.testing.expectEqual(OscTerminator.st, output.actions.items[0].osc_dispatch.term);
-    try std.testing.expectEqualSlices(u8, "url", output.actions.items[0].osc_dispatch.data);
+    try std.testing.expectEqual(parser_mod.OscKind.title, output.actions.items[0].osc_dispatch.kind);
+    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command);
+    try std.testing.expectEqualSlices(u8, "url", output.actions.items[0].osc_dispatch.payload);
 }
 
 test "parser: APC with ST terminator" {
@@ -248,7 +252,37 @@ test "parser: stray ESC in OSC (marker dropped, byte appended)" {
     for ("\x1b]ab\x1bcd\x1b\\") |byte| output.appendPhases(parser.next(byte));
     try expectActionCount(output.actions.items, 1);
     try std.testing.expect(output.actions.items[0] == .osc_dispatch);
-    try std.testing.expectEqualSlices(u8, "abcd", output.actions.items[0].osc_dispatch.data);
+    try std.testing.expectEqualSlices(u8, "abcd", output.actions.items[0].osc_dispatch.payload);
+}
+
+test "parser: OSC invalid command with separator stays raw other payload" {
+    const gpa = std.testing.allocator;
+    var parser = try Parser.init(gpa);
+    defer parser.deinit();
+    var output = try Output.init(gpa);
+    defer output.deinit(gpa);
+
+    for ("\x1b]foo;bar\x07") |byte| output.appendPhases(parser.next(byte));
+    try expectActionCount(output.actions.items, 1);
+    try std.testing.expect(output.actions.items[0] == .osc_dispatch);
+    try std.testing.expectEqual(parser_mod.OscKind.other, output.actions.items[0].osc_dispatch.kind);
+    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command);
+    try std.testing.expectEqualSlices(u8, "foo;bar", output.actions.items[0].osc_dispatch.payload);
+}
+
+test "parser: OSC invalid numeric prefix without separator stays raw title payload" {
+    const gpa = std.testing.allocator;
+    var parser = try Parser.init(gpa);
+    defer parser.deinit();
+    var output = try Output.init(gpa);
+    defer output.deinit(gpa);
+
+    for ("\x1b]12x\x07") |byte| output.appendPhases(parser.next(byte));
+    try expectActionCount(output.actions.items, 1);
+    try std.testing.expect(output.actions.items[0] == .osc_dispatch);
+    try std.testing.expectEqual(parser_mod.OscKind.title, output.actions.items[0].osc_dispatch.kind);
+    try std.testing.expectEqual(@as(?u16, null), output.actions.items[0].osc_dispatch.command);
+    try std.testing.expectEqualSlices(u8, "12x", output.actions.items[0].osc_dispatch.payload);
 }
 
 test "parser: CSI with multiple parameters exact order" {

@@ -52,7 +52,9 @@ const Event = union(enum) {
         intermediates_len: u8,
     },
     osc: struct {
-        data: []u8,
+        kind: parser_mod.OscKind,
+        command: ?u16,
+        payload: []u8,
         term: OscTerminator,
     },
     apc_start,
@@ -87,7 +89,7 @@ const Harness = struct {
     fn deinit(self: *Harness) void {
         for (self.events.items) |event| {
             switch (event) {
-                .osc => |osc| self.allocator.free(osc.data),
+                .osc => |osc| self.allocator.free(osc.payload),
                 else => {},
             }
         }
@@ -109,10 +111,12 @@ const Harness = struct {
                 .intermediates_len = csi.intermediates_len,
             } }),
             .osc_dispatch => |osc| {
-                const owned = try self.allocator.dupe(u8, osc.data);
+                const owned = try self.allocator.dupe(u8, osc.payload);
                 errdefer self.allocator.free(owned);
                 try self.events.append(self.allocator, Event{ .osc = .{
-                    .data = owned,
+                    .kind = osc.kind,
+                    .command = osc.command,
+                    .payload = owned,
                     .term = osc.term,
                 } });
             },
@@ -612,9 +616,11 @@ fn hashCsiEvent(hasher: *std.hash.Wyhash, csi: CsiEvent) void {
 
 fn hashOscEvent(hasher: *std.hash.Wyhash, osc: OscEvent) void {
     hashValue(hasher, @as(u8, 5));
+    hashValue(hasher, @intFromEnum(osc.kind));
+    hashValue(hasher, osc.command orelse std.math.maxInt(u16));
     hashValue(hasher, @intFromEnum(osc.term));
-    hashValue(hasher, osc.data.len);
-    hasher.update(osc.data);
+    hashValue(hasher, osc.payload.len);
+    hasher.update(osc.payload);
 }
 
 fn hashDcsHookEvent(hasher: *std.hash.Wyhash, hook: @FieldType(Event, "dcs_hook")) void {

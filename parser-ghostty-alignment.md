@@ -25,7 +25,8 @@ Rule: Ghostty is the parser bible. When Howl differs, the default action is to r
 
 ## Current Debt List
 
-1. Howl still uses its own buffered OSC owner instead of Ghostty's exact OSC parser shape.
+1. Howl still uses its own smaller incremental OSC owner instead of Ghostty's exact command-state
+   ladder and per-command parser shape.
 2. Recompare parser-owner boundaries before moving more protocol consequences across parser/action seams.
 
 ## Strict Iteration Loop
@@ -70,3 +71,9 @@ Closed result so far:
 - parser no longer owns APC/DCS/PM payload bytes
 - `src/parser/events.zig` is now the real payload owner for APC/DCS/PM queued bytes and limits
 - parser string-control state for APC/DCS/PM is now passthrough-only, closer to Ghostty's direct byte-step path
+- parser now emits typed OSC command/payload metadata directly instead of relying on queue-side
+  OSC reparsing
+- parser now classifies OSC incrementally while bytes arrive and no longer reparses buffered OSC text
+  at exit
+- valid numeric OSC commands now buffer payload bytes only; invalid/raw OSC forms still fall back to
+  one raw buffer

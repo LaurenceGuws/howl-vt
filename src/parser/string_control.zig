@@ -2,6 +2,13 @@
 
 const std = @import("std");
 
+pub const OscKind = enum {
+    title,
+    clipboard,
+    hyperlink,
+    other,
+};
+
 /// String-control terminator.
 pub const Finish = enum {
     bel,
@@ -129,6 +136,270 @@ pub const StringControl = struct {
         };
     }
 };
+
+pub const OscControl = struct {
+    const Failure = error{ OutOfMemory, StringControlLimit };
+    const prefix_max_bytes = 8;
+
+    allocator: std.mem.Allocator,
+    state: OscState = .idle,
+    buffer: std.ArrayList(u8),
+    max_len: usize,
+    alloc_failed: bool = false,
+    overflowed: bool = false,
+    raw_has_separator: bool = false,
+    prefix: [prefix_max_bytes]u8 = undefined,
+    prefix_len: u8 = 0,
+    command: ?u16 = null,
+    kind: OscKind = .title,
+
+    const OscState = enum {
+        idle,
+        prefix,
+        prefix_esc,
+        payload,
+        payload_esc,
+        raw,
+        raw_esc,
+    };
+
+    pub fn init(allocator: std.mem.Allocator, capacity: usize, max_len: usize) !OscControl {
+        return .{
+            .allocator = allocator,
+            .buffer = try std.ArrayList(u8).initCapacity(allocator, capacity),
+            .max_len = max_len,
+        };
+    }
+
+    pub fn deinit(self: *OscControl) void {
+        self.buffer.deinit(self.allocator);
+    }
+
+    pub fn reset(self: *OscControl) void {
+        self.state = .idle;
+        self.alloc_failed = false;
+        self.overflowed = false;
+        self.raw_has_separator = false;
+        self.prefix_len = 0;
+        self.command = null;
+        self.kind = .title;
+        self.buffer.clearRetainingCapacity();
+    }
+
+    pub fn start(self: *OscControl) void {
+        self.reset();
+        self.state = .prefix;
+    }
+
+    pub fn active(self: *const OscControl) bool {
+        return self.state != .idle;
+    }
+
+    pub fn escaping(self: *const OscControl) bool {
+        return switch (self.state) {
+            .prefix_esc, .payload_esc, .raw_esc => true,
+            else => false,
+        };
+    }
+
+    pub fn payload(self: *const OscControl) []const u8 {
+        return self.buffer.items;
+    }
+
+    pub fn currentCommand(self: *const OscControl) ?u16 {
+        return self.command;
+    }
+
+    pub fn currentKind(self: *const OscControl) OscKind {
+        if (self.state == .raw or self.state == .raw_esc) {
+            return if (self.raw_has_separator) .other else .title;
+        }
+        return self.kind;
+    }
+
+    pub fn takeFailure(self: *OscControl) ?Failure {
+        var failure: ?Failure = null;
+        if (self.overflowed) {
+            failure = error.StringControlLimit;
+        } else if (self.alloc_failed) {
+            failure = error.OutOfMemory;
+        }
+        self.alloc_failed = false;
+        self.overflowed = false;
+        return failure;
+    }
+
+    pub fn feed(self: *OscControl, byte: u8) ?FeedResult {
+        switch (self.state) {
+            .idle => return null,
+            .prefix => return self.feedPrefix(byte),
+            .prefix_esc => return self.feedPrefixEsc(byte),
+            .payload => return self.feedPayload(byte),
+            .payload_esc => return self.feedPayloadEsc(byte),
+            .raw => return self.feedRaw(byte),
+            .raw_esc => return self.feedRawEsc(byte),
+        }
+    }
+
+    fn feedPrefix(self: *OscControl, byte: u8) ?FeedResult {
+        if (byte == 0x07) {
+            self.finishPrefix();
+            return .{ .finish = .bel };
+        }
+        if (byte == 0x9C) {
+            self.finishPrefix();
+            return .{ .finish = .st };
+        }
+        if (byte == 0x1B) {
+            self.state = .prefix_esc;
+            return null;
+        }
+        if (byte == ';') {
+            if (!self.enterPayloadFromPrefix()) return .{ .put = byte };
+            return .{ .put = byte };
+        }
+        if (isDigit(byte) and self.prefix_len < prefix_max_bytes) {
+            self.prefix[self.prefix_len] = byte;
+            self.prefix_len += 1;
+            return .{ .put = byte };
+        }
+        self.enterRawFromPrefix(byte, false);
+        return .{ .put = byte };
+    }
+
+    fn feedPrefixEsc(self: *OscControl, byte: u8) ?FeedResult {
+        if (byte == '\\') {
+            self.finishPrefix();
+            return .{ .finish = .st };
+        }
+        self.state = .prefix;
+        return self.feedPrefix(byte);
+    }
+
+    fn feedPayload(self: *OscControl, byte: u8) ?FeedResult {
+        if (byte == 0x07) {
+            self.state = .idle;
+            return .{ .finish = .bel };
+        }
+        if (byte == 0x9C) {
+            self.state = .idle;
+            return .{ .finish = .st };
+        }
+        if (byte == 0x1B) {
+            self.state = .payload_esc;
+            return null;
+        }
+        self.append(byte);
+        return .{ .put = byte };
+    }
+
+    fn feedPayloadEsc(self: *OscControl, byte: u8) ?FeedResult {
+        if (byte == '\\') {
+            self.state = .idle;
+            return .{ .finish = .st };
+        }
+        self.state = .payload;
+        self.append(byte);
+        return .{ .put = byte };
+    }
+
+    fn feedRaw(self: *OscControl, byte: u8) ?FeedResult {
+        if (byte == 0x07) {
+            self.finishRaw();
+            return .{ .finish = .bel };
+        }
+        if (byte == 0x9C) {
+            self.finishRaw();
+            return .{ .finish = .st };
+        }
+        if (byte == 0x1B) {
+            self.state = .raw_esc;
+            return null;
+        }
+        if (byte == ';') self.raw_has_separator = true;
+        self.append(byte);
+        return .{ .put = byte };
+    }
+
+    fn feedRawEsc(self: *OscControl, byte: u8) ?FeedResult {
+        if (byte == '\\') {
+            self.finishRaw();
+            return .{ .finish = .st };
+        }
+        self.state = .raw;
+        if (byte == ';') self.raw_has_separator = true;
+        self.append(byte);
+        return .{ .put = byte };
+    }
+
+    fn finishPrefix(self: *OscControl) void {
+        if (self.parsePrefixCommand()) |command| {
+            self.command = command;
+            self.kind = classifyCommand(command);
+        } else {
+            self.command = null;
+            self.kind = if (self.raw_has_separator) .other else .title;
+        }
+        self.state = .idle;
+    }
+
+    fn finishRaw(self: *OscControl) void {
+        self.command = null;
+        self.kind = if (self.raw_has_separator) .other else .title;
+        self.state = .idle;
+    }
+
+    fn enterPayloadFromPrefix(self: *OscControl) bool {
+        if (self.parsePrefixCommand()) |command| {
+            self.command = command;
+            self.kind = classifyCommand(command);
+            self.state = .payload;
+            return true;
+        }
+        self.enterRawFromPrefix(';', true);
+        return false;
+    }
+
+    fn enterRawFromPrefix(self: *OscControl, byte: u8, has_separator: bool) void {
+        self.command = null;
+        self.kind = .other;
+        self.raw_has_separator = has_separator;
+        self.state = .raw;
+        var idx: u8 = 0;
+        while (idx < self.prefix_len) : (idx += 1) self.append(self.prefix[idx]);
+        self.prefix_len = 0;
+        if (byte == ';') self.raw_has_separator = true;
+        self.append(byte);
+    }
+
+    fn parsePrefixCommand(self: *const OscControl) ?u16 {
+        if (self.prefix_len == 0) return null;
+        return std.fmt.parseUnsigned(u16, self.prefix[0..self.prefix_len], 10) catch null;
+    }
+
+    fn append(self: *OscControl, byte: u8) void {
+        if (self.buffer.items.len >= self.max_len) {
+            self.overflowed = true;
+            return;
+        }
+        self.buffer.append(self.allocator, byte) catch {
+            self.alloc_failed = true;
+        };
+    }
+};
+
+fn isDigit(byte: u8) bool {
+    return byte >= '0' and byte <= '9';
+}
+
+fn classifyCommand(command: u16) OscKind {
+    return switch (command) {
+        0, 1, 2 => .title,
+        8 => .hyperlink,
+        52 => .clipboard,
+        else => .other,
+    };
+}
 
 /// Incremental string-control parser state without payload ownership.
 pub const PassthroughControl = struct {

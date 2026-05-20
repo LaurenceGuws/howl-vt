@@ -45,6 +45,7 @@ pub const max_intermediates = csi_max_intermediates;
 pub const CsiSeparatorList = std.StaticBitSet(csi_max_params);
 pub const max_metadata_control_bytes = metadata_control_max_bytes;
 pub const max_apc_control_bytes = apc_max_bytes;
+pub const OscKind = string_control_mod.OscKind;
 
 pub const OscTerminator = enum {
     bel,
@@ -55,6 +56,15 @@ pub const EscAction = struct {
     final: u8,
     intermediates: [csi_max_intermediates]u8,
     intermediates_len: u8,
+};
+
+pub const OscAction = struct {
+    // Borrowed parser-owned payload slice. Callers that retain it past the
+    // next `Parser.next` call must copy.
+    kind: OscKind,
+    command: ?u16,
+    payload: []const u8,
+    term: OscTerminator,
 };
 
 pub const DcsHook = struct {
@@ -87,7 +97,7 @@ pub const Action = union(enum) {
     execute: u8,
     invalid,
     csi_dispatch: CsiAction,
-    osc_dispatch: struct { data: []const u8, term: OscTerminator },
+    osc_dispatch: OscAction,
     apc_start,
     apc_put: u8,
     apc_end,
@@ -112,14 +122,14 @@ pub const Parser = struct {
     intermediates: [csi_max_intermediates]u8,
     intermediates_len: u8,
     csi_in_param: bool,
-    osc: string_control_mod.StringControl,
+    osc: string_control_mod.OscControl,
     apc: string_control_mod.PassthroughControl,
     dcs: string_control_mod.PassthroughControl,
     pm: string_control_mod.PassthroughControl,
 
     /// Initialize parser state and owned buffers.
     pub fn init(allocator: std.mem.Allocator) !Parser {
-        var osc = try string_control_mod.StringControl.init(allocator, control_init_capacity, metadata_control_max_bytes, true);
+        var osc = try string_control_mod.OscControl.init(allocator, control_init_capacity, metadata_control_max_bytes);
         errdefer osc.deinit();
 
         return .{
@@ -269,7 +279,12 @@ pub const Parser = struct {
                     '\\', 0x9C => OscTerminator.st,
                     else => break :exit null,
                 };
-                break :exit .{ .osc_dispatch = .{ .data = self.osc.data(), .term = term } };
+                break :exit .{ .osc_dispatch = .{
+                    .kind = self.osc.currentKind(),
+                    .command = self.osc.currentCommand(),
+                    .payload = self.osc.payload(),
+                    .term = term,
+                } };
             },
             .dcs_passthrough => dcs: {
                 self.dcs.clearFinished();
@@ -379,7 +394,7 @@ pub const Parser = struct {
             },
             .csi_dispatch => self.consumeCsiDispatch(byte),
             .osc_put => osc_put: {
-                _ = self.bufferedPut(&self.osc, byte);
+                _ = self.osc.feed(byte);
                 break :osc_put null;
             },
             .put => put: {
