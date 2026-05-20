@@ -76,6 +76,7 @@ throughput truth, and zero tolerance for stale doc or code posture.
     from stored prefix bytes.
   - shared BEL/ST/ESC delimiter policy now lives in one local string-control rule for buffered and
     passthrough controls; OSC still keeps its separate command/raw owner shape above that rule.
+  - OSC payload limits now follow per-command policy instead of one generic metadata ceiling.
   - next parser-reference pressure is Ghostty's exact OSC command-state ladder and per-command
     capture shape, not queue-side reparsing, a second metadata copy layer, or duplicate APC/DCS/PM
     payload owner.

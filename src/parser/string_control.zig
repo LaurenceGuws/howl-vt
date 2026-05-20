@@ -125,7 +125,9 @@ pub const OscControl = struct {
     allocator: std.mem.Allocator,
     state: OscState = .idle,
     buffer: std.ArrayList(u8),
-    max_len: usize,
+    metadata_max_len: usize,
+    large_max_len: usize,
+    payload_max_len: usize,
     alloc_failed: bool = false,
     overflowed: bool = false,
     raw_has_separator: bool = false,
@@ -146,11 +148,18 @@ pub const OscControl = struct {
         raw_esc,
     };
 
-    pub fn init(allocator: std.mem.Allocator, capacity: usize, max_len: usize) !OscControl {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        capacity: usize,
+        metadata_max_len: usize,
+        large_max_len: usize,
+    ) !OscControl {
         return .{
             .allocator = allocator,
             .buffer = try std.ArrayList(u8).initCapacity(allocator, capacity),
-            .max_len = max_len,
+            .metadata_max_len = metadata_max_len,
+            .large_max_len = large_max_len,
+            .payload_max_len = metadata_max_len,
         };
     }
 
@@ -168,6 +177,7 @@ pub const OscControl = struct {
         self.command_ok = false;
         self.command = null;
         self.kind = .title;
+        self.payload_max_len = self.metadata_max_len;
         self.buffer.clearRetainingCapacity();
     }
 
@@ -328,6 +338,7 @@ pub const OscControl = struct {
         if (self.currentPrefixCommand()) |command| {
             self.command = command;
             self.kind = classifyCommand(command);
+            self.payload_max_len = self.payloadMaxLen(command);
         } else {
             self.command = null;
             self.kind = if (self.raw_has_separator) .other else .title;
@@ -345,6 +356,7 @@ pub const OscControl = struct {
         if (self.currentPrefixCommand()) |command| {
             self.command = command;
             self.kind = classifyCommand(command);
+            self.payload_max_len = self.payloadMaxLen(command);
             self.state = .payload;
             return true;
         }
@@ -392,12 +404,19 @@ pub const OscControl = struct {
     }
 
     fn append(self: *OscControl, byte: u8) void {
-        if (self.buffer.items.len >= self.max_len) {
+        if (self.buffer.items.len >= self.payload_max_len) {
             self.overflowed = true;
             return;
         }
         self.buffer.append(self.allocator, byte) catch {
             self.alloc_failed = true;
+        };
+    }
+
+    fn payloadMaxLen(self: *const OscControl, command: u16) usize {
+        return switch (command) {
+            52, 66, 5113, 5522 => self.large_max_len,
+            else => self.metadata_max_len,
         };
     }
 };
@@ -494,4 +513,28 @@ fn feedEscState(state: *DelimitedState, byte: u8) ?FeedResult {
     // Stray ESC marker is dropped; following byte stays payload.
     state.* = .payload;
     return .{ .put = byte };
+}
+
+test "osc control: title payload keeps metadata limit" {
+    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32);
+    defer osc.deinit();
+    osc.start();
+    for ("0;hello") |byte| _ = osc.feed(byte);
+    _ = osc.feed(0x07);
+    try std.testing.expectEqual(@as(?u16, 0), osc.currentCommand());
+    try std.testing.expectEqual(OscKind.title, osc.currentKind());
+    try std.testing.expectEqualStrings("hell", osc.payload());
+    try std.testing.expectEqual(error.StringControlLimit, osc.takeFailure().?);
+}
+
+test "osc control: clipboard payload uses large limit" {
+    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32);
+    defer osc.deinit();
+    osc.start();
+    for ("52;c;abcdefgh") |byte| _ = osc.feed(byte);
+    _ = osc.feed(0x07);
+    try std.testing.expectEqual(@as(?u16, 52), osc.currentCommand());
+    try std.testing.expectEqual(OscKind.clipboard, osc.currentKind());
+    try std.testing.expectEqualStrings("c;abcdefgh", osc.payload());
+    try std.testing.expectEqual(@as(?(error{ OutOfMemory, StringControlLimit }), null), osc.takeFailure());
 }

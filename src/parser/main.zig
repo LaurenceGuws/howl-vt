@@ -34,6 +34,11 @@ const control_init_capacity = 256;
 // and PM protocols in Howl are title, color, report, clipboard, and similar
 // metadata paths, not bulk transport.
 const metadata_control_max_bytes = 4096;
+// Large OSC payload families such as clipboard, text sizing, and file-transfer
+// can legitimately exceed the metadata ceiling. Keep their parser-owned bound
+// aligned to the same 1 MiB burst scale already used for APC and PTY transport
+// proof until host-neutral protocol ownership says otherwise.
+const large_osc_control_max_bytes = 1024 * 1024;
 // APC is the one owned string-control family that legitimately carries large
 // Kitty payload chunks, so keep its bound aligned to the same 1 MiB burst scale
 // already derived from Alacritty's PTY read buffer and the host transport path.
@@ -44,6 +49,7 @@ pub const max_params = csi_max_params;
 pub const max_intermediates = csi_max_intermediates;
 pub const CsiSeparatorList = std.StaticBitSet(csi_max_params);
 pub const max_metadata_control_bytes = metadata_control_max_bytes;
+pub const max_large_osc_control_bytes = large_osc_control_max_bytes;
 pub const max_apc_control_bytes = apc_max_bytes;
 pub const OscKind = string_control_mod.OscKind;
 
@@ -129,7 +135,12 @@ pub const Parser = struct {
 
     /// Initialize parser state and owned buffers.
     pub fn init(allocator: std.mem.Allocator) !Parser {
-        var osc = try string_control_mod.OscControl.init(allocator, control_init_capacity, metadata_control_max_bytes);
+        var osc = try string_control_mod.OscControl.init(
+            allocator,
+            control_init_capacity,
+            metadata_control_max_bytes,
+            large_osc_control_max_bytes,
+        );
         errdefer osc.deinit();
 
         return .{

@@ -81,3 +81,5 @@ Closed result so far:
   from stored bytes
 - shared BEL/ST/ESC delimiter policy is now centralized for buffered and passthrough string controls;
   OSC keeps separate command/raw ownership on top of that shared delimiter rule
+- OSC payload limits now follow per-command owner policy instead of one generic metadata bound;
+  large clipboard/text-size/file-transfer families use the large string-control ceiling
