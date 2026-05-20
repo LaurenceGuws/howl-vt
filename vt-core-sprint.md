@@ -13,11 +13,21 @@ throughput truth, and zero tolerance for stale doc or code posture.
 
 ## Bias
 
-- TigerBeetle first for bounds, assertions, simplicity, and hygiene.
-- Ghostty second for VT-core split, parser shape, and lib-vt layering lessons.
-- Alacritty third for outer-loop burst discipline and host fairness pressure.
-- Harnesses and benchmarks are proof only. They may falsify assumptions after a
-  reference-backed design cut, but they do not choose the design.
+- Ghostty first for VT-core split, parser shape, terminal owner shape, and repo-local root shape.
+- Alacritty second for host-facing burst discipline and any shared runtime pressure that reaches VT.
+- TigerBeetle third as a hard gate for bounds, assertions, simplicity, hygiene, and proof.
+- Only the embeddable renderer seam may require invention, and that is not a license for new Howl-only
+  VT concepts.
+- Harnesses and benchmarks are proof only. They may falsify assumptions after a reference-backed
+  design cut, but they do not choose the design.
+
+## Non-Negotiable Source Order
+
+1. Ghostty does it.
+2. Alacritty does it.
+3. TigerBeetle mandates it.
+4. Anything outside that order is stale debt unless the C ABI or embeddable renderer boundary proves
+   otherwise.
 
 ## Current Truths
 

@@ -3,11 +3,11 @@
 const std = @import("std");
 const howl_vt = @import("howl_vt");
 
-const action = howl_vt.action;
-const owned_actions = howl_vt.parser_owned_actions;
-const parser_mod = howl_vt.parser;
-const screen_set = howl_vt.screen_set;
-const terminal_mod = howl_vt.terminal;
+const action = howl_vt.Action;
+const owned_actions = howl_vt.ParserOwnedActions;
+const parser_mod = howl_vt.Parser;
+const screen_set = howl_vt.ScreenSet;
+const Terminal = howl_vt.Terminal;
 
 const OscTerminator = parser_mod.OscTerminator;
 const CsiEvent = @FieldType(Event, "csi");
@@ -320,7 +320,7 @@ fn runTerminal(
     rand: std.Random,
     max_chunk_len: usize,
 ) !VtDigest {
-    var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(gpa, 24, 80, 256);
+    var terminal = try Terminal.initWithCellsAndHistory(gpa, 24, 80, 256);
     defer terminal.deinit();
 
     try feedBytesToTerminal(&terminal, bytes, mode, rand, max_chunk_len);
@@ -354,7 +354,7 @@ fn feedBytesToParser(parser: *parser_mod.Parser, output: *ParserOutput, harness:
     }
 }
 
-fn feedBytesToTerminal(terminal: *terminal_mod.Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) error{ OutOfMemory, ParsedEventLimit, StringControlLimit }!void {
+fn feedBytesToTerminal(terminal: *Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) error{ OutOfMemory, ParsedEventLimit, StringControlLimit }!void {
     switch (mode) {
         .whole_slice => try terminal.parser.feedSlice(bytes),
         .bytewise => for (bytes) |byte| try terminal.parser.feedSlice(&.{byte}),
@@ -370,7 +370,7 @@ fn feedBytesToTerminal(terminal: *terminal_mod.Terminal, bytes: []const u8, mode
     }
 }
 
-fn digestTerminal(terminal: *const terminal_mod.Terminal) VtDigest {
+fn digestTerminal(terminal: *const Terminal) VtDigest {
     var hasher = std.hash.Wyhash.init(0);
     const view = screen_set.visibleView(&terminal.screen_state, .{});
 

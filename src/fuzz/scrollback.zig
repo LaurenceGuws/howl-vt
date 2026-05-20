@@ -3,9 +3,9 @@
 const std = @import("std");
 const howl_vt = @import("howl_vt");
 
-const action = howl_vt.action;
-const screen_set = howl_vt.screen_set;
-const terminal_mod = howl_vt.terminal;
+const action = howl_vt.Action;
+const screen_set = howl_vt.ScreenSet;
+const Terminal = howl_vt.Terminal;
 
 pub const RowsMin: u16 = 1;
 pub const ColsMin: u16 = 1;
@@ -66,7 +66,7 @@ pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: usize) !Ru
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
 
-    var vt = try terminal_mod.Terminal.initWithCellsAndHistory(allocator, 24, 80, 4096);
+    var vt = try Terminal.initWithCellsAndHistory(allocator, 24, 80, 4096);
     defer vt.deinit();
 
     var i: usize = 0;
@@ -97,7 +97,7 @@ pub fn runCanonicalPreservation(
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
 
-    var vt = try terminal_mod.Terminal.initWithCellsAndHistory(
+    var vt = try Terminal.initWithCellsAndHistory(
         allocator,
         options.initial_rows,
         options.initial_cols,
@@ -169,7 +169,7 @@ fn pickOp(rand: std.Random) OpKind {
     return .zoom_jitter;
 }
 
-fn applyWriteBurst(vt: *terminal_mod.Terminal, rand: std.Random) !void {
+fn applyWriteBurst(vt: *Terminal, rand: std.Random) !void {
     const lines = rand.uintLessThan(u8, 8) + 1;
     var line_idx: u8 = 0;
     while (line_idx < lines) : (line_idx += 1) {
@@ -186,14 +186,14 @@ fn applyWriteBurst(vt: *terminal_mod.Terminal, rand: std.Random) !void {
     action.apply(vt);
 }
 
-fn applyResize(vt: *terminal_mod.Terminal, rand: std.Random) !void {
+fn applyResize(vt: *Terminal, rand: std.Random) !void {
     const rows = RowsMin + rand.uintLessThan(u16, RowsMax - RowsMin + 1);
     const cols = ColsMin + rand.uintLessThan(u16, ColsMax - ColsMin + 1);
     try vt.screen_state.resize(vt.allocator, rows, cols);
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
 }
 
-fn applyResizeStep(vt: *terminal_mod.Terminal, rand: std.Random) !ChurnStep {
+fn applyResizeStep(vt: *Terminal, rand: std.Random) !ChurnStep {
     const rows = RowsMin + rand.uintLessThan(u16, RowsMax - RowsMin + 1);
     const cols = ColsMin + rand.uintLessThan(u16, ColsMax - ColsMin + 1);
     try vt.screen_state.resize(vt.allocator, rows, cols);
@@ -201,7 +201,7 @@ fn applyResizeStep(vt: *terminal_mod.Terminal, rand: std.Random) !ChurnStep {
     return .{ .resize = .{ .rows = rows, .cols = cols } };
 }
 
-fn applyZoomJitter(vt: *terminal_mod.Terminal, rand: std.Random) !void {
+fn applyZoomJitter(vt: *Terminal, rand: std.Random) !void {
     const cur_rows = vt.screen_state.activeConst().rows;
     const cur_cols = vt.screen_state.activeConst().cols;
     const steps = rand.uintLessThan(u8, 5) + 2;
@@ -218,7 +218,7 @@ fn applyZoomJitter(vt: *terminal_mod.Terminal, rand: std.Random) !void {
     vt.screen_state.activeSelection().clearIfInvalidatedByGrid(vt.screen_state.activeConst());
 }
 
-fn applyZoomJitterStep(vt: *terminal_mod.Terminal, rand: std.Random) !ChurnStep {
+fn applyZoomJitterStep(vt: *Terminal, rand: std.Random) !ChurnStep {
     const cur_rows = vt.screen_state.activeConst().rows;
     const cur_cols = vt.screen_state.activeConst().cols;
     const steps = rand.uintLessThan(u8, 5) + 2;
@@ -250,7 +250,7 @@ fn clampDimI16(base: u16, delta: i16, min_v: u16, max_v: u16) u16 {
     return @intCast(clamped);
 }
 
-fn ensureCoreInvariants(vt: *const terminal_mod.Terminal) InvariantError!void {
+fn ensureCoreInvariants(vt: *const Terminal) InvariantError!void {
     const s = vt.screen_state.activeConst();
     if (s.rows < RowsMin) return error.RowBelowMinimum;
     if (s.cols < ColsMin) return error.ColBelowMinimum;
@@ -258,7 +258,7 @@ fn ensureCoreInvariants(vt: *const terminal_mod.Terminal) InvariantError!void {
     if (s.cursor_col >= s.cols) return error.CursorColOutOfBounds;
 }
 
-fn hashStructural(vt: *const terminal_mod.Terminal) u64 {
+fn hashStructural(vt: *const Terminal) u64 {
     var h = std.hash.Wyhash.init(0);
     const s = vt.screen_state.activeConst();
     h.update(std.mem.asBytes(&s.rows));
@@ -273,7 +273,7 @@ fn hashStructural(vt: *const terminal_mod.Terminal) u64 {
     return h.final();
 }
 
-fn hashLogicalContent(vt: *const terminal_mod.Terminal) u64 {
+fn hashLogicalContent(vt: *const Terminal) u64 {
     var h = std.hash.Wyhash.init(0x9e3779b97f4a7c15);
     const s = vt.screen_state.activeConst();
     const history = screen_set.visibleView(&vt.screen_state, .{}).history_count;
@@ -299,7 +299,7 @@ fn hashLogicalContent(vt: *const terminal_mod.Terminal) u64 {
     return h.final();
 }
 
-fn canonicalLogicalHash(allocator: std.mem.Allocator, vt: *const terminal_mod.Terminal) !u64 {
+fn canonicalLogicalHash(allocator: std.mem.Allocator, vt: *const Terminal) !u64 {
     const lines = try canonicalLogicalStream(allocator, vt);
     defer allocator.free(lines);
 
@@ -308,7 +308,7 @@ fn canonicalLogicalHash(allocator: std.mem.Allocator, vt: *const terminal_mod.Te
     return h.final();
 }
 
-fn canonicalLogicalStream(allocator: std.mem.Allocator, vt: *const terminal_mod.Terminal) ![]u21 {
+fn canonicalLogicalStream(allocator: std.mem.Allocator, vt: *const Terminal) ![]u21 {
     const s = vt.screen_state.activeConst();
     var lines: std.ArrayList(u21) = .empty;
     defer lines.deinit(allocator);
@@ -338,7 +338,7 @@ fn appendHistoryRowCanonical(
     allocator: std.mem.Allocator,
     all_lines: *std.ArrayList(u21),
     current_line: *std.ArrayList(u21),
-    vt: *const terminal_mod.Terminal,
+    vt: *const Terminal,
     recency: u32,
     cols: u16,
 ) !void {
@@ -377,7 +377,7 @@ fn flushLogicalRow(allocator: std.mem.Allocator, all_lines: *std.ArrayList(u21),
     current_line.clearRetainingCapacity();
 }
 
-fn historyContentLen(s: anytype, vt: *const terminal_mod.Terminal, recency: u32, cols: u16) u16 {
+fn historyContentLen(s: anytype, vt: *const Terminal, recency: u32, cols: u16) u16 {
     var col = cols;
     while (col > 0) {
         const idx = col - 1;
@@ -410,7 +410,7 @@ fn historyRowWrapped(s: anytype, recency: u32) bool {
     return s.historyRowWrapped(recency);
 }
 
-fn summarizeCoreState(vt: *const terminal_mod.Terminal) CoreStateSummary {
+fn summarizeCoreState(vt: *const Terminal) CoreStateSummary {
     const s = vt.screen_state.activeConst();
     return .{
         .rows = s.rows,
