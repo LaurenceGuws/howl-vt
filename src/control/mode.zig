@@ -115,7 +115,7 @@ pub fn ansiModeState(vt: anytype, mode: u16) u8 {
     const active_state = vt.screen_state.activeConst();
     return ansiModeStateForView(.{
         .keyboard_action_mode = vt.modes.keyboard_action_mode,
-        .insert_mode = active_state.insertMode(),
+        .insert_mode = active_state.insert_mode,
         .send_receive_mode = vt.modes.send_receive_mode,
         .newline_mode = vt.modes.newline_mode,
     }, mode);

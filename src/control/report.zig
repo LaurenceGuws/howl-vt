@@ -56,7 +56,7 @@ pub fn apply(vt: anytype, report_action: ReportAction) void {
         },
         .ansi_modes = .{
             .keyboard_action_mode = vt.modes.keyboard_action_mode,
-            .insert_mode = active.insertMode(),
+            .insert_mode = active.insert_mode,
             .send_receive_mode = vt.modes.send_receive_mode,
             .newline_mode = vt.modes.newline_mode,
         },
@@ -330,7 +330,7 @@ pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output
 
 pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: action_mod.SemanticEvent.RectArea) u16 {
     if (page != 1) return 0;
-    const bounds = screen.rectBoundsForReport(area) orelse return 0;
+    const bounds = screen.rectBounds(area) orelse return 0;
     var sum: u16 = 0;
     var row = bounds.top;
     while (row <= bounds.bottom) : (row += 1) {
@@ -366,7 +366,7 @@ const CommonAttrs = struct {
 };
 
 fn commonAttrsForRect(screen: *const Grid, area: action_mod.SemanticEvent.RectArea) ?CommonAttrs {
-    const bounds = screen.rectBoundsForReport(area) orelse return null;
+    const bounds = screen.rectBounds(area) orelse return null;
     const first_cell = screen.cellInfoAt(bounds.top, bounds.left);
     var common = CommonAttrs{
         .bold = first_cell.attrs.bold,

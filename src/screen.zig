@@ -342,16 +342,7 @@ pub const Screen = struct {
     }
 
     pub fn tabStopAt(self: *const Screen, col: u16) bool {
-        return self.isTabStop(col);
-    }
-
-    pub fn insertMode(self: *const Screen) bool {
-        return self.insert_mode;
-    }
-
-    pub fn rectBoundsForReport(self: *const Screen, area: SemanticEvent.RectArea) ?struct { top: u16, left: u16, bottom: u16, right: u16 } {
-        const bounds = self.rectBounds(area) orelse return null;
-        return .{ .top = bounds.top, .left = bounds.left, .bottom = bounds.bottom, .right = bounds.right };
+        return tabs.isStop(self, col);
     }
 
     /// Read history cell by recency index and column.
@@ -532,10 +523,6 @@ pub const Screen = struct {
 
     pub fn horizontalTabBack(self: *Screen, count: u16) void {
         tabs.horizontalBack(self, count);
-    }
-
-    fn isTabStop(self: *const Screen, col: u16) bool {
-        return tabs.isStop(self, col);
     }
 
     pub fn setTabStop(self: *Screen) void {
