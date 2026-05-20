@@ -10,6 +10,8 @@ const screen_set = howl_vt.screen_set;
 const terminal_mod = howl_vt.terminal;
 
 const OscTerminator = parser_mod.OscTerminator;
+const CsiEvent = @FieldType(Event, "csi");
+const OscEvent = @FieldType(Event, "osc");
 const xterm_ctlseqs = @embedFile("assets/xterm-ctlseqs.ms");
 
 pub const Options = struct {
@@ -531,79 +533,77 @@ fn pickAssetStart(rand: std.Random) usize {
 fn digestEvents(events: []const Event) u64 {
     var hasher = std.hash.Wyhash.init(0);
 
-    for (events) |event| {
-        switch (event) {
-            .print => |cp| {
-                hashValue(&hasher, @as(u8, 1));
-                hashValue(&hasher, cp);
-            },
-            .execute => |ctrl| {
-                hashValue(&hasher, @as(u8, 2));
-                hashValue(&hasher, ctrl);
-            },
-            .invalid => {
-                hashValue(&hasher, @as(u8, 3));
-            },
-            .csi => |csi| {
-                hashValue(&hasher, @as(u8, 4));
-                hashValue(&hasher, csi.final);
-                hashValue(&hasher, csi.leader);
-                hashValue(&hasher, csi.private);
-                hashValue(&hasher, csi.count);
-                hashValue(&hasher, csi.intermediates_len);
-                for (csi.params) |param| hashValue(&hasher, param);
-                for (csi.intermediates) |byte| hashValue(&hasher, byte);
-            },
-            .osc => |osc| {
-                hashValue(&hasher, @as(u8, 5));
-                hashValue(&hasher, @intFromEnum(osc.term));
-                hashValue(&hasher, osc.data.len);
-                hasher.update(osc.data);
-            },
-            .apc_start => {
-                hashValue(&hasher, @as(u8, 6));
-            },
-            .apc_put => |byte| {
-                hashValue(&hasher, @as(u8, 7));
-                hashValue(&hasher, byte);
-            },
-            .apc_end => {
-                hashValue(&hasher, @as(u8, 8));
-            },
-            .dcs_hook => |hook| {
-                hashValue(&hasher, @as(u8, 9));
-                hashValue(&hasher, hook.final);
-                hashValue(&hasher, hook.count);
-                hashValue(&hasher, hook.intermediates_len);
-                for (hook.params) |param| hashValue(&hasher, param);
-                for (hook.intermediates) |byte| hashValue(&hasher, byte);
-            },
-            .dcs_put => |byte| {
-                hashValue(&hasher, @as(u8, 10));
-                hashValue(&hasher, byte);
-            },
-            .dcs_unhook => {
-                hashValue(&hasher, @as(u8, 11));
-            },
-            .pm_start => {
-                hashValue(&hasher, @as(u8, 12));
-            },
-            .pm_put => |byte| {
-                hashValue(&hasher, @as(u8, 13));
-                hashValue(&hasher, byte);
-            },
-            .pm_end => {
-                hashValue(&hasher, @as(u8, 14));
-            },
-            .esc_dispatch => |esc| {
-                hashValue(&hasher, @as(u8, 15));
-                hashValue(&hasher, @as(u8, 8));
-                hashValue(&hasher, esc.final);
-                hashValue(&hasher, esc.intermediates_len);
-                for (esc.intermediates) |byte| hashValue(&hasher, byte);
-            },
-        }
-    }
+    for (events) |event| hashEvent(&hasher, event);
 
     return hasher.final();
+}
+
+fn hashEvent(hasher: *std.hash.Wyhash, event: Event) void {
+    switch (event) {
+        .print => |cp| {
+            hashValue(hasher, @as(u8, 1));
+            hashValue(hasher, cp);
+        },
+        .execute => |ctrl| {
+            hashValue(hasher, @as(u8, 2));
+            hashValue(hasher, ctrl);
+        },
+        .invalid => hashValue(hasher, @as(u8, 3)),
+        .csi => |csi| hashCsiEvent(hasher, csi),
+        .osc => |osc| hashOscEvent(hasher, osc),
+        .apc_start => hashValue(hasher, @as(u8, 6)),
+        .apc_put => |byte| {
+            hashValue(hasher, @as(u8, 7));
+            hashValue(hasher, byte);
+        },
+        .apc_end => hashValue(hasher, @as(u8, 8)),
+        .dcs_hook => |hook| hashDcsHookEvent(hasher, hook),
+        .dcs_put => |byte| {
+            hashValue(hasher, @as(u8, 10));
+            hashValue(hasher, byte);
+        },
+        .dcs_unhook => hashValue(hasher, @as(u8, 11)),
+        .pm_start => hashValue(hasher, @as(u8, 12)),
+        .pm_put => |byte| {
+            hashValue(hasher, @as(u8, 13));
+            hashValue(hasher, byte);
+        },
+        .pm_end => hashValue(hasher, @as(u8, 14)),
+        .esc_dispatch => |esc| hashEscDispatchEvent(hasher, esc),
+    }
+}
+
+fn hashCsiEvent(hasher: *std.hash.Wyhash, csi: CsiEvent) void {
+    hashValue(hasher, @as(u8, 4));
+    hashValue(hasher, csi.final);
+    hashValue(hasher, csi.leader);
+    hashValue(hasher, csi.private);
+    hashValue(hasher, csi.count);
+    hashValue(hasher, csi.intermediates_len);
+    for (csi.params) |param| hashValue(hasher, param);
+    for (csi.intermediates) |byte| hashValue(hasher, byte);
+}
+
+fn hashOscEvent(hasher: *std.hash.Wyhash, osc: OscEvent) void {
+    hashValue(hasher, @as(u8, 5));
+    hashValue(hasher, @intFromEnum(osc.term));
+    hashValue(hasher, osc.data.len);
+    hasher.update(osc.data);
+}
+
+fn hashDcsHookEvent(hasher: *std.hash.Wyhash, hook: parser_mod.DcsHook) void {
+    hashValue(hasher, @as(u8, 9));
+    hashValue(hasher, hook.final);
+    hashValue(hasher, hook.count);
+    hashValue(hasher, hook.intermediates_len);
+    for (hook.params) |param| hashValue(hasher, param);
+    for (hook.intermediates) |byte| hashValue(hasher, byte);
+}
+
+fn hashEscDispatchEvent(hasher: *std.hash.Wyhash, esc: parser_mod.EscAction) void {
+    hashValue(hasher, @as(u8, 15));
+    hashValue(hasher, @as(u8, 8));
+    hashValue(hasher, esc.final);
+    hashValue(hasher, esc.intermediates_len);
+    for (esc.intermediates) |byte| hashValue(hasher, byte);
 }
