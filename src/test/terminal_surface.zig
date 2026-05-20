@@ -380,6 +380,18 @@ test "older ack cannot retire newer published generation" {
     try std.testing.expect(after_old_ack.dirty_needed > 0);
 }
 
+test "copy surface keeps metadata on invalid output pointers" {
+    const handle = ffi.terminalInit(2, 4, 4);
+    defer ffi.terminalDeinit(handle);
+
+    const result = ffi.terminalCopySurface(handle, 0, null, 8, null, 2, null, 2, null, 2, 0, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.invalid_argument)), result.status);
+    try std.testing.expectEqual(@as(u16, 2), result.source.rows);
+    try std.testing.expectEqual(@as(u16, 4), result.source.cols);
+    try std.testing.expectEqual(@as(u64, 8), result.source.surface_cells.len);
+    try std.testing.expectEqual(@as(u64, 2), result.source.dirty_rows.len);
+}
+
 test "terminal feed fails overlong OSC instead of truncating it" {
     const allocator = std.testing.allocator;
     const handle = ffi.terminalInit(2, 4, 4);

@@ -234,6 +234,62 @@ fn decodeClipboardBytes(raw: []const u8, out: []u8) FfiBytesResult {
     };
 }
 
+fn surfaceResult(
+    view: screen_set.View,
+    dirty_generation: u64,
+    dirty_needed: u16,
+    cells_ptr: ?[*]FfiSurfaceCell,
+    dirty_rows_ptr: ?[*]u8,
+    cols_start_ptr: ?[*]u16,
+    cols_end_ptr: ?[*]u16,
+    full_damage: u8,
+    scroll_up_rows: u16,
+) FfiSurfaceResult {
+    return .{
+        .status = @intFromEnum(HowlVtCallStatus.ok),
+        .history_count = view.history_count,
+        .scrollback_offset = view.scrollback_offset,
+        .dirty_needed = dirty_needed,
+        .dirty_generation = dirty_generation,
+        .source = .{
+            .surface_cells = .{ .ptr = cells_ptr, .len = @intCast(@as(u32, view.rows) * view.cols) },
+            .cols = view.cols,
+            .rows = view.rows,
+            .scroll_row = view.start,
+            .is_alternate_screen = boolByte(view.is_alternate_screen),
+            .full_damage = full_damage,
+            .scroll_up_rows = scroll_up_rows,
+            .dirty_rows = .{ .ptr = dirty_rows_ptr, .len = view.rows },
+            .dirty_cols_start = .{ .ptr = cols_start_ptr, .len = @intCast(dirty_needed) },
+            .dirty_cols_end = .{ .ptr = cols_end_ptr, .len = @intCast(dirty_needed) },
+            .cursor = .{ .row = view.cursor_row, .col = view.cursor_col, .visible = boolByte(view.cursor_visible), .shape = @intFromEnum(view.cursor_shape) },
+        },
+    };
+}
+
+fn copySurfaceCells(cells_out: []FfiSurfaceCell, view: screen_set.View) void {
+    var row: u16 = 0;
+    while (row < view.rows) : (row += 1) {
+        var col: u16 = 0;
+        while (col < view.cols) : (col += 1) {
+            const idx = @as(usize, row) * @as(usize, view.cols) + @as(usize, col);
+            cells_out[idx] = cellOut(view.cellInfoAt(row, col));
+        }
+    }
+}
+
+fn copyDirtyOutput(dirty_rows_out: []u8, cols_start: []u16, cols_end: []u16, dirty: ?screen.Screen.DirtyRows) void {
+    @memset(dirty_rows_out, 0);
+    if (dirty) |value| {
+        @memcpy(cols_start, value.dirty_cols_start[@intCast(value.start_row)..@intCast(value.end_row + 1)]);
+        @memcpy(cols_end, value.dirty_cols_end[@intCast(value.start_row)..@intCast(value.end_row + 1)]);
+        var dirty_row = value.start_row;
+        while (dirty_row <= value.end_row and dirty_row < dirty_rows_out.len) : (dirty_row += 1) {
+            dirty_rows_out[dirty_row] = 1;
+        }
+    }
+}
+
 pub fn terminalInit(rows: u16, cols: u16, history_capacity: u16) callconv(.c) VtHandle {
     const owned = std.heap.c_allocator.create(terminal.Terminal) catch return null;
     owned.* = terminal.Terminal.initWithCellsAndHistory(std.heap.c_allocator, rows, cols, history_capacity) catch {
@@ -321,61 +377,36 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
     const dirty = screen_set.peekDirtyRows(&owned.screen_state);
     const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
     const dirty_needed: usize = if (dirty) |value| @as(usize, value.end_row) - @as(usize, value.start_row) + 1 else 0;
-    var result: FfiSurfaceResult = .{
-        .status = @intFromEnum(HowlVtCallStatus.ok),
-        .history_count = view.history_count,
-        .scrollback_offset = view.scrollback_offset,
-        .dirty_needed = dirty_needed,
-        .dirty_generation = owned.dirty_generation,
-        .source = .{
-            .surface_cells = .{ .ptr = cells_ptr, .len = cell_count },
-            .cols = view.cols,
-            .rows = view.rows,
-            .scroll_row = view.start,
-            .is_alternate_screen = boolByte(view.is_alternate_screen),
-            .full_damage = full_damage,
-            .scroll_up_rows = scroll_up_rows,
-            .dirty_rows = .{ .ptr = dirty_rows_ptr, .len = view.rows },
-            .dirty_cols_start = .{ .ptr = cols_start_ptr, .len = dirty_needed },
-            .dirty_cols_end = .{ .ptr = cols_end_ptr, .len = dirty_needed },
-            .cursor = .{ .row = view.cursor_row, .col = view.cursor_col, .visible = boolByte(view.cursor_visible), .shape = @intFromEnum(view.cursor_shape) },
-        },
-    };
+    var result = surfaceResult(view, owned.dirty_generation, @intCast(dirty_needed), cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr, full_damage, scroll_up_rows);
 
     if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < dirty_needed or cols_end_cap < dirty_needed) {
         result.status = @intFromEnum(HowlVtCallStatus.short_buffer);
         return result;
     }
 
-    const cells_out = if (cells_ptr) |ptr| ptr[0..cells_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const dirty_rows_out = if (dirty_rows_ptr) |ptr| ptr[0..dirty_rows_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const cells_out = if (cells_ptr) |ptr| ptr[0..cells_cap] else {
+        result.status = @intFromEnum(HowlVtCallStatus.invalid_argument);
+        return result;
+    };
+    const dirty_rows_out = if (dirty_rows_ptr) |ptr| ptr[0..dirty_rows_cap] else {
+        result.status = @intFromEnum(HowlVtCallStatus.invalid_argument);
+        return result;
+    };
     var cols_start: []u16 = &.{};
     var cols_end: []u16 = &.{};
     if (dirty_needed != 0) {
-        cols_start = if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-        cols_end = if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+        cols_start = if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else {
+            result.status = @intFromEnum(HowlVtCallStatus.invalid_argument);
+            return result;
+        };
+        cols_end = if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else {
+            result.status = @intFromEnum(HowlVtCallStatus.invalid_argument);
+            return result;
+        };
     }
 
-    @memset(dirty_rows_out[0..view.rows], 0);
-    var row: u16 = 0;
-    while (row < view.rows) : (row += 1) {
-        var col: u16 = 0;
-        while (col < view.cols) : (col += 1) {
-            const idx = @as(usize, row) * @as(usize, view.cols) + @as(usize, col);
-            cells_out[idx] = cellOut(view.cellInfoAt(row, col));
-        }
-    }
-
-    if (dirty) |value| {
-        const start_idx: usize = value.start_row;
-        const end_idx: usize = value.end_row + 1;
-        @memcpy(cols_start[0..dirty_needed], value.dirty_cols_start[start_idx..end_idx]);
-        @memcpy(cols_end[0..dirty_needed], value.dirty_cols_end[start_idx..end_idx]);
-        var dirty_row = value.start_row;
-        while (dirty_row <= value.end_row and dirty_row < dirty_rows_out.len) : (dirty_row += 1) {
-            dirty_rows_out[dirty_row] = 1;
-        }
-    }
+    copySurfaceCells(cells_out, view);
+    copyDirtyOutput(dirty_rows_out[0..view.rows], cols_start, cols_end, dirty);
 
     return result;
 }
