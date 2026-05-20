@@ -61,12 +61,12 @@ pub const Screen = struct {
     history: ?[]Cell,
     history_wraps: ?[]bool,
     history_capacity: u16,
-    history_count: usize,
-    history_write_idx: usize,
+    history_count: u32,
+    history_write_idx: u32,
     history_lines: std.ArrayListUnmanaged(HistoryLine),
-    history_lines_start: usize,
+    history_lines_start: u32,
     open_history_line: ?HistoryLine,
-    open_history_reuse_slot: ?usize,
+    open_history_reuse_slot: ?u32,
     saved_cursor: ?struct {
         row: u16,
         col: u16,
@@ -351,16 +351,15 @@ pub const Screen = struct {
 
     pub fn historyCellAt(self: *const Screen, history_idx: u32, col: u16) Cell {
         const h = self.history orelse return default_cell;
-        const bounded_idx: usize = @intCast(history_idx);
+        const bounded_idx: u32 = history_idx;
         if (bounded_idx >= self.history_count or col >= self.cols) return default_cell;
         const slot = self.historySlotForRecency(history_idx) orelse return default_cell;
-        return h[slot * @as(usize, self.cols) + @as(usize, col)];
+        return h[@as(usize, slot) * @as(usize, self.cols) + @as(usize, col)];
     }
 
     /// Return retained history row count.
     pub fn historyCount(self: *const Screen) u32 {
-        std.debug.assert(self.history_count <= std.math.maxInt(u32));
-        return @intCast(self.history_count);
+        return self.history_count;
     }
 
     /// Return configured history capacity.
@@ -373,7 +372,7 @@ pub const Screen = struct {
         if (self.history_capacity == 0 or self.history_lines.items.len < self.history_capacity) {
             return false;
         }
-        const projected_rows_i32: i32 = if (self.history_count > @as(usize, std.math.maxInt(i32)))
+        const projected_rows_i32: i32 = if (self.history_count > @as(u32, std.math.maxInt(i32)))
             std.math.maxInt(i32)
         else
             @intCast(self.history_count);
@@ -607,11 +606,11 @@ pub const Screen = struct {
         wraps[idx] = wrapped;
     }
 
-    fn historySlotForLogicalRow(self: *const Screen, logical_row: usize) ?usize {
+    fn historySlotForLogicalRow(self: *const Screen, logical_row: u32) ?u32 {
         return history_mod.slotForLogicalRow(self, logical_row);
     }
 
-    fn historySlotForRecency(self: *const Screen, history_idx: u32) ?usize {
+    fn historySlotForRecency(self: *const Screen, history_idx: u32) ?u32 {
         return history_mod.slotForRecency(self, history_idx);
     }
 

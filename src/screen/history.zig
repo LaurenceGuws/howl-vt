@@ -203,21 +203,20 @@ pub fn storeRow(self: anytype, row: u16) void {
     }
 }
 
-pub fn historyLineAt(self: anytype, logical_index: usize) HistoryLine {
-    const slot = (self.history_lines_start + logical_index) % self.history_lines.items.len;
-    return self.history_lines.items[slot];
+pub fn historyLineAt(self: anytype, logical_index: u32) HistoryLine {
+    const slot = (self.history_lines_start + logical_index) % historyLineCount(self);
+    return self.history_lines.items[listIndex(slot)];
 }
 
-pub fn slotForLogicalRow(self: anytype, logical_row: usize) ?usize {
+pub fn slotForLogicalRow(self: anytype, logical_row: u32) ?u32 {
     const capacity = projectedCapacity(self);
     if (logical_row >= self.history_count or capacity == 0) return null;
     return (self.history_write_idx + logical_row) % capacity;
 }
 
-pub fn slotForRecency(self: anytype, history_idx: u32) ?usize {
-    const bounded_idx = listIndex(history_idx);
-    if (bounded_idx >= self.history_count) return null;
-    return slotForLogicalRow(self, self.history_count - 1 - bounded_idx);
+pub fn slotForRecency(self: anytype, history_idx: u32) ?u32 {
+    if (history_idx >= self.history_count) return null;
+    return slotForLogicalRow(self, self.history_count - 1 - history_idx);
 }
 
 pub fn rowWrapped(self: anytype, history_idx: u32) bool {
@@ -299,13 +298,13 @@ fn pruneLines(self: anytype, allocator: std.mem.Allocator) void {
     self.history_lines.shrinkRetainingCapacity(self.history_lines.items.len - drop);
 }
 
-fn takeReusableLine(self: anytype) struct { line: HistoryLine, slot: ?usize } {
+fn takeReusableLine(self: anytype) struct { line: HistoryLine, slot: ?u32 } {
     if (self.history_capacity == 0 or self.history_lines.items.len < self.history_capacity) return .{ .line = .{}, .slot = null };
     const slot = self.history_lines_start;
-    var reusable = self.history_lines.items[slot];
-    self.history_lines.items[slot] = .{};
+    var reusable = self.history_lines.items[listIndex(slot)];
+    self.history_lines.items[listIndex(slot)] = .{};
     dropOldestProjectedRows(self, projectedRowCountForCells(self, reusable.cells.items));
-    self.history_lines_start = (self.history_lines_start + 1) % self.history_lines.items.len;
+    self.history_lines_start = (self.history_lines_start + 1) % historyLineCount(self);
     reusable.cells.clearRetainingCapacity();
     return .{ .line = reusable, .slot = slot };
 }
@@ -330,29 +329,29 @@ fn appendProjectedRow(self: anytype, allocator: std.mem.Allocator, cells: []cons
     self.history_count += 1;
 }
 
-fn ensureProjectedCapacity(self: anytype, allocator: std.mem.Allocator, min_rows: usize) !void {
+fn ensureProjectedCapacity(self: anytype, allocator: std.mem.Allocator, min_rows: u32) !void {
     if (self.cols == 0) return;
 
-    const current_rows = if (self.history_wraps) |wraps| wraps.len else 0;
+    const current_rows = projectedCapacity(self);
     if (current_rows >= min_rows) return;
 
-    const new_rows = @max(min_rows, @max(current_rows * 2, @as(usize, 8)));
+    const new_rows = @max(min_rows, @max(current_rows * 2, @as(u32, 8)));
     const cols = colCount(self.cols);
-    const new_history = try allocator.alloc(Cell, new_rows * cols);
+    const new_history = try allocator.alloc(Cell, listIndex(new_rows) * cols);
     errdefer allocator.free(new_history);
     @memset(new_history, default_cell);
 
-    const new_wraps = try allocator.alloc(bool, new_rows);
+    const new_wraps = try allocator.alloc(bool, listIndex(new_rows));
     errdefer allocator.free(new_wraps);
     @memset(new_wraps, false);
 
     const old_count = self.history_count;
     std.debug.assert(old_count <= current_rows);
-    var logical_row: usize = 0;
+    var logical_row: u32 = 0;
     while (logical_row < old_count) : (logical_row += 1) {
         const old_slot = slotForLogicalRow(self, logical_row) orelse break;
-        const src_start = old_slot * cols;
-        const dst_start = logical_row * cols;
+        const src_start = listIndex(old_slot) * cols;
+        const dst_start = listIndex(logical_row) * cols;
         std.debug.assert(old_slot < current_rows);
         std.debug.assert(src_start + cols <= if (self.history) |history| history.len else 0);
         std.debug.assert(dst_start + cols <= new_history.len);
@@ -369,23 +368,25 @@ fn ensureProjectedCapacity(self: anytype, allocator: std.mem.Allocator, min_rows
     self.history_write_idx = 0;
 }
 
-fn projectedAppendSlot(self: anytype) usize {
+fn projectedAppendSlot(self: anytype) u32 {
     const capacity = projectedCapacity(self);
     if (capacity == 0) return 0;
     return (self.history_write_idx + self.history_count) % capacity;
 }
 
-fn projectedCapacity(self: anytype) usize {
-    return if (self.history_wraps) |wraps| wraps.len else 0;
+fn projectedCapacity(self: anytype) u32 {
+    const wraps = self.history_wraps orelse return 0;
+    std.debug.assert(wraps.len <= std.math.maxInt(u32));
+    return @intCast(wraps.len);
 }
 
-fn projectedRowCountForCells(self: anytype, cells: []const Cell) usize {
+fn projectedRowCountForCells(self: anytype, cells: []const Cell) u32 {
     const cols = colCount(self.cols);
     if (cols == 0) return 0;
     return rowCountForCells(cells.len, cols);
 }
 
-fn dropOldestProjectedRows(self: anytype, row_count: usize) void {
+fn dropOldestProjectedRows(self: anytype, row_count: u32) void {
     if (row_count == 0 or self.history_count == 0) return;
 
     const drop = @min(row_count, self.history_count);
@@ -410,6 +411,13 @@ fn listIndex(value: u32) usize {
     return @intCast(value);
 }
 
-fn rowCountForCells(cell_count: usize, cols: usize) usize {
-    return @max(1, std.math.divCeil(usize, cell_count, cols) catch unreachable);
+fn rowCountForCells(cell_count: usize, cols: usize) u32 {
+    const rows = @max(1, std.math.divCeil(usize, cell_count, cols) catch unreachable);
+    std.debug.assert(rows <= std.math.maxInt(u32));
+    return @intCast(rows);
+}
+
+fn historyLineCount(self: anytype) u32 {
+    std.debug.assert(self.history_lines.items.len <= std.math.maxInt(u32));
+    return @intCast(self.history_lines.items.len);
 }
