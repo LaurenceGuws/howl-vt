@@ -135,7 +135,6 @@ pub const OscControl = struct {
     policy: CommandPolicy,
     alloc_failed: bool = false,
     overflowed: bool = false,
-    prefix: [prefix_max_bytes]u8 = undefined,
     prefix_len: u8 = 0,
     command_acc: u16 = 0,
     command_ok: bool = false,
@@ -250,7 +249,7 @@ pub const OscControl = struct {
             return .{ .put = byte };
         }
         if (isDigit(byte) and self.prefix_len < prefix_max_bytes) {
-            self.prefix[self.prefix_len] = byte;
+            self.append(byte);
             self.prefix_len += 1;
             self.pushCommandDigit(byte);
             return .{ .put = byte };
@@ -335,6 +334,7 @@ pub const OscControl = struct {
     fn finishPrefix(self: *OscControl) void {
         if (self.currentPrefixCommand()) |command| {
             self.setCommandPolicy(command);
+            self.buffer.clearRetainingCapacity();
         } else {
             self.command = null;
             self.policy = .{ .kind = .title, .max_len = self.metadata_max_len };
@@ -350,6 +350,7 @@ pub const OscControl = struct {
     fn enterPayloadFromPrefix(self: *OscControl) bool {
         if (self.currentPrefixCommand()) |command| {
             self.setCommandPolicy(command);
+            self.buffer.clearRetainingCapacity();
             self.state = .payload;
             return true;
         }
@@ -364,9 +365,6 @@ pub const OscControl = struct {
             .max_len = self.metadata_max_len,
         };
         self.state = .raw;
-        var idx: u8 = 0;
-        while (idx < self.prefix_len) : (idx += 1) self.append(self.prefix[idx]);
-        self.prefix_len = 0;
         if (byte == ';') self.policy.kind = .other;
         self.append(byte);
     }

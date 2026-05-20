@@ -87,3 +87,6 @@ Closed result so far:
   including raw invalid/title fallback on finish
 - raw OSC fallback no longer keeps a separate side-channel for kind classification; it updates the
   same parser-owned policy state used by command-recognized OSC paths
+- OSC no longer keeps a separate prefix-byte store; one parser-owned buffer now carries provisional
+  prefix bytes and raw fallback bytes, and recognized commands clear that buffer explicitly on
+  promotion to payload or command-only completion
