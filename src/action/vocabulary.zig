@@ -419,5 +419,4 @@ pub const HostAction = union(enum) {
     media_copy_request: u16,
     dcs_payload: DcsPayload,
     legacy_control: LegacyControlKind,
-    reset_screen,
 };

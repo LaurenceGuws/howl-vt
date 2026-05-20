@@ -40,8 +40,14 @@ pub fn apply(vt: anytype, action: HostAction) void {
         .media_copy_request => |param| vt.host.media_copy_request = param,
         .dcs_payload => |payload| setDcsPayload(vt, payload),
         .legacy_control => |kind| vt.host.legacy_control = kind,
-        .reset_screen => resetTerminalState(vt),
     }
+}
+
+pub fn setCurrentTitle(vt: anytype, current: ?[]const u8, title: []const u8) ?[]const u8 {
+    const owned = vt.allocator.dupe(u8, title) catch return current;
+    if (vt.host.current_title) |old| vt.allocator.free(old);
+    vt.host.current_title = owned;
+    return owned;
 }
 
 fn internHyperlink(vt: anytype, uri: []const u8) u32 {
@@ -75,10 +81,4 @@ fn setDcsPayload(vt: anytype, payload: DcsPayload) void {
         return;
     };
     vt.host.dcs_payload = .{ .kind = payload.kind, .payload = owned };
-}
-
-fn resetTerminalState(vt: anytype) void {
-    vt.screen_state.active().reset();
-    vt.kitty.resetTerminalState();
-    vt.host.locator = .{};
 }

@@ -78,7 +78,8 @@ classDiagram
 - `src/stream_terminal.zig` owns the repo-local VT stream that applies parser work directly against
   `Terminal` state in the same general role Ghostty uses for `stream_terminal.zig`.
 - `src/action/vocabulary.zig` owns terminal action vocabulary.
-- `src/action/route.zig` owns parsed-event routing into family owners and owner action slices.
+- `src/action/route.zig` owns the parent parsed-event routing and direct VT control spine that
+  delegates mutation to screen, report, mode, kitty, and host owners.
 - `src/parser/events.zig` owns parser-event materialization plus direct string-control payload state
   used by the live stream path and parser-event proofs.
 - `src/xterm/` owns current xterm-family routing.

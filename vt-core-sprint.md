@@ -35,7 +35,7 @@ throughput truth, and zero tolerance for stale doc or code posture.
    it remains an owner, not a facade or runtime bucket.
 2. `interpret` is dead and must stay dead.
 3. Parser owns syntax only. It does not own terminal meaning.
-4. Action routing owns the parent bounded-apply control spine.
+4. Action routing owns the parent direct-feed control spine.
 5. Screen truth, host consequence truth, kitty state, input encoding, and selection stay in
    separate owners.
 6. Repo-local roots may curate exports, but they must not hide or lie about live owners.

@@ -1,8 +1,10 @@
-//! Parser event to semantic event mapping.
+//! Parser event routing and direct VT application.
 
-const std = @import("std");
-const parser_mod = @import("../parser.zig");
 const events = @import("vocabulary.zig");
+const host_apply = @import("../host/apply.zig");
+const kitty_apply = @import("../kitty/apply.zig");
+const mode_apply = @import("../control/mode.zig");
+const report_apply = @import("../control/report.zig");
 const apc = @import("../kitty/apc.zig");
 const parsed_events = @import("../parser/events.zig");
 const c0 = @import("../xterm/c0.zig");
@@ -13,21 +15,18 @@ const osc = @import("../xterm/osc.zig");
 
 /// Parsed-event alias for action mapping.
 const Event = parsed_events.Event;
-pub const KittyGraphicsCommand = events.KittyGraphicsCommand;
-pub const KittyShellMark = events.KittyShellMark;
-pub const KittyNotificationCommand = events.KittyNotificationCommand;
-pub const KittyPointerShapeCommand = events.KittyPointerShapeCommand;
-pub const KittyColorStackCommand = events.KittyColorStackCommand;
-pub const TerminalColorControlCommand = events.TerminalColorControlCommand;
-pub const DcsPayloadKind = events.DcsPayloadKind;
-pub const LegacyControlKind = events.LegacyControlKind;
-pub const EscAction = esc.EscAction;
 pub const SemanticEvent = events.SemanticEvent;
-pub const ScreenAction = events.ScreenAction;
-pub const ReportAction = events.ReportAction;
-pub const ModeAction = events.ModeAction;
-pub const KittyAction = events.KittyAction;
-pub const HostAction = events.HostAction;
+
+const ScreenAction = events.ScreenAction;
+const ReportAction = events.ReportAction;
+const ModeAction = events.ModeAction;
+const KittyAction = events.KittyAction;
+const HostAction = events.HostAction;
+
+pub const EventEffect = struct {
+    changed: bool,
+    latest_title: ?[]const u8,
+};
 
 /// Map parsed event to terminal event when supported.
 pub fn process(event: Event) ?SemanticEvent {
@@ -47,6 +46,68 @@ pub fn process(event: Event) ?SemanticEvent {
         .dcs => |dcs_data| return dcs.process(dcs_data),
         .pm, .invalid_sequence => return null,
     }
+}
+
+pub fn apply(vt: anytype, current: ?[]const u8, event: Event) EventEffect {
+    switch (event) {
+        .invoke_charset => |slot| {
+            vt.gl_index = slot;
+            return .{ .changed = true, .latest_title = current };
+        },
+        .configure_charset => |cfg| {
+            switch (cfg.slot) {
+                0 => vt.g0_designation = cfg.designation,
+                1 => vt.g1_designation = cfg.designation,
+                else => unreachable,
+            }
+            return .{ .changed = true, .latest_title = current };
+        },
+        .osc => |osc_event| switch (osc_event) {
+            .title, .raw_title => {
+                return .{
+                    .changed = true,
+                    .latest_title = host_apply.setCurrentTitle(vt, current, osc_event.payload()),
+                };
+            },
+            else => {},
+        },
+        else => {},
+    }
+
+    const semantic = process(event) orelse return .{ .changed = false, .latest_title = current };
+    applySemantic(vt, semantic);
+    return .{ .changed = true, .latest_title = current };
+}
+
+fn applySemantic(vt: anytype, event: SemanticEvent) void {
+    if (event == .reset_screen) {
+        applyResetScreen(vt);
+        return;
+    }
+    if (reportAction(event)) |report_action| {
+        report_apply.apply(vt, report_action);
+        return;
+    }
+    if (kittyAction(event)) |kitty_action| {
+        kitty_apply.apply(vt, kitty_action);
+        return;
+    }
+    if (modeAction(event)) |mode_action| {
+        mode_apply.apply(vt, mode_action);
+        return;
+    }
+    if (hostAction(event)) |host_action| {
+        host_apply.apply(vt, host_action);
+        return;
+    }
+    const screen_event = screenAction(event) orelse unreachable;
+    vt.screen_state.active().applyScreen(screen_event);
+}
+
+fn applyResetScreen(vt: anytype) void {
+    vt.screen_state.active().reset();
+    vt.kitty.resetTerminalState();
+    vt.host.locator = .{};
 }
 
 pub fn screenAction(event: SemanticEvent) ?ScreenAction {
@@ -113,7 +174,7 @@ pub fn screenAction(event: SemanticEvent) ?ScreenAction {
     };
 }
 
-pub fn reportAction(event: SemanticEvent) ?ReportAction {
+fn reportAction(event: SemanticEvent) ?ReportAction {
     return switch (event) {
         .ansi_mode_query => |v| ReportAction{ .ansi_mode_query = v },
         .modify_other_keys_query => .modify_other_keys_query,
@@ -142,7 +203,7 @@ pub fn reportAction(event: SemanticEvent) ?ReportAction {
     };
 }
 
-pub fn modeAction(event: SemanticEvent) ?ModeAction {
+fn modeAction(event: SemanticEvent) ?ModeAction {
     return switch (event) {
         .enter_alt_screen => |v| ModeAction{ .enter_alt_screen = .{ .clear = v.clear, .save_cursor = v.save_cursor } },
         .exit_alt_screen => |v| ModeAction{ .exit_alt_screen = .{ .restore_cursor = v.restore_cursor } },
@@ -175,7 +236,7 @@ pub fn modeAction(event: SemanticEvent) ?ModeAction {
     };
 }
 
-pub fn kittyAction(event: SemanticEvent) ?KittyAction {
+fn kittyAction(event: SemanticEvent) ?KittyAction {
     return switch (event) {
         .kitty_keyboard_set => |v| KittyAction{ .kitty_keyboard_set = .{ .flags = v.flags, .mode = v.mode } },
         .kitty_keyboard_query => .kitty_keyboard_query,
@@ -193,7 +254,7 @@ pub fn kittyAction(event: SemanticEvent) ?KittyAction {
     };
 }
 
-pub fn hostAction(event: SemanticEvent) ?HostAction {
+fn hostAction(event: SemanticEvent) ?HostAction {
     return switch (event) {
         .color_control => |v| HostAction{ .color_control = v },
         .hyperlink_set => |v| HostAction{ .hyperlink_set = v },
@@ -206,7 +267,6 @@ pub fn hostAction(event: SemanticEvent) ?HostAction {
         .media_copy_request => |v| HostAction{ .media_copy_request = v },
         .dcs_payload => |v| HostAction{ .dcs_payload = v },
         .legacy_control => |v| HostAction{ .legacy_control = v },
-        .reset_screen => .reset_screen,
         else => null,
     };
 }
