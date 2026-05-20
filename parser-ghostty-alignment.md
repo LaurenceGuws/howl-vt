@@ -90,3 +90,5 @@ Closed result so far:
 - OSC no longer keeps a separate prefix-byte store; one parser-owned buffer now carries provisional
   prefix bytes and raw fallback bytes, and recognized commands clear that buffer explicitly on
   promotion to payload or command-only completion
+- OSC no longer keeps a separate prefix-length counter; prefix truth now comes directly from the
+  shared parser-owned buffer

@@ -135,7 +135,6 @@ pub const OscControl = struct {
     policy: CommandPolicy,
     alloc_failed: bool = false,
     overflowed: bool = false,
-    prefix_len: u8 = 0,
     command_acc: u16 = 0,
     command_ok: bool = false,
     command: ?u16 = null,
@@ -173,7 +172,6 @@ pub const OscControl = struct {
         self.state = .idle;
         self.alloc_failed = false;
         self.overflowed = false;
-        self.prefix_len = 0;
         self.command_acc = 0;
         self.command_ok = false;
         self.command = null;
@@ -248,9 +246,8 @@ pub const OscControl = struct {
             if (!self.enterPayloadFromPrefix()) return .{ .put = byte };
             return .{ .put = byte };
         }
-        if (isDigit(byte) and self.prefix_len < prefix_max_bytes) {
+        if (isDigit(byte) and self.buffer.items.len < prefix_max_bytes) {
             self.append(byte);
-            self.prefix_len += 1;
             self.pushCommandDigit(byte);
             return .{ .put = byte };
         }
@@ -370,13 +367,13 @@ pub const OscControl = struct {
     }
 
     fn currentPrefixCommand(self: *const OscControl) ?u16 {
-        if (self.prefix_len == 0) return null;
+        if (self.buffer.items.len == 0) return null;
         if (!self.command_ok) return null;
         return self.command_acc;
     }
 
     fn pushCommandDigit(self: *OscControl, byte: u8) void {
-        if (self.prefix_len == 1) {
+        if (self.buffer.items.len == 1) {
             self.command_acc = byte - '0';
             self.command_ok = true;
             return;
