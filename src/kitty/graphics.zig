@@ -287,31 +287,31 @@ pub const State = struct {
     }
 
     fn deleteImage(self: *State, allocator: std.mem.Allocator, image_id: u32) void {
-        var idx: usize = 0;
-        while (idx < self.images.items.len) {
-            if (self.images.items[idx].image_id == image_id) {
-                allocator.free(self.images.items[idx].base64_payload);
-                _ = self.images.swapRemove(idx);
+        var idx: Index = 0;
+        while (idx < self.imageCount()) {
+            if (self.images.items[listIndex(idx)].image_id == image_id) {
+                allocator.free(self.images.items[listIndex(idx)].base64_payload);
+                _ = self.images.swapRemove(listIndex(idx));
             } else idx += 1;
         }
         idx = 0;
-        while (idx < self.placements.items.len) {
-            if (self.placements.items[idx].image_id == image_id) _ = self.placements.swapRemove(idx) else idx += 1;
+        while (idx < self.placementCount()) {
+            if (self.placements.items[listIndex(idx)].image_id == image_id) _ = self.placements.swapRemove(listIndex(idx)) else idx += 1;
         }
         idx = 0;
-        while (idx < self.frames.items.len) {
-            if (self.frames.items[idx].image_id == image_id) {
-                allocator.free(self.frames.items[idx].base64_payload);
-                _ = self.frames.swapRemove(idx);
+        while (idx < self.frameCount()) {
+            if (self.frames.items[listIndex(idx)].image_id == image_id) {
+                allocator.free(self.frames.items[listIndex(idx)].base64_payload);
+                _ = self.frames.swapRemove(listIndex(idx));
             } else idx += 1;
         }
     }
 
     fn deletePlacement(self: *State, image_id: u32, placement_id: u32) void {
-        var idx: usize = 0;
-        while (idx < self.placements.items.len) {
-            const placement = self.placements.items[idx];
-            if (placement.image_id == image_id and placement.placement_id == placement_id) _ = self.placements.swapRemove(idx) else idx += 1;
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            const placement = self.placements.items[listIndex(idx)];
+            if (placement.image_id == image_id and placement.placement_id == placement_id) _ = self.placements.swapRemove(listIndex(idx)) else idx += 1;
         }
     }
 
@@ -319,59 +319,59 @@ pub const State = struct {
         if (x == 0 or y == 0) return;
         const col = x - 1;
         const row = y - 1;
-        var idx: usize = 0;
-        while (idx < self.placements.items.len) {
-            const p = self.placements.items[idx];
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            const p = self.placements.items[listIndex(idx)];
             const cols = @max(p.columns, 1);
             const rows = @max(p.rows, 1);
             const intersects = col >= p.col and col < p.col + cols and row >= p.row and row < p.row + rows and (z == null or p.z_index == z.?);
-            if (intersects) _ = self.placements.swapRemove(idx) else idx += 1;
+            if (intersects) _ = self.placements.swapRemove(listIndex(idx)) else idx += 1;
         }
     }
 
     fn deletePlacementsInColumn(self: *State, x: u32) void {
         if (x == 0) return;
         const col = x - 1;
-        var idx: usize = 0;
-        while (idx < self.placements.items.len) {
-            const p = self.placements.items[idx];
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            const p = self.placements.items[listIndex(idx)];
             const cols = @max(p.columns, 1);
-            if (col >= p.col and col < p.col + cols) _ = self.placements.swapRemove(idx) else idx += 1;
+            if (col >= p.col and col < p.col + cols) _ = self.placements.swapRemove(listIndex(idx)) else idx += 1;
         }
     }
 
     fn deletePlacementsInRow(self: *State, y: u32) void {
         if (y == 0) return;
         const row = y - 1;
-        var idx: usize = 0;
-        while (idx < self.placements.items.len) {
-            const p = self.placements.items[idx];
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            const p = self.placements.items[listIndex(idx)];
             const rows = @max(p.rows, 1);
-            if (row >= p.row and row < p.row + rows) _ = self.placements.swapRemove(idx) else idx += 1;
+            if (row >= p.row and row < p.row + rows) _ = self.placements.swapRemove(listIndex(idx)) else idx += 1;
         }
     }
 
     fn deletePlacementsByZ(self: *State, z: i32) void {
-        var idx: usize = 0;
-        while (idx < self.placements.items.len) {
-            if (self.placements.items[idx].z_index == z) _ = self.placements.swapRemove(idx) else idx += 1;
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            if (self.placements.items[listIndex(idx)].z_index == z) _ = self.placements.swapRemove(listIndex(idx)) else idx += 1;
         }
     }
 
     fn deleteImagesInRange(self: *State, allocator: std.mem.Allocator, first: u32, last: u32) void {
         const lo = @min(first, last);
         const hi = @max(first, last);
-        var idx: usize = 0;
-        while (idx < self.images.items.len) {
-            const image_id = self.images.items[idx].image_id;
+        var idx: Index = 0;
+        while (idx < self.imageCount()) {
+            const image_id = self.images.items[listIndex(idx)].image_id;
             if (image_id >= lo and image_id <= hi) self.deleteImage(allocator, image_id) else idx += 1;
         }
     }
 
     fn deleteUnplacedImages(self: *State, allocator: std.mem.Allocator) void {
-        var idx: usize = 0;
-        while (idx < self.images.items.len) {
-            const image_id = self.images.items[idx].image_id;
+        var idx: Index = 0;
+        while (idx < self.imageCount()) {
+            const image_id = self.images.items[listIndex(idx)].image_id;
             if (!self.imageHasPlacement(image_id)) self.deleteImage(allocator, image_id) else idx += 1;
         }
     }
@@ -383,12 +383,12 @@ pub const State = struct {
 
     fn deleteFrames(self: *State, allocator: std.mem.Allocator, cmd: KittyGraphicsCommand) void {
         const image_id = self.resolveImageId(cmd) orelse cmd.image_id;
-        var idx: usize = 0;
-        while (idx < self.frames.items.len) {
-            const frame = self.frames.items[idx];
+        var idx: Index = 0;
+        while (idx < self.frameCount()) {
+            const frame = self.frames.items[listIndex(idx)];
             if ((image_id == 0 or frame.image_id == image_id) and (cmd.placement_id == 0 or frame.frame_number == cmd.placement_id)) {
-                allocator.free(self.frames.items[idx].base64_payload);
-                _ = self.frames.swapRemove(idx);
+                allocator.free(self.frames.items[listIndex(idx)].base64_payload);
+                _ = self.frames.swapRemove(listIndex(idx));
             } else idx += 1;
         }
     }
