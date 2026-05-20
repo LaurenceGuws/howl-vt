@@ -148,6 +148,11 @@ pub const OscControl = struct {
         raw_esc,
     };
 
+    const BodyKind = enum {
+        payload,
+        raw,
+    };
+
     pub fn init(
         allocator: std.mem.Allocator,
         capacity: usize,
@@ -262,62 +267,39 @@ pub const OscControl = struct {
     }
 
     fn feedPayload(self: *OscControl, byte: u8) ?FeedResult {
-        switch (self.state) {
-            .payload => {
-                if (byte == 0x07) {
-                    self.state = .idle;
-                    return .{ .finish = .bel };
-                }
-                if (byte == 0x9C) {
-                    self.state = .idle;
-                    return .{ .finish = .st };
-                }
-                if (byte == 0x1B) {
-                    self.state = .payload_esc;
-                    return null;
-                }
-                self.append(byte);
-                return .{ .put = byte };
-            },
-            .payload_esc => {
-                if (byte == '\\') {
-                    self.state = .idle;
-                    return .{ .finish = .st };
-                }
-                self.state = .payload;
-                self.append(byte);
-                return .{ .put = byte };
-            },
-            else => unreachable,
-        }
+        return self.feedBody(.payload, byte);
     }
 
     fn feedRaw(self: *OscControl, byte: u8) ?FeedResult {
+        return self.feedBody(.raw, byte);
+    }
+
+    fn feedBody(self: *OscControl, comptime kind: BodyKind, byte: u8) ?FeedResult {
         switch (self.state) {
-            .raw => {
+            bodyState(kind) => {
                 if (byte == 0x07) {
-                    self.finishRaw();
+                    self.finishBody(kind);
                     return .{ .finish = .bel };
                 }
                 if (byte == 0x9C) {
-                    self.finishRaw();
+                    self.finishBody(kind);
                     return .{ .finish = .st };
                 }
                 if (byte == 0x1B) {
-                    self.state = .raw_esc;
+                    self.state = bodyEscState(kind);
                     return null;
                 }
-                if (byte == ';') self.policy.kind = .other;
+                if (kind == .raw and byte == ';') self.policy.kind = .other;
                 self.append(byte);
                 return .{ .put = byte };
             },
-            .raw_esc => {
+            bodyEscState(kind) => {
                 if (byte == '\\') {
-                    self.finishRaw();
+                    self.finishBody(kind);
                     return .{ .finish = .st };
                 }
-                self.state = .raw;
-                if (byte == ';') self.policy.kind = .other;
+                self.state = bodyState(kind);
+                if (kind == .raw and byte == ';') self.policy.kind = .other;
                 self.append(byte);
                 return .{ .put = byte };
             },
@@ -338,6 +320,13 @@ pub const OscControl = struct {
     fn finishRaw(self: *OscControl) void {
         self.policy.command = null;
         self.state = .idle;
+    }
+
+    fn finishBody(self: *OscControl, comptime kind: BodyKind) void {
+        switch (kind) {
+            .payload => self.state = .idle,
+            .raw => self.finishRaw(),
+        }
     }
 
     fn enterPayloadFromPrefix(self: *OscControl) bool {
@@ -411,6 +400,20 @@ pub const OscControl = struct {
         };
     }
 };
+
+fn bodyState(comptime kind: OscControl.BodyKind) OscControl.OscState {
+    return switch (kind) {
+        .payload => .payload,
+        .raw => .raw,
+    };
+}
+
+fn bodyEscState(comptime kind: OscControl.BodyKind) OscControl.OscState {
+    return switch (kind) {
+        .payload => .payload_esc,
+        .raw => .raw_esc,
+    };
+}
 
 fn isDigit(byte: u8) bool {
     return byte >= '0' and byte <= '9';

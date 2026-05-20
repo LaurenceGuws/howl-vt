@@ -96,3 +96,5 @@ Closed result so far:
   accumulator state itself
 - OSC no longer keeps recognized command value outside the command-policy owner; command, kind, and
   payload bound now live together in the same parser-owned policy record
+- OSC payload and raw body stepping now share one explicit parser-owned body helper; raw keeps only
+  its real extra rule that `;` flips kind to `.other`
