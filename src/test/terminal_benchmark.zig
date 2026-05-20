@@ -130,38 +130,24 @@ const CountingAllocator = struct {
     }
 };
 
-fn lessU64(_: void, lhs: u64, rhs: u64) bool {
-    return lhs < rhs;
+fn lessThan(comptime T: type) fn (void, T, T) bool {
+    return struct {
+        fn compare(_: void, lhs: T, rhs: T) bool {
+            return lhs < rhs;
+        }
+    }.compare;
 }
 
-fn lessUsize(_: void, lhs: usize, rhs: usize) bool {
-    return lhs < rhs;
-}
-
-fn lessU32(_: void, lhs: u32, rhs: u32) bool {
-    return lhs < rhs;
-}
-
-fn medianU64(scratch: []u64) u64 {
-    std.sort.heap(u64, scratch, {}, lessU64);
+fn median(comptime T: type, scratch: []T) T {
+    std.sort.heap(T, scratch, {}, lessThan(T));
     return scratch[scratch.len / 2];
 }
 
 fn p95U64(scratch: []u64) u64 {
-    std.sort.heap(u64, scratch, {}, lessU64);
+    std.sort.heap(u64, scratch, {}, lessThan(u64));
     const n = scratch.len;
     const idx = ((95 * n) + 99) / 100 - 1;
     return scratch[@min(idx, n - 1)];
-}
-
-fn medianUsize(scratch: []usize) usize {
-    std.sort.heap(usize, scratch, {}, lessUsize);
-    return scratch[scratch.len / 2];
-}
-
-fn medianU32(scratch: []u32) u32 {
-    std.sort.heap(u32, scratch, {}, lessU32);
-    return scratch[scratch.len / 2];
 }
 
 fn nowNs(io: std.Io) u64 {
@@ -250,12 +236,12 @@ fn summarizeObservations(
         .name = name,
         .bytes_per_run = bytes_per_run,
         .runs = runs,
-        .median_ns = medianU64(ns_values),
+        .median_ns = median(u64, ns_values),
         .p95_ns = p95U64(ns_values),
-        .median_alloc_count = medianUsize(alloc_count_values),
-        .median_alloc_bytes = medianUsize(alloc_bytes_values),
-        .median_peak_live_bytes = medianUsize(peak_live_values),
-        .median_max_queue_depth = medianU32(queue_depth_values),
+        .median_alloc_count = median(usize, alloc_count_values),
+        .median_alloc_bytes = median(usize, alloc_bytes_values),
+        .median_peak_live_bytes = median(usize, peak_live_values),
+        .median_max_queue_depth = median(u32, queue_depth_values),
     };
 }
 
