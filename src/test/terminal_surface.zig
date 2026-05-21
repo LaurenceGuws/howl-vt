@@ -274,15 +274,17 @@ test "surface source ack clears matching dirty generation" {
     var cols_end: [2]u16 = undefined;
 
     const before = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expect(before.snapshot_seq != 0);
     try std.testing.expect(before.dirty_generation != 0);
     try std.testing.expect(hasDirtyRows(&dirty_rows));
 
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalAckSurface(handle, before.dirty_generation),
+        ffi.terminalAckSurface(handle, before.snapshot_seq),
     );
 
     const after = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expectEqual(before.snapshot_seq, after.snapshot_seq);
     try std.testing.expectEqual(before.dirty_generation, after.dirty_generation);
     try std.testing.expectEqual(@as(u8, 0), dirty_rows[0]);
     try std.testing.expectEqual(@as(u8, 0), dirty_rows[1]);
@@ -297,6 +299,7 @@ test "stale surface source ack does not clear newer dirtiness" {
     var cols_start: [2]u16 = undefined;
     var cols_end: [2]u16 = undefined;
     const first = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expect(first.snapshot_seq != 0);
     try std.testing.expect(first.dirty_generation != 0);
 
     const fed = ffi.terminalFeed(handle, "A".ptr, 1);
@@ -304,14 +307,16 @@ test "stale surface source ack does not clear newer dirtiness" {
     try std.testing.expectEqual(@as(u8, 1), fed.state_changed);
 
     const second = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expect(second.snapshot_seq != first.snapshot_seq);
     try std.testing.expect(second.dirty_generation != first.dirty_generation);
 
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalAckSurface(handle, first.dirty_generation),
+        ffi.terminalAckSurface(handle, first.snapshot_seq),
     );
 
     const after_stale_ack = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expectEqual(second.snapshot_seq, after_stale_ack.snapshot_seq);
     try std.testing.expectEqual(second.dirty_generation, after_stale_ack.dirty_generation);
     try std.testing.expect(hasDirtyRows(&dirty_rows));
 }
@@ -336,12 +341,31 @@ test "older ack cannot retire newer published generation" {
 
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
-        ffi.terminalAckSurface(handle, second.dirty_generation),
+        ffi.terminalAckSurface(handle, second.snapshot_seq),
     );
 
     const after_old_ack = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expectEqual(third.dirty_generation, after_old_ack.dirty_generation);
     try std.testing.expect(hasDirtyRows(&dirty_rows));
+}
+
+test "scrollback projection change gets a new surface snapshot sequence" {
+    const handle = ffi.terminalInit(2, 2, 4);
+    defer ffi.terminalDeinit(handle);
+
+    const fed = ffi.terminalFeed(handle, "aa\r\nbb\r\ncc".ptr, 8);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), fed.status);
+
+    var cells: [4]ffi.FfiSurfaceCell = undefined;
+    var dirty_rows: [2]u8 = undefined;
+    var cols_start: [2]u16 = undefined;
+    var cols_end: [2]u16 = undefined;
+
+    const live = try copySurfaceOk(handle, 2, 2, &cells, &dirty_rows, &cols_start, &cols_end);
+    const scrolled = ffi.terminalCopySurface(handle, 1, &cells, cells.len, &dirty_rows, dirty_rows.len, &cols_start, cols_start.len, &cols_end, cols_end.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), scrolled.status);
+    try std.testing.expect(scrolled.snapshot_seq != live.snapshot_seq);
+    try std.testing.expectEqual(live.dirty_generation, scrolled.dirty_generation);
 }
 
 test "copy surface keeps metadata on invalid output pointers" {

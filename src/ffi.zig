@@ -111,6 +111,7 @@ pub const FfiSurfaceResult = extern struct {
     status: i32 = @intFromEnum(HowlVtCallStatus.failed),
     history_count: u64 = 0,
     scrollback_offset: u64 = 0,
+    snapshot_seq: u64 = 0,
     dirty_generation: u64 = 0,
     source: FfiSurface = .{
         .surface_cells = .{ .ptr = null, .len = 0 },
@@ -218,6 +219,7 @@ fn copyBytes(out: []u8, bytes: []const u8) FfiBytesResult {
 
 fn surfaceResult(
     view: screen_set.View,
+    snapshot_seq: u64,
     dirty_generation: u64,
     cells_ptr: ?[*]FfiSurfaceCell,
     dirty_rows_ptr: ?[*]u8,
@@ -228,6 +230,7 @@ fn surfaceResult(
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .history_count = view.history_count,
         .scrollback_offset = view.scrollback_offset,
+        .snapshot_seq = snapshot_seq,
         .dirty_generation = dirty_generation,
         .source = .{
             // VT keeps cell counts typed as u16/u32 until this shipped C ABI span-length seam.
@@ -287,9 +290,9 @@ pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
-pub fn terminalAckSurface(handle: VtHandle, dirty_generation: u64) callconv(.c) i32 {
+pub fn terminalAckSurface(handle: VtHandle, snapshot_seq: u64) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
-    return if (owned.ackSurface(dirty_generation))
+    return if (owned.ackSurface(snapshot_seq))
         @intFromEnum(HowlVtCallStatus.ok)
     else
         @intFromEnum(HowlVtCallStatus.invalid_argument);
@@ -297,12 +300,13 @@ pub fn terminalAckSurface(handle: VtHandle, dirty_generation: u64) callconv(.c) 
 
 pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiSurfaceResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const snapshot = owned.surfaceSnapshot(scrollback_offset);
+    const publication = owned.surfaceSnapshot(scrollback_offset);
+    const snapshot = publication.snapshot;
     const view = snapshot.view;
     const cell_count = surfaceCellCount(view.rows, view.cols);
     // The shipped VT ABI still accepts architecture-sized destination capacities.
     // Validate those seam values against typed VT counts before exposing writable slices.
-    var result = surfaceResult(view, owned.dirty_generation, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr);
+    var result = surfaceResult(view, publication.snapshot_seq, publication.dirty_generation, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr);
 
     if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < view.rows or cols_end_cap < view.rows) {
         result.status = @intFromEnum(HowlVtCallStatus.short_buffer);

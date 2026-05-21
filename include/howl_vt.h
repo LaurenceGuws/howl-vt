@@ -155,12 +155,13 @@ typedef struct {
   int32_t status;
   uint64_t history_count;
   uint64_t scrollback_offset;
+  uint64_t snapshot_seq;
   uint64_t dirty_generation;
   HowlVtSurface source;
 } HowlVtSurfaceResult;
 
 int32_t howl_vt_terminal_resize(HowlVtHandle handle, uint16_t rows, uint16_t cols);
-int32_t howl_vt_terminal_ack_surface(HowlVtHandle handle, uint64_t dirty_generation);
+int32_t howl_vt_terminal_ack_surface(HowlVtHandle handle, uint64_t snapshot_seq);
 HowlVtSurfaceResult howl_vt_terminal_copy_surface(HowlVtHandle handle, uint64_t scrollback_offset, HowlVtSurfaceCell *cells_ptr, size_t cells_cap, uint8_t *dirty_rows_ptr, size_t dirty_rows_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 
 /* -------------------------------------------------------------------------- */
