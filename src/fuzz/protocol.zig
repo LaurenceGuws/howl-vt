@@ -11,10 +11,31 @@ const CsiEvent = @FieldType(Event, "csi");
 const OscEvent = @FieldType(Event, "osc");
 const xterm_ctlseqs = @embedFile("assets/xterm-ctlseqs.ms");
 
+const IterationCount = u32;
+const OpCount = u32;
+const ChunkLen = u16;
+const CaseOffset = u32;
+const AssetOffset = u32;
+const TextLen = u8;
+
+fn byteCount(bytes: []const u8) CaseOffset {
+    std.debug.assert(bytes.len <= std.math.maxInt(CaseOffset));
+    return @intCast(bytes.len);
+}
+
+fn assetByteCount() AssetOffset {
+    std.debug.assert(xterm_ctlseqs.len <= std.math.maxInt(AssetOffset));
+    return @intCast(xterm_ctlseqs.len);
+}
+
+fn chunkLen(rand: std.Random, remaining: CaseOffset, max_chunk_len: ChunkLen) CaseOffset {
+    return 1 + rand.uintLessThan(CaseOffset, @min(remaining, @as(CaseOffset, max_chunk_len)));
+}
+
 pub const Options = struct {
-    iterations: usize = 32,
-    ops_per_case: usize = 64,
-    max_chunk_len: usize = 32,
+    iterations: IterationCount = 32,
+    ops_per_case: OpCount = 64,
+    max_chunk_len: ChunkLen = 32,
 };
 
 const FeedMode = enum {
@@ -166,7 +187,7 @@ const ParserOutput = struct {
     }
 };
 
-pub fn defaultOptions(events_max: ?usize) Options {
+pub fn defaultOptions(events_max: ?OpCount) Options {
     return .{
         .iterations = 32,
         .ops_per_case = events_max orelse 64,
@@ -203,7 +224,7 @@ pub fn runDeterminism(gpa: std.mem.Allocator, seed: u64, options: Options) !void
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
 
-    var case_index: usize = 0;
+    var case_index: IterationCount = 0;
     while (case_index < options.iterations) : (case_index += 1) {
         var bytes = std.ArrayList(u8).empty;
         defer bytes.deinit(gpa);
@@ -214,14 +235,14 @@ pub fn runDeterminism(gpa: std.mem.Allocator, seed: u64, options: Options) !void
     }
 }
 
-fn buildCase(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random, ops_per_case: usize) !void {
-    try bytes.ensureTotalCapacityPrecise(allocator, ops_per_case * 16);
+fn buildCase(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random, ops_per_case: OpCount) !void {
+    try bytes.ensureTotalCapacityPrecise(allocator, @intCast(@as(u64, ops_per_case) * 16));
 
-    var op_index: usize = 0;
+    var op_index: OpCount = 0;
     while (op_index < ops_per_case) : (op_index += 1) {
         const op: OpKind = rand.enumValue(OpKind);
         switch (op) {
-            .prose => try appendAssetText(allocator, bytes, rand, 1 + rand.uintLessThan(usize, 48)),
+            .prose => try appendAssetText(allocator, bytes, rand, 1 + rand.uintLessThan(TextLen, 48)),
             .csi => try appendCsi(allocator, bytes, rand),
             .osc => try appendStringCommand(allocator, bytes, rand, ']'),
             .dcs => try appendStringCommand(allocator, bytes, rand, 'P'),
@@ -237,10 +258,10 @@ fn buildCase(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.
 fn assertParserDeterminism(
     gpa: std.mem.Allocator,
     seed: u64,
-    case_index: usize,
+    case_index: IterationCount,
     bytes: []const u8,
     rand: std.Random,
-    max_chunk_len: usize,
+    max_chunk_len: ChunkLen,
 ) !void {
     var whole = try runParser(gpa, bytes, .whole_slice, rand, max_chunk_len);
     defer whole.deinit();
@@ -269,10 +290,10 @@ fn assertParserDeterminism(
 fn assertTerminalDeterminism(
     gpa: std.mem.Allocator,
     seed: u64,
-    case_index: usize,
+    case_index: IterationCount,
     bytes: []const u8,
     rand: std.Random,
-    max_chunk_len: usize,
+    max_chunk_len: ChunkLen,
 ) !void {
     const whole = try runTerminal(gpa, bytes, .whole_slice, rand, max_chunk_len);
     const bytewise = try runTerminal(gpa, bytes, .bytewise, rand, max_chunk_len);
@@ -296,7 +317,7 @@ fn runParser(
     bytes: []const u8,
     mode: FeedMode,
     rand: std.Random,
-    max_chunk_len: usize,
+    max_chunk_len: ChunkLen,
 ) !Harness {
     var harness = Harness.init(gpa);
     errdefer harness.deinit();
@@ -315,7 +336,7 @@ fn runTerminal(
     bytes: []const u8,
     mode: FeedMode,
     rand: std.Random,
-    max_chunk_len: usize,
+    max_chunk_len: ChunkLen,
 ) !VtDigest {
     var terminal = try Terminal.initWithCellsAndHistory(gpa, 24, 80, 256);
     defer terminal.deinit();
@@ -324,7 +345,7 @@ fn runTerminal(
     return digestTerminal(&terminal);
 }
 
-fn feedBytesToParser(parser: *parser_mod.Parser, output: *ParserOutput, harness: *Harness, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) error{OutOfMemory}!void {
+fn feedBytesToParser(parser: *parser_mod.Parser, output: *ParserOutput, harness: *Harness, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: ChunkLen) error{OutOfMemory}!void {
     switch (mode) {
         .whole_slice => {
             output.clear();
@@ -337,32 +358,34 @@ fn feedBytesToParser(parser: *parser_mod.Parser, output: *ParserOutput, harness:
             try harness.appendActions(output.actions.items);
         },
         .chunked => {
-            var offset: usize = 0;
-            while (offset < bytes.len) {
-                const remaining = bytes.len - offset;
-                const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
+            const bytes_len = byteCount(bytes);
+            var offset: CaseOffset = 0;
+            while (offset < bytes_len) {
+                const remaining = bytes_len - offset;
+                const count = chunkLen(rand, remaining, max_chunk_len);
                 output.clear();
-                for (bytes[offset..][0..chunk_len]) |byte| try output.appendPhases(parser.next(byte));
+                for (bytes[@intCast(offset)..][0..@intCast(count)]) |byte| try output.appendPhases(parser.next(byte));
                 try harness.appendActions(output.actions.items);
-                offset += chunk_len;
+                offset += count;
             }
         },
     }
 }
 
-fn feedBytesToTerminal(terminal: *Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: usize) error{ OutOfMemory, ParsedEventLimit, StringControlLimit }!void {
+fn feedBytesToTerminal(terminal: *Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: ChunkLen) error{ OutOfMemory, ParsedEventLimit, StringControlLimit }!void {
     var stream = terminal.vtStream();
     defer stream.deinit();
     switch (mode) {
         .whole_slice => try stream.nextSlice(bytes),
         .bytewise => for (bytes) |byte| try stream.next(byte),
         .chunked => {
-            var offset: usize = 0;
-            while (offset < bytes.len) {
-                const remaining = bytes.len - offset;
-                const chunk_len = 1 + rand.uintLessThan(usize, @min(remaining, max_chunk_len));
-                try stream.nextSlice(bytes[offset..][0..chunk_len]);
-                offset += chunk_len;
+            const bytes_len = byteCount(bytes);
+            var offset: CaseOffset = 0;
+            while (offset < bytes_len) {
+                const remaining = bytes_len - offset;
+                const count = chunkLen(rand, remaining, max_chunk_len);
+                try stream.nextSlice(bytes[@intCast(offset)..][0..@intCast(count)]);
+                offset += count;
             }
         },
     }
@@ -446,11 +469,11 @@ fn appendCsi(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.
 
     if (rand.boolean()) {
         const leaders = [_]u8{ '?', '>', '<', '=' };
-        try bytes.append(allocator, leaders[rand.uintLessThan(usize, leaders.len)]);
+        try bytes.append(allocator, leaders[@intCast(rand.uintLessThan(u8, @intCast(leaders.len)))]);
     }
 
-    const param_count = 1 + rand.uintLessThan(usize, 4);
-    var param_idx: usize = 0;
+    const param_count: u8 = 1 + rand.uintLessThan(u8, 4);
+    var param_idx: u8 = 0;
     while (param_idx < param_count) : (param_idx += 1) {
         const value = rand.uintLessThan(u16, 1000);
         var buf: [16]u8 = undefined;
@@ -463,21 +486,21 @@ fn appendCsi(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.
 
     if (rand.boolean()) {
         const intermediates = [_]u8{ ' ', '!', '"', '#', '$', '%', '&', '\'', '(', ')', '*', '+' };
-        const count = 1 + rand.uintLessThan(usize, 2);
-        var inter_idx: usize = 0;
+        const count: u8 = 1 + rand.uintLessThan(u8, 2);
+        var inter_idx: u8 = 0;
         while (inter_idx < count) : (inter_idx += 1) {
-            try bytes.append(allocator, intermediates[rand.uintLessThan(usize, intermediates.len)]);
+            try bytes.append(allocator, intermediates[@intCast(rand.uintLessThan(u8, @intCast(intermediates.len)))]);
         }
     }
 
     const finals = "@ABCDEFGHJKLMPSTX`abcdefghlmnprsuxt";
-    try bytes.append(allocator, finals[rand.uintLessThan(usize, finals.len)]);
+    try bytes.append(allocator, finals[@intCast(rand.uintLessThan(u8, @intCast(finals.len)))]);
 }
 
 fn appendStringCommand(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random, introducer: u8) !void {
     try bytes.append(allocator, 0x1B);
     try bytes.append(allocator, introducer);
-    try appendAssetPayload(allocator, bytes, rand, 1 + rand.uintLessThan(usize, 48));
+    try appendAssetPayload(allocator, bytes, rand, 1 + rand.uintLessThan(TextLen, 48));
     if (rand.boolean()) {
         try bytes.append(allocator, 0x07);
     } else {
@@ -488,16 +511,16 @@ fn appendStringCommand(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), 
 fn appendEscFinal(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random) !void {
     const finals = "78DEHM=>cnop";
     try bytes.append(allocator, 0x1B);
-    try bytes.append(allocator, finals[rand.uintLessThan(usize, finals.len)]);
+    try bytes.append(allocator, finals[@intCast(rand.uintLessThan(u8, @intCast(finals.len)))]);
 }
 
 fn appendUtf8Burst(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random) !void {
     const codepoints = [_]u21{ 0x00A9, 0x03BB, 0x2500, 0x2603, 0x20AC, 0x1F600 };
-    const count = 1 + rand.uintLessThan(usize, 6);
-    var idx: usize = 0;
+    const count: u8 = 1 + rand.uintLessThan(u8, 6);
+    var idx: u8 = 0;
     while (idx < count) : (idx += 1) {
         var buf: [4]u8 = undefined;
-        const cp = codepoints[rand.uintLessThan(usize, codepoints.len)];
+        const cp = codepoints[@intCast(rand.uintLessThan(u8, @intCast(codepoints.len)))];
         const len = try std.unicode.utf8Encode(cp, &buf);
         try bytes.appendSlice(allocator, buf[0..len]);
     }
@@ -505,27 +528,29 @@ fn appendUtf8Burst(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand
 
 fn appendControlBurst(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random) !void {
     const controls = [_]u8{ 0x00, 0x07, 0x08, 0x09, 0x0A, 0x0D, 0x7F };
-    const count = 1 + rand.uintLessThan(usize, 4);
-    var idx: usize = 0;
+    const count: u8 = 1 + rand.uintLessThan(u8, 4);
+    var idx: u8 = 0;
     while (idx < count) : (idx += 1) {
-        try bytes.append(allocator, controls[rand.uintLessThan(usize, controls.len)]);
+        try bytes.append(allocator, controls[@intCast(rand.uintLessThan(u8, @intCast(controls.len)))]);
     }
 }
 
-fn appendAssetText(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random, desired_len: usize) !void {
+fn appendAssetText(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random, desired_len: TextLen) !void {
     var idx = pickAssetStart(rand);
-    var written: usize = 0;
-    while (idx < xterm_ctlseqs.len and written < desired_len) : (idx += 1) {
-        try bytes.append(allocator, sanitizeTextByte(xterm_ctlseqs[idx]));
+    const asset_len = assetByteCount();
+    var written: TextLen = 0;
+    while (idx < asset_len and written < desired_len) : (idx += 1) {
+        try bytes.append(allocator, sanitizeTextByte(xterm_ctlseqs[@intCast(idx)]));
         written += 1;
     }
 }
 
-fn appendAssetPayload(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random, desired_len: usize) !void {
+fn appendAssetPayload(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random, desired_len: TextLen) !void {
     var idx = pickAssetStart(rand);
-    var written: usize = 0;
-    while (idx < xterm_ctlseqs.len and written < desired_len) : (idx += 1) {
-        const source = xterm_ctlseqs[idx];
+    const asset_len = assetByteCount();
+    var written: TextLen = 0;
+    while (idx < asset_len and written < desired_len) : (idx += 1) {
+        const source = xterm_ctlseqs[@intCast(idx)];
         const byte = switch (source) {
             0x1B => '.',
             0x00...0x1A, 0x1C...0x1F, 0x7F => ' ',
@@ -543,9 +568,10 @@ fn sanitizeTextByte(byte: u8) u8 {
     };
 }
 
-fn pickAssetStart(rand: std.Random) usize {
-    if (xterm_ctlseqs.len == 0) return 0;
-    return rand.uintLessThan(usize, xterm_ctlseqs.len);
+fn pickAssetStart(rand: std.Random) AssetOffset {
+    const len = assetByteCount();
+    if (len == 0) return 0;
+    return rand.uintLessThan(AssetOffset, len);
 }
 
 fn digestEvents(events: []const Event) u64 {

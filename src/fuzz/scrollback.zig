@@ -9,6 +9,9 @@ pub const ColsMin: u16 = 1;
 pub const RowsMax: u16 = 80;
 pub const ColsMax: u16 = 220;
 
+const BurstCount = u32;
+const ScenarioOpCount = u32;
+
 const OpKind = enum {
     write_burst,
     resize,
@@ -48,8 +51,8 @@ pub const PreservationOptions = struct {
     initial_rows: u16 = 24,
     initial_cols: u16 = 80,
     history_capacity: u16 = 4096,
-    warmup_bursts: usize = 320,
-    churn_ops: usize = 400,
+    warmup_bursts: BurstCount = 320,
+    churn_ops: ScenarioOpCount = 400,
 };
 
 pub const InvariantError = error{
@@ -59,14 +62,14 @@ pub const InvariantError = error{
     CursorColOutOfBounds,
 };
 
-pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: usize) !RunSummary {
+pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: ScenarioOpCount) !RunSummary {
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
 
     var vt = try Terminal.initWithCellsAndHistory(allocator, 24, 80, 4096);
     defer vt.deinit();
 
-    var i: usize = 0;
+    var i: ScenarioOpCount = 0;
     while (i < op_count) : (i += 1) {
         const op = pickOp(rand);
         switch (op) {
@@ -102,14 +105,14 @@ pub fn runCanonicalPreservation(
     );
     defer vt.deinit();
 
-    var line_idx: usize = 0;
+    var line_idx: BurstCount = 0;
     while (line_idx < options.warmup_bursts) : (line_idx += 1) {
         try applyWriteBurst(&vt, rand);
     }
 
     const before = try canonicalLogicalHash(allocator, &vt);
 
-    var churn_idx: usize = 0;
+    var churn_idx: ScenarioOpCount = 0;
     while (churn_idx < options.churn_ops) : (churn_idx += 1) {
         const pre_state = summarizeCoreState(&vt);
         const step = if (rand.boolean())
@@ -153,7 +156,7 @@ pub fn parseSeed(bytes: []const u8) !u64 {
     return std.fmt.parseUnsigned(u64, bytes, 10) catch return error.InvalidSeed;
 }
 
-pub fn defaultPreservationOptions(events_max: ?usize) PreservationOptions {
+pub fn defaultPreservationOptions(events_max: ?ScenarioOpCount) PreservationOptions {
     var options: PreservationOptions = .{};
     options.churn_ops = events_max orelse options.churn_ops;
     return options;
@@ -174,10 +177,10 @@ fn applyWriteBurst(vt: *Terminal, rand: std.Random) !void {
     while (line_idx < lines) : (line_idx += 1) {
         var buf: [96]u8 = undefined;
         const len = rand.uintLessThan(u8, 90) + 1;
-        var i: usize = 0;
+        var i: u8 = 0;
         while (i < len) : (i += 1) {
             const cp = "0123456789abcdefXYZ+-_=./[]{}()";
-            buf[i] = cp[rand.uintLessThan(usize, cp.len)];
+            buf[@intCast(i)] = cp[@intCast(rand.uintLessThan(u8, @intCast(cp.len)))];
         }
         try stream.nextSlice(buf[0..len]);
         try stream.next('\n');
@@ -400,8 +403,8 @@ fn visibleContentLen(s: anytype, row: u16, cols: u16) u16 {
 fn visibleRowWrapped(s: anytype, row: u16) bool {
     const wraps = s.row_wraps orelse return false;
     if (s.rows == 0 or row >= s.rows) return false;
-    const idx = (@as(usize, s.row_origin) + @as(usize, row)) % @as(usize, s.rows);
-    return wraps[idx];
+    const idx = (s.row_origin + row) % s.rows;
+    return wraps[@intCast(idx)];
 }
 
 fn historyRowWrapped(s: anytype, recency: u32) bool {
@@ -421,7 +424,7 @@ fn summarizeCoreState(vt: *const Terminal) CoreStateSummary {
     };
 }
 
-fn logBreakpoint(index: usize, before: CoreStateSummary, step: ChurnStep, expected: u64, actual: u64, after: CoreStateSummary) void {
+fn logBreakpoint(index: ScenarioOpCount, before: CoreStateSummary, step: ChurnStep, expected: u64, actual: u64, after: CoreStateSummary) void {
     std.debug.print(
         "scrollback fuzz breakpoint at step {d}\nstate before: rows={d} cols={d} cursor=({d},{d}) wrap_pending={} history={d}/{d}\n",
         .{

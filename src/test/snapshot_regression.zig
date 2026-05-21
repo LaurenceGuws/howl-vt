@@ -7,6 +7,11 @@ const stream_harness = @import("stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;
 const StreamHarness = stream_harness.Harness;
+
+fn gridCellCount(rows: u16, cols: u16) u32 {
+    return @as(u32, rows) * @as(u32, cols);
+}
+
 fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
     return screen_capture.Capture.captureFromScreen(
         terminal.allocator,
@@ -69,8 +74,8 @@ test "snapshot: determinism across identical state" {
     try std.testing.expectEqual(snap1.auto_wrap, snap2.auto_wrap);
 
     if (snap1.cells != null and snap2.cells != null) {
-        const size = @as(usize, snap1.rows) * @as(usize, snap1.cols);
-        try std.testing.expectEqualSlices(u21, snap1.cells.?[0..size], snap2.cells.?[0..size]);
+        const size = gridCellCount(snap1.rows, snap1.cols);
+        try std.testing.expectEqualSlices(u21, snap1.cells.?[0..@intCast(size)], snap2.cells.?[0..@intCast(size)]);
     }
 }
 
@@ -100,8 +105,8 @@ test "snapshot: split-feed equivalence" {
     try std.testing.expectEqual(snap_atomic.cursor_row, snap_chunked.cursor_row);
 
     if (snap_atomic.cells != null and snap_chunked.cells != null) {
-        const size = @as(usize, snap_atomic.rows) * @as(usize, snap_atomic.cols);
-        try std.testing.expectEqualSlices(u21, snap_atomic.cells.?[0..size], snap_chunked.cells.?[0..size]);
+        const size = gridCellCount(snap_atomic.rows, snap_atomic.cols);
+        try std.testing.expectEqualSlices(u21, snap_atomic.cells.?[0..@intCast(size)], snap_chunked.cells.?[0..@intCast(size)]);
     }
 }
 

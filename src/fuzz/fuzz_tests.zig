@@ -8,11 +8,18 @@ const Fuzzer = enum {
     scrollback,
 };
 
+const EventMax = u32;
+
 const CLIArgs = struct {
     fuzzer: Fuzzer,
     seed: ?u64 = null,
-    events_max: ?usize = null,
+    events_max: ?EventMax = null,
 };
+
+fn argCount(argv: []const [:0]const u8) u16 {
+    std.debug.assert(argv.len <= std.math.maxInt(u16));
+    return @intCast(argv.len);
+}
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
@@ -56,23 +63,24 @@ fn mainScrollback(gpa: std.mem.Allocator, cli_args: CLIArgs) !void {
 fn parseArgs(argv: []const [:0]const u8) !CLIArgs {
     var result = CLIArgs{ .fuzzer = .smoke };
     var positional: [2][]const u8 = undefined;
-    var positional_len: usize = 0;
+    var positional_len: u8 = 0;
+    const argc = argCount(argv);
 
-    var i: usize = 1;
-    while (i < argv.len) : (i += 1) {
-        const arg = argv[i];
+    var i: u16 = 1;
+    while (i < argc) : (i += 1) {
+        const arg = argv[@intCast(i)];
         if (std.mem.startsWith(u8, arg, "--events-max=")) {
-            result.events_max = std.fmt.parseUnsigned(usize, arg["--events-max=".len..], 10) catch return error.InvalidEventsMax;
+            result.events_max = std.fmt.parseUnsigned(EventMax, arg["--events-max=".len..], 10) catch return error.InvalidEventsMax;
             continue;
         }
         if (std.mem.eql(u8, arg, "--events-max")) {
             i += 1;
-            if (i >= argv.len) return error.MissingEventsMax;
-            result.events_max = std.fmt.parseUnsigned(usize, argv[i], 10) catch return error.InvalidEventsMax;
+            if (i >= argc) return error.MissingEventsMax;
+            result.events_max = std.fmt.parseUnsigned(EventMax, argv[@intCast(i)], 10) catch return error.InvalidEventsMax;
             continue;
         }
         if (positional_len >= positional.len) return error.InvalidArguments;
-        positional[positional_len] = arg;
+        positional[@intCast(positional_len)] = arg;
         positional_len += 1;
     }
 

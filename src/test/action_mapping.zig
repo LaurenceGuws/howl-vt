@@ -85,10 +85,10 @@ fn makeDcs(comptime payload: []const u8) Event {
     var intermediates = [_]u8{0} ** parser_mod.max_intermediates;
     var param_count: u8 = 0;
     var in_param = false;
-    var payload_start: usize = 0;
+    var payload_start: u32 = 0;
 
     while (payload_start < payload.len) : (payload_start += 1) {
-        const byte = payload[payload_start];
+        const byte = payload[@intCast(payload_start)];
         if (byte >= '0' and byte <= '9') {
             params[param_count] = params[param_count] * 10 + @as(i32, byte - '0');
             in_param = true;
@@ -100,14 +100,14 @@ fn makeDcs(comptime payload: []const u8) Event {
             continue;
         }
         if (byte >= 0x20 and byte <= 0x2F) {
-            intermediates[@min(@as(usize, param_count), intermediates.len - 1)] = byte;
+            intermediates[@min(param_count, @as(u8, intermediates.len - 1))] = byte;
             continue;
         }
         if (byte >= 0x40 and byte <= 0x7E) {
             if (in_param) param_count += 1;
             return Event{ .dcs = .{
                 .body = payload,
-                .payload = payload[payload_start + 1 ..],
+                .payload = payload[@intCast(payload_start + 1) ..],
                 .final = byte,
                 .params = params[0..],
                 .param_count = param_count,

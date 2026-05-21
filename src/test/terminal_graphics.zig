@@ -34,7 +34,7 @@ test "kitty graphics direct upload stores single base64 payload" {
 
     try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24;QUJD\x1b\\");
 
-    try std.testing.expectEqual(@as(usize, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 7), image.image_id);
     try std.testing.expectEqual(@as(u16, 24), image.format);
@@ -53,7 +53,7 @@ test "kitty graphics direct upload assembles chunked base64 payload" {
     try stream.nextSlice("\x1b_Gi=9,s=2,v=1,t=d,f=24,m=1;QU\x1b\\");
     try stream.nextSlice("\x1b_Gm=0;JD\x1b\\");
 
-    try std.testing.expectEqual(@as(usize, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 9), image.image_id);
     try std.testing.expectEqual(@as(u16, 24), image.format);
@@ -71,9 +71,9 @@ test "kitty graphics upload with same image id replaces image and placements" {
     try stream.nextSlice("\x1b_Ga=p,i=7,p=3,c=2,r=1\x1b\\");
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;BBBB\x1b\\");
 
-    try std.testing.expectEqual(@as(usize, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqualStrings("BBBB", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
-    try std.testing.expectEqual(@as(usize, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
 }
 
 test "kitty graphics place stores metadata and replies by image id" {
@@ -88,7 +88,7 @@ test "kitty graphics place stores metadata and replies by image id" {
     try stream.nextSlice("\x1b_Ga=p,i=7,p=3,c=4,r=2\x1b\\");
 
     try std.testing.expectEqualStrings("\x1b_Gi=7;OK\x1b\\", pendingOutput(&terminal));
-    try std.testing.expectEqual(@as(usize, 1), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
     const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 7), placement.image_id);
     try std.testing.expectEqual(@as(u32, 3), placement.placement_id);
@@ -121,8 +121,8 @@ test "kitty graphics delete by image id removes image and placements" {
     try stream.nextSlice("\x1b_Ga=p,i=7,p=3\x1b\\");
     try stream.nextSlice("\x1b_Ga=d,d=i,i=7\x1b\\");
 
-    try std.testing.expectEqual(@as(usize, 0), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqual(@as(usize, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
 }
 
 test "kitty graphics image numbers allocate ids and place newest image" {
@@ -136,7 +136,7 @@ test "kitty graphics image numbers allocate ids and place newest image" {
     try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;BBBB\x1b\\");
     try stream.nextSlice("\x1b_Ga=p,I=13,p=2\x1b\\");
 
-    try std.testing.expectEqual(@as(usize, 2), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqualStrings("\x1b_Gi=1,I=13;OK\x1b\\\x1b_Gi=2,I=13;OK\x1b\\\x1b_Gi=2;OK\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsPlacementAt(&terminal, 0).?.image_id);
 }
@@ -153,7 +153,7 @@ test "kitty graphics deletion selectors remove matching placements" {
     try stream.nextSlice("\x1b[5;10H\x1b_Ga=p,i=7,p=2,c=1,r=1,z=2\x1b\\");
     try stream.nextSlice("\x1b_Ga=d,d=p,x=4,y=2\x1b\\");
 
-    try std.testing.expectEqual(@as(usize, 1), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsPlacementAt(&terminal, 0).?.placement_id);
 }
 
@@ -167,7 +167,7 @@ test "kitty graphics animation frame upload stores frame metadata" {
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,p=3,s=1,v=1,t=d,f=24;CCCC\x1b\\");
 
-    try std.testing.expectEqual(@as(usize, 1), KittyState.graphicsFrameCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
     const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 7), frame.image_id);
     try std.testing.expectEqual(@as(u32, 3), frame.frame_number);
