@@ -330,6 +330,23 @@ test "report queries append pending host output" {
     try std.testing.expectEqualStrings("", pendingOutput(&terminal));
 }
 
+test "report query limit fails without partial pending output" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    const fill_len = HostState.pending_output_max_bytes - 3;
+    const fill = try allocator.alloc(u8, fill_len);
+    defer allocator.free(fill);
+    @memset(fill, 'x');
+    try HostState.appendPendingOutput(&terminal, fill);
+
+    try std.testing.expectError(error.ConsequenceLimit, stream.nextSlice("\x1b[5n"));
+    try std.testing.expectEqual(fill_len, pendingOutput(&terminal).len);
+}
+
 test "ENQ default answerback is empty and printable space remains text" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 2, 8);

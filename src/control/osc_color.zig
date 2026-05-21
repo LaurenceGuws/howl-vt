@@ -1,5 +1,6 @@
 const std = @import("std");
 const screen_mod = @import("../screen.zig");
+const host_state = @import("../host/state.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
@@ -41,44 +42,48 @@ pub const SpecialPaletteKey = enum(u3) {
     italic = 4,
 };
 
-pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) void {
+pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) host_state.ApplyError!void {
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |idx_text| {
         const value = parts.next() orelse break;
         const idx = std.fmt.parseUnsigned(u16, idx_text, 10) catch continue;
         if (std.mem.eql(u8, value, "?")) {
             const text = std.fmt.bufPrint(encode_buf, "\x1b]4;{d};", .{idx}) catch continue;
-            output.appendSlice(allocator, text) catch continue;
-            if (paletteTargetColor(colors.*, idx)) |color| appendColorOsc(allocator, output, color);
-            output.appendSlice(allocator, "\x1b\\") catch {};
+            const start = host_state.count32(output.items);
+            errdefer host_state.restorePendingOutput(output, start);
+            try host_state.appendOutput(output, allocator, text);
+            if (paletteTargetColor(colors.*, idx)) |color| try appendColorOsc(allocator, output, color);
+            try host_state.appendOutput(output, allocator, "\x1b\\");
         } else if (parseColor(value)) |color| {
             setPaletteTarget(colors, idx, color);
         }
     }
 }
 
-pub fn handleXtermSpecialPaletteControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) void {
+pub fn handleXtermSpecialPaletteControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) host_state.ApplyError!void {
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |idx_text| {
         const value = parts.next() orelse break;
         const idx = std.fmt.parseUnsigned(u3, idx_text, 10) catch continue;
         const text = std.fmt.bufPrint(encode_buf, "\x1b]5;{d};", .{idx}) catch continue;
         if (std.mem.eql(u8, value, "?")) {
-            output.appendSlice(allocator, text) catch continue;
-            if (colors.special_palette[idx]) |color| appendColorOsc(allocator, output, color);
-            output.appendSlice(allocator, "\x1b\\") catch {};
+            const start = host_state.count32(output.items);
+            errdefer host_state.restorePendingOutput(output, start);
+            try host_state.appendOutput(output, allocator, text);
+            if (colors.special_palette[idx]) |color| try appendColorOsc(allocator, output, color);
+            try host_state.appendOutput(output, allocator, "\x1b\\");
         } else if (parseColor(value)) |color| {
             colors.special_palette[idx] = color;
         }
     }
 }
 
-pub fn handleXtermDynamicColor(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, command: u16, payload: []const u8) void {
+pub fn handleXtermDynamicColor(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, command: u16, payload: []const u8) host_state.ApplyError!void {
     var key = dynamicKeyForCommand(command) orelse return;
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |value| {
         if (std.mem.eql(u8, value, "?")) {
-            appendXtermDynamicColorReply(allocator, output, encode_buf, colors.*, key);
+            try appendXtermDynamicColorReply(allocator, output, encode_buf, colors.*, key);
         } else if (parseColor(value)) |color| {
             setDynamicColor(colors, key, color);
         }
@@ -288,10 +293,10 @@ fn resetDynamicColor(colors: *State, key: DynamicKey) void {
     }
 }
 
-pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), color: Screen.Color) void {
+pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), color: Screen.Color) host_state.ApplyError!void {
     var buf: [32]u8 = undefined;
     const text = std.fmt.bufPrint(buf[0..], "rgb:{x:0>2}/{x:0>2}/{x:0>2}", .{ color.r, color.g, color.b }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
 pub fn setColorKey(colors: *State, key: []const u8, value: []const u8) void {
@@ -321,7 +326,7 @@ pub fn resetColorKey(colors: *State, key: []const u8) void {
     };
 }
 
-fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: State, key: SpecialKey) void {
+fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: State, key: SpecialKey) host_state.ApplyError!void {
     const osc: u8 = switch (key) {
         .foreground => 10,
         .background => 11,
@@ -335,16 +340,20 @@ fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.Array
         else => colors.foreground,
     };
     const text = std.fmt.bufPrint(encode_buf, "\x1b]{d};", .{osc}) catch return;
-    output.appendSlice(allocator, text) catch return;
-    appendColorOsc(allocator, output, color);
-    output.appendSlice(allocator, "\x1b\\") catch {};
+    const start = host_state.count32(output.items);
+    errdefer host_state.restorePendingOutput(output, start);
+    try host_state.appendOutput(output, allocator, text);
+    try appendColorOsc(allocator, output, color);
+    try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
-fn appendXtermDynamicColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: State, key: DynamicKey) void {
+fn appendXtermDynamicColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: State, key: DynamicKey) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b]{d};", .{dynamicCommandForKey(key)}) catch return;
-    output.appendSlice(allocator, text) catch return;
-    if (dynamicColor(colors, key)) |color| appendColorOsc(allocator, output, color);
-    output.appendSlice(allocator, "\x1b\\") catch {};
+    const start = host_state.count32(output.items);
+    errdefer host_state.restorePendingOutput(output, start);
+    try host_state.appendOutput(output, allocator, text);
+    if (dynamicColor(colors, key)) |color| try appendColorOsc(allocator, output, color);
+    try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
 fn setSpecialColor(colors: *State, key: SpecialKey, color: Grid.Color) void {

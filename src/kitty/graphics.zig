@@ -1,5 +1,6 @@
 const std = @import("std");
 const vocabulary = @import("../action/vocabulary.zig");
+const host_state = @import("../host/state.zig");
 
 const KittyGraphicsCommand = vocabulary.KittyGraphicsCommand;
 
@@ -401,10 +402,10 @@ pub const State = struct {
 
 fn appendReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, msg: []const u8) void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b_Gi={d};{s}\x1b\\", .{ image_id, msg }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    host_state.appendOutput(output, allocator, text) catch unreachable;
 }
 
 fn appendNumberReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, msg: []const u8) void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b_Gi={d},I={d};{s}\x1b\\", .{ image_id, image_number, msg }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    host_state.appendOutput(output, allocator, text) catch unreachable;
 }

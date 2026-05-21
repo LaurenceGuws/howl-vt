@@ -4,6 +4,7 @@ const action_mod = @import("../action.zig");
 const input = @import("../input.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
+const host_state = @import("../host/state.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
@@ -37,7 +38,7 @@ pub const RectChecksumRequest = struct {
     request_id: u16,
 };
 
-pub fn apply(vt: anytype, report_action: ReportAction) void {
+pub fn apply(vt: anytype, report_action: ReportAction) host_state.ApplyError!void {
     var scratch: input.Scratch = .{};
     const active = vt.screen_state.activeConst();
     const deccir_charset = vt.deccirCharsetState();
@@ -82,7 +83,7 @@ pub fn apply(vt: anytype, report_action: ReportAction) void {
         },
         .color_stack_depth = vt.kitty.global.color_stack.len,
     };
-    applyWithContext(ctx, report_action);
+    try applyWithContext(ctx, report_action);
 }
 
 const Context = struct {
@@ -100,42 +101,42 @@ const Context = struct {
     color_stack_depth: u8,
 };
 
-fn applyWithContext(ctx: Context, report_action: ReportAction) void {
+fn applyWithContext(ctx: Context, report_action: ReportAction) host_state.ApplyError!void {
     switch (report_action) {
-        .ansi_mode_query => |mode| appendAnsiModeReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, mode, TerminalModeNs.ansiModeStateForView(ctx.ansi_modes, mode)),
-        .modify_other_keys_query => appendModifyOtherKeysReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.modify_other_keys),
-        .key_format_query => |resource| if (isKeyFormatResource(resource)) appendKeyFormatReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, resource, ctx.key_format[resource]),
-        .dec_mode_query => |mode| appendDecModeReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, mode, TerminalModeNs.decModeStateForView(ctx.dec_modes, mode)),
-        .dcs_request_status => |request| appendDecrqssReply(ctx, request),
-        .dcs_request_termcap => appendTermcapInvalidReport(ctx.allocator, ctx.pending_output),
-        .dcs_request_resource => |request| appendResourceInvalidReport(ctx.allocator, ctx.pending_output, request),
-        .device_status_report => appendPendingOutput(ctx, "\x1b[0n"),
-        .dec_device_status_report => |param| LocatorNs.appendDeviceStatusReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, param),
-        .cursor_position_report => appendCursorPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
-        .dec_cursor_position_report => appendDecCursorPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
-        .primary_device_attributes => appendPendingOutput(ctx, "\x1b[?62;22c"),
-        .secondary_device_attributes => appendPendingOutput(ctx, "\x1b[>1;10;0c"),
-        .tertiary_device_attributes => appendPendingOutput(ctx, "\x1bP!|00000000\x1b\\"),
-        .xtversion => appendXtVersionReport(ctx.allocator, ctx.pending_output),
-        .xttitlepos => appendTitleStackPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, 0, 0),
+        .ansi_mode_query => |mode| try appendAnsiModeReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, mode, TerminalModeNs.ansiModeStateForView(ctx.ansi_modes, mode)),
+        .modify_other_keys_query => try appendModifyOtherKeysReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.modify_other_keys),
+        .key_format_query => |resource| if (isKeyFormatResource(resource)) try appendKeyFormatReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, resource, ctx.key_format[resource]),
+        .dec_mode_query => |mode| try appendDecModeReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, mode, TerminalModeNs.decModeStateForView(ctx.dec_modes, mode)),
+        .dcs_request_status => |request| try appendDecrqssReply(ctx, request),
+        .dcs_request_termcap => try appendTermcapInvalidReport(ctx.allocator, ctx.pending_output),
+        .dcs_request_resource => |request| try appendResourceInvalidReport(ctx.allocator, ctx.pending_output, request),
+        .device_status_report => try appendPendingOutput(ctx, "\x1b[0n"),
+        .dec_device_status_report => |param| try LocatorNs.appendDeviceStatusReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, param),
+        .cursor_position_report => try appendCursorPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
+        .dec_cursor_position_report => try appendDecCursorPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
+        .primary_device_attributes => try appendPendingOutput(ctx, "\x1b[?62;22c"),
+        .secondary_device_attributes => try appendPendingOutput(ctx, "\x1b[>1;10;0c"),
+        .tertiary_device_attributes => try appendPendingOutput(ctx, "\x1bP!|00000000\x1b\\"),
+        .xtversion => try appendXtVersionReport(ctx.allocator, ctx.pending_output),
+        .xttitlepos => try appendTitleStackPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, 0, 0),
         .xtchecksum => |flags| ctx.xtchecksum_flags.* = flags,
-        .rect_checksum_request => |req| appendRectChecksumReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, .{ .request_id = req.request_id }, computeRectChecksum(ctx.active_screen, ctx.xtchecksum_flags.*, req.page, req.area)),
-        .selected_graphic_rendition_report => |area| appendSelectedGraphicRenditionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.active_screen, area),
+        .rect_checksum_request => |req| try appendRectChecksumReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, .{ .request_id = req.request_id }, computeRectChecksum(ctx.active_screen, ctx.xtchecksum_flags.*, req.page, req.area)),
+        .selected_graphic_rendition_report => |area| try appendSelectedGraphicRenditionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.active_screen, area),
         .presentation_state_report => |kind| {
             switch (kind) {
-                1 => appendCursorInformationReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, .{
+                1 => try appendCursorInformationReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, .{
                     .cursor = ctx.render_view,
                     .current_attrs = ctx.active_screen.current_attrs,
                     .origin_mode = ctx.active_screen.origin_mode,
                     .wrap_pending = ctx.active_screen.wrap_pending,
                 }, ctx.deccir_charset),
-                2 => appendTabStopReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.active_screen),
-                else => appendPendingOutput(ctx, "\x1bP0$u\x1b\\"),
+                2 => try appendTabStopReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.active_screen),
+                else => try appendPendingOutput(ctx, "\x1bP0$u\x1b\\"),
             }
         },
-        .displayed_extent_report => appendDisplayedExtentReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
-        .parameters_report => |kind| appendTerminalParametersReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, kind),
-        .xtreportcolors => appendColorStackReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.color_stack_depth),
+        .displayed_extent_report => try appendDisplayedExtentReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
+        .parameters_report => |kind| try appendTerminalParametersReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, kind),
+        .xtreportcolors => try appendColorStackReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.color_stack_depth),
     }
 }
 
@@ -143,18 +144,20 @@ fn isKeyFormatResource(resource: u8) bool {
     return resource <= 4 or resource == 6 or resource == 7;
 }
 
-fn appendPendingOutput(ctx: Context, bytes: []const u8) void {
-    ctx.pending_output.appendSlice(ctx.allocator, bytes) catch {};
+fn appendPendingOutput(ctx: Context, bytes: []const u8) host_state.ApplyError!void {
+    try host_state.appendOutput(ctx.pending_output, ctx.allocator, bytes);
 }
 
-fn appendDecrqssReply(ctx: Context, request: []const u8) void {
+fn appendDecrqssReply(ctx: Context, request: []const u8) host_state.ApplyError!void {
     if (decrqssPayload(ctx, request)) |payload| {
-        ctx.pending_output.appendSlice(ctx.allocator, "\x1bP1$r") catch return;
-        ctx.pending_output.appendSlice(ctx.allocator, payload) catch return;
-        ctx.pending_output.appendSlice(ctx.allocator, "\x1b\\") catch return;
+        const start = host_state.count32(ctx.pending_output.items);
+        errdefer host_state.restorePendingOutput(ctx.pending_output, start);
+        try host_state.appendOutput(ctx.pending_output, ctx.allocator, "\x1bP1$r");
+        try host_state.appendOutput(ctx.pending_output, ctx.allocator, payload);
+        try host_state.appendOutput(ctx.pending_output, ctx.allocator, "\x1b\\");
         return;
     }
-    appendPendingOutput(ctx, "\x1bP0$r\x1b\\");
+    try appendPendingOutput(ctx, "\x1bP0$r\x1b\\");
 }
 
 fn decrqssPayload(ctx: Context, request: []const u8) ?[]const u8 {
@@ -187,61 +190,63 @@ fn decrqssPayload(ctx: Context, request: []const u8) ?[]const u8 {
     return null;
 }
 
-pub fn appendModifyOtherKeysReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, value: i8) void {
+pub fn appendModifyOtherKeysReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, value: i8) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b[>4;{d}m", .{value}) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendKeyFormatReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, resource: u8, value: u16) void {
+pub fn appendKeyFormatReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, resource: u8, value: u16) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b[>{d};{d}f", .{ resource, value }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendXtVersionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) void {
-    output.appendSlice(allocator, "\x1bP>|" ++ xtversion_text ++ "\x1b\\") catch {};
+pub fn appendXtVersionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) host_state.ApplyError!void {
+    try host_state.appendOutput(output, allocator, "\x1bP>|" ++ xtversion_text ++ "\x1b\\");
 }
 
-pub fn appendTermcapInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) void {
-    output.appendSlice(allocator, "\x1bP0+r\x1b\\") catch {};
+pub fn appendTermcapInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) host_state.ApplyError!void {
+    try host_state.appendOutput(output, allocator, "\x1bP0+r\x1b\\");
 }
 
-pub fn appendResourceInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), request: []const u8) void {
-    output.appendSlice(allocator, "\x1bP0+R") catch return;
-    output.appendSlice(allocator, request) catch return;
-    output.appendSlice(allocator, "\x1b\\") catch {};
+pub fn appendResourceInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), request: []const u8) host_state.ApplyError!void {
+    const start = host_state.count32(output.items);
+    errdefer host_state.restorePendingOutput(output, start);
+    try host_state.appendOutput(output, allocator, "\x1bP0+R");
+    try host_state.appendOutput(output, allocator, request);
+    try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
-pub fn appendTitleStackPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, current: u16, max: u16) void {
+pub fn appendTitleStackPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, current: u16, max: u16) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}#S", .{ current, max }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) void {
+pub fn appendCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}R", .{ render_view.cursor_row + 1, render_view.cursor_col + 1 }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendDecCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) void {
+pub fn appendDecCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b[?{d};{d}R", .{ render_view.cursor_row + 1, render_view.cursor_col + 1 }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendDecModeReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, mode: u16, state: u8) void {
+pub fn appendDecModeReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, mode: u16, state: u8) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b[?{d};{d}$y", .{ mode, state }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendAnsiModeReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, mode: u16, state: u8) void {
+pub fn appendAnsiModeReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, mode: u16, state: u8) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}$y", .{ mode, state }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendColorStackReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, depth: u8) void {
+pub fn appendColorStackReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, depth: u8) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}#Q", .{ depth, depth }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendCursorInformationReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, view: CursorInformationView, charset: CharsetReportView) void {
+pub fn appendCursorInformationReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, view: CursorInformationView, charset: CharsetReportView) host_state.ApplyError!void {
     const attrs = view.current_attrs;
 
     var srend_bits: u8 = 0;
@@ -272,58 +277,62 @@ pub fn appendCursorInformationReport(allocator: std.mem.Allocator, output: *std.
             charset.g1_designation,
         },
     ) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid) void {
-    output.appendSlice(allocator, "\x1bP2$u") catch return;
+pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid) host_state.ApplyError!void {
+    const start = host_state.count32(output.items);
+    errdefer host_state.restorePendingOutput(output, start);
+    try host_state.appendOutput(output, allocator, "\x1bP2$u");
     var first = true;
     var col: u16 = 0;
     while (col < screen.cols) : (col += 1) {
         if (!screen.tabStopAt(col)) continue;
-        if (!first) output.appendSlice(allocator, "/") catch return;
+        if (!first) try host_state.appendOutput(output, allocator, "/");
         first = false;
         const text = std.fmt.bufPrint(encode_buf, "{d}", .{col + 1}) catch return;
-        output.appendSlice(allocator, text) catch return;
+        try host_state.appendOutput(output, allocator, text);
     }
-    output.appendSlice(allocator, "\x1b\\") catch {};
+    try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
-pub fn appendDisplayedExtentReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) void {
+pub fn appendDisplayedExtentReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d};1;1;1\"w", .{ render_view.rows, render_view.cols }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendTerminalParametersReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, kind: u16) void {
+pub fn appendTerminalParametersReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, kind: u16) host_state.ApplyError!void {
     if (kind > 1) return;
     const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};1;1;128;128;1;0x", .{kind + 2}) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, req: RectChecksumRequest, checksum: u16) void {
+pub fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, req: RectChecksumRequest, checksum: u16) host_state.ApplyError!void {
     const text = std.fmt.bufPrint(encode_buf, "\x1bP{d}!~{X:0>4}\x1b\\", .{ req.request_id, checksum }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid, area: action_mod.SemanticEvent.RectArea) void {
+pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid, area: action_mod.SemanticEvent.RectArea) host_state.ApplyError!void {
     const common = commonAttrsForRect(screen, area) orelse {
-        output.appendSlice(allocator, "\x1b[0m") catch {};
+        try host_state.appendOutput(output, allocator, "\x1b[0m");
         return;
     };
 
-    output.appendSlice(allocator, "\x1b[") catch return;
+    const start = host_state.count32(output.items);
+    errdefer host_state.restorePendingOutput(output, start);
+    try host_state.appendOutput(output, allocator, "\x1b[");
     var first = true;
-    appendSgrParam(allocator, output, &first, "0");
-    if (common.bold) appendSgrParam(allocator, output, &first, "1");
-    if (common.underline) appendSgrParam(allocator, output, &first, underlineStyleParam(common.underline_style));
-    if (common.blink) appendSgrParam(allocator, output, &first, "5");
-    if (common.reverse) appendSgrParam(allocator, output, &first, "7");
-    appendColorParam(allocator, output, encode_buf, &first, true, common.fg, Grid.default_cell_attrs.fg);
-    appendColorParam(allocator, output, encode_buf, &first, false, common.bg, Grid.default_cell_attrs.bg);
+    try appendSgrParam(allocator, output, &first, "0");
+    if (common.bold) try appendSgrParam(allocator, output, &first, "1");
+    if (common.underline) try appendSgrParam(allocator, output, &first, underlineStyleParam(common.underline_style));
+    if (common.blink) try appendSgrParam(allocator, output, &first, "5");
+    if (common.reverse) try appendSgrParam(allocator, output, &first, "7");
+    try appendColorParam(allocator, output, encode_buf, &first, true, common.fg, Grid.default_cell_attrs.fg);
+    try appendColorParam(allocator, output, encode_buf, &first, false, common.bg, Grid.default_cell_attrs.bg);
     if (common.underline and !colorEq(common.underline_color, Grid.default_underline_color)) {
-        appendExtendedColorParam(allocator, output, encode_buf, &first, 58, common.underline_color);
+        try appendExtendedColorParam(allocator, output, encode_buf, &first, 58, common.underline_color);
     }
-    output.appendSlice(allocator, "m") catch {};
+    try host_state.appendOutput(output, allocator, "m");
 }
 
 pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: action_mod.SemanticEvent.RectArea) u16 {
@@ -399,10 +408,10 @@ fn commonAttrsForRect(screen: *const Grid, area: action_mod.SemanticEvent.RectAr
     return common;
 }
 
-fn appendSgrParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), first: *bool, text: []const u8) void {
-    if (!first.*) output.appendSlice(allocator, ";") catch return;
+fn appendSgrParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), first: *bool, text: []const u8) host_state.ApplyError!void {
+    if (!first.*) try host_state.appendOutput(output, allocator, ";");
     first.* = false;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
 fn underlineStyleParam(style: Grid.UnderlineStyle) []const u8 {
@@ -415,7 +424,7 @@ fn underlineStyleParam(style: Grid.UnderlineStyle) []const u8 {
     };
 }
 
-fn appendColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, is_fg: bool, color: Grid.Color, default_color: Grid.Color) void {
+fn appendColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, is_fg: bool, color: Grid.Color, default_color: Grid.Color) host_state.ApplyError!void {
     if (colorEq(color, default_color)) return;
     if (ansi16Index(color)) |idx| {
         const code: u16 = if (is_fg)
@@ -423,20 +432,20 @@ fn appendColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), en
         else
             (if (idx < 8) 40 + idx else 100 + (idx - 8));
         const text = std.fmt.bufPrint(encode_buf, "{d}", .{code}) catch return;
-        appendSgrParam(allocator, output, first, text);
+        try appendSgrParam(allocator, output, first, text);
         return;
     }
-    appendExtendedColorParam(allocator, output, encode_buf, first, if (is_fg) 38 else 48, color);
+    try appendExtendedColorParam(allocator, output, encode_buf, first, if (is_fg) 38 else 48, color);
 }
 
-fn appendExtendedColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, prefix: u8, color: Grid.Color) void {
+fn appendExtendedColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, prefix: u8, color: Grid.Color) host_state.ApplyError!void {
     if (indexed256Index(color)) |idx| {
         const text = std.fmt.bufPrint(encode_buf, "{d};5;{d}", .{ prefix, idx }) catch return;
-        appendSgrParam(allocator, output, first, text);
+        try appendSgrParam(allocator, output, first, text);
         return;
     }
     const text = std.fmt.bufPrint(encode_buf, "{d};2;{d};{d};{d}", .{ prefix, color.r, color.g, color.b }) catch return;
-    appendSgrParam(allocator, output, first, text);
+    try appendSgrParam(allocator, output, first, text);
 }
 
 fn ansi16Index(color: Grid.Color) ?u8 {

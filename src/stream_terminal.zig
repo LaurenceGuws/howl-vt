@@ -3,8 +3,10 @@ const route = @import("action/route.zig");
 const parsed_events = @import("parser/events.zig");
 const parser_mod = @import("parser/main.zig");
 const terminal_mod = @import("terminal.zig");
+const host_state = @import("host/state.zig");
 
 pub const FeedError = error{
+    ConsequenceLimit,
     OutOfMemory,
     ParsedEventLimit,
     StringControlLimit,
@@ -42,14 +44,14 @@ pub const Handler = struct {
     }
 
     pub fn event(self: *Handler, event_: parsed_events.Event) void {
-        _ = self.eventEffect(null, event_);
+        _ = self.eventEffect(null, event_) catch unreachable;
     }
 
     pub fn eventEffect(
         self: *Handler,
         current: ?[]const u8,
         event_: parsed_events.Event,
-    ) route.EventEffect {
+    ) host_state.ApplyError!route.EventEffect {
         return route.apply(self.terminal, current, event_);
     }
 
@@ -94,7 +96,7 @@ pub const Stream = struct {
         state.events.finishBatch(batch);
 
         while (state.events.front()) |event_| {
-            const effect = handler.eventEffect(latest_title, event_);
+            const effect = try handler.eventEffect(latest_title, event_);
             state_changed = state_changed or effect.changed;
             latest_title = effect.latest_title;
             state.events.popFront();

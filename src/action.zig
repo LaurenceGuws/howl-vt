@@ -10,6 +10,7 @@ pub const ReportAction = vocabulary.ReportAction;
 pub const ModeAction = vocabulary.ModeAction;
 pub const KittyAction = vocabulary.KittyAction;
 pub const HostAction = vocabulary.HostAction;
+pub const DcsPayload = vocabulary.DcsPayload;
 pub const DcsPayloadKind = vocabulary.DcsPayloadKind;
 pub const KittyGraphicsCommand = vocabulary.KittyGraphicsCommand;
 pub const KittyNotificationCommand = vocabulary.KittyNotificationCommand;

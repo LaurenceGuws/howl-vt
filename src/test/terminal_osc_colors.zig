@@ -23,6 +23,30 @@ test "OSC title updates terminal title under stream path" {
     try std.testing.expectEqualStrings("My Title", terminal.host.current_title.?);
 }
 
+test "OSC title limit fails without dropping current title" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b]0;ok\x07");
+
+    const title_len = HostState.title_max_bytes + 1;
+    const payload = try allocator.alloc(u8, title_len);
+    defer allocator.free(payload);
+    @memset(payload, 'a');
+
+    var seq = std.ArrayList(u8).empty;
+    defer seq.deinit(allocator);
+    try seq.appendSlice(allocator, "\x1b]0;");
+    try seq.appendSlice(allocator, payload);
+    try seq.appendSlice(allocator, "\x07");
+
+    try std.testing.expectError(error.ConsequenceLimit, stream.nextSlice(seq.items));
+    try std.testing.expectEqualStrings("ok", terminal.host.current_title.?);
+}
+
 test "OSC 8 assigns link ids and preserves URI lookup" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

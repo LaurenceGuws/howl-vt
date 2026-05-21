@@ -169,6 +169,9 @@ sequenceDiagram
 - `howl_vt_terminal_feed` must fail instead of silently dropping parser work when parser-owned
   buffering cannot accept more bytes within its explicit bound, or when parser-owned buffering or
   parser-event materialization cannot allocate.
+- `howl_vt_terminal_feed` must also fail instead of partially mutating VT-owned host consequences
+  when retained title, clipboard, hyperlink, DCS, or pending-output state cannot fit within the
+  owning bound or cannot allocate.
 - `HowlVtSurface` and `HowlVtSurfaceResult` are the primary renderer-facing VT-surface contract types for visible surface cells, cursor state, and dirtiness truth.
 - `howl_vt_terminal_copy_surface` is the bounded VT-surface export call.
 - `howl_vt_terminal_copy_surface` exports VT-owned visible state and dirty spans only. It must not
@@ -222,6 +225,9 @@ sequenceDiagram
 - Parent routing control flow must stay centralized in one owner.
 - Screen mutation owners must not know protocol families.
 - `Terminal` boundary owners must keep host consequences explicit.
+- Host consequence retention stays explicitly bounded: title is capped at 1024 bytes, hyperlink and
+  metadata retention stays within the parser metadata ceiling, and pending output plus retained
+  large payload consequences stay within the parser large-OSC ceiling.
 - Hosts should depend on the C ABI, not deep parser/screen leaves.
 - Bounded feed and throughput policy must stay explicit at the owning seam. If a limit changes,
   lock the current Ghostty or Alacritty reference, the reason Howl keeps that value today, and proof

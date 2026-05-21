@@ -1,5 +1,6 @@
 const std = @import("std");
 const osc_color = @import("../control/osc_color.zig");
+const host_state = @import("../host/state.zig");
 
 const OscColor = osc_color;
 
@@ -30,7 +31,7 @@ pub fn popState(stack: *Stack, colors: *State, depth: *u16) void {
     depth.* = stack.len;
 }
 
-pub fn handleKittyControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), payload: []const u8) void {
+pub fn handleKittyControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), payload: []const u8) host_state.ApplyError!void {
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |raw_part| {
         const part = std.mem.trim(u8, raw_part, " \t\r\n");
@@ -40,7 +41,7 @@ pub fn handleKittyControl(allocator: std.mem.Allocator, colors: *State, output: 
             const key = std.mem.trim(u8, part[0..pos], " \t");
             const value = std.mem.trim(u8, part[pos + 1 ..], " \t");
             if (std.mem.eql(u8, value, "?")) {
-                appendKittyQueryReply(allocator, output, key, colors.*);
+                try appendKittyQueryReply(allocator, output, key, colors.*);
             } else {
                 OscColor.setColorKey(colors, key, value);
             }
@@ -49,16 +50,18 @@ pub fn handleKittyControl(allocator: std.mem.Allocator, colors: *State, output: 
         }
     }
 }
-fn appendKittyQueryReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), key: []const u8, colors: State) void {
-    output.appendSlice(allocator, "\x1b]21;") catch return;
-    output.appendSlice(allocator, key) catch return;
-    output.appendSlice(allocator, "=") catch return;
+fn appendKittyQueryReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), key: []const u8, colors: State) host_state.ApplyError!void {
+    const start = host_state.count32(output.items);
+    errdefer host_state.restorePendingOutput(output, start);
+    try host_state.appendOutput(output, allocator, "\x1b]21;");
+    try host_state.appendOutput(output, allocator, key);
+    try host_state.appendOutput(output, allocator, "=");
     if (OscColor.colorForKey(colors, key)) |color| {
-        OscColor.appendColorOsc(allocator, output, color);
+        try OscColor.appendColorOsc(allocator, output, color);
     } else if (OscColor.isKnownColorKey(key)) {
         // Empty value means dynamic/undefined for Kitty color control.
     } else {
-        output.appendSlice(allocator, "?") catch return;
+        try host_state.appendOutput(output, allocator, "?");
     }
-    output.appendSlice(allocator, "\x1b\\") catch {};
+    try host_state.appendOutput(output, allocator, "\x1b\\");
 }

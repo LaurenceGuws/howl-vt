@@ -1,4 +1,5 @@
 const std = @import("std");
+const host_state = @import("../host/state.zig");
 
 pub const Stack = struct {
     flags: u32 = 0,
@@ -32,8 +33,8 @@ pub const Stack = struct {
         if (remaining > 0) self.flags = 0;
     }
 
-    pub fn appendReport(self: *const Stack, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8) void {
+    pub fn appendReport(self: *const Stack, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8) host_state.ApplyError!void {
         const text = std.fmt.bufPrint(encode_buf, "\x1b[?{d}u", .{self.flags}) catch return;
-        output.appendSlice(allocator, text) catch {};
+        try host_state.appendOutput(output, allocator, text);
     }
 };

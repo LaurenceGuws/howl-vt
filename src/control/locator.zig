@@ -1,6 +1,7 @@
 const std = @import("std");
 const input_mod = @import("../input.zig");
 const action_mod = @import("../action.zig");
+const host_state = @import("../host/state.zig");
 
 const Input = input_mod;
 const Action = action_mod;
@@ -70,22 +71,22 @@ pub fn setEvents(state: *State, modes: []const u16) void {
     };
 }
 
-pub fn appendReportForRequest(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, param: u16) void {
+pub fn appendReportForRequest(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, param: u16) host_state.ApplyError!void {
     if (param > 1) return;
     if (state.mode == .disabled or state.last_row == null or state.last_col == null) {
-        output.appendSlice(allocator, "\x1b[0&w") catch {};
+        try host_state.appendOutput(output, allocator, "\x1b[0&w");
         return;
     }
-    appendReport(state, allocator, output, encode_buf, 1, state.last_buttons_down, state.last_row.?, state.last_col.?);
+    try appendReport(state, allocator, output, encode_buf, 1, state.last_buttons_down, state.last_row.?, state.last_col.?);
 }
 
-pub fn appendDeviceStatusReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, param: u16) void {
+pub fn appendDeviceStatusReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, param: u16) host_state.ApplyError!void {
     const text = switch (param) {
         55 => std.fmt.bufPrint(encode_buf, "\x1b[?50n", .{}) catch return,
         56 => std.fmt.bufPrint(encode_buf, "\x1b[?57;1n", .{}) catch return,
         else => return,
     };
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
 }
 
 pub fn handleMouseEvent(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event: Input.MouseEvent) void {
@@ -102,7 +103,7 @@ pub fn handleMouseEvent(state: *State, allocator: std.mem.Allocator, output: *st
 
     if (state.filter_rect) |rect| {
         if (row < rect.top or row > rect.bottom or col < rect.left or col > rect.right) {
-            appendReport(state, allocator, output, encode_buf, 10, event.buttons_down, row, col);
+            appendReport(state, allocator, output, encode_buf, 10, event.buttons_down, row, col) catch unreachable;
             state.filter_rect = null;
             return;
         }
@@ -123,14 +124,14 @@ pub fn handleMouseEvent(state: *State, allocator: std.mem.Allocator, output: *st
         } else null,
         else => null,
     };
-    if (event_code) |code| appendReport(state, allocator, output, encode_buf, code, event.buttons_down, row, col);
+    if (event_code) |code| appendReport(state, allocator, output, encode_buf, code, event.buttons_down, row, col) catch unreachable;
 }
 
-fn appendReport(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event_code: u16, buttons_down: u8, row: u16, col: u16) void {
+fn appendReport(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event_code: u16, buttons_down: u8, row: u16, col: u16) host_state.ApplyError!void {
     const button_mask = buttonsMask(buttons_down);
     const coords = coordinates(state, row, col);
     const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d};{d};{d};0&w", .{ event_code, button_mask, coords.row + 1, coords.col + 1 }) catch return;
-    output.appendSlice(allocator, text) catch {};
+    try host_state.appendOutput(output, allocator, text);
     if (state.mode == .one_shot) state.mode = .disabled;
 }
 

@@ -1,4 +1,5 @@
 const std = @import("std");
+const host_state = @import("../host/state.zig");
 
 pub const Shape = enum {
     alias,
@@ -66,22 +67,24 @@ pub const Stack = struct {
         if (self.len > 0) self.len -= 1;
     }
 
-    pub fn appendQuery(self: *const Stack, allocator: std.mem.Allocator, output: *std.ArrayList(u8), names: []const u8) void {
-        output.appendSlice(allocator, "\x1b]22;") catch return;
+    pub fn appendQuery(self: *const Stack, allocator: std.mem.Allocator, output: *std.ArrayList(u8), names: []const u8) host_state.ApplyError!void {
+        const start = host_state.count32(output.items);
+        errdefer host_state.restorePendingOutput(output, start);
+        try host_state.appendOutput(output, allocator, "\x1b]22;");
         var first = true;
         var parts = std.mem.splitScalar(u8, names, ',');
         while (parts.next()) |name| {
-            if (!first) output.appendSlice(allocator, ",") catch return;
+            if (!first) try host_state.appendOutput(output, allocator, ",");
             first = false;
             if (std.mem.eql(u8, name, "__current__")) {
-                output.appendSlice(allocator, self.currentName()) catch return;
+                try host_state.appendOutput(output, allocator, self.currentName());
             } else if (std.mem.eql(u8, name, "__default__") or std.mem.eql(u8, name, "__grabbed__")) {
-                output.appendSlice(allocator, "default") catch return;
+                try host_state.appendOutput(output, allocator, "default");
             } else {
-                output.appendSlice(allocator, if (parseShapeName(name) != null) "1" else "0") catch return;
+                try host_state.appendOutput(output, allocator, if (parseShapeName(name) != null) "1" else "0");
             }
         }
-        output.appendSlice(allocator, "\x1b\\") catch {};
+        try host_state.appendOutput(output, allocator, "\x1b\\");
     }
 };
 

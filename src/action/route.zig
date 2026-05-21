@@ -10,6 +10,7 @@ const csi = @import("../xterm/csi.zig");
 const dcs = @import("../xterm/dcs.zig");
 const esc = @import("../xterm/esc.zig");
 const osc = @import("../xterm/osc.zig");
+const host_state = @import("../host/state.zig");
 
 /// Parsed-event alias for action mapping.
 const Event = parsed_events.Event;
@@ -46,7 +47,7 @@ pub fn process(event: Event) ?SemanticEvent {
     }
 }
 
-pub fn apply(vt: anytype, current: ?[]const u8, event: Event) EventEffect {
+pub fn apply(vt: anytype, current: ?[]const u8, event: Event) host_state.ApplyError!EventEffect {
     switch (event) {
         .invoke_charset => |slot| {
             vt.gl_index = slot;
@@ -64,7 +65,7 @@ pub fn apply(vt: anytype, current: ?[]const u8, event: Event) EventEffect {
             .title, .raw_title => {
                 return .{
                     .changed = true,
-                    .latest_title = host_apply.setCurrentTitle(vt, current, osc_event.payload()),
+                    .latest_title = try host_apply.setCurrentTitle(vt, current, osc_event.payload()),
                 };
             },
             else => {},
@@ -73,21 +74,21 @@ pub fn apply(vt: anytype, current: ?[]const u8, event: Event) EventEffect {
     }
 
     const semantic = process(event) orelse return .{ .changed = false, .latest_title = current };
-    applySemantic(vt, semantic);
+    try applySemantic(vt, semantic);
     return .{ .changed = true, .latest_title = current };
 }
 
-fn applySemantic(vt: anytype, event: SemanticEvent) void {
+fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!void {
     if (event == .reset_screen) {
         applyResetScreen(vt);
         return;
     }
     if (reportAction(event)) |report_action| {
-        report_apply.apply(vt, report_action);
+        try report_apply.apply(vt, report_action);
         return;
     }
     if (kittyAction(event)) |kitty_action| {
-        kitty_apply.apply(vt, kitty_action);
+        try kitty_apply.apply(vt, kitty_action);
         return;
     }
     if (modeAction(event)) |mode_action| {
@@ -95,7 +96,7 @@ fn applySemantic(vt: anytype, event: SemanticEvent) void {
         return;
     }
     if (hostAction(event)) |host_action| {
-        host_apply.apply(vt, host_action);
+        try host_apply.apply(vt, host_action);
         return;
     }
     const screen_event = screenAction(event) orelse unreachable;

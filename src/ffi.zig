@@ -264,7 +264,7 @@ pub fn terminalFeed(handle: VtHandle, ptr: ?[*]const u8, len: usize) callconv(.c
     const bytes = bytesIn(ptr, len) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     const summary = owned.feed(bytes) catch |err| {
         return .{ .status = @intFromEnum(switch (err) {
-            error.ParsedEventLimit, error.StringControlLimit => HowlVtCallStatus.limit_reached,
+            error.ConsequenceLimit, error.ParsedEventLimit, error.StringControlLimit => HowlVtCallStatus.limit_reached,
             error.OutOfMemory => HowlVtCallStatus.failed,
         }) };
     };
