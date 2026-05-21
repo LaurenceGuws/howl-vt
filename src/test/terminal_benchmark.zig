@@ -3,15 +3,17 @@ const terminal_mod = @import("../terminal.zig");
 const pty_feed_record = @import("pty_feed_record.zig");
 const stream_harness = @import("stream_harness.zig");
 
+const RunCount = u32;
+
 const WorkloadResult = struct {
     name: []const u8,
-    bytes_per_run: usize,
-    runs: usize,
+    bytes_per_run: u64,
+    runs: RunCount,
     median_ns: u64,
     p95_ns: u64,
-    median_alloc_count: usize,
-    median_alloc_bytes: usize,
-    median_peak_live_bytes: usize,
+    median_alloc_count: u64,
+    median_alloc_bytes: u64,
+    median_peak_live_bytes: u64,
 
     fn throughputMibS(self: WorkloadResult) f64 {
         const median_seconds = @as(f64, @floatFromInt(self.median_ns)) / 1_000_000_000.0;
@@ -23,7 +25,7 @@ const WorkloadResult = struct {
 const OutputFormat = enum { ndjson, text };
 
 const Options = struct {
-    runs: usize = 10,
+    runs: RunCount = 10,
     format: OutputFormat = .ndjson,
 };
 
@@ -41,23 +43,23 @@ const ReplayFixture = struct {
 
 const RunObservation = struct {
     ns: u64,
-    alloc_count: usize,
-    alloc_bytes: usize,
-    peak_live_bytes: usize,
+    alloc_count: u64,
+    alloc_bytes: u64,
+    peak_live_bytes: u64,
 };
 
 const StreamHarness = stream_harness.Harness;
 
 const CountingAllocator = struct {
     child: std.mem.Allocator,
-    alloc_count: usize = 0,
-    alloc_bytes: usize = 0,
-    live_bytes: usize = 0,
-    peak_live_bytes: usize = 0,
-    window_alloc_count: usize = 0,
-    window_alloc_bytes: usize = 0,
-    window_peak_live_bytes: usize = 0,
-    window_live_baseline: usize = 0,
+    alloc_count: u64 = 0,
+    alloc_bytes: u64 = 0,
+    live_bytes: u64 = 0,
+    peak_live_bytes: u64 = 0,
+    window_alloc_count: u64 = 0,
+    window_alloc_bytes: u64 = 0,
+    window_peak_live_bytes: u64 = 0,
+    window_live_baseline: u64 = 0,
 
     const vtable = std.mem.Allocator.VTable{
         .alloc = alloc,
@@ -88,6 +90,8 @@ const CountingAllocator = struct {
         }
     }
 
+    // std.mem.Allocator owns architecture-sized lengths and return addresses at this callback seam.
+    // Translate them immediately into fixed-width benchmark counters below.
     fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
         const self: *CountingAllocator = @ptrCast(@alignCast(ctx));
         const ptr = self.child.rawAlloc(len, alignment, ret_addr) orelse return null;
@@ -165,11 +169,20 @@ fn nowNs(io: std.Io) u64 {
     return @intCast(std.Io.Clock.awake.now(io).toNanoseconds());
 }
 
+fn count32(items: anytype) u32 {
+    std.debug.assert(items.len <= std.math.maxInt(u32));
+    return @intCast(items.len);
+}
+
+fn count64(items: anytype) u64 {
+    return count32(items);
+}
+
 fn buildAsciiFixture(allocator: std.mem.Allocator) ![]u8 {
     var out = try std.ArrayList(u8).initCapacity(allocator, 700_000);
     defer out.deinit(allocator);
     const line = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    var i: usize = 0;
+    var i: u32 = 0;
     while (i < 10_000) : (i += 1) {
         try out.appendSlice(allocator, line);
         try out.appendSlice(allocator, "\r\n");
@@ -183,7 +196,7 @@ fn buildCsiFixture(allocator: std.mem.Allocator) ![]u8 {
     var out = try std.ArrayList(u8).initCapacity(allocator, 120_000);
     defer out.deinit(allocator);
     const block = "\x1b[H\x1b[2J\x1b[31mHELLO\x1b[0m\x1b[5C\x1b[2K\x1b[1;1H";
-    var i: usize = 0;
+    var i: u32 = 0;
     while (i < 2_000) : (i += 1) {
         try out.appendSlice(allocator, block);
     }
@@ -196,7 +209,7 @@ fn buildUnicodeFixture(allocator: std.mem.Allocator) ![]u8 {
     var out = try std.ArrayList(u8).initCapacity(allocator, 500_000);
     defer out.deinit(allocator);
     const line = "ASCII Привет 你好 Καλημέρα مرحبا 😀 λ─│┌┐└┘\r\n";
-    var i: usize = 0;
+    var i: u32 = 0;
     while (i < 10_000) : (i += 1) {
         try out.appendSlice(allocator, line);
     }
@@ -208,7 +221,7 @@ fn buildUnicodeFixture(allocator: std.mem.Allocator) ![]u8 {
 fn buildScrollFixture(allocator: std.mem.Allocator) ![]u8 {
     var out = try std.ArrayList(u8).initCapacity(allocator, 80_000);
     defer out.deinit(allocator);
-    var i: usize = 0;
+    var i: u32 = 0;
     while (i < 20_000) : (i += 1) {
         try out.appendSlice(allocator, "X\r\n");
     }
@@ -220,17 +233,17 @@ fn buildScrollFixture(allocator: std.mem.Allocator) ![]u8 {
 fn summarizeObservations(
     base_allocator: std.mem.Allocator,
     name: []const u8,
-    bytes_per_run: usize,
+    bytes_per_run: u64,
     observations: []const RunObservation,
 ) !WorkloadResult {
-    const runs = observations.len;
-    const ns_values = try base_allocator.alloc(u64, runs);
+    const runs = count32(observations);
+    const ns_values = try base_allocator.alloc(u64, @intCast(runs));
     defer base_allocator.free(ns_values);
-    const alloc_count_values = try base_allocator.alloc(usize, runs);
+    const alloc_count_values = try base_allocator.alloc(u64, @intCast(runs));
     defer base_allocator.free(alloc_count_values);
-    const alloc_bytes_values = try base_allocator.alloc(usize, runs);
+    const alloc_bytes_values = try base_allocator.alloc(u64, @intCast(runs));
     defer base_allocator.free(alloc_bytes_values);
-    const peak_live_values = try base_allocator.alloc(usize, runs);
+    const peak_live_values = try base_allocator.alloc(u64, @intCast(runs));
     defer base_allocator.free(peak_live_values);
 
     for (observations, 0..) |obs, idx| {
@@ -246,9 +259,9 @@ fn summarizeObservations(
         .runs = runs,
         .median_ns = median(u64, ns_values),
         .p95_ns = p95U64(ns_values),
-        .median_alloc_count = median(usize, alloc_count_values),
-        .median_alloc_bytes = median(usize, alloc_bytes_values),
-        .median_peak_live_bytes = median(usize, peak_live_values),
+        .median_alloc_count = median(u64, alloc_count_values),
+        .median_alloc_bytes = median(u64, alloc_bytes_values),
+        .median_peak_live_bytes = median(u64, peak_live_values),
     };
 }
 
@@ -260,11 +273,11 @@ fn runStreamWorkload(
     rows: u16,
     cols: u16,
     history_capacity: u16,
-    runs: usize,
+    runs: RunCount,
 ) !WorkloadResult {
-    const observations = try base_allocator.alloc(RunObservation, runs);
+    const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
     defer base_allocator.free(observations);
-    var i: usize = 0;
+    var i: RunCount = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
         var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
@@ -280,27 +293,27 @@ fn runStreamWorkload(
         const start = nowNs(io);
         try stream.nextSlice(fixture);
         const end = nowNs(io);
-        observations[i] = .{
+        observations[@intCast(i)] = .{
             .ns = end - start,
             .alloc_count = counting.window_alloc_count,
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
         };
     }
-    return try summarizeObservations(base_allocator, name, fixture.len, observations);
+    return try summarizeObservations(base_allocator, name, count64(fixture), observations);
 }
 
 fn runMixedInteractiveWorkload(
     io: std.Io,
     base_allocator: std.mem.Allocator,
-    runs: usize,
+    runs: RunCount,
 ) !WorkloadResult {
-    const bursts_per_run: usize = 5_000;
+    const bursts_per_run: RunCount = 5_000;
     const burst = "abc\x1b[D\x1b[C\r";
-    const observations = try base_allocator.alloc(RunObservation, runs);
+    const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
     defer base_allocator.free(observations);
 
-    var i: usize = 0;
+    var i: RunCount = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
         var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
@@ -314,32 +327,32 @@ fn runMixedInteractiveWorkload(
         defer stream.deinit();
         counting.resetWindow();
         const start = nowNs(io);
-        var j: usize = 0;
+        var j: RunCount = 0;
         while (j < bursts_per_run) : (j += 1) {
             try stream.nextSlice(burst);
         }
         const end = nowNs(io);
-        observations[i] = .{
+        observations[@intCast(i)] = .{
             .ns = end - start,
             .alloc_count = counting.window_alloc_count,
             .alloc_bytes = counting.window_alloc_bytes,
             .peak_live_bytes = counting.window_peak_live_bytes,
         };
     }
-    return try summarizeObservations(base_allocator, "mixed_interactive", bursts_per_run * burst.len, observations);
+    return try summarizeObservations(base_allocator, "mixed_interactive", @as(u64, bursts_per_run) * count64(burst), observations);
 }
 
 fn runSnapshotWorkload(
     io: std.Io,
     base_allocator: std.mem.Allocator,
     fixture: []const u8,
-    runs: usize,
+    runs: RunCount,
 ) !WorkloadResult {
-    const snapshot_calls_per_run: usize = 200;
-    const observations = try base_allocator.alloc(RunObservation, runs);
+    const snapshot_calls_per_run: RunCount = 200;
+    const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
     defer base_allocator.free(observations);
 
-    var i: usize = 0;
+    var i: RunCount = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
         var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
@@ -354,7 +367,7 @@ fn runSnapshotWorkload(
         try stream.nextSlice(fixture);
         counting.resetWindow();
         const start = nowNs(io);
-        var j: usize = 0;
+        var j: RunCount = 0;
         while (j < snapshot_calls_per_run) : (j += 1) {
             var snap = try @import("screen_capture.zig").Capture.captureFromScreen(
                 terminal.allocator,
@@ -364,7 +377,7 @@ fn runSnapshotWorkload(
             snap.deinit();
         }
         const end = nowNs(io);
-        observations[i] = .{
+        observations[@intCast(i)] = .{
             .ns = end - start,
             .alloc_count = counting.window_alloc_count,
             .alloc_bytes = counting.window_alloc_bytes,
@@ -544,7 +557,7 @@ fn parseOptions(args_vector: std.process.Args.Vector) !Options {
             options.format = .text;
         } else if (std.mem.eql(u8, arg, "--runs")) {
             const value = args.next() orelse return error.InvalidArgs;
-            options.runs = @max(try std.fmt.parseInt(usize, value, 10), 1);
+            options.runs = @max(try std.fmt.parseInt(RunCount, value, 10), 1);
         } else {
             usage();
             return error.InvalidArgs;
