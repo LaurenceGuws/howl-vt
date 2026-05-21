@@ -94,7 +94,17 @@ fn copySurfaceOk(
     try std.testing.expectEqual(@intFromEnum(ffi.HowlVtCallStatus.ok), result.status);
     try std.testing.expectEqual(rows, result.source.rows);
     try std.testing.expectEqual(cols, result.source.cols);
+    try std.testing.expectEqual(rows, @as(u16, @intCast(result.source.dirty_rows.len)));
+    try std.testing.expectEqual(rows, @as(u16, @intCast(result.source.dirty_cols_start.len)));
+    try std.testing.expectEqual(rows, @as(u16, @intCast(result.source.dirty_cols_end.len)));
     return result;
+}
+
+fn hasDirtyRows(rows: []const u8) bool {
+    for (rows) |dirty| {
+        if (dirty != 0) return true;
+    }
+    return false;
 }
 
 test "Terminal public methods remain available" {
@@ -264,8 +274,8 @@ test "surface source ack clears matching dirty generation" {
     var cols_end: [2]u16 = undefined;
 
     const before = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
-    try std.testing.expect(before.dirty_needed > 0);
     try std.testing.expect(before.dirty_generation != 0);
+    try std.testing.expect(hasDirtyRows(&dirty_rows));
 
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)),
@@ -273,7 +283,7 @@ test "surface source ack clears matching dirty generation" {
     );
 
     const after = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
-    try std.testing.expectEqual(@as(u64, 0), after.dirty_needed);
+    try std.testing.expectEqual(before.dirty_generation, after.dirty_generation);
     try std.testing.expectEqual(@as(u8, 0), dirty_rows[0]);
     try std.testing.expectEqual(@as(u8, 0), dirty_rows[1]);
 }
@@ -303,7 +313,7 @@ test "stale surface source ack does not clear newer dirtiness" {
 
     const after_stale_ack = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expectEqual(second.dirty_generation, after_stale_ack.dirty_generation);
-    try std.testing.expect(after_stale_ack.dirty_needed > 0);
+    try std.testing.expect(hasDirtyRows(&dirty_rows));
 }
 
 test "older ack cannot retire newer published generation" {
@@ -331,7 +341,7 @@ test "older ack cannot retire newer published generation" {
 
     const after_old_ack = try copySurfaceOk(handle, 2, 4, &cells, &dirty_rows, &cols_start, &cols_end);
     try std.testing.expectEqual(third.dirty_generation, after_old_ack.dirty_generation);
-    try std.testing.expect(after_old_ack.dirty_needed > 0);
+    try std.testing.expect(hasDirtyRows(&dirty_rows));
 }
 
 test "copy surface keeps metadata on invalid output pointers" {

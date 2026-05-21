@@ -155,7 +155,6 @@ typedef struct {
   int32_t status;
   uint64_t history_count;
   uint64_t scrollback_offset;
-  uint64_t dirty_needed;
   uint64_t dirty_generation;
   HowlVtSurface source;
 } HowlVtSurfaceResult;

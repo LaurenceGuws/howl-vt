@@ -174,6 +174,8 @@ sequenceDiagram
 - `howl_vt_terminal_copy_surface` exports VT-owned visible state and dirty spans only. It must not
   act as a courier for host-fed damage classification or scroll effects that the VT owner does not
   own.
+- `howl_vt_terminal_copy_surface` exports dirty-column bounds in per-row shape so hosts can forward
+  VT dirty truth without reclassifying or expanding it for render.
 - `howl_vt_terminal_ack_surface` is the only public dirty-retirement path. It retires dirty truth only for the captured dirty generation that the renderer-facing VT-surface copy reported.
 - `howl_vt_terminal_copy_pending_output`, `howl_vt_terminal_clear_pending_output`, and `howl_vt_terminal_drain_pending_clipboard` cover host-facing protocol consequences.
 - `howl_vt_terminal_encode_key`, `howl_vt_terminal_encode_focus`, `howl_vt_terminal_encode_mouse`, and `howl_vt_terminal_encode_paste` cover host input encoding against current terminal modes.

@@ -74,7 +74,6 @@ pub const View = struct {
 pub const SurfaceSnapshot = struct {
     view: View,
     dirty: ?Screen.DirtyRows,
-    dirty_needed: u16,
 };
 
 pub const Set = struct {
@@ -197,7 +196,6 @@ pub fn surfaceSnapshot(screen_state: *const Set, scrollback_offset: u64) Surface
     return .{
         .view = view,
         .dirty = dirty,
-        .dirty_needed = dirtyNeeded(dirty),
     };
 }
 
@@ -224,9 +222,13 @@ pub fn copyDirtyRows(
     dirty: ?Screen.DirtyRows,
 ) void {
     @memset(dirty_rows_out, 0);
+    @memset(cols_start, 0);
+    @memset(cols_end, 0);
     if (dirty) |value| {
-        @memcpy(cols_start, value.dirty_cols_start[@intCast(value.start_row)..@intCast(value.end_row + 1)]);
-        @memcpy(cols_end, value.dirty_cols_end[@intCast(value.start_row)..@intCast(value.end_row + 1)]);
+        std.debug.assert(value.dirty_cols_start.len == dirty_rows_out.len);
+        std.debug.assert(value.dirty_cols_end.len == dirty_rows_out.len);
+        @memcpy(cols_start, value.dirty_cols_start);
+        @memcpy(cols_end, value.dirty_cols_end);
         var dirty_row = value.start_row;
         while (dirty_row <= value.end_row and dirty_row < dirty_rows_out.len) : (dirty_row += 1) {
             dirty_rows_out[dirty_row] = 1;
@@ -254,11 +256,4 @@ pub fn historyCapacity(screen_state: *const Set) u16 {
 
 fn rowIndex(row: u16) u32 {
     return row;
-}
-
-fn dirtyNeeded(dirty: ?Screen.DirtyRows) u16 {
-    const value = dirty orelse return 0;
-    const needed: u17 = @as(u17, value.end_row) - @as(u17, value.start_row) + 1;
-    std.debug.assert(needed <= std.math.maxInt(u16));
-    return @intCast(needed);
 }

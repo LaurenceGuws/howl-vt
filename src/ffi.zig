@@ -111,7 +111,6 @@ pub const FfiSurfaceResult = extern struct {
     status: i32 = @intFromEnum(HowlVtCallStatus.failed),
     history_count: u64 = 0,
     scrollback_offset: u64 = 0,
-    dirty_needed: u64 = 0,
     dirty_generation: u64 = 0,
     source: FfiSurface = .{
         .surface_cells = .{ .ptr = null, .len = 0 },
@@ -220,18 +219,15 @@ fn copyBytes(out: []u8, bytes: []const u8) FfiBytesResult {
 fn surfaceResult(
     view: screen_set.View,
     dirty_generation: u64,
-    dirty_needed: u16,
     cells_ptr: ?[*]FfiSurfaceCell,
     dirty_rows_ptr: ?[*]u8,
     cols_start_ptr: ?[*]u16,
     cols_end_ptr: ?[*]u16,
 ) FfiSurfaceResult {
-    std.debug.assert(dirty_needed <= view.rows);
     return .{
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .history_count = view.history_count,
         .scrollback_offset = view.scrollback_offset,
-        .dirty_needed = dirty_needed,
         .dirty_generation = dirty_generation,
         .source = .{
             // VT keeps cell counts typed as u16/u32 until this shipped C ABI span-length seam.
@@ -241,8 +237,8 @@ fn surfaceResult(
             .scroll_row = view.start,
             .is_alternate_screen = boolByte(view.is_alternate_screen),
             .dirty_rows = .{ .ptr = dirty_rows_ptr, .len = view.rows },
-            .dirty_cols_start = .{ .ptr = cols_start_ptr, .len = @intCast(dirty_needed) },
-            .dirty_cols_end = .{ .ptr = cols_end_ptr, .len = @intCast(dirty_needed) },
+            .dirty_cols_start = .{ .ptr = cols_start_ptr, .len = view.rows },
+            .dirty_cols_end = .{ .ptr = cols_end_ptr, .len = view.rows },
             .cursor = .{ .row = view.cursor_row, .col = view.cursor_col, .visible = boolByte(view.cursor_visible), .shape = @intFromEnum(view.cursor_shape) },
         },
     };
@@ -304,13 +300,11 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
     const snapshot = owned.surfaceSnapshot(scrollback_offset);
     const view = snapshot.view;
     const cell_count = surfaceCellCount(view.rows, view.cols);
-    const dirty_needed: u16 = snapshot.dirty_needed;
     // The shipped VT ABI still accepts architecture-sized destination capacities.
     // Validate those seam values against typed VT counts before exposing writable slices.
-    std.debug.assert(dirty_needed <= view.rows);
-    var result = surfaceResult(view, owned.dirty_generation, snapshot.dirty_needed, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr);
+    var result = surfaceResult(view, owned.dirty_generation, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr);
 
-    if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < dirty_needed or cols_end_cap < dirty_needed) {
+    if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < view.rows or cols_end_cap < view.rows) {
         result.status = @intFromEnum(HowlVtCallStatus.short_buffer);
         return result;
     }
@@ -323,21 +317,17 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
         result.status = @intFromEnum(HowlVtCallStatus.invalid_argument);
         return result;
     };
-    var cols_start: []u16 = &.{};
-    var cols_end: []u16 = &.{};
-    if (dirty_needed != 0) {
-        cols_start = if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else {
-            result.status = @intFromEnum(HowlVtCallStatus.invalid_argument);
-            return result;
-        };
-        cols_end = if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else {
-            result.status = @intFromEnum(HowlVtCallStatus.invalid_argument);
-            return result;
-        };
-    }
+    const cols_start = if (cols_start_ptr) |ptr| ptr[0..cols_start_cap] else {
+        result.status = @intFromEnum(HowlVtCallStatus.invalid_argument);
+        return result;
+    };
+    const cols_end = if (cols_end_ptr) |ptr| ptr[0..cols_end_cap] else {
+        result.status = @intFromEnum(HowlVtCallStatus.invalid_argument);
+        return result;
+    };
 
     screen_set.copyViewCells(view, cells_out, cellOut);
-    screen_set.copyDirtyRows(dirty_rows_out[0..view.rows], cols_start, cols_end, snapshot.dirty);
+    screen_set.copyDirtyRows(dirty_rows_out[0..view.rows], cols_start[0..view.rows], cols_end[0..view.rows], snapshot.dirty);
 
     return result;
 }
