@@ -8,18 +8,21 @@ const screen_set = @import("screen_set.zig");
 const selection = @import("selection.zig");
 const terminal = @import("terminal.zig");
 
-pub const Action = action;
-pub const Ffi = ffi;
-pub const Input = input;
 pub const Parser = parser;
 pub const ParserOwnedActions = parser_owned_actions;
-pub const Screen = screen;
 pub const ScreenSet = screen_set;
-pub const Selection = selection;
 pub const Terminal = terminal.Terminal;
-pub const TerminalStream = terminal.Terminal.Stream;
 
 test {
+    _ = action;
+    _ = ffi;
+    _ = input;
+    _ = parser;
+    _ = parser_owned_actions;
+    _ = screen;
+    _ = screen_set;
+    _ = selection;
+    _ = terminal;
     _ = @import("test/action_mapping.zig");
     _ = @import("test/parser_csi_behavior.zig");
     _ = @import("test/parser_behavior.zig");

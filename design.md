@@ -186,7 +186,8 @@ sequenceDiagram
 - `src/terminal.zig` may expose temporary migration APIs for tests, fuzzers, and internal seams only when they describe true owned state or mutation.
 - `src/terminal.zig` may expose repo-local `vtHandler` and `vtStream` entrypoints for direct VT
   application against the terminal owner.
-- Root `src/*.zig` files are now curated exports or ABI roots only.
+- Root `src/*.zig` files are curated test, fuzz, or ABI roots only. They must not act as broad
+  namespace bags that preserve a fake host-facing Zig integration story.
 - Repo-local callers should consume visible terminal state through `src/screen.zig` and `src/screen_set.zig`, not through terminal facade methods.
 - Repo-local callers should use `vtStream` for live terminal mutation. Parser byte-step proof and
   parser-event proof still live under `src/parser.zig` and `src/action.zig`.
