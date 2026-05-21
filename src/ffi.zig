@@ -70,16 +70,19 @@ pub const FfiFeedResult = extern struct {
 
 pub const FfiSurfaceCellSpan = extern struct {
     ptr: [*c]const FfiSurfaceCell,
+    // The shipped C ABI owns architecture-sized span lengths at this boundary.
     len: usize,
 };
 
 pub const FfiByteSpan = extern struct {
     ptr: [*c]const u8,
+    // The shipped C ABI owns architecture-sized span lengths at this boundary.
     len: usize,
 };
 
 pub const FfiU16Span = extern struct {
     ptr: [*c]const u16,
+    // The shipped C ABI owns architecture-sized span lengths at this boundary.
     len: usize,
 };
 
@@ -135,6 +138,7 @@ fn vtFromHandle(handle: VtHandle) ?*terminal.Terminal {
 }
 
 fn bytesIn(ptr: ?[*]const u8, len: usize) ?[]const u8 {
+    // C callers provide architecture-sized byte counts; translate immediately to a Zig slice.
     if (ptr == null) {
         if (len != 0) return null;
         return &.{};
@@ -143,6 +147,7 @@ fn bytesIn(ptr: ?[*]const u8, len: usize) ?[]const u8 {
 }
 
 fn bytesOut(ptr: ?[*]u8, len: usize) ?[]u8 {
+    // C callers provide architecture-sized buffer capacities; translate immediately to a Zig slice.
     if (ptr == null) {
         if (len != 0) return null;
         return &.{};
@@ -298,8 +303,8 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const snapshot = owned.surfaceSnapshot(scrollback_offset);
     const view = snapshot.view;
-    const cell_count = @as(usize, view.rows) * @as(usize, view.cols);
-    const dirty_needed: usize = snapshot.dirty_needed;
+    const cell_count: u32 = @as(u32, view.rows) * @as(u32, view.cols);
+    const dirty_needed: u16 = snapshot.dirty_needed;
     var result = surfaceResult(view, owned.dirty_generation, snapshot.dirty_needed, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr, full_damage, scroll_up_rows);
 
     if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < dirty_needed or cols_end_cap < dirty_needed) {
