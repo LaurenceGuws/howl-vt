@@ -132,6 +132,10 @@ fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
 }
 
+fn surfaceCellCount(rows: u16, cols: u16) u32 {
+    return @as(u32, rows) * @as(u32, cols);
+}
+
 fn vtFromHandle(handle: VtHandle) ?*terminal.Terminal {
     const owned = handle orelse return null;
     return @ptrCast(@alignCast(owned));
@@ -226,6 +230,7 @@ fn surfaceResult(
     full_damage: u8,
     scroll_up_rows: u16,
 ) FfiSurfaceResult {
+    std.debug.assert(dirty_needed <= view.rows);
     return .{
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .history_count = view.history_count,
@@ -233,7 +238,8 @@ fn surfaceResult(
         .dirty_needed = dirty_needed,
         .dirty_generation = dirty_generation,
         .source = .{
-            .surface_cells = .{ .ptr = cells_ptr, .len = @intCast(@as(u32, view.rows) * view.cols) },
+            // VT keeps cell counts typed as u16/u32 until this shipped C ABI span-length seam.
+            .surface_cells = .{ .ptr = cells_ptr, .len = @intCast(surfaceCellCount(view.rows, view.cols)) },
             .cols = view.cols,
             .rows = view.rows,
             .scroll_row = view.start,
@@ -303,8 +309,11 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const snapshot = owned.surfaceSnapshot(scrollback_offset);
     const view = snapshot.view;
-    const cell_count: u32 = @as(u32, view.rows) * @as(u32, view.cols);
+    const cell_count = surfaceCellCount(view.rows, view.cols);
     const dirty_needed: u16 = snapshot.dirty_needed;
+    // The shipped VT ABI still accepts architecture-sized destination capacities.
+    // Validate those seam values against typed VT counts before exposing writable slices.
+    std.debug.assert(dirty_needed <= view.rows);
     var result = surfaceResult(view, owned.dirty_generation, snapshot.dirty_needed, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr, full_damage, scroll_up_rows);
 
     if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < dirty_needed or cols_end_cap < dirty_needed) {
