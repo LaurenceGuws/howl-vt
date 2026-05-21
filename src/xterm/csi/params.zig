@@ -5,6 +5,11 @@ const parser_mod = @import("../../parser.zig");
 const SemanticEvent = events.SemanticEvent;
 const csi_max_params = parser_mod.max_params;
 
+fn count32(items: anytype) u32 {
+    std.debug.assert(items.len <= std.math.maxInt(u32));
+    return @intCast(items.len);
+}
+
 pub fn optionalRectArea(params: []const i32) SemanticEvent.OptionalRectArea {
     return .{
         .top = if (params.len >= 1 and params[0] > 0) paramOrDefault1(params[0]) - 1 else null,
@@ -15,24 +20,26 @@ pub fn optionalRectArea(params: []const i32) SemanticEvent.OptionalRectArea {
 }
 
 pub fn rectArea(params: []const i32, start_idx: u8) SemanticEvent.RectArea {
-    const start: usize = start_idx;
+    const start = @as(u32, start_idx);
+    const param_len = count32(params);
     return .{
-        .top = if (params.len > start) paramOrDefault1(params[start]) - 1 else 0,
-        .left = if (params.len > start + 1) paramOrDefault1(params[start + 1]) - 1 else 0,
-        .bottom = if (params.len > start + 2) paramOrDefault1(params[start + 2]) - 1 else null,
-        .right = if (params.len > start + 3) paramOrDefault1(params[start + 3]) - 1 else null,
+        .top = if (param_len > start) paramOrDefault1(params[@intCast(start)]) - 1 else 0,
+        .left = if (param_len > start + 1) paramOrDefault1(params[@intCast(start + 1)]) - 1 else 0,
+        .bottom = if (param_len > start + 2) paramOrDefault1(params[@intCast(start + 2)]) - 1 else null,
+        .right = if (param_len > start + 3) paramOrDefault1(params[@intCast(start + 3)]) - 1 else null,
     };
 }
 
 pub fn attrParams(params: []const i32, start_idx: u8) SemanticEvent.AttrParams {
     var out = [_]u16{0} ** csi_max_params;
-    var idx: usize = start_idx;
-    var dst: usize = 0;
-    while (idx < params.len and dst < out.len) : ({
+    const param_len = count32(params);
+    var idx: u8 = start_idx;
+    var dst: u8 = 0;
+    while (idx < param_len and dst < csi_max_params) : ({
         idx += 1;
         dst += 1;
     }) {
-        out[dst] = paramOrDefault0(params[idx]);
+        out[@intCast(dst)] = paramOrDefault0(params[@intCast(idx)]);
     }
     return .{ .params = out, .param_count = @intCast(dst) };
 }
@@ -42,13 +49,11 @@ pub fn isValidRectFillChar(ch: u16) bool {
 }
 
 pub fn paramAtOrDefault1(params: []const i32, idx: u8) u16 {
-    const index: usize = idx;
-    return if (index < params.len) paramOrDefault1(params[index]) else 1;
+    return if (count32(params) > idx) paramOrDefault1(params[idx]) else 1;
 }
 
 pub fn paramAtOrDefault0(params: []const i32, idx: u8) u16 {
-    const index: usize = idx;
-    return if (index < params.len) paramOrDefault0(params[index]) else 0;
+    return if (count32(params) > idx) paramOrDefault0(params[idx]) else 0;
 }
 
 pub fn eraseMode(v: i32) u2 {
@@ -73,9 +78,9 @@ pub fn cursorStyle(param: u16) SemanticEvent.CursorStyle {
 
 pub fn collectParams(params: []const i32) SemanticEvent.ModeParams {
     var out = [_]u16{0} ** csi_max_params;
-    const n = @min(params.len, out.len);
-    var idx: usize = 0;
-    while (idx < n) : (idx += 1) out[idx] = paramOrDefault0(params[idx]);
+    const n = @min(count32(params), csi_max_params);
+    var idx: u8 = 0;
+    while (idx < n) : (idx += 1) out[@intCast(idx)] = paramOrDefault0(params[@intCast(idx)]);
     return .{ .params = out, .param_count = @intCast(n) };
 }
 

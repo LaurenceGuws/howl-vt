@@ -109,7 +109,7 @@ fn encodeUrxvtMouse(buf: []u8, cb: u16, col1: u32, row1: u32) []const u8 {
 
 fn encodeCsiMMouse(buf: []u8, cb: u16, col1: u32, row1: u32, utf8: bool) []const u8 {
     if (!utf8 and (cb > 223 or col1 > 223 or row1 > 223)) return buf[0..0];
-    var idx: usize = 0;
+    var idx: u8 = 0;
     buf[idx] = '\x1b';
     idx += 1;
     buf[idx] = '[';
@@ -122,12 +122,12 @@ fn encodeCsiMMouse(buf: []u8, cb: u16, col1: u32, row1: u32, utf8: bool) []const
     return buf[0..idx];
 }
 
-fn encodeMouseNumber(out: []u8, value: u32, utf8: bool) usize {
+fn encodeMouseNumber(out: []u8, value: u32, utf8: bool) u8 {
     if (!utf8 or value < 128) {
         out[0] = @intCast(value);
         return 1;
     }
-    return std.unicode.utf8Encode(@intCast(value), out) catch 0;
+    return @intCast(std.unicode.utf8Encode(@intCast(value), out) catch 0);
 }
 
 fn pressButtonCode(button: MouseButton) u16 {
