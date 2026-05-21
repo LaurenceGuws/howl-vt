@@ -4,6 +4,11 @@ const cell = @import("cell.zig");
 const Cell = cell.Cell;
 const default_cell = cell.default_cell;
 
+fn count32(items: anytype) u32 {
+    std.debug.assert(items.len <= std.math.maxInt(u32));
+    return @intCast(items.len);
+}
+
 pub const LogicalLine = struct {
     cells: std.ArrayListUnmanaged(Cell) = .empty,
     cursor_offset: ?u32 = null,
@@ -98,9 +103,9 @@ pub fn replaceAuthority(
 
     std.debug.assert(line_row_starts.len == logical_lines.len);
     std.debug.assert(line_row_counts.len == logical_lines.len);
-    std.debug.assert(first_visible_line <= logical_lines.len);
-    if (first_visible_line < logical_lines.len) {
-        std.debug.assert(hidden_rows_in_first_visible_line < line_row_counts[listIndex(first_visible_line)]);
+    std.debug.assert(first_visible_line <= count32(logical_lines));
+    if (first_visible_line < count32(logical_lines)) {
+        std.debug.assert(hidden_rows_in_first_visible_line < line_row_counts[@intCast(first_visible_line)]);
     } else {
         std.debug.assert(hidden_rows_in_first_visible_line == 0);
     }
@@ -112,25 +117,25 @@ pub fn replaceAuthority(
 
     var line_idx: u32 = kept_complete_start;
     while (line_idx < first_visible_line) : (line_idx += 1) {
-        try self.history_lines.append(allocator, try cloneAuthorityLine(allocator, logical_lines[listIndex(line_idx)].cells.items));
+        try self.history_lines.append(allocator, try cloneAuthorityLine(allocator, logical_lines[@intCast(line_idx)].cells.items));
     }
     std.debug.assert(self.history_lines.items.len == first_visible_line - kept_complete_start);
 
-    if (first_visible_line < logical_lines.len and hidden_rows_in_first_visible_line > 0) {
-        const line = logical_lines[listIndex(first_visible_line)];
-        const row_start = line_row_starts[listIndex(first_visible_line)];
-        const row_limit = @min(hidden_rows_in_first_visible_line, line_row_counts[listIndex(first_visible_line)]);
-        std.debug.assert(row_start + row_limit <= rewrapped.len);
+    if (first_visible_line < count32(logical_lines) and hidden_rows_in_first_visible_line > 0) {
+        const line = logical_lines[@intCast(first_visible_line)];
+        const row_start = line_row_starts[@intCast(first_visible_line)];
+        const row_limit = @min(hidden_rows_in_first_visible_line, line_row_counts[@intCast(first_visible_line)]);
+        std.debug.assert(row_start + row_limit <= count32(rewrapped));
         var prefix_len: u32 = 0;
         var hidden_row: u16 = 0;
         while (hidden_row < row_limit) : (hidden_row += 1) {
-            const row = rewrapped[listIndex(row_start + hidden_row)];
+            const row = rewrapped[@intCast(row_start + hidden_row)];
             std.debug.assert(row.len <= cols);
-            prefix_len += rewrapped[listIndex(row_start + hidden_row)].len;
+            prefix_len += rewrapped[@intCast(row_start + hidden_row)].len;
         }
-        prefix_len = @min(prefix_len, @as(u32, @intCast(line.cells.items.len)));
-        std.debug.assert(prefix_len <= line.cells.items.len);
-        self.open_history_line = try cloneAuthorityLine(allocator, line.cells.items[0..listIndex(prefix_len)]);
+        prefix_len = @min(prefix_len, count32(line.cells.items));
+        std.debug.assert(prefix_len <= count32(line.cells.items));
+        self.open_history_line = try cloneAuthorityLine(allocator, line.cells.items[0..@intCast(prefix_len)]);
     }
 
     if (self.history_lines.items.len > self.history_capacity) {
@@ -138,7 +143,7 @@ pub fn replaceAuthority(
         std.debug.assert(drop <= self.history_lines.items.len);
         var i: u32 = 0;
         while (i < drop) : (i += 1) {
-            self.history_lines.items[listIndex(i)].deinit(allocator);
+            self.history_lines.items[@intCast(i)].deinit(allocator);
         }
         std.mem.copyForwards(HistoryLine, self.history_lines.items[0 .. self.history_lines.items.len - drop], self.history_lines.items[drop..]);
         self.history_lines.shrinkRetainingCapacity(self.history_lines.items.len - drop);
@@ -161,7 +166,7 @@ pub fn rebuildProjection(self: anytype, allocator: std.mem.Allocator) !void {
     if (self.history_capacity == 0 or self.cols == 0) return;
 
     var line_idx: u32 = 0;
-    while (line_idx < self.history_lines.items.len) : (line_idx += 1) {
+    while (line_idx < count32(self.history_lines.items)) : (line_idx += 1) {
         const line = historyLineAt(self, line_idx);
         try appendProjectionRows(self, allocator, line.cells.items, false);
     }
@@ -205,7 +210,7 @@ pub fn storeRow(self: anytype, row: u16) void {
 
 pub fn historyLineAt(self: anytype, logical_index: u32) HistoryLine {
     const slot = (self.history_lines_start + logical_index) % historyLineCount(self);
-    return self.history_lines.items[listIndex(slot)];
+    return self.history_lines.items[@intCast(slot)];
 }
 
 pub fn slotForLogicalRow(self: anytype, logical_row: u32) ?u32 {
@@ -222,7 +227,7 @@ pub fn slotForRecency(self: anytype, history_idx: u32) ?u32 {
 pub fn rowWrapped(self: anytype, history_idx: u32) bool {
     const wraps = self.history_wraps orelse return false;
     const slot = slotForRecency(self, history_idx) orelse return false;
-    return wraps[slot];
+    return wraps[@intCast(slot)];
 }
 
 fn sourceRowContentLen(self: anytype, row_index: u16, cols: u16) u16 {
@@ -261,16 +266,16 @@ fn cloneAuthorityLine(allocator: std.mem.Allocator, cells: []const Cell) !Histor
 fn appendProjectionRows(self: anytype, allocator: std.mem.Allocator, cells: []const Cell, continues_to_visible: bool) !void {
     const cols = colCount(self.cols);
     if (cols == 0) return;
-    const row_count = rowCountForCells(@intCast(cells.len), self.cols);
+    const row_count = rowCountForCells(count32(cells), self.cols);
     std.debug.assert(row_count > 0);
 
     var row_idx: u32 = 0;
     while (row_idx < row_count) : (row_idx += 1) {
-        const start = listIndex(row_idx) * cols;
-        const end = @min(cells.len, start + cols);
+        const start = row_idx * cols;
+        const end = @min(count32(cells), start + cols);
         std.debug.assert(start <= end);
-        std.debug.assert(end <= cells.len);
-        try appendProjectedRow(self, allocator, cells[start..end], row_idx + 1 < row_count or continues_to_visible);
+        std.debug.assert(end <= count32(cells));
+        try appendProjectedRow(self, allocator, cells[@intCast(start)..@intCast(end)], row_idx + 1 < row_count or continues_to_visible);
     }
 }
 
@@ -291,8 +296,8 @@ fn pruneLines(self: anytype, allocator: std.mem.Allocator) void {
     std.debug.assert(drop <= self.history_lines.items.len);
     var i: u32 = 0;
     while (i < drop) : (i += 1) {
-        dropOldestProjectedRows(self, projectedRowCountForCells(self, self.history_lines.items[listIndex(i)].cells.items));
-        self.history_lines.items[listIndex(i)].deinit(allocator);
+        dropOldestProjectedRows(self, projectedRowCountForCells(self, self.history_lines.items[@intCast(i)].cells.items));
+        self.history_lines.items[@intCast(i)].deinit(allocator);
     }
     std.mem.copyForwards(HistoryLine, self.history_lines.items[0 .. self.history_lines.items.len - drop], self.history_lines.items[drop..]);
     self.history_lines.shrinkRetainingCapacity(self.history_lines.items.len - drop);
@@ -301,8 +306,8 @@ fn pruneLines(self: anytype, allocator: std.mem.Allocator) void {
 fn takeReusableLine(self: anytype) struct { line: HistoryLine, slot: ?u32 } {
     if (self.history_capacity == 0 or self.history_lines.items.len < self.history_capacity) return .{ .line = .{}, .slot = null };
     const slot = self.history_lines_start;
-    var reusable = self.history_lines.items[listIndex(slot)];
-    self.history_lines.items[listIndex(slot)] = .{};
+    var reusable = self.history_lines.items[@intCast(slot)];
+    self.history_lines.items[@intCast(slot)] = .{};
     dropOldestProjectedRows(self, projectedRowCountForCells(self, reusable.cells.items));
     self.history_lines_start = (self.history_lines_start + 1) % historyLineCount(self);
     reusable.cells.clearRetainingCapacity();
@@ -319,13 +324,13 @@ fn appendProjectedRow(self: anytype, allocator: std.mem.Allocator, cells: []cons
     const cols = colCount(self.cols);
     const base = slot * cols;
 
-    std.debug.assert(cells.len <= cols);
-    std.debug.assert(slot < wraps.len);
-    std.debug.assert(base + cols <= history.len);
+    std.debug.assert(count32(cells) <= cols);
+    std.debug.assert(slot < count32(wraps));
+    std.debug.assert(base + cols <= count32(history));
 
-    @memset(history[base .. base + cols], default_cell);
-    @memcpy(history[base .. base + cells.len], cells);
-    wraps[slot] = wrapped;
+    @memset(history[@intCast(base)..@intCast(base + cols)], default_cell);
+    @memcpy(history[@intCast(base)..@intCast(base + count32(cells))], cells);
+    wraps[@intCast(slot)] = wrapped;
     self.history_count += 1;
 }
 
@@ -337,11 +342,11 @@ fn ensureProjectedCapacity(self: anytype, allocator: std.mem.Allocator, min_rows
 
     const new_rows = @max(min_rows, @max(current_rows * 2, @as(u32, 8)));
     const cols = colCount(self.cols);
-    const new_history = try allocator.alloc(Cell, listIndex(new_rows) * cols);
+    const new_history = try allocator.alloc(Cell, @intCast(new_rows * cols));
     errdefer allocator.free(new_history);
     @memset(new_history, default_cell);
 
-    const new_wraps = try allocator.alloc(bool, listIndex(new_rows));
+    const new_wraps = try allocator.alloc(bool, @intCast(new_rows));
     errdefer allocator.free(new_wraps);
     @memset(new_wraps, false);
 
@@ -350,15 +355,15 @@ fn ensureProjectedCapacity(self: anytype, allocator: std.mem.Allocator, min_rows
     var logical_row: u32 = 0;
     while (logical_row < old_count) : (logical_row += 1) {
         const old_slot = slotForLogicalRow(self, logical_row) orelse break;
-        const src_start = listIndex(old_slot) * cols;
-        const dst_start = listIndex(logical_row) * cols;
+        const src_start = old_slot * cols;
+        const dst_start = logical_row * cols;
         std.debug.assert(old_slot < current_rows);
-        std.debug.assert(src_start + cols <= if (self.history) |history| history.len else 0);
-        std.debug.assert(dst_start + cols <= new_history.len);
+        std.debug.assert(src_start + cols <= if (self.history) |history| count32(history) else 0);
+        std.debug.assert(dst_start + cols <= count32(new_history));
         if (self.history) |history| {
-            @memcpy(new_history[dst_start .. dst_start + cols], history[src_start .. src_start + cols]);
+            @memcpy(new_history[@intCast(dst_start)..@intCast(dst_start + cols)], history[@intCast(src_start)..@intCast(src_start + cols)]);
         }
-        if (self.history_wraps) |wraps| new_wraps[logical_row] = wraps[old_slot];
+        if (self.history_wraps) |wraps| new_wraps[@intCast(logical_row)] = wraps[@intCast(old_slot)];
     }
 
     if (self.history) |history| allocator.free(history);
@@ -402,12 +407,8 @@ fn dropOldestProjectedRows(self: anytype, row_count: u32) void {
     self.history_count -= drop;
 }
 
-fn colCount(cols: u16) usize {
-    return @intCast(cols);
-}
-
-fn listIndex(value: u32) usize {
-    return @intCast(value);
+fn colCount(cols: u16) u32 {
+    return cols;
 }
 
 fn rowCountForCells(cell_count: u32, cols: u16) u32 {

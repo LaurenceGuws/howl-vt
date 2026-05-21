@@ -5,6 +5,11 @@ const ParserApi = parser_mod.Parser;
 const dec_special_designation: u8 = '0';
 const ascii_designation: u8 = 'B';
 
+fn count32(items: anytype) u32 {
+    std.debug.assert(items.len <= std.math.maxInt(u32));
+    return @intCast(items.len);
+}
+
 /// Parser output event.
 pub const StyleChange = struct {
     final: u8,
@@ -176,9 +181,7 @@ pub const ParsedEvents = struct {
     }
 
     pub fn eventCount(self: *const ParsedEvents) u32 {
-        const count = self.events.items.len - index(self.event_head);
-        std.debug.assert(count <= std.math.maxInt(u32));
-        return @intCast(count);
+        return count32(self.events.items) - self.event_head;
     }
 
     /// Clear queued events and owned queued payloads, but preserve append state.
@@ -253,13 +256,13 @@ pub const ParsedEvents = struct {
 
     pub fn beginBatch(self: *const ParsedEvents) AppendBatch {
         return .{
-            .event_len_start = boundedLen(self.events.items.len),
-            .bytes_len_start = boundedLen(self.bytes.items.len),
-            .ints_len_start = boundedLen(self.ints.items.len),
-            .aux_len_start = boundedLen(self.aux.items.len),
-            .apc_len_start = boundedLen(self.apc_bytes.items.len),
-            .dcs_len_start = boundedLen(self.dcs_bytes.items.len),
-            .pm_len_start = boundedLen(self.pm_bytes.items.len),
+            .event_len_start = count32(self.events.items),
+            .bytes_len_start = count32(self.bytes.items),
+            .ints_len_start = count32(self.ints.items),
+            .aux_len_start = count32(self.aux.items),
+            .apc_len_start = count32(self.apc_bytes.items),
+            .dcs_len_start = count32(self.dcs_bytes.items),
+            .pm_len_start = count32(self.pm_bytes.items),
             .dcs_hook_start = self.dcs_hook,
             .gl_index_start = self.gl_index,
             .g0_designation_start = self.g0_designation,
@@ -268,13 +271,13 @@ pub const ParsedEvents = struct {
     }
 
     pub fn rollbackBatch(self: *ParsedEvents, batch: AppendBatch) void {
-        self.events.shrinkRetainingCapacity(index(batch.event_len_start));
-        self.bytes.shrinkRetainingCapacity(index(batch.bytes_len_start));
-        self.ints.shrinkRetainingCapacity(index(batch.ints_len_start));
-        self.aux.shrinkRetainingCapacity(index(batch.aux_len_start));
-        self.apc_bytes.shrinkRetainingCapacity(index(batch.apc_len_start));
-        self.dcs_bytes.shrinkRetainingCapacity(index(batch.dcs_len_start));
-        self.pm_bytes.shrinkRetainingCapacity(index(batch.pm_len_start));
+        self.events.shrinkRetainingCapacity(@intCast(batch.event_len_start));
+        self.bytes.shrinkRetainingCapacity(@intCast(batch.bytes_len_start));
+        self.ints.shrinkRetainingCapacity(@intCast(batch.ints_len_start));
+        self.aux.shrinkRetainingCapacity(@intCast(batch.aux_len_start));
+        self.apc_bytes.shrinkRetainingCapacity(@intCast(batch.apc_len_start));
+        self.dcs_bytes.shrinkRetainingCapacity(@intCast(batch.dcs_len_start));
+        self.pm_bytes.shrinkRetainingCapacity(@intCast(batch.pm_len_start));
         self.dcs_hook = batch.dcs_hook_start;
         self.gl_index = batch.gl_index_start;
         self.g0_designation = batch.g0_designation_start;
@@ -282,7 +285,7 @@ pub const ParsedEvents = struct {
     }
 
     pub fn finishBatch(self: *ParsedEvents, batch: AppendBatch) void {
-        if (self.events.items.len <= index(batch.event_len_start)) return;
+        if (count32(self.events.items) <= batch.event_len_start) return;
         const last = &self.events.items[self.events.items.len - 1];
         switch (last.*) {
             .text => |len| {
@@ -333,7 +336,7 @@ pub const ParsedEvents = struct {
         const mapped = self.mapCodepoint(cp);
         if (isAsciiTextCodepoint(mapped)) {
             try self.bytes.append(self.allocator, @intCast(mapped));
-            if (self.events.items.len > index(batch.event_len_start)) {
+            if (count32(self.events.items) > batch.event_len_start) {
                 const last = &self.events.items[self.events.items.len - 1];
                 switch (last.*) {
                     .text => |*len| {
@@ -368,14 +371,14 @@ pub const ParsedEvents = struct {
         try self.appendMeta(.{ .osc = .{
             .tag = std.meta.activeTag(action),
             .command = action.command(),
-            .payload_len = boundedLen(action.payload().len),
+            .payload_len = count32(action.payload()),
             .terminator = action.term(),
         } });
     }
 
     fn appendBufferedBytes(self: *ParsedEvents, comptime tag: std.meta.FieldEnum(EventMeta), buffer: *std.ArrayList(u8)) error{ OutOfMemory, ParsedEventLimit }!void {
         try self.bytes.appendSlice(self.allocator, buffer.items);
-        try self.appendMeta(@unionInit(EventMeta, @tagName(tag), boundedLen(buffer.items.len)));
+        try self.appendMeta(@unionInit(EventMeta, @tagName(tag), count32(buffer.items)));
         buffer.clearRetainingCapacity();
     }
 
@@ -386,7 +389,7 @@ pub const ParsedEvents = struct {
         const body_len = try self.appendDcsBody(hook);
         try self.appendMeta(.{ .dcs = .{
             .body_len = body_len,
-            .payload_len = boundedLen(self.dcs_bytes.items.len),
+            .payload_len = count32(self.dcs_bytes.items),
             .final = hook.final,
             .param_count = hook.param_count,
             .intermediates_len = hook.intermediates_len,
@@ -407,7 +410,7 @@ pub const ParsedEvents = struct {
         try self.bytes.appendSlice(self.allocator, hook.intermediates[0..hook.intermediates_len]);
         try self.bytes.append(self.allocator, hook.final);
         try self.bytes.appendSlice(self.allocator, self.dcs_bytes.items);
-        return boundedLen(self.bytes.items.len - start);
+        return count32(self.bytes.items) - count32(self.bytes.items[0..start]);
     }
 
     fn captureDcsHook(self: *ParsedEvents, hook: parser_mod.DcsHook) void {
@@ -495,52 +498,43 @@ pub const ParsedEvents = struct {
     }
 
     fn eventAt(self: *const ParsedEvents, event_idx: u32, byte_idx: u32, int_idx: u32, aux_idx: u32) Event {
-        const meta = self.events.items[index(event_idx)];
-        const byte_start = index(byte_idx);
-        const int_start = index(int_idx);
-        const aux_start = index(aux_idx);
+        const meta = self.events.items[@intCast(event_idx)];
+        const byte_start = byte_idx;
+        const int_start = int_idx;
+        const aux_start = aux_idx;
         return switch (meta) {
-            .text => |len| .{ .text = self.bytes.items[byte_start .. byte_start + index(len)] },
+            .text => |len| .{ .text = self.bytes.items[@intCast(byte_start)..@intCast(byte_start + len)] },
             .codepoint => |cp| .{ .codepoint = cp },
             .control => |ctrl| .{ .control = ctrl },
             .invoke_charset => |slot| .{ .invoke_charset = slot },
             .configure_charset => |cfg| .{ .configure_charset = .{ .slot = cfg.slot, .designation = cfg.designation } },
             .style_change => |sc| .{ .style_change = .{
                 .final = sc.final,
-                .params = self.ints.items[int_start .. int_start + index(sc.param_count)],
+                .params = self.ints.items[@intCast(int_start)..@intCast(int_start + sc.param_count)],
                 .separators = sc.separators,
                 .param_count = sc.param_count,
                 .leader = sc.leader,
                 .private = sc.private,
-                .intermediates = self.aux.items[aux_start .. aux_start + index(sc.intermediates_len)],
+                .intermediates = self.aux.items[@intCast(aux_start)..@intCast(aux_start + sc.intermediates_len)],
                 .intermediates_len = sc.intermediates_len,
             } },
-            .osc => |osc| .{ .osc = oscActionFromMeta(osc, self.bytes.items[byte_start .. byte_start + index(osc.payload_len)]) },
-            .apc => |len| .{ .apc = self.bytes.items[byte_start .. byte_start + index(len)] },
+            .osc => |osc| .{ .osc = oscActionFromMeta(osc, self.bytes.items[@intCast(byte_start)..@intCast(byte_start + osc.payload_len)]) },
+            .apc => |len| .{ .apc = self.bytes.items[@intCast(byte_start)..@intCast(byte_start + len)] },
             .dcs => |dcs| .{ .dcs = .{
-                .body = self.bytes.items[byte_start .. byte_start + index(dcs.body_len)],
-                .payload = self.bytes.items[byte_start + index(dcs.body_len - dcs.payload_len) .. byte_start + index(dcs.body_len)],
+                .body = self.bytes.items[@intCast(byte_start)..@intCast(byte_start + dcs.body_len)],
+                .payload = self.bytes.items[@intCast(byte_start + dcs.body_len - dcs.payload_len)..@intCast(byte_start + dcs.body_len)],
                 .final = dcs.final,
-                .params = self.ints.items[int_start .. int_start + index(dcs.param_count)],
+                .params = self.ints.items[@intCast(int_start)..@intCast(int_start + dcs.param_count)],
                 .param_count = dcs.param_count,
-                .intermediates = self.aux.items[aux_start .. aux_start + index(dcs.intermediates_len)],
+                .intermediates = self.aux.items[@intCast(aux_start)..@intCast(aux_start + dcs.intermediates_len)],
                 .intermediates_len = dcs.intermediates_len,
             } },
-            .pm => |len| .{ .pm = self.bytes.items[byte_start .. byte_start + index(len)] },
+            .pm => |len| .{ .pm = self.bytes.items[@intCast(byte_start)..@intCast(byte_start + len)] },
             .esc_dispatch => |esc| .{ .esc_dispatch = esc },
             .invalid_sequence => .invalid_sequence,
         };
     }
 };
-
-fn boundedLen(len: usize) u32 {
-    std.debug.assert(len <= std.math.maxInt(u32));
-    return @intCast(len);
-}
-
-fn index(value: u32) usize {
-    return @intCast(value);
-}
 
 fn advanceCursor(meta: ParsedEvents.EventMeta, byte_idx: *u32, int_idx: *u32, aux_idx: *u32) void {
     switch (meta) {
@@ -591,14 +585,14 @@ fn oscActionFromMeta(meta: ParsedEvents.OscMeta, payload: []const u8) parser_mod
 
 fn maybeCompactStore(comptime T: type, list: *std.ArrayList(T), head: *u32, min_reclaim: u32) void {
     if (head.* == 0) return;
-    if (index(head.*) == list.items.len) {
+    if (head.* == count32(list.items)) {
         list.clearRetainingCapacity();
         head.* = 0;
         return;
     }
-    if (head.* < min_reclaim or index(head.*) * 2 < list.items.len) return;
-    const remaining = list.items.len - index(head.*);
-    std.mem.copyForwards(T, list.items[0..remaining], list.items[index(head.*)..]);
+    if (head.* < min_reclaim or head.* * 2 < count32(list.items)) return;
+    const remaining = count32(list.items) - head.*;
+    std.mem.copyForwards(T, list.items[0..@intCast(remaining)], list.items[@intCast(head.*)..]);
     list.shrinkRetainingCapacity(remaining);
     head.* = 0;
 }
