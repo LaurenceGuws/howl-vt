@@ -24,7 +24,7 @@ pub fn writeCell(self: anytype, cp: u21) void {
     if (self.cells) |c| {
         const start = self.rowStart(self.cursor_row);
         self.markDirtyCols(self.cursor_row, self.cursor_col, self.cursor_col);
-        c[start + @as(usize, self.cursor_col)] = .{
+        c[@intCast(start + @as(u32, self.cursor_col))] = .{
             .codepoint = cp,
             .attrs = self.current_attrs,
         };

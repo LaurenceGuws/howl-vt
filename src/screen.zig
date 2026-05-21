@@ -79,6 +79,10 @@ pub const Screen = struct {
     dirty_cols_end: ?[]u16,
     tab_stops: ?[]bool,
 
+    fn cellCount(rows: u16, cols: u16) u32 {
+        return @as(u32, rows) * @as(u32, cols);
+    }
+
     /// Initialize cursor-only grid state.
     pub fn init(rows: u16, cols: u16) Screen {
         return .{
@@ -124,9 +128,9 @@ pub const Screen = struct {
 
     /// Initialize screen with owned cell storage.
     pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !Screen {
-        const size = @as(usize, rows) * @as(usize, cols);
-        const cells: ?[]Cell = if (size > 0) blk: {
-            const buf = try allocator.alloc(Cell, size);
+        const cell_count = cellCount(rows, cols);
+        const cells: ?[]Cell = if (cell_count > 0) blk: {
+            const buf = try allocator.alloc(Cell, @intCast(cell_count));
             @memset(buf, default_cell);
             break :blk buf;
         } else null;
@@ -186,9 +190,9 @@ pub const Screen = struct {
 
     /// Initialize screen with cells and history storage.
     pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !Screen {
-        const size = @as(usize, rows) * @as(usize, cols);
-        const cells: ?[]Cell = if (size > 0) blk: {
-            const buf = try allocator.alloc(Cell, size);
+        const cell_count = cellCount(rows, cols);
+        const cells: ?[]Cell = if (cell_count > 0) blk: {
+            const buf = try allocator.alloc(Cell, @intCast(cell_count));
             @memset(buf, default_cell);
             break :blk buf;
         } else null;
@@ -337,7 +341,7 @@ pub const Screen = struct {
         const c = self.cells orelse return default_cell;
         if (row >= self.rows or col >= self.cols) return default_cell;
         const start = self.rowStart(row);
-        return c[start + @as(usize, col)];
+        return c[@intCast(start + @as(u32, col))];
     }
 
     pub fn tabStopAt(self: *const Screen, col: u16) bool {
@@ -354,7 +358,7 @@ pub const Screen = struct {
         const bounded_idx: u32 = history_idx;
         if (bounded_idx >= self.history_count or col >= self.cols) return default_cell;
         const slot = self.historySlotForRecency(history_idx) orelse return default_cell;
-        return h[@as(usize, slot) * @as(usize, self.cols) + @as(usize, col)];
+        return h[@intCast(slot * @as(u32, self.cols) + @as(u32, col))];
     }
 
     /// Return retained history row count.
@@ -583,27 +587,28 @@ pub const Screen = struct {
         scroll.scrollDownRegion(self, top, bottom, count);
     }
 
-    pub fn rowStart(self: *const Screen, logical_row: u16) usize {
-        const physical_row = (@as(usize, self.row_origin) + @as(usize, logical_row)) % @as(usize, self.rows);
-        return physical_row * @as(usize, self.cols);
+    pub fn rowStart(self: *const Screen, logical_row: u16) u32 {
+        if (self.rows == 0) return 0;
+        const physical_row = (self.row_origin + logical_row) % self.rows;
+        return @as(u32, physical_row) * @as(u32, self.cols);
     }
 
-    fn rowWrapIndex(self: *const Screen, logical_row: u16) ?usize {
+    fn rowWrapIndex(self: *const Screen, logical_row: u16) ?u16 {
         _ = self.row_wraps orelse return null;
         if (self.rows == 0 or logical_row >= self.rows) return null;
-        return (@as(usize, self.row_origin) + @as(usize, logical_row)) % @as(usize, self.rows);
+        return (self.row_origin + logical_row) % self.rows;
     }
 
     pub fn rowWrapped(self: *const Screen, logical_row: u16) bool {
         const wraps = self.row_wraps orelse return false;
         const idx = self.rowWrapIndex(logical_row) orelse return false;
-        return wraps[idx];
+        return wraps[@intCast(idx)];
     }
 
     pub fn setRowWrapped(self: *Screen, logical_row: u16, wrapped: bool) void {
         const wraps = self.row_wraps orelse return;
         const idx = self.rowWrapIndex(logical_row) orelse return;
-        wraps[idx] = wrapped;
+        wraps[@intCast(idx)] = wrapped;
     }
 
     fn historySlotForLogicalRow(self: *const Screen, logical_row: u32) ?u32 {
@@ -649,10 +654,10 @@ pub const Screen = struct {
 
     fn copyRow(self: *Screen, dst_row: u16, src_row: u16) void {
         const c = self.cells orelse return;
-        const row_len = @as(usize, self.cols);
+        const row_len = @as(u32, self.cols);
         const dst_start = self.rowStart(dst_row);
         const src_start = self.rowStart(src_row);
-        std.mem.copyForwards(Cell, c[dst_start .. dst_start + row_len], c[src_start .. src_start + row_len]);
+        std.mem.copyForwards(Cell, c[@intCast(dst_start)..@intCast(dst_start + row_len)], c[@intCast(src_start)..@intCast(src_start + row_len)]);
         self.setRowWrapped(dst_row, self.rowWrapped(src_row));
     }
 
@@ -660,7 +665,9 @@ pub const Screen = struct {
         const c = self.cells orelse return;
         const dst_start = self.rowStart(dst_row);
         const src_start = self.rowStart(src_row);
-        std.mem.copyForwards(Cell, c[dst_start + start_col .. dst_start + end_col_exclusive], c[src_start + start_col .. src_start + end_col_exclusive]);
+        const start_col32 = @as(u32, start_col);
+        const end_col32 = @as(u32, end_col_exclusive);
+        std.mem.copyForwards(Cell, c[@intCast(dst_start + start_col32)..@intCast(dst_start + end_col32)], c[@intCast(src_start + start_col32)..@intCast(src_start + end_col32)]);
         self.setRowWrapped(dst_row, false);
     }
 

@@ -27,11 +27,11 @@ pub fn scrollUp(self: anytype) void {
     const c = self.cells orelse return;
     if (self.rows == 0 or self.cols == 0) return;
     self.markDirtyRow(self.rows - 1);
-    const row_len = @as(usize, self.cols);
+    const row_len = @as(u32, self.cols);
     self.storeHistoryRow(0);
-    self.row_origin = @intCast((@as(usize, self.row_origin) + 1) % @as(usize, self.rows));
+    self.row_origin = (self.row_origin + 1) % self.rows;
     const bottom_start = self.rowStart(self.rows - 1);
-    @memset(c[bottom_start .. bottom_start + row_len], cell.default_cell);
+    @memset(c[@intCast(bottom_start)..@intCast(bottom_start + row_len)], cell.default_cell);
     self.setRowWrapped(self.rows - 1, false);
 }
 

@@ -175,37 +175,39 @@ fn appendRewrappedRows(
     if (cols == 0) return;
     if (row_count == 0) unreachable;
 
-    const flat_rows_before = result.flat_rows.items.len;
+    const flat_rows_before = count32(result.flat_rows.items);
+    const cell_len = count32(cells);
 
     var row_idx: u16 = 0;
     while (row_idx < row_count) : (row_idx += 1) {
         const start = rowStart(row_idx, cols);
-        const end = @min(cells.len, start + colCount(cols));
+        const end = @min(cell_len, start + colCount(cols));
         std.debug.assert(start <= end);
-        std.debug.assert(end <= cells.len);
+        std.debug.assert(end <= cell_len);
         try result.rewrapped.append(allocator, .{
-            .start = @intCast(result.flat_rows.items.len),
+            .start = count32(result.flat_rows.items),
             .len = @intCast(end - start),
             .wrapped = row_idx + 1 < row_count,
         });
         try appendRowCells(allocator, &result.flat_rows, cells, start, cols);
     }
 
-    std.debug.assert(result.flat_rows.items.len == flat_rows_before + @as(usize, row_count) * colCount(cols));
+    std.debug.assert(count32(result.flat_rows.items) == flat_rows_before + @as(u32, row_count) * colCount(cols));
 }
 
 fn appendRowCells(
     allocator: std.mem.Allocator,
     flat_rows: *std.ArrayListUnmanaged(Cell),
     cells: []const Cell,
-    start: usize,
+    start: u32,
     cols: u16,
 ) !void {
+    const cell_len = count32(cells);
     var col_idx: u16 = 0;
     while (col_idx < cols) : (col_idx += 1) {
-        const src_idx = start + @as(usize, col_idx);
-        if (src_idx < cells.len) {
-            try flat_rows.append(allocator, cells[src_idx]);
+        const src_idx = start + @as(u32, col_idx);
+        if (src_idx < cell_len) {
+            try flat_rows.append(allocator, cells[@intCast(src_idx)]);
         } else {
             try flat_rows.append(allocator, default_cell);
         }
@@ -243,7 +245,7 @@ fn projectViewport(logical_line_count: u32, reflow: ReflowState, rows: u16) View
         visible_start,
     ) orelse logical_line_count;
     const hidden_rows_in_first_visible_line: u16 = if (first_visible_line < logical_line_count)
-        @intCast(visible_start - reflow.line_row_starts.items[listIndex(first_visible_line)])
+        @intCast(visible_start - reflow.line_row_starts.items[@intCast(first_visible_line)])
     else
         0;
 
@@ -257,8 +259,8 @@ fn projectViewport(logical_line_count: u32, reflow: ReflowState, rows: u16) View
         std.debug.assert(hidden_rows_in_first_visible_line == 0);
     } else {
         std.debug.assert(first_visible_line < logical_line_count);
-        std.debug.assert(reflow.line_row_starts.items[listIndex(first_visible_line)] <= visible_start);
-        std.debug.assert(hidden_rows_in_first_visible_line < reflow.line_row_counts.items[listIndex(first_visible_line)]);
+        std.debug.assert(reflow.line_row_starts.items[@intCast(first_visible_line)] <= visible_start);
+        std.debug.assert(hidden_rows_in_first_visible_line < reflow.line_row_counts.items[@intCast(first_visible_line)]);
     }
 
     return .{
@@ -340,19 +342,19 @@ fn copyVisibleRows(
     const dst_wraps = new_row_wraps orelse return;
 
     std.debug.assert(viewport.visible_start + viewport.visible_rows_kept <= viewport.total_rows);
-    std.debug.assert(viewport.total_rows == reflow.rewrapped.items.len);
-    std.debug.assert(dst_wraps.len >= viewport.visible_rows_kept);
-    std.debug.assert(dst.len >= cellCount(viewport.visible_rows_kept, cols));
-    std.debug.assert(reflow.flat_rows.items.len == reflow.rewrapped.items.len * colCount(cols));
+    std.debug.assert(viewport.total_rows == count32(reflow.rewrapped.items));
+    std.debug.assert(count32(dst_wraps) >= viewport.visible_rows_kept);
+    std.debug.assert(count32(dst) >= cellCount(viewport.visible_rows_kept, cols));
+    std.debug.assert(count32(reflow.flat_rows.items) == count32(reflow.rewrapped.items) * colCount(cols));
 
     var src_row = viewport.visible_start;
     var view_row: u16 = 0;
     while (view_row < viewport.visible_rows_kept) : (view_row += 1) {
-        const src = reflow.rewrapped.items[listIndex(src_row)];
+        const src = reflow.rewrapped.items[@intCast(src_row)];
         const dst_start = rowStart(view_row, cols);
-        std.debug.assert(dst_start + colCount(cols) <= dst.len);
-        @memcpy(dst[dst_start .. dst_start + colCount(cols)], flatRowSlice(reflow.flat_rows.items, src, cols));
-        dst_wraps[view_row] = src.wrapped;
+        std.debug.assert(dst_start + colCount(cols) <= count32(dst));
+        @memcpy(dst[@intCast(dst_start)..@intCast(dst_start + colCount(cols))], flatRowSlice(reflow.flat_rows.items, src, cols));
+        dst_wraps[@intCast(view_row)] = src.wrapped;
         src_row += 1;
     }
 
@@ -416,10 +418,10 @@ fn rebuildResizeAuthority(
 ) !void {
     std.debug.assert(reflow.line_row_starts.items.len == lines.logical_lines.items.len);
     std.debug.assert(reflow.line_row_counts.items.len == lines.logical_lines.items.len);
-    std.debug.assert(viewport.total_rows == reflow.rewrapped.items.len);
-    std.debug.assert(viewport.first_visible_line <= lines.logical_lines.items.len);
-    if (viewport.first_visible_line < lines.logical_lines.items.len) {
-        std.debug.assert(viewport.hidden_rows_in_first_visible_line < reflow.line_row_counts.items[listIndex(viewport.first_visible_line)]);
+    std.debug.assert(viewport.total_rows == count32(reflow.rewrapped.items));
+    std.debug.assert(viewport.first_visible_line <= count32(lines.logical_lines.items));
+    if (viewport.first_visible_line < count32(lines.logical_lines.items)) {
+        std.debug.assert(viewport.hidden_rows_in_first_visible_line < reflow.line_row_counts.items[@intCast(viewport.first_visible_line)]);
     } else {
         std.debug.assert(viewport.hidden_rows_in_first_visible_line == 0);
     }
@@ -489,23 +491,24 @@ fn lineRowCount(cell_count: u32, cols: u16) u16 {
 }
 
 fn flatRowSlice(flat_rows: []const Cell, row: RewrappedRow, cols: u16) []const Cell {
-    const start = listIndex(row.start);
-    std.debug.assert(start + colCount(cols) <= flat_rows.len);
-    return flat_rows[start .. start + colCount(cols)];
+    const start = row.start;
+    std.debug.assert(start + colCount(cols) <= count32(flat_rows));
+    return flat_rows[@intCast(start)..@intCast(start + colCount(cols))];
 }
 
-fn cellCount(rows: u16, cols: u16) usize {
-    return @as(usize, rows) * @as(usize, cols);
+fn cellCount(rows: u16, cols: u16) u32 {
+    return @as(u32, rows) * @as(u32, cols);
 }
 
-fn rowStart(row: u16, cols: u16) usize {
-    return @as(usize, row) * @as(usize, cols);
+fn rowStart(row: u16, cols: u16) u32 {
+    return @as(u32, row) * @as(u32, cols);
 }
 
-fn colCount(cols: u16) usize {
-    return @intCast(cols);
+fn colCount(cols: u16) u32 {
+    return cols;
 }
 
-fn listIndex(value: u32) usize {
-    return @intCast(value);
+fn count32(items: anytype) u32 {
+    std.debug.assert(items.len <= std.math.maxInt(u32));
+    return @intCast(items.len);
 }

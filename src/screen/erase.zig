@@ -107,7 +107,7 @@ pub fn clearRowRange(self: anytype, row: u16, start_col: u16, end_col_exclusive:
     const c = self.cells orelse return;
     const start = self.rowStart(row);
     const cell = self.eraseCell();
-    @memset(c[start + @as(usize, start_col) .. start + @as(usize, end_col_exclusive)], cell);
+    @memset(c[@intCast(start + @as(u32, start_col))..@intCast(start + @as(u32, end_col_exclusive))], cell);
 }
 
 pub fn selectiveClearRowRange(self: anytype, row: u16, start_col: u16, end_col_exclusive: u16) void {
@@ -116,9 +116,9 @@ pub fn selectiveClearRowRange(self: anytype, row: u16, start_col: u16, end_col_e
     const cell = self.eraseCell();
     var col = start_col;
     while (col < end_col_exclusive) : (col += 1) {
-        const idx = start + @as(usize, col);
-        if (c[idx].attrs.protected) continue;
-        c[idx] = cell;
+        const idx = start + @as(u32, col);
+        if (c[@intCast(idx)].attrs.protected) continue;
+        c[@intCast(idx)] = cell;
     }
 }
 

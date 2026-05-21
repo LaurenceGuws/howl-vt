@@ -17,8 +17,8 @@ pub fn changeAttrs(self: anytype, area: SemanticEvent.RectArea, attrs: []const u
         const end_col = if (self.attr_change_extent_rect or row == bounds.bottom) bounds.right else self.cols -| 1;
         var col = start_col;
         while (col <= end_col) : (col += 1) {
-            const idx = row_start + col;
-            style_mod.applyRectAttrOps(&c[idx].attrs, attrs, reverse);
+            const idx = row_start + @as(u32, col);
+            style_mod.applyRectAttrOps(&c[@intCast(idx)].attrs, attrs, reverse);
         }
     }
 }
@@ -68,14 +68,16 @@ pub fn copy(self: anytype, req: SemanticEvent.RectCopy) void {
     if (copy_height == 0 or copy_width == 0) return;
 
     const allocator = self.allocator orelse return;
-    const temp = allocator.alloc(Cell, @as(usize, copy_height) * @as(usize, copy_width)) catch return;
+    const copy_cell_count = @as(u32, copy_height) * @as(u32, copy_width);
+    const temp = allocator.alloc(Cell, @intCast(copy_cell_count)) catch return;
     defer allocator.free(temp);
 
     var row: u16 = 0;
     while (row < copy_height) : (row += 1) {
+        const temp_row_start = @as(u32, row) * @as(u32, copy_width);
         var col: u16 = 0;
         while (col < copy_width) : (col += 1) {
-            temp[@as(usize, row) * @as(usize, copy_width) + col] = self.cellInfoAt(src.top + row, src.left + col);
+            temp[@intCast(temp_row_start + @as(u32, col))] = self.cellInfoAt(src.top + row, src.left + col);
         }
     }
 
@@ -83,9 +85,10 @@ pub fn copy(self: anytype, req: SemanticEvent.RectCopy) void {
     row = 0;
     while (row < copy_height) : (row += 1) {
         const dst_start = self.rowStart(dest_top + row);
+        const temp_row_start = @as(u32, row) * @as(u32, copy_width);
         var col: u16 = 0;
         while (col < copy_width) : (col += 1) {
-            self.cells.?[dst_start + dest_left + col] = temp[@as(usize, row) * @as(usize, copy_width) + col];
+            self.cells.?[@intCast(dst_start + @as(u32, dest_left) + @as(u32, col))] = temp[@intCast(temp_row_start + @as(u32, col))];
         }
     }
 }
