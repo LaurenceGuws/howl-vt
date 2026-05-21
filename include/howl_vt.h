@@ -143,8 +143,8 @@ typedef struct {
   uint16_t rows;
   uint64_t scroll_row;
   uint8_t is_alternate_screen;
-  uint8_t full_damage;
-  uint16_t scroll_up_rows;
+  uint8_t reserved0;
+  uint16_t reserved1;
   HowlVtByteSpan dirty_rows;
   HowlVtU16Span dirty_cols_start;
   HowlVtU16Span dirty_cols_end;
@@ -162,7 +162,7 @@ typedef struct {
 
 int32_t howl_vt_terminal_resize(HowlVtHandle handle, uint16_t rows, uint16_t cols);
 int32_t howl_vt_terminal_ack_surface(HowlVtHandle handle, uint64_t dirty_generation);
-HowlVtSurfaceResult howl_vt_terminal_copy_surface(HowlVtHandle handle, uint64_t scrollback_offset, HowlVtSurfaceCell *cells_ptr, size_t cells_cap, uint8_t *dirty_rows_ptr, size_t dirty_rows_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap, uint8_t full_damage, uint16_t scroll_up_rows);
+HowlVtSurfaceResult howl_vt_terminal_copy_surface(HowlVtHandle handle, uint64_t scrollback_offset, HowlVtSurfaceCell *cells_ptr, size_t cells_cap, uint8_t *dirty_rows_ptr, size_t dirty_rows_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 
 /* -------------------------------------------------------------------------- */
 /* 2. Protocol Metadata Host Output                                            */

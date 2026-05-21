@@ -90,8 +90,6 @@ fn copySurfaceOk(
         cols_start.len,
         cols_end.ptr,
         cols_end.len,
-        0,
-        0,
     );
     try std.testing.expectEqual(@intFromEnum(ffi.HowlVtCallStatus.ok), result.status);
     try std.testing.expectEqual(rows, result.source.rows);
@@ -340,7 +338,7 @@ test "copy surface keeps metadata on invalid output pointers" {
     const handle = ffi.terminalInit(2, 4, 4);
     defer ffi.terminalDeinit(handle);
 
-    const result = ffi.terminalCopySurface(handle, 0, null, 8, null, 2, null, 2, null, 2, 0, 0);
+    const result = ffi.terminalCopySurface(handle, 0, null, 8, null, 2, null, 2, null, 2);
     try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.invalid_argument)), result.status);
     try std.testing.expectEqual(@as(u16, 2), result.source.rows);
     try std.testing.expectEqual(@as(u16, 4), result.source.cols);

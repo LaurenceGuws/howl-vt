@@ -99,8 +99,8 @@ pub const FfiSurface = extern struct {
     rows: u16,
     scroll_row: u64,
     is_alternate_screen: u8,
-    full_damage: u8,
-    scroll_up_rows: u16,
+    reserved0: u8 = 0,
+    reserved1: u16 = 0,
     dirty_rows: FfiByteSpan,
     dirty_cols_start: FfiU16Span,
     dirty_cols_end: FfiU16Span,
@@ -119,8 +119,6 @@ pub const FfiSurfaceResult = extern struct {
         .rows = 0,
         .scroll_row = 0,
         .is_alternate_screen = 0,
-        .full_damage = 0,
-        .scroll_up_rows = 0,
         .dirty_rows = .{ .ptr = null, .len = 0 },
         .dirty_cols_start = .{ .ptr = null, .len = 0 },
         .dirty_cols_end = .{ .ptr = null, .len = 0 },
@@ -227,8 +225,6 @@ fn surfaceResult(
     dirty_rows_ptr: ?[*]u8,
     cols_start_ptr: ?[*]u16,
     cols_end_ptr: ?[*]u16,
-    full_damage: u8,
-    scroll_up_rows: u16,
 ) FfiSurfaceResult {
     std.debug.assert(dirty_needed <= view.rows);
     return .{
@@ -244,8 +240,6 @@ fn surfaceResult(
             .rows = view.rows,
             .scroll_row = view.start,
             .is_alternate_screen = boolByte(view.is_alternate_screen),
-            .full_damage = full_damage,
-            .scroll_up_rows = scroll_up_rows,
             .dirty_rows = .{ .ptr = dirty_rows_ptr, .len = view.rows },
             .dirty_cols_start = .{ .ptr = cols_start_ptr, .len = @intCast(dirty_needed) },
             .dirty_cols_end = .{ .ptr = cols_end_ptr, .len = @intCast(dirty_needed) },
@@ -305,7 +299,7 @@ pub fn terminalAckSurface(handle: VtHandle, dirty_generation: u64) callconv(.c) 
         @intFromEnum(HowlVtCallStatus.invalid_argument);
 }
 
-pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize, full_damage: u8, scroll_up_rows: u16) callconv(.c) FfiSurfaceResult {
+pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiSurfaceResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const snapshot = owned.surfaceSnapshot(scrollback_offset);
     const view = snapshot.view;
@@ -314,7 +308,7 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
     // The shipped VT ABI still accepts architecture-sized destination capacities.
     // Validate those seam values against typed VT counts before exposing writable slices.
     std.debug.assert(dirty_needed <= view.rows);
-    var result = surfaceResult(view, owned.dirty_generation, snapshot.dirty_needed, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr, full_damage, scroll_up_rows);
+    var result = surfaceResult(view, owned.dirty_generation, snapshot.dirty_needed, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr);
 
     if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < dirty_needed or cols_end_cap < dirty_needed) {
         result.status = @intFromEnum(HowlVtCallStatus.short_buffer);
@@ -474,7 +468,7 @@ test "vt ffi runtime surface covers feed encode and surface" {
     try std.testing.expectEqualStrings("\r", key_buf[0..@intCast(key.written)]);
 
     var cells: [8]FfiSurfaceCell = undefined;
-    const source = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, null, 0, null, 0, null, 0, 0, 0);
+    const source = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, null, 0, null, 0, null, 0);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.short_buffer)), source.status);
     try std.testing.expectEqual(@as(u16, 2), source.source.rows);
     try std.testing.expectEqual(@as(u16, 4), source.source.cols);
@@ -488,7 +482,7 @@ test "vt ffi copy surface clamps oversized scrollback offset" {
     const fed = terminalFeed(handle, "aa\r\nbb\r\ncc".ptr, 8);
     try std.testing.expectEqual(@as(i32, 0), fed.status);
 
-    const source = terminalCopySurface(handle, std.math.maxInt(u64), null, 0, null, 0, null, 0, null, 0, 0, 0);
+    const source = terminalCopySurface(handle, std.math.maxInt(u64), null, 0, null, 0, null, 0, null, 0);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.short_buffer)), source.status);
     try std.testing.expectEqual(source.history_count, source.scrollback_offset);
 }
