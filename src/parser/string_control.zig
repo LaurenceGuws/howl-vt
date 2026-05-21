@@ -3,6 +3,11 @@ const parser_mod = @import("main.zig");
 
 const ByteLimit = u32;
 
+fn count32(items: anytype) u32 {
+    std.debug.assert(items.len <= std.math.maxInt(u32));
+    return @intCast(items.len);
+}
+
 /// String-control terminator.
 pub const Finish = enum {
     bel,
@@ -34,13 +39,13 @@ pub const StringControl = struct {
 
     pub fn init(
         allocator: std.mem.Allocator,
-        capacity: usize,
+        capacity: ByteLimit,
         max_len: ByteLimit,
         bel_terminates: bool,
     ) !StringControl {
         return .{
             .allocator = allocator,
-            .buffer = try std.ArrayList(u8).initCapacity(allocator, capacity),
+            .buffer = try std.ArrayList(u8).initCapacity(allocator, @intCast(capacity)),
             .max_len = max_len,
             .bel_terminates = bel_terminates,
         };
@@ -102,7 +107,7 @@ pub const StringControl = struct {
     }
 
     fn append(self: *StringControl, byte: u8) void {
-        if (self.buffer.items.len >= limitLen(self.max_len)) {
+        if (count32(self.buffer.items) >= self.max_len) {
             self.overflowed = true;
             return;
         }
@@ -233,13 +238,13 @@ pub const OscControl = struct {
 
     pub fn init(
         allocator: std.mem.Allocator,
-        capacity: usize,
+        capacity: ByteLimit,
         metadata_max_len: ByteLimit,
         large_max_len: ByteLimit,
     ) !OscControl {
         return .{
             .allocator = allocator,
-            .buffer = try std.ArrayList(u8).initCapacity(allocator, capacity),
+            .buffer = try std.ArrayList(u8).initCapacity(allocator, @intCast(capacity)),
             .metadata_max_len = metadata_max_len,
             .large_max_len = large_max_len,
             .policy = .{ .command = null, .class = .raw_title, .max_len = metadata_max_len },
@@ -449,7 +454,7 @@ pub const OscControl = struct {
     }
 
     fn append(self: *OscControl, byte: u8) void {
-        if (self.buffer.items.len >= limitLen(self.policy.max_len)) {
+        if (count32(self.buffer.items) >= self.policy.max_len) {
             self.overflowed = true;
             return;
         }
@@ -743,10 +748,6 @@ fn bodyEscState(comptime kind: OscControl.BodyKind) OscControl.OscState {
 
 fn isDigit(byte: u8) bool {
     return byte >= '0' and byte <= '9';
-}
-
-fn limitLen(max_len: ByteLimit) usize {
-    return @intCast(max_len);
 }
 
 /// Incremental string-control parser state without payload ownership.
