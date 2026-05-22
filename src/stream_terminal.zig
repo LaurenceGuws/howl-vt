@@ -3,7 +3,6 @@ const route = @import("action/route.zig");
 const parsed_events = @import("parser/events.zig");
 const parser_mod = @import("parser/main.zig");
 const terminal_mod = @import("terminal.zig");
-const host_state = @import("host/state.zig");
 
 pub const FeedError = error{
     ConsequenceLimit,
@@ -36,32 +35,6 @@ pub const State = struct {
     }
 };
 
-pub const Handler = struct {
-    terminal: *terminal_mod.Terminal,
-
-    pub fn init(terminal: *terminal_mod.Terminal) Handler {
-        return .{ .terminal = terminal };
-    }
-
-    pub fn event(self: *Handler, event_: parsed_events.Event) void {
-        _ = self.eventEffect(null, event_) catch unreachable;
-    }
-
-    pub fn eventEffect(
-        self: *Handler,
-        current: ?[]const u8,
-        event_: parsed_events.Event,
-    ) host_state.ApplyError!route.EventEffect {
-        return route.apply(self.terminal, current, event_);
-    }
-
-    pub fn finishTurn(self: *Handler) void {
-        self.terminal.screen_state.activeSelection().clearIfInvalidatedByGrid(
-            self.terminal.screen_state.activeConst(),
-        );
-    }
-};
-
 pub const Stream = struct {
     terminal: *terminal_mod.Terminal,
 
@@ -83,7 +56,6 @@ pub const Stream = struct {
     pub fn nextSummary(self: *Stream, byte: u8) FeedError!FeedSummary {
         var latest_title: ?[]const u8 = null;
         var state_changed = false;
-        var handler = Handler.init(self.terminal);
         const state = &self.terminal.stream_state;
 
         const batch = state.events.beginBatch();
@@ -96,13 +68,13 @@ pub const Stream = struct {
         state.events.finishBatch(batch);
 
         while (state.events.front()) |event_| {
-            const effect = try handler.eventEffect(latest_title, event_);
+            const effect = try route.apply(self.terminal, latest_title, event_);
             state_changed = state_changed or effect.changed;
             latest_title = effect.latest_title;
             state.events.popFront();
         }
 
-        handler.finishTurn();
+        self.finishTurn();
         return .{ .state_changed = state_changed, .latest_title = latest_title };
     }
 
@@ -114,5 +86,11 @@ pub const Stream = struct {
             if (byte_summary.latest_title) |title| summary.latest_title = title;
         }
         return summary;
+    }
+
+    fn finishTurn(self: *Stream) void {
+        self.terminal.screen_state.activeSelection().clearIfInvalidatedByGrid(
+            self.terminal.screen_state.activeConst(),
+        );
     }
 };
