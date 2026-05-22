@@ -13,7 +13,7 @@ pub const FeedError = error{
 
 pub const FeedSummary = struct {
     state_changed: bool,
-    latest_title: ?[]const u8,
+    title_changed: bool,
 };
 
 pub const State = struct {
@@ -54,8 +54,8 @@ pub const Stream = struct {
     }
 
     pub fn nextSummary(self: *Stream, byte: u8) FeedError!FeedSummary {
-        var latest_title: ?[]const u8 = null;
         var state_changed = false;
+        var title_changed = false;
         const state = &self.terminal.stream_state;
 
         const batch = state.events.beginBatch();
@@ -68,22 +68,22 @@ pub const Stream = struct {
         state.events.finishBatch(batch);
 
         while (state.events.front()) |event_| {
-            const effect = try route.apply(self.terminal, latest_title, event_);
+            const effect = try route.apply(self.terminal, event_);
             state_changed = state_changed or effect.changed;
-            latest_title = effect.latest_title;
+            title_changed = title_changed or effect.title_changed;
             state.events.popFront();
         }
 
         self.finishTurn();
-        return .{ .state_changed = state_changed, .latest_title = latest_title };
+        return .{ .state_changed = state_changed, .title_changed = title_changed };
     }
 
     pub fn nextSliceSummary(self: *Stream, bytes: []const u8) FeedError!FeedSummary {
-        var summary: FeedSummary = .{ .state_changed = false, .latest_title = null };
+        var summary: FeedSummary = .{ .state_changed = false, .title_changed = false };
         for (bytes) |byte| {
             const byte_summary = try self.nextSummary(byte);
             summary.state_changed = summary.state_changed or byte_summary.state_changed;
-            if (byte_summary.latest_title) |title| summary.latest_title = title;
+            summary.title_changed = summary.title_changed or byte_summary.title_changed;
         }
         return summary;
     }

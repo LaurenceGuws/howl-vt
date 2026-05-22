@@ -24,7 +24,7 @@ const HostAction = events.HostAction;
 
 pub const EventEffect = struct {
     changed: bool,
-    latest_title: ?[]const u8,
+    title_changed: bool,
 };
 
 /// Map parsed event to terminal event when supported.
@@ -47,11 +47,11 @@ pub fn process(event: Event) ?SemanticEvent {
     }
 }
 
-pub fn apply(vt: anytype, current: ?[]const u8, event: Event) host_state.ApplyError!EventEffect {
+pub fn apply(vt: anytype, event: Event) host_state.ApplyError!EventEffect {
     switch (event) {
         .invoke_charset => |slot| {
             vt.gl_index = slot;
-            return .{ .changed = true, .latest_title = current };
+            return .{ .changed = true, .title_changed = false };
         },
         .configure_charset => |cfg| {
             switch (cfg.slot) {
@@ -59,23 +59,21 @@ pub fn apply(vt: anytype, current: ?[]const u8, event: Event) host_state.ApplyEr
                 1 => vt.g1_designation = cfg.designation,
                 else => unreachable,
             }
-            return .{ .changed = true, .latest_title = current };
+            return .{ .changed = true, .title_changed = false };
         },
         .osc => |osc_event| switch (osc_event) {
             .title, .raw_title => {
-                return .{
-                    .changed = true,
-                    .latest_title = try host_apply.setCurrentTitle(vt, current, osc_event.payload()),
-                };
+                try host_apply.setCurrentTitle(vt, osc_event.payload());
+                return .{ .changed = true, .title_changed = true };
             },
             else => {},
         },
         else => {},
     }
 
-    const semantic = process(event) orelse return .{ .changed = false, .latest_title = current };
+    const semantic = process(event) orelse return .{ .changed = false, .title_changed = false };
     try applySemantic(vt, semantic);
-    return .{ .changed = true, .latest_title = current };
+    return .{ .changed = true, .title_changed = false };
 }
 
 fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!void {

@@ -42,6 +42,6 @@ pub fn apply(vt: anytype, action: HostAction) HostState.ApplyError!void {
     }
 }
 
-pub fn setCurrentTitle(vt: anytype, _: ?[]const u8, title: []const u8) HostState.ApplyError!?[]const u8 {
-    return try HostState.replaceOwned(vt.allocator, &vt.host.current_title, title, HostState.title_max_bytes);
+pub fn setCurrentTitle(vt: anytype, title: []const u8) HostState.ApplyError!void {
+    _ = try HostState.replaceOwned(vt.allocator, &vt.host.current_title, title, HostState.title_max_bytes);
 }

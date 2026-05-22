@@ -274,7 +274,7 @@ pub fn terminalFeed(handle: VtHandle, ptr: ?[*]const u8, len: usize) callconv(.c
     return .{
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .state_changed = boolByte(summary.state_changed),
-        .title_changed = boolByte(summary.latest_title != null),
+        .title_changed = boolByte(summary.title_changed),
     };
 }
 
