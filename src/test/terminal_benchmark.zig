@@ -27,6 +27,12 @@ const OutputFormat = enum { ndjson, text };
 const Options = struct {
     runs: RunCount = 10,
     format: OutputFormat = .ndjson,
+    replay_paths: std.ArrayListUnmanaged([]const u8) = .empty,
+
+    fn deinit(self: *Options, allocator: std.mem.Allocator) void {
+        self.replay_paths.deinit(allocator);
+        self.* = undefined;
+    }
 };
 
 const ReplayFixture = struct {
@@ -428,34 +434,25 @@ fn runReplayRecordWorkload(
     return try summarizeObservations(base_allocator, name, @intCast(pty_feed_record.byteLen(record)), observations);
 }
 
-fn loadReplayFixtures(io: std.Io, allocator: std.mem.Allocator, dir_path: []const u8) ![]ReplayFixture {
-    var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| switch (err) {
-        error.FileNotFound => return &.{},
-        else => |e| return e,
-    };
-    defer dir.close(io);
-
+fn loadReplayFixtures(io: std.Io, allocator: std.mem.Allocator, replay_paths: []const []const u8) ![]ReplayFixture {
     var fixtures: std.ArrayList(ReplayFixture) = .empty;
     errdefer {
         for (fixtures.items) |*fixture| fixture.deinit();
         fixtures.deinit(allocator);
     }
 
-    var iter = dir.iterateAssumeFirstIteration();
-    while (try iter.next(io)) |entry| {
-        if (entry.kind != .file) continue;
-        if (!std.mem.endsWith(u8, entry.name, ".hex")) continue;
+    for (replay_paths) |replay_path| {
+        if (!std.mem.endsWith(u8, replay_path, ".hex")) return error.InvalidReplayPath;
 
-        const path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dir_path, entry.name });
-        defer allocator.free(path);
-
-        var record = try pty_feed_record.load(io, allocator, path);
+        var record = try pty_feed_record.load(io, allocator, replay_path);
         errdefer record.deinit();
         if (record.chunks.items.len == 0) {
             record.deinit();
             continue;
         }
-        const workload_name = try replayWorkloadName(allocator, entry.name);
+
+        const file_name = std.fs.path.basename(replay_path);
+        const workload_name = try replayWorkloadName(allocator, file_name);
         errdefer allocator.free(workload_name);
         try fixtures.append(allocator, .{
             .allocator = allocator,
@@ -494,6 +491,36 @@ test "replay workload name derives from fixture basename" {
     const name = try replayWorkloadName(gpa, "capture-1.hex");
     defer gpa.free(name);
     try std.testing.expectEqualStrings("replay_capture_1", name);
+}
+
+test "parse options keeps explicit replay paths" {
+    const gpa = std.testing.allocator;
+    const args: []const []const u8 = &.{
+        "vt_core_benchmark",
+        "--runs",
+        "3",
+        "--text",
+        "--replay",
+        "fixtures/one.hex",
+        "--replay",
+        "fixtures/two.hex",
+    };
+
+    var options = try parseOptions(gpa, @ptrCast(args));
+    defer options.deinit(gpa);
+
+    try std.testing.expectEqual(@as(RunCount, 3), options.runs);
+    try std.testing.expectEqual(OutputFormat.text, options.format);
+    try std.testing.expectEqual(@as(usize, 2), options.replay_paths.items.len);
+    try std.testing.expectEqualStrings("fixtures/one.hex", options.replay_paths.items[0]);
+    try std.testing.expectEqualStrings("fixtures/two.hex", options.replay_paths.items[1]);
+}
+
+test "load replay fixtures rejects non-hex path" {
+    try std.testing.expectError(
+        error.InvalidReplayPath,
+        loadReplayFixtures(std.testing.ios, std.testing.allocator, &.{"fixtures/plain.txt"}),
+    );
 }
 
 fn printTextResult(result: WorkloadResult) void {
@@ -538,17 +565,19 @@ fn printResult(result: WorkloadResult, format: OutputFormat) void {
 
 fn usage() void {
     std.debug.print(
-        \\usage: vt_core_benchmark [--runs N] [--text]
+        \\usage: vt_core_benchmark [--runs N] [--text] [--replay PATH]...
         \\
         \\Default output is NDJSON, one event per workload.
+        \\Replay fixtures are opt-in and must be passed explicitly.
         \\
     , .{});
 }
 
-fn parseOptions(args_vector: std.process.Args.Vector) !Options {
+fn parseOptions(allocator: std.mem.Allocator, args_vector: std.process.Args.Vector) !Options {
     var args = std.process.Args.Iterator.init(.{ .vector = args_vector });
     _ = args.next();
     var options = Options{};
+    errdefer options.deinit(allocator);
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--help")) {
             usage();
@@ -558,6 +587,9 @@ fn parseOptions(args_vector: std.process.Args.Vector) !Options {
         } else if (std.mem.eql(u8, arg, "--runs")) {
             const value = args.next() orelse return error.InvalidArgs;
             options.runs = @max(try std.fmt.parseInt(RunCount, value, 10), 1);
+        } else if (std.mem.eql(u8, arg, "--replay")) {
+            const replay_path = args.next() orelse return error.InvalidArgs;
+            try options.replay_paths.append(allocator, replay_path);
         } else {
             usage();
             return error.InvalidArgs;
@@ -569,10 +601,11 @@ fn parseOptions(args_vector: std.process.Args.Vector) !Options {
 /// Benchmark entrypoint.
 pub fn main(init: std.process.Init) !void {
     const allocator = std.heap.page_allocator;
-    const options = parseOptions(init.minimal.args.vector) catch |err| switch (err) {
+    var options = parseOptions(allocator, init.minimal.args.vector) catch |err| switch (err) {
         error.HelpRequested => return,
         else => return err,
     };
+    defer options.deinit(allocator);
     const runs = options.runs;
 
     const ascii_fixture = try buildAsciiFixture(allocator);
@@ -647,8 +680,7 @@ pub fn main(init: std.process.Init) !void {
     const mixed_result = try runMixedInteractiveWorkload(init.io, allocator, runs);
     const snapshot_result = try runSnapshotWorkload(init.io, allocator, scroll_fixture, runs);
 
-    const replay_fixture_dir = "../howl-linux-host/artifacts/replay";
-    const replay_fixtures = try loadReplayFixtures(init.io, allocator, replay_fixture_dir);
+    const replay_fixtures = try loadReplayFixtures(init.io, allocator, options.replay_paths.items);
     defer deinitReplayFixtures(replay_fixtures);
 
     if (options.format == .text) {
