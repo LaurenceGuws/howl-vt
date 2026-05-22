@@ -101,8 +101,15 @@ pub const Terminal = struct {
     pub fn feed(self: *Terminal, bytes: []const u8) FeedError!FeedSummary {
         var stream = self.vtStream();
         const summary = try stream.nextSliceSummary(bytes);
-        if (summary.state_changed) self.dirty_generation +%= 1;
+        self.postApply(summary.state_changed);
         return summary;
+    }
+
+    pub fn postApply(self: *Terminal, state_changed: bool) void {
+        self.screen_state.activeSelection().clearIfInvalidatedByGrid(
+            self.screen_state.activeConst(),
+        );
+        if (state_changed) self.dirty_generation +%= 1;
     }
 
     pub fn resize(self: *Terminal, rows: u16, cols: u16) !void {

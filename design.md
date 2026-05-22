@@ -75,8 +75,8 @@ classDiagram
 - `src/parser.zig` is the curated repo-local parser root.
 - `src/howl_vt.zig` is a curated repo-local export root.
 - `src/action.zig` is a curated export root for parser-event, routing, and action vocabulary surfaces.
-- `src/stream_terminal.zig` owns the repo-local VT stream that applies parser work directly against
-  `Terminal` state in the same general role Ghostty uses for `stream_terminal.zig`.
+- `src/stream_terminal.zig` owns the repo-local VT stream parser/event batching plus parent routing
+  against `Terminal` state in the same general role Ghostty uses for `stream_terminal.zig`.
 - `src/action/vocabulary.zig` owns terminal action vocabulary.
 - `src/action/route.zig` owns the parent parsed-event routing and direct VT control spine that
   delegates mutation to screen, report, mode, kitty, and host owners.
@@ -140,7 +140,7 @@ sequenceDiagram
         T->>A: process(event)
         A->>G: apply screen-visible action
     end
-    T->>S: clearIfInvalidatedByGrid(&state)
+    V->>S: clearIfInvalidatedByGrid(&state)
     V-->>Host: visibleView()/screen()
 ```
 

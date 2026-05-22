@@ -74,7 +74,6 @@ pub const Stream = struct {
             state.events.popFront();
         }
 
-        self.finishTurn();
         return .{ .state_changed = state_changed, .title_changed = title_changed };
     }
 
@@ -86,11 +85,5 @@ pub const Stream = struct {
             summary.title_changed = summary.title_changed or byte_summary.title_changed;
         }
         return summary;
-    }
-
-    fn finishTurn(self: *Stream) void {
-        self.terminal.screen_state.activeSelection().clearIfInvalidatedByGrid(
-            self.terminal.screen_state.activeConst(),
-        );
     }
 };
