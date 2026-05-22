@@ -107,6 +107,22 @@ pub const FfiSurface = extern struct {
     cursor: FfiCursor,
 };
 
+pub const FfiVisibleMeta = extern struct {
+    rows: u16 = 0,
+    cols: u16 = 0,
+    history_count: u64 = 0,
+    is_alternate_screen: u8 = 0,
+    reserved0: u8 = 0,
+    reserved1: u16 = 0,
+    snapshot_seq: u64 = 0,
+    dirty_generation: u64 = 0,
+};
+
+pub const FfiVisibleMetaResult = extern struct {
+    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
+    meta: FfiVisibleMeta = .{},
+};
+
 pub const FfiSurfaceResult = extern struct {
     status: i32 = @intFromEnum(HowlVtCallStatus.failed),
     history_count: u64 = 0,
@@ -247,6 +263,20 @@ fn surfaceResult(
     };
 }
 
+fn visibleMetaResult(meta: terminal.Terminal.VisibleMeta) FfiVisibleMetaResult {
+    return .{
+        .status = @intFromEnum(HowlVtCallStatus.ok),
+        .meta = .{
+            .rows = meta.rows,
+            .cols = meta.cols,
+            .history_count = meta.history_count,
+            .is_alternate_screen = boolByte(meta.is_alternate_screen),
+            .snapshot_seq = meta.snapshot_seq,
+            .dirty_generation = meta.dirty_generation,
+        },
+    };
+}
+
 pub fn terminalInit(rows: u16, cols: u16, history_capacity: u16) callconv(.c) VtHandle {
     const owned = std.heap.c_allocator.create(terminal.Terminal) catch return null;
     owned.* = terminal.Terminal.initWithCellsAndHistory(std.heap.c_allocator, rows, cols, history_capacity) catch {
@@ -296,6 +326,11 @@ pub fn terminalAckSurface(handle: VtHandle, snapshot_seq: u64) callconv(.c) i32 
         @intFromEnum(HowlVtCallStatus.ok)
     else
         @intFromEnum(HowlVtCallStatus.invalid_argument);
+}
+
+pub fn terminalQueryVisibleMeta(handle: VtHandle, scrollback_offset: u64) callconv(.c) FfiVisibleMetaResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    return visibleMetaResult(owned.visibleMeta(scrollback_offset));
 }
 
 pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiSurfaceResult {
@@ -468,6 +503,24 @@ test "vt ffi runtime surface covers feed encode and surface" {
     try std.testing.expectEqual(@as(u16, 4), source.source.cols);
 }
 
+test "vt ffi query visible meta reports explicit surface metadata" {
+    const handle = terminalInit(2, 2, 4);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const fed = terminalFeed(handle, "aa\r\nbb\r\ncc".ptr, 8);
+    try std.testing.expectEqual(@as(i32, 0), fed.status);
+
+    const meta = terminalQueryVisibleMeta(handle, std.math.maxInt(u64));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
+    try std.testing.expectEqual(@as(u16, 2), meta.meta.rows);
+    try std.testing.expectEqual(@as(u16, 2), meta.meta.cols);
+    try std.testing.expectEqual(@as(u64, 1), meta.meta.history_count);
+    try std.testing.expectEqual(@as(u8, 0), meta.meta.is_alternate_screen);
+    try std.testing.expect(meta.meta.snapshot_seq != 0);
+    try std.testing.expect(meta.meta.dirty_generation != 0);
+}
+
 test "vt ffi copy surface clamps oversized scrollback offset" {
     const handle = terminalInit(2, 2, 4);
     defer terminalDeinit(handle);
@@ -476,9 +529,9 @@ test "vt ffi copy surface clamps oversized scrollback offset" {
     const fed = terminalFeed(handle, "aa\r\nbb\r\ncc".ptr, 8);
     try std.testing.expectEqual(@as(i32, 0), fed.status);
 
-    const source = terminalCopySurface(handle, std.math.maxInt(u64), null, 0, null, 0, null, 0, null, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.short_buffer)), source.status);
-    try std.testing.expectEqual(source.history_count, source.scrollback_offset);
+    const meta = terminalQueryVisibleMeta(handle, std.math.maxInt(u64));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
+    try std.testing.expectEqual(meta.meta.history_count, @as(u64, 1));
 }
 
 test "vt ffi feed reports and copies title" {

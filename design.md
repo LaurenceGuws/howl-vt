@@ -173,6 +173,8 @@ sequenceDiagram
   when retained title, clipboard, hyperlink, DCS, or pending-output state cannot fit within the
   owning bound or cannot allocate.
 - `HowlVtSurface` and `HowlVtSurfaceResult` are the primary renderer-facing VT-surface contract types for visible surface cells, cursor state, publication identity, and dirtiness truth.
+- `HowlVtVisibleMeta` and `HowlVtVisibleMetaResult` are the explicit VT metadata query contract for rows, cols, history count, alternate-screen state, snapshot identity, and dirty generation.
+- `howl_vt_terminal_query_visible_meta` is the explicit VT-visible metadata query seam.
 - `howl_vt_terminal_copy_surface` is the bounded VT-surface export call.
 - `howl_vt_terminal_copy_surface` exports VT-owned visible state and dirty spans only. It must not
   act as a courier for host-fed damage classification or scroll effects that the VT owner does not

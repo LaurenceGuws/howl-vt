@@ -137,6 +137,19 @@ pub const Terminal = struct {
         };
     }
 
+    pub fn visibleMeta(self: *Terminal, scrollback_offset: u64) VisibleMeta {
+        const publication = self.surfaceSnapshot(scrollback_offset);
+        const view = publication.snapshot.view;
+        return .{
+            .rows = view.rows,
+            .cols = view.cols,
+            .history_count = view.history_count,
+            .is_alternate_screen = view.is_alternate_screen,
+            .snapshot_seq = publication.snapshot_seq,
+            .dirty_generation = publication.dirty_generation,
+        };
+    }
+
     fn noteSurfacePublication(self: *Terminal, view: screen_set.View, scrollback_offset: u64) u64 {
         const same_dirty = self.surface_snapshot_dirty_generation == self.dirty_generation;
         const same_offset = self.surface_snapshot_scrollback_offset == scrollback_offset;
@@ -160,6 +173,15 @@ pub const Terminal = struct {
         snapshot_seq: u64,
         dirty_generation: u64,
         snapshot: screen_set.SurfaceSnapshot,
+    };
+
+    pub const VisibleMeta = struct {
+        rows: u16,
+        cols: u16,
+        history_count: u32,
+        is_alternate_screen: bool,
+        snapshot_seq: u64,
+        dirty_generation: u64,
     };
 
     pub fn deccirCharsetState(self: *const Terminal) parser_mod.DeccirCharsetState {
