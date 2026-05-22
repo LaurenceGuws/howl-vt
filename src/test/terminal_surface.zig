@@ -111,7 +111,6 @@ test "Terminal public methods remain available" {
     try std.testing.expect(@hasDecl(Terminal, "init"));
     try std.testing.expect(@hasDecl(Terminal, "initWithCells"));
     try std.testing.expect(@hasDecl(Terminal, "deinit"));
-    try std.testing.expect(@hasDecl(Terminal, "vtHandler"));
     try std.testing.expect(@hasDecl(Terminal, "vtStream"));
 }
 
@@ -121,9 +120,8 @@ test "Terminal method signatures remain host-facing" {
     const init_cells_fn: fn (Allocator, u16, u16) anyerror!Terminal = Terminal.initWithCells;
     const init_cells_history_fn: fn (Allocator, u16, u16, u16) anyerror!Terminal = Terminal.initWithCellsAndHistory;
     const deinit_fn: fn (*Terminal) void = Terminal.deinit;
-    const vt_handler_fn: fn (*Terminal) Terminal.Handler = Terminal.vtHandler;
     const vt_stream_fn: fn (*Terminal) Terminal.Stream = Terminal.vtStream;
-    _ = .{ init_fn, init_cells_fn, init_cells_history_fn, deinit_fn, vt_handler_fn, vt_stream_fn };
+    _ = .{ init_fn, init_cells_fn, init_cells_history_fn, deinit_fn, vt_stream_fn };
 }
 
 test "const-read history and selection accessors stay stable" {

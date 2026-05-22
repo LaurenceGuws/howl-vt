@@ -83,7 +83,7 @@ pub const Stream = struct {
     pub fn nextSummary(self: *Stream, byte: u8) FeedError!FeedSummary {
         var latest_title: ?[]const u8 = null;
         var state_changed = false;
-        var handler = self.terminal.vtHandler();
+        var handler = Handler.init(self.terminal);
         const state = &self.terminal.stream_state;
 
         const batch = state.events.beginBatch();

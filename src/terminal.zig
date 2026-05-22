@@ -17,7 +17,6 @@ pub const Terminal = struct {
     const HostState = host_state.State;
     const KittyState = kitty_state.State;
     pub const Stream = stream_terminal.Stream;
-    pub const Handler = stream_terminal.Handler;
 
     const ScreenSet = screen_set.Set;
 
@@ -93,10 +92,6 @@ pub const Terminal = struct {
         self.kitty.deinit(allocator);
         self.screen_state.deinit(allocator);
         self.stream_state.deinit();
-    }
-
-    pub fn vtHandler(self: *Terminal) Handler {
-        return .init(self);
     }
 
     pub fn vtStream(self: *Terminal) Stream {
