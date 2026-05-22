@@ -14,6 +14,8 @@ comptime {
     @export(&ffi.terminalDrainPendingClipboard, .{ .name = "howl_vt_terminal_drain_pending_clipboard" });
     @export(&ffi.terminalEncodeKey, .{ .name = "howl_vt_terminal_encode_key" });
     @export(&ffi.terminalEncodeFocus, .{ .name = "howl_vt_terminal_encode_focus" });
+    @export(&ffi.terminalEncodePasteStart, .{ .name = "howl_vt_terminal_encode_paste_start" });
+    @export(&ffi.terminalEncodePasteEnd, .{ .name = "howl_vt_terminal_encode_paste_end" });
     @export(&ffi.terminalEncodeMouse, .{ .name = "howl_vt_terminal_encode_mouse" });
     @export(&ffi.terminalEncodePaste, .{ .name = "howl_vt_terminal_encode_paste" });
 }

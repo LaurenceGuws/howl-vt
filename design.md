@@ -164,6 +164,7 @@ sequenceDiagram
 - Zig root imports are not an acceptable host integration path and are not a preservation target.
 - `howl_vt_terminal_init` and `howl_vt_terminal_deinit` own opaque terminal-handle lifecycle.
 - `howl_vt_terminal_feed` directly parses and applies terminal input in one bounded call.
+- `HOWL_VT_TITLE_MAX_BYTES`, `HOWL_VT_PENDING_OUTPUT_MAX_BYTES`, `HOWL_VT_CLIPBOARD_SCRATCH_MAX_BYTES`, and `HOWL_VT_INPUT_ENCODE_MAX_BYTES` publish the bounded host-buffer sizes that the C ABI expects callers to preallocate.
 - `howl_vt_terminal_copy_title` copies the current terminal title when host code needs it.
 - `howl_vt_terminal_resize` covers geometry control.
 - `howl_vt_terminal_feed` must fail instead of silently dropping parser work when parser-owned
@@ -184,7 +185,7 @@ sequenceDiagram
 - `howl_vt_terminal_copy_surface` reports two owner-truth identities: `snapshot_seq` for visible publication identity, including the requested scrollback projection, and `dirty_generation` for the current unretired dirty set.
 - `howl_vt_terminal_ack_surface` is the only public dirty-retirement path. It retires dirty truth only for the captured visible publication identity that the renderer-facing VT-surface copy reported, and only when that identity still points at the current dirty generation.
 - `howl_vt_terminal_copy_pending_output`, `howl_vt_terminal_clear_pending_output`, and `howl_vt_terminal_drain_pending_clipboard` cover host-facing protocol consequences.
-- `howl_vt_terminal_encode_key`, `howl_vt_terminal_encode_focus`, `howl_vt_terminal_encode_mouse`, and `howl_vt_terminal_encode_paste` cover host input encoding against current terminal modes.
+- `howl_vt_terminal_encode_key`, `howl_vt_terminal_encode_focus`, `howl_vt_terminal_encode_mouse`, `howl_vt_terminal_encode_paste_start`, `howl_vt_terminal_encode_paste_end`, and `howl_vt_terminal_encode_paste` cover host input encoding against current terminal modes.
 - Header-declared key, modifier, and mouse constants are part of the shipped vocabulary contract. Getter and validator helper exports are not.
 - Zig owner names may change as long as the C ABI contract stays stable.
 

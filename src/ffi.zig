@@ -8,6 +8,13 @@ const terminal = @import("terminal.zig");
 pub const HowlVtTerminal = opaque {};
 pub const VtHandle = ?*HowlVtTerminal;
 
+comptime {
+    std.debug.assert(host_state.title_max_bytes == 1024);
+    std.debug.assert(host_state.pending_output_max_bytes == 1024 * 1024);
+    std.debug.assert(host_state.retained_payload_max_bytes == 1024 * 1024);
+    std.debug.assert(@sizeOf(input.Scratch) == 64);
+}
+
 pub const HowlVtCallStatus = enum(c_int) {
     ok = 0,
     missing_handle = -1,
@@ -423,6 +430,20 @@ pub fn terminalEncodeFocus(handle: VtHandle, focused: u8, ptr: ?[*]u8, cap: usiz
     var scratch: input.Scratch = .{};
     const bytes = if (focused != 0) input.encodeFocusIn(owned, &scratch) else input.encodeFocusOut(owned, &scratch);
     return copyBytes(out, bytes);
+}
+
+pub fn terminalEncodePasteStart(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    var scratch: input.Scratch = .{};
+    return copyBytes(out, input.encodePasteStart(owned, &scratch));
+}
+
+pub fn terminalEncodePasteEnd(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    var scratch: input.Scratch = .{};
+    return copyBytes(out, input.encodePasteEnd(owned, &scratch));
 }
 
 pub fn terminalEncodeMouse(

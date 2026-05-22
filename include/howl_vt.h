@@ -73,6 +73,13 @@ typedef enum {
   HOWL_VT_CALL_LIMIT_REACHED = -5,
 } HowlVtCallStatus;
 
+enum {
+  HOWL_VT_TITLE_MAX_BYTES = 1024,
+  HOWL_VT_PENDING_OUTPUT_MAX_BYTES = 1024 * 1024,
+  HOWL_VT_CLIPBOARD_SCRATCH_MAX_BYTES = 1024 * 1024,
+  HOWL_VT_INPUT_ENCODE_MAX_BYTES = 64,
+};
+
 /* -------------------------------------------------------------------------- */
 /* 1. Surface + Dirty                                                          */
 /* -------------------------------------------------------------------------- */
@@ -212,6 +219,8 @@ HowlVtBytesResult howl_vt_terminal_drain_pending_clipboard(HowlVtHandle handle, 
 
 HowlVtBytesResult howl_vt_terminal_encode_key(HowlVtHandle handle, uint32_t key, uint8_t mods, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_encode_focus(HowlVtHandle handle, uint8_t focused, uint8_t *ptr, size_t cap);
+HowlVtBytesResult howl_vt_terminal_encode_paste_start(HowlVtHandle handle, uint8_t *ptr, size_t cap);
+HowlVtBytesResult howl_vt_terminal_encode_paste_end(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_encode_mouse(
     HowlVtHandle handle,
     uint8_t kind,
