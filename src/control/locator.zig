@@ -5,6 +5,7 @@ const host_state = @import("../host/state.zig");
 
 const Input = input_mod;
 const Action = action_mod;
+const format_output_max_bytes = 40;
 
 pub const ReportingMode = enum(u2) {
     disabled,
@@ -82,8 +83,8 @@ pub fn appendReportForRequest(state: *State, allocator: std.mem.Allocator, outpu
 
 pub fn appendDeviceStatusReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, param: u16) host_state.ApplyError!void {
     const text = switch (param) {
-        55 => std.fmt.bufPrint(encode_buf, "\x1b[?50n", .{}) catch return,
-        56 => std.fmt.bufPrint(encode_buf, "\x1b[?57;1n", .{}) catch return,
+        55 => formatOutput(encode_buf, "\x1b[?50n", .{}),
+        56 => formatOutput(encode_buf, "\x1b[?57;1n", .{}),
         else => return,
     };
     try host_state.appendOutput(output, allocator, text);
@@ -130,9 +131,14 @@ pub fn handleMouseEvent(state: *State, allocator: std.mem.Allocator, output: *st
 fn appendReport(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event_code: u16, buttons_down: u8, row: u16, col: u16) host_state.ApplyError!void {
     const button_mask = buttonsMask(buttons_down);
     const coords = coordinates(state, row, col);
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d};{d};{d};0&w", .{ event_code, button_mask, coords.row + 1, coords.col + 1 }) catch return;
+    const text = formatOutput(encode_buf, "\x1b[{d};{d};{d};{d};0&w", .{ event_code, button_mask, coords.row + 1, coords.col + 1 });
     try host_state.appendOutput(output, allocator, text);
     if (state.mode == .one_shot) state.mode = .disabled;
+}
+
+fn formatOutput(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
+    std.debug.assert(encode_buf.len >= format_output_max_bytes);
+    return std.fmt.bufPrint(encode_buf, fmt, args) catch unreachable;
 }
 
 fn coordinates(state: *const State, row: u16, col: u16) struct { row: u32, col: u32 } {

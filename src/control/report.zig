@@ -13,6 +13,7 @@ const ReportAction = action_mod.ReportAction;
 const TerminalModeNs = mode_mod;
 
 const xtversion_text = "howl-vt dev";
+const format_output_max_bytes = 64;
 
 pub const CursorReportView = struct {
     rows: u16,
@@ -191,12 +192,12 @@ fn decrqssPayload(ctx: Context, request: []const u8) ?[]const u8 {
 }
 
 pub fn appendModifyOtherKeysReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, value: i8) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[>4;{d}m", .{value}) catch return;
+    const text = formatOutput(encode_buf, "\x1b[>4;{d}m", .{value});
     try host_state.appendOutput(output, allocator, text);
 }
 
 pub fn appendKeyFormatReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, resource: u8, value: u16) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[>{d};{d}f", .{ resource, value }) catch return;
+    const text = formatOutput(encode_buf, "\x1b[>{d};{d}f", .{ resource, value });
     try host_state.appendOutput(output, allocator, text);
 }
 
@@ -217,32 +218,32 @@ pub fn appendResourceInvalidReport(allocator: std.mem.Allocator, output: *std.Ar
 }
 
 pub fn appendTitleStackPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, current: u16, max: u16) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}#S", .{ current, max }) catch return;
+    const text = formatOutput(encode_buf, "\x1b[{d};{d}#S", .{ current, max });
     try host_state.appendOutput(output, allocator, text);
 }
 
 pub fn appendCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}R", .{ render_view.cursor_row + 1, render_view.cursor_col + 1 }) catch return;
+    const text = formatOutput(encode_buf, "\x1b[{d};{d}R", .{ render_view.cursor_row + 1, render_view.cursor_col + 1 });
     try host_state.appendOutput(output, allocator, text);
 }
 
 pub fn appendDecCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[?{d};{d}R", .{ render_view.cursor_row + 1, render_view.cursor_col + 1 }) catch return;
+    const text = formatOutput(encode_buf, "\x1b[?{d};{d}R", .{ render_view.cursor_row + 1, render_view.cursor_col + 1 });
     try host_state.appendOutput(output, allocator, text);
 }
 
 pub fn appendDecModeReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, mode: u16, state: u8) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[?{d};{d}$y", .{ mode, state }) catch return;
+    const text = formatOutput(encode_buf, "\x1b[?{d};{d}$y", .{ mode, state });
     try host_state.appendOutput(output, allocator, text);
 }
 
 pub fn appendAnsiModeReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, mode: u16, state: u8) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}$y", .{ mode, state }) catch return;
+    const text = formatOutput(encode_buf, "\x1b[{d};{d}$y", .{ mode, state });
     try host_state.appendOutput(output, allocator, text);
 }
 
 pub fn appendColorStackReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, depth: u8) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d}#Q", .{ depth, depth }) catch return;
+    const text = formatOutput(encode_buf, "\x1b[{d};{d}#Q", .{ depth, depth });
     try host_state.appendOutput(output, allocator, text);
 }
 
@@ -263,7 +264,7 @@ pub fn appendCursorInformationReport(allocator: std.mem.Allocator, output: *std.
     if (view.wrap_pending) sflag_bits |= 8;
     const sflag: u8 = 0x40 + sflag_bits;
 
-    const text = std.fmt.bufPrint(
+    const text = formatOutput(
         encode_buf,
         "\x1bP1$u{d};{d};1;{c};{c};{c};{d};2;@;{c}{c}BB\x1b\\",
         .{
@@ -276,7 +277,7 @@ pub fn appendCursorInformationReport(allocator: std.mem.Allocator, output: *std.
             charset.g0_designation,
             charset.g1_designation,
         },
-    ) catch return;
+    );
     try host_state.appendOutput(output, allocator, text);
 }
 
@@ -290,25 +291,25 @@ pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(
         if (!screen.tabStopAt(col)) continue;
         if (!first) try host_state.appendOutput(output, allocator, "/");
         first = false;
-        const text = std.fmt.bufPrint(encode_buf, "{d}", .{col + 1}) catch return;
+        const text = formatOutput(encode_buf, "{d}", .{col + 1});
         try host_state.appendOutput(output, allocator, text);
     }
     try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
 pub fn appendDisplayedExtentReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};{d};1;1;1\"w", .{ render_view.rows, render_view.cols }) catch return;
+    const text = formatOutput(encode_buf, "\x1b[{d};{d};1;1;1\"w", .{ render_view.rows, render_view.cols });
     try host_state.appendOutput(output, allocator, text);
 }
 
 pub fn appendTerminalParametersReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, kind: u16) host_state.ApplyError!void {
     if (kind > 1) return;
-    const text = std.fmt.bufPrint(encode_buf, "\x1b[{d};1;1;128;128;1;0x", .{kind + 2}) catch return;
+    const text = formatOutput(encode_buf, "\x1b[{d};1;1;128;128;1;0x", .{kind + 2});
     try host_state.appendOutput(output, allocator, text);
 }
 
 pub fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, req: RectChecksumRequest, checksum: u16) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1bP{d}!~{X:0>4}\x1b\\", .{ req.request_id, checksum }) catch return;
+    const text = formatOutput(encode_buf, "\x1bP{d}!~{X:0>4}\x1b\\", .{ req.request_id, checksum });
     try host_state.appendOutput(output, allocator, text);
 }
 
@@ -431,7 +432,7 @@ fn appendColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), en
             (if (idx < 8) 30 + idx else 90 + (idx - 8))
         else
             (if (idx < 8) 40 + idx else 100 + (idx - 8));
-        const text = std.fmt.bufPrint(encode_buf, "{d}", .{code}) catch return;
+        const text = formatOutput(encode_buf, "{d}", .{code});
         try appendSgrParam(allocator, output, first, text);
         return;
     }
@@ -440,12 +441,17 @@ fn appendColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), en
 
 fn appendExtendedColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, prefix: u8, color: Grid.Color) host_state.ApplyError!void {
     if (indexed256Index(color)) |idx| {
-        const text = std.fmt.bufPrint(encode_buf, "{d};5;{d}", .{ prefix, idx }) catch return;
+        const text = formatOutput(encode_buf, "{d};5;{d}", .{ prefix, idx });
         try appendSgrParam(allocator, output, first, text);
         return;
     }
-    const text = std.fmt.bufPrint(encode_buf, "{d};2;{d};{d};{d}", .{ prefix, color.r, color.g, color.b }) catch return;
+    const text = formatOutput(encode_buf, "{d};2;{d};{d};{d}", .{ prefix, color.r, color.g, color.b });
     try appendSgrParam(allocator, output, first, text);
+}
+
+fn formatOutput(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
+    std.debug.assert(encode_buf.len >= format_output_max_bytes);
+    return std.fmt.bufPrint(encode_buf, fmt, args) catch unreachable;
 }
 
 fn ansi16Index(color: Grid.Color) ?u8 {

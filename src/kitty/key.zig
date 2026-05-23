@@ -1,6 +1,8 @@
 const std = @import("std");
 const host_state = @import("../host/state.zig");
 
+const format_output_max_bytes = 16;
+
 pub const Stack = struct {
     flags: u32 = 0,
     stack: [16]u32 = [_]u32{0} ** 16,
@@ -34,7 +36,12 @@ pub const Stack = struct {
     }
 
     pub fn appendReport(self: *const Stack, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8) host_state.ApplyError!void {
-        const text = std.fmt.bufPrint(encode_buf, "\x1b[?{d}u", .{self.flags}) catch return;
+        const text = formatOutput(encode_buf, "\x1b[?{d}u", .{self.flags});
         try host_state.appendOutput(output, allocator, text);
     }
 };
+
+fn formatOutput(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
+    std.debug.assert(encode_buf.len >= format_output_max_bytes);
+    return std.fmt.bufPrint(encode_buf, fmt, args) catch unreachable;
+}

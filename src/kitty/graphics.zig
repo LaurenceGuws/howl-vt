@@ -4,6 +4,7 @@ const host_state = @import("../host/state.zig");
 const parser = @import("../parser.zig");
 
 const KittyGraphicsCommand = vocabulary.KittyGraphicsCommand;
+const reply_max_bytes = 60;
 
 pub const RenderCursorView = struct {
     row: u16,
@@ -480,11 +481,16 @@ fn ensureRetainedPayloadTotal(self: *const State) host_state.ApplyError!void {
 }
 
 fn appendReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, msg: []const u8) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b_Gi={d};{s}\x1b\\", .{ image_id, msg }) catch unreachable;
+    const text = formatReply(encode_buf, "\x1b_Gi={d};{s}\x1b\\", .{ image_id, msg });
     try host_state.appendOutput(output, allocator, text);
 }
 
 fn appendNumberReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, msg: []const u8) host_state.ApplyError!void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b_Gi={d},I={d};{s}\x1b\\", .{ image_id, image_number, msg }) catch unreachable;
+    const text = formatReply(encode_buf, "\x1b_Gi={d},I={d};{s}\x1b\\", .{ image_id, image_number, msg });
     try host_state.appendOutput(output, allocator, text);
+}
+
+fn formatReply(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
+    std.debug.assert(encode_buf.len >= reply_max_bytes);
+    return std.fmt.bufPrint(encode_buf, fmt, args) catch unreachable;
 }
