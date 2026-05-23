@@ -98,6 +98,16 @@ pub const FfiCursor = extern struct {
     col: u16,
     visible: u8,
     shape: u8,
+    blink: u8,
+};
+
+pub const FfiCursorStyle = extern struct {
+    shape: u8 = 0,
+    blink: u8 = 1,
+};
+
+pub const FfiTerminalInitOptions = extern struct {
+    default_cursor_style: FfiCursorStyle = .{},
 };
 
 pub const FfiSurface = extern struct {
@@ -145,7 +155,7 @@ pub const FfiSurfaceResult = extern struct {
         .dirty_rows = .{ .ptr = null, .len = 0 },
         .dirty_cols_start = .{ .ptr = null, .len = 0 },
         .dirty_cols_end = .{ .ptr = null, .len = 0 },
-        .cursor = .{ .row = 0, .col = 0, .visible = 0, .shape = 0 },
+        .cursor = .{ .row = 0, .col = 0, .visible = 0, .shape = 0, .blink = 0 },
     },
 };
 
@@ -240,6 +250,16 @@ fn copyBytes(out: []u8, bytes: []const u8) FfiBytesResult {
     };
 }
 
+fn cursorStyleIn(value: FfiCursorStyle) ?screen.Screen.CursorStyle {
+    const shape: screen.Screen.CursorShape = switch (value.shape) {
+        0 => .block,
+        1 => .underline,
+        2 => .bar,
+        else => return null,
+    };
+    return .{ .shape = shape, .blink = value.blink != 0 };
+}
+
 fn surfaceResult(
     view: screen_set.View,
     snapshot_seq: u64,
@@ -265,7 +285,7 @@ fn surfaceResult(
             .dirty_rows = .{ .ptr = dirty_rows_ptr, .len = view.rows },
             .dirty_cols_start = .{ .ptr = cols_start_ptr, .len = view.rows },
             .dirty_cols_end = .{ .ptr = cols_end_ptr, .len = view.rows },
-            .cursor = .{ .row = view.cursor_row, .col = view.cursor_col, .visible = boolByte(view.cursor_visible), .shape = @intFromEnum(view.cursor_shape) },
+            .cursor = .{ .row = view.cursor_row, .col = view.cursor_col, .visible = boolByte(view.cursor_visible), .shape = @intFromEnum(view.cursor_shape), .blink = boolByte(view.cursor_blink) },
         },
     };
 }
@@ -285,8 +305,15 @@ fn visibleMetaResult(meta: terminal.Terminal.VisibleMeta) FfiVisibleMetaResult {
 }
 
 pub fn terminalInit(rows: u16, cols: u16, history_capacity: u16) callconv(.c) VtHandle {
+    return terminalInitWithOptions(rows, cols, history_capacity, .{});
+}
+
+pub fn terminalInitWithOptions(rows: u16, cols: u16, history_capacity: u16, options: FfiTerminalInitOptions) callconv(.c) VtHandle {
+    const cursor_style = cursorStyleIn(options.default_cursor_style) orelse return null;
     const owned = std.heap.c_allocator.create(terminal.Terminal) catch return null;
-    owned.* = terminal.Terminal.initWithCellsAndHistory(std.heap.c_allocator, rows, cols, history_capacity) catch {
+    owned.* = terminal.Terminal.initWithCellsHistoryAndOptions(std.heap.c_allocator, rows, cols, history_capacity, .{
+        .default_cursor_style = cursor_style,
+    }) catch {
         std.heap.c_allocator.destroy(owned);
         return null;
     };
@@ -531,6 +558,40 @@ test "vt ffi runtime surface covers feed encode and surface" {
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.short_buffer)), source.status);
     try std.testing.expectEqual(@as(u16, 2), source.source.rows);
     try std.testing.expectEqual(@as(u16, 4), source.source.cols);
+}
+
+test "vt ffi init options seed default cursor style and blink" {
+    const handle = terminalInitWithOptions(2, 4, 8, .{
+        .default_cursor_style = .{ .shape = 2, .blink = 0 },
+    });
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    var cells: [8]FfiSurfaceCell = undefined;
+    var dirty_rows: [2]u8 = undefined;
+    var cols_start: [2]u16 = undefined;
+    var cols_end: [2]u16 = undefined;
+
+    const initial = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), initial.status);
+    try std.testing.expectEqual(@as(u8, 2), initial.source.cursor.shape);
+    try std.testing.expectEqual(@as(u8, 0), initial.source.cursor.blink);
+
+    const override = terminalFeed(handle, "\x1b[3 q".ptr, 6);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), override.status);
+
+    const overridden = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), overridden.status);
+    try std.testing.expectEqual(@as(u8, 1), overridden.source.cursor.shape);
+    try std.testing.expectEqual(@as(u8, 1), overridden.source.cursor.blink);
+
+    const reset = terminalFeed(handle, "\x1bc".ptr, 2);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), reset.status);
+
+    const after_reset = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), after_reset.status);
+    try std.testing.expectEqual(@as(u8, 2), after_reset.source.cursor.shape);
+    try std.testing.expectEqual(@as(u8, 0), after_reset.source.cursor.blink);
 }
 
 test "vt ffi query visible meta reports explicit surface metadata" {

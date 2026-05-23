@@ -142,7 +142,17 @@ typedef struct {
   uint16_t col;
   uint8_t visible;
   uint8_t shape;
+  uint8_t blink;
 } HowlVtCursor;
+
+typedef struct {
+  uint8_t shape;
+  uint8_t blink;
+} HowlVtCursorStyle;
+
+typedef struct {
+  HowlVtCursorStyle default_cursor_style;
+} HowlVtTerminalInitOptions;
 
 typedef struct {
   HowlVtSurfaceCellSpan surface_cells;
@@ -206,6 +216,7 @@ typedef struct {
 } HowlVtFeedResult;
 
 HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t history_capacity);
+HowlVtHandle howl_vt_terminal_init_with_options(uint16_t rows, uint16_t cols, uint16_t history_capacity, HowlVtTerminalInitOptions options);
 void howl_vt_terminal_deinit(HowlVtHandle handle);
 HowlVtFeedResult howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
 HowlVtBytesResult howl_vt_terminal_copy_surface_hyperlink(HowlVtHandle handle, uint64_t scrollback_offset, uint64_t snapshot_seq, uint16_t row, uint16_t col, uint8_t *ptr, size_t cap);

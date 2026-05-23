@@ -2,6 +2,7 @@ const ffi = @import("ffi.zig");
 
 comptime {
     @export(&ffi.terminalInit, .{ .name = "howl_vt_terminal_init" });
+    @export(&ffi.terminalInitWithOptions, .{ .name = "howl_vt_terminal_init_with_options" });
     @export(&ffi.terminalDeinit, .{ .name = "howl_vt_terminal_deinit" });
     @export(&ffi.terminalFeed, .{ .name = "howl_vt_terminal_feed" });
     @export(&ffi.terminalCopyTitle, .{ .name = "howl_vt_terminal_copy_title" });

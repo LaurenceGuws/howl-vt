@@ -39,12 +39,20 @@ pub const Terminal = struct {
     surface_snapshot_cols: u16 = 0,
     surface_snapshot_alt: bool = false,
 
+    pub const InitOptions = struct {
+        default_cursor_style: ScreenNs.CursorStyle = ScreenNs.default_cursor_style,
+    };
+
     /// Initialize Terminal without cell storage.
     pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
+        return initWithOptions(allocator, rows, cols, .{});
+    }
+
+    pub fn initWithOptions(allocator: std.mem.Allocator, rows: u16, cols: u16, options: InitOptions) !Terminal {
         var stream_state = try stream_terminal.State.initAlloc(allocator);
         errdefer stream_state.deinit();
-        const state = ScreenNs.init(rows, cols);
-        const alt_state = ScreenNs.init(rows, cols);
+        const state = ScreenNs.initWithDefaultCursorStyle(rows, cols, options.default_cursor_style);
+        const alt_state = ScreenNs.initWithDefaultCursorStyle(rows, cols, options.default_cursor_style);
         return Terminal{
             .allocator = allocator,
             .stream_state = stream_state,
@@ -55,11 +63,15 @@ pub const Terminal = struct {
 
     /// Initialize Terminal with cell storage.
     pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
+        return initWithCellsAndOptions(allocator, rows, cols, .{});
+    }
+
+    pub fn initWithCellsAndOptions(allocator: std.mem.Allocator, rows: u16, cols: u16, options: InitOptions) !Terminal {
         var stream_state = try stream_terminal.State.initAlloc(allocator);
         errdefer stream_state.deinit();
-        var state = try ScreenNs.initWithCells(allocator, rows, cols);
+        var state = try ScreenNs.initWithCellsAndDefaultCursorStyle(allocator, rows, cols, options.default_cursor_style);
         errdefer state.deinit(allocator);
-        var alt_state = try ScreenNs.initWithCells(allocator, rows, cols);
+        var alt_state = try ScreenNs.initWithCellsAndDefaultCursorStyle(allocator, rows, cols, options.default_cursor_style);
         errdefer alt_state.deinit(allocator);
         return Terminal{
             .allocator = allocator,
@@ -71,11 +83,15 @@ pub const Terminal = struct {
 
     /// Initialize Terminal with cell and history storage.
     pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !Terminal {
+        return initWithCellsHistoryAndOptions(allocator, rows, cols, history_capacity, .{});
+    }
+
+    pub fn initWithCellsHistoryAndOptions(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16, options: InitOptions) !Terminal {
         var stream_state = try stream_terminal.State.initAlloc(allocator);
         errdefer stream_state.deinit();
-        var state = try ScreenNs.initWithCellsAndHistory(allocator, rows, cols, history_capacity);
+        var state = try ScreenNs.initWithCellsHistoryAndDefaultCursorStyle(allocator, rows, cols, history_capacity, options.default_cursor_style);
         errdefer state.deinit(allocator);
-        var alt_state = try ScreenNs.initWithCells(allocator, rows, cols);
+        var alt_state = try ScreenNs.initWithCellsAndDefaultCursorStyle(allocator, rows, cols, options.default_cursor_style);
         errdefer alt_state.deinit(allocator);
         return Terminal{
             .allocator = allocator,

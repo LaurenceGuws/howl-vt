@@ -29,6 +29,7 @@ pub const Screen = struct {
     pub const Cell = cell.Cell;
     pub const CursorShape = cursor.CursorShape;
     pub const CursorStyle = cursor.CursorStyle;
+    pub const default_cursor_style = cursor.default_cursor_style;
     pub const default_fg = color.default_fg;
     pub const default_bg = color.default_bg;
     pub const default_underline_color = color.default_underline_color;
@@ -44,6 +45,7 @@ pub const Screen = struct {
     cursor_col: u16,
     wrap_pending: bool,
     cursor_visible: bool,
+    cursor_style_default: CursorStyle,
     cursor_style: CursorStyle,
     auto_wrap: bool,
     origin_mode: bool,
@@ -85,6 +87,10 @@ pub const Screen = struct {
 
     /// Initialize cursor-only grid state.
     pub fn init(rows: u16, cols: u16) Screen {
+        return initWithDefaultCursorStyle(rows, cols, cursor.default_cursor_style);
+    }
+
+    pub fn initWithDefaultCursorStyle(rows: u16, cols: u16, cursor_style_default: CursorStyle) Screen {
         return .{
             .allocator = null,
             .rows = rows,
@@ -93,7 +99,8 @@ pub const Screen = struct {
             .cursor_col = 0,
             .wrap_pending = false,
             .cursor_visible = true,
-            .cursor_style = cursor.default_cursor_style,
+            .cursor_style_default = cursor_style_default,
+            .cursor_style = cursor_style_default,
             .auto_wrap = true,
             .origin_mode = false,
             .insert_mode = false,
@@ -128,6 +135,10 @@ pub const Screen = struct {
 
     /// Initialize screen with owned cell storage.
     pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !Screen {
+        return initWithCellsAndDefaultCursorStyle(allocator, rows, cols, cursor.default_cursor_style);
+    }
+
+    pub fn initWithCellsAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) !Screen {
         const cell_count = cellCount(rows, cols);
         const cells: ?[]Cell = if (cell_count > 0) blk: {
             const buf = try allocator.alloc(Cell, @intCast(cell_count));
@@ -155,7 +166,8 @@ pub const Screen = struct {
             .cursor_col = 0,
             .wrap_pending = false,
             .cursor_visible = true,
-            .cursor_style = cursor.default_cursor_style,
+            .cursor_style_default = cursor_style_default,
+            .cursor_style = cursor_style_default,
             .auto_wrap = true,
             .origin_mode = false,
             .insert_mode = false,
@@ -190,6 +202,10 @@ pub const Screen = struct {
 
     /// Initialize screen with cells and history storage.
     pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !Screen {
+        return initWithCellsHistoryAndDefaultCursorStyle(allocator, rows, cols, history_capacity, cursor.default_cursor_style);
+    }
+
+    pub fn initWithCellsHistoryAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16, cursor_style_default: CursorStyle) !Screen {
         const cell_count = cellCount(rows, cols);
         const cells: ?[]Cell = if (cell_count > 0) blk: {
             const buf = try allocator.alloc(Cell, @intCast(cell_count));
@@ -226,7 +242,8 @@ pub const Screen = struct {
             .cursor_col = 0,
             .wrap_pending = false,
             .cursor_visible = true,
-            .cursor_style = cursor.default_cursor_style,
+            .cursor_style_default = cursor_style_default,
+            .cursor_style = cursor_style_default,
             .auto_wrap = true,
             .origin_mode = false,
             .insert_mode = false,
@@ -301,7 +318,7 @@ pub const Screen = struct {
         self.cursor_col = 0;
         self.wrap_pending = false;
         self.cursor_visible = true;
-        self.cursor_style = cursor.default_cursor_style;
+        self.cursor_style = self.cursor_style_default;
         self.auto_wrap = true;
         self.origin_mode = false;
         self.insert_mode = false;
@@ -320,6 +337,12 @@ pub const Screen = struct {
         if (self.cells) |c| @memset(c, default_cell);
         if (self.row_wraps) |buf| @memset(buf, false);
         if (self.tab_stops) |stops| tabs.setDefaultTabStops(stops);
+    }
+
+    pub fn setDefaultCursorStyle(self: *Screen, style: CursorStyle) void {
+        const current_matches_default = std.meta.eql(self.cursor_style, self.cursor_style_default);
+        self.cursor_style_default = style;
+        if (current_matches_default) self.cursor_style = style;
     }
 
     pub fn peekDirtyRows(self: *const Screen) ?DirtyRows {
