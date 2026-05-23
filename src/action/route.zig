@@ -71,7 +71,7 @@ pub fn apply(vt: anytype, event: Event) host_state.ApplyError!EventEffect {
 
 fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!void {
     if (event == .reset_screen) {
-        applyResetScreen(vt);
+        vt.resetScreen();
         return;
     }
     if (reportAction(event)) |report_action| {
@@ -92,12 +92,6 @@ fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!void {
     }
     const screen_event = screenAction(event) orelse unreachable;
     vt.screen_state.active().applyScreen(screen_event);
-}
-
-fn applyResetScreen(vt: anytype) void {
-    vt.screen_state.active().reset();
-    vt.kitty.resetTerminalState();
-    vt.host.locator = .{};
 }
 
 pub fn screenAction(event: SemanticEvent) ?ScreenAction {

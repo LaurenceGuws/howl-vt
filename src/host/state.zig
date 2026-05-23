@@ -72,6 +72,10 @@ pub const State = struct {
         if (self.dcs_payload) |payload| allocator.free(payload.payload);
         self.pending_output.deinit(allocator);
     }
+
+    pub fn resetTerminalState(self: *State) void {
+        self.locator = .{};
+    }
 };
 
 pub fn pendingOutput(vt: anytype) []const u8 {

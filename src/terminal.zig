@@ -120,6 +120,12 @@ pub const Terminal = struct {
         self.dirty_generation +%= 1;
     }
 
+    pub fn resetScreen(self: *Terminal) void {
+        self.screen_state.reset();
+        self.kitty.resetTerminalState();
+        self.host.resetTerminalState();
+    }
+
     pub fn ackSurface(self: *Terminal, snapshot_seq: u64) bool {
         if (snapshot_seq == 0) return false;
         if (self.surface_snapshot_seq == snapshot_seq and self.surface_snapshot_dirty_generation == self.dirty_generation) {
@@ -227,6 +233,26 @@ test "terminal visible view projects scrollback rows" {
     try std.testing.expectEqual(@as(u21, 'b'), scrolled.cellAt(1, 0));
     try std.testing.expectEqual(2, scrolled.rowDepth(0));
     try std.testing.expectEqual(1, scrolled.rowDepth(1));
+}
+
+test "terminal reset screen delegates owner resets" {
+    const stream_harness = @import("test/stream_harness.zig");
+    var vt = try Terminal.initWithCells(std.testing.allocator, 2, 8);
+    defer vt.deinit();
+    var stream = try stream_harness.Harness.init(&vt);
+    defer stream.deinit();
+
+    vt.screen_state.active().writeText("ab");
+    vt.kitty.main.pointer.set("pointer");
+    vt.host.locator.mode = .continuous;
+    vt.host.locator.coordinate_unit = 1;
+
+    try stream.nextSlice("\x1bc");
+
+    try std.testing.expectEqual(@as(u21, 0), vt.screen_state.activeConst().cellAt(0, 0));
+    try std.testing.expectEqualStrings("0", vt.kitty.main.pointer.currentName());
+    try std.testing.expect(vt.host.locator.mode == .disabled);
+    try std.testing.expectEqual(@as(u16, 0), vt.host.locator.coordinate_unit);
 }
 
 test {
