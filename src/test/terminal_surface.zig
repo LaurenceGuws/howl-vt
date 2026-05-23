@@ -243,6 +243,26 @@ test "alternate screen switches mark active viewport fully dirty" {
     try std.testing.expectEqual(@as(u16, 3), exit_dirty.dirty_cols_end[2]);
 }
 
+test "alternate screen switching clears selection on the screen-set owner path" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 4);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    selectionStart(&terminal, 0, 0);
+    try std.testing.expect(selectionState(&terminal) != null);
+
+    try stream.nextSlice("\x1b[?1049h");
+    try std.testing.expectEqual(@as(?Selection.TerminalSelection, null), selectionState(&terminal));
+
+    selectionStart(&terminal, 0, 0);
+    try std.testing.expect(selectionState(&terminal) != null);
+
+    try stream.nextSlice("\x1b[?1049l");
+    try std.testing.expectEqual(@as(?Selection.TerminalSelection, null), selectionState(&terminal));
+}
+
 test "full-screen scroll dirties only exposed bottom row" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 4, 8);

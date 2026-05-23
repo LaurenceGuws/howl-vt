@@ -132,12 +132,14 @@ pub const Set = struct {
         }
         if (clear_alt) self.alternate.reset();
         self.alt_active = true;
+        self.activeSelection().clear();
         self.alternate.markAllRowsDirty();
         std.debug.assert(self.alt_active);
     }
 
     pub fn exitAlt(self: *Set, restore_cursor: bool) void {
         self.alt_active = false;
+        self.activeSelection().clear();
         if (restore_cursor) {
             if (self.saved_primary_cursor) |saved| {
                 self.primary.cursor_row = @min(saved.row, self.primary.rows -| 1);

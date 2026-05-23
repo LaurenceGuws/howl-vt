@@ -186,12 +186,10 @@ pub fn setAnsiModes(vt: anytype, modes: []const u16, enabled: bool) void {
 
 pub fn enterAltScreen(vt: anytype, clear_alt: bool, save_cursor: bool) void {
     vt.screen_state.enterAlt(clear_alt, save_cursor);
-                vt.screen_state.activeSelection().clear();
 }
 
 pub fn exitAltScreen(vt: anytype, restore_cursor: bool) void {
     vt.screen_state.exitAlt(restore_cursor);
-                vt.screen_state.activeSelection().clear();
 }
 
 pub fn decModeStateForView(view: DecView, mode: u16) u8 {
