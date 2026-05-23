@@ -18,6 +18,7 @@ pub fn apply(vt: anytype, action: HostAction) HostState.ApplyError!void {
     var scratch: input.Scratch = .{};
     const allocator = vt.allocator;
     switch (action) {
+        .title_set => |title| try setCurrentTitle(vt, title),
         .color_control => |cmd| {
             switch (cmd.command) {
                 21 => try KittyNs.Color.handleKittyControl(allocator, &vt.host.colors, &vt.host.pending_output, cmd.payload),

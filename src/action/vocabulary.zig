@@ -196,6 +196,7 @@ pub const SemanticEvent = union(enum) {
     kitty_multiple_cursor: KittyMultipleCursorCommand,
     kitty_file_transfer: []const u8,
     kitty_text_size: []const u8,
+    title_set: []const u8,
     color_control: TerminalColorControlCommand,
     hyperlink_set: []const u8,
     hyperlink_clear,
@@ -406,6 +407,7 @@ pub const KittyAction = union(enum) {
 };
 
 pub const HostAction = union(enum) {
+    title_set: []const u8,
     color_control: TerminalColorControlCommand,
     hyperlink_set: []const u8,
     hyperlink_clear,

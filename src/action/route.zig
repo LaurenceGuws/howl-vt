@@ -61,19 +61,12 @@ pub fn apply(vt: anytype, event: Event) host_state.ApplyError!EventEffect {
             }
             return .{ .changed = true, .title_changed = false };
         },
-        .osc => |osc_event| switch (osc_event) {
-            .title, .raw_title => {
-                try host_apply.setCurrentTitle(vt, osc_event.payload());
-                return .{ .changed = true, .title_changed = true };
-            },
-            else => {},
-        },
         else => {},
     }
 
     const semantic = process(event) orelse return .{ .changed = false, .title_changed = false };
     try applySemantic(vt, semantic);
-    return .{ .changed = true, .title_changed = false };
+    return .{ .changed = true, .title_changed = semantic == .title_set };
 }
 
 fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!void {
@@ -253,6 +246,7 @@ fn kittyAction(event: SemanticEvent) ?KittyAction {
 
 fn hostAction(event: SemanticEvent) ?HostAction {
     return switch (event) {
+        .title_set => |v| HostAction{ .title_set = v },
         .color_control => |v| HostAction{ .color_control = v },
         .hyperlink_set => |v| HostAction{ .hyperlink_set = v },
         .hyperlink_clear => .hyperlink_clear,

@@ -23,6 +23,17 @@ test "OSC title updates terminal title under stream path" {
     try std.testing.expectEqualStrings("My Title", terminal.host.current_title.?);
 }
 
+test "raw OSC title updates terminal title through OSC owner path" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b]Raw Title\x07");
+    try std.testing.expectEqualStrings("Raw Title", terminal.host.current_title.?);
+}
+
 test "OSC title limit fails without dropping current title" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);

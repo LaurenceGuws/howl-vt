@@ -624,8 +624,9 @@ test "actions: invalid_sequence returns null" {
     try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event.invalid_sequence));
 }
 
-test "actions: OSC title transport returns null" {
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(makeOsc(.{ .title = .{ .command = 0, .payload = "My Title", .term = .bel } })));
+test "actions: OSC title transport maps to host title action" {
+    try std.testing.expectEqualStrings("My Title", process(makeOsc(.{ .title = .{ .command = 0, .payload = "My Title", .term = .bel } })).?.title_set);
+    try std.testing.expectEqualStrings("Raw Title", process(makeOsc(.{ .raw_title = .{ .payload = "Raw Title", .term = .bel } })).?.title_set);
 }
 
 test "actions: OSC 8 maps to hyperlink set and clear" {

@@ -7,6 +7,8 @@ const SemanticEvent = events.SemanticEvent;
 
 pub fn process(osc: parser_mod.OscAction) ?SemanticEvent {
     return switch (osc) {
+        .raw_title => |v| SemanticEvent{ .title_set = v.payload },
+        .title => |v| SemanticEvent{ .title_set = v.payload },
         .pointer_shape => |v| SemanticEvent{ .kitty_pointer_shape = kitty.parsePointerShape(v.payload) },
         .palette_control => |v| SemanticEvent{ .color_control = .{ .command = v.command, .payload = v.payload } },
         .palette_reset => |v| SemanticEvent{ .color_control = .{ .command = v.command, .payload = v.payload } },
