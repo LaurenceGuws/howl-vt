@@ -1,10 +1,12 @@
 const std = @import("std");
 const host_state = @import("../host/state.zig");
+const graphics = @import("../kitty/graphics.zig");
 const kitty_state = @import("../kitty/state.zig");
 const terminal_mod = @import("../terminal.zig");
 const stream_harness = @import("stream_harness.zig");
 
 const HostState = host_state;
+const Graphics = graphics;
 const KittyState = kitty_state;
 const Terminal = terminal_mod.Terminal;
 const StreamHarness = stream_harness.Harness;
@@ -172,4 +174,160 @@ test "kitty graphics animation frame upload stores frame metadata" {
     try std.testing.expectEqual(@as(u32, 7), frame.image_id);
     try std.testing.expectEqual(@as(u32, 3), frame.frame_number);
     try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+}
+
+test "kitty graphics image count cap is explicit" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    var image_id: u32 = 1;
+    while (image_id <= Graphics.image_max_count) : (image_id += 1) {
+        try state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
+            .action = 't',
+            .image_id = image_id,
+            .image_number = 0,
+            .placement_id = 0,
+            .format = 24,
+            .width = 1,
+            .height = 1,
+            .columns = 0,
+            .rows = 0,
+            .x = 0,
+            .y = 0,
+            .z = 0,
+            .medium = 'd',
+            .more_chunks = false,
+            .quiet = true,
+            .delete_target = 0,
+            .payload = "A",
+        });
+    }
+
+    try std.testing.expectEqual(Graphics.image_max_count, state.imageCount());
+    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
+        .action = 't',
+        .image_id = Graphics.image_max_count + 1,
+        .image_number = 0,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = true,
+        .delete_target = 0,
+        .payload = "A",
+    }));
+    try std.testing.expectEqual(Graphics.image_max_count, state.imageCount());
+}
+
+test "kitty graphics placement cap propagates through feed" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+
+    var placement_count: u32 = 0;
+    while (placement_count < Graphics.placement_max_count) : (placement_count += 1) {
+        try stream.nextSlice("\x1b_Ga=p,i=7,q=1\x1b\\");
+    }
+
+    try std.testing.expectEqual(Graphics.placement_max_count, KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectError(error.ConsequenceLimit, stream.nextSlice("\x1b_Ga=p,i=7,q=1\x1b\\"));
+    try std.testing.expectEqual(Graphics.placement_max_count, KittyState.graphicsPlacementCount(&terminal));
+}
+
+test "kitty graphics upload byte cap propagates and aborts upload" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    const chunk_len = (Graphics.upload_max_bytes / 2) + 1;
+    var first = std.ArrayList(u8).empty;
+    defer first.deinit(allocator);
+    try first.appendSlice(allocator, "\x1b_Gi=7,s=1,v=1,t=d,f=24,m=1;");
+    try first.appendNTimes(allocator, 'A', chunk_len);
+    try first.appendSlice(allocator, "\x1b\\");
+
+    var second = std.ArrayList(u8).empty;
+    defer second.deinit(allocator);
+    try second.appendSlice(allocator, "\x1b_Gm=0;");
+    try second.appendNTimes(allocator, 'B', chunk_len);
+    try second.appendSlice(allocator, "\x1b\\");
+
+    try stream.nextSlice(first.items);
+    try std.testing.expectError(error.ConsequenceLimit, stream.nextSlice(second.items));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+
+    try stream.nextSlice("\x1b_Gi=9,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 9), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
+}
+
+test "kitty graphics frame count cap is explicit" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    var frame_number: u32 = 1;
+    while (frame_number <= Graphics.frame_max_count) : (frame_number += 1) {
+        try state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
+            .action = 'f',
+            .image_id = 7,
+            .image_number = 0,
+            .placement_id = frame_number,
+            .format = 24,
+            .width = 1,
+            .height = 1,
+            .columns = 0,
+            .rows = 0,
+            .x = 0,
+            .y = 0,
+            .z = 0,
+            .medium = 'd',
+            .more_chunks = false,
+            .quiet = true,
+            .delete_target = 0,
+            .payload = "A",
+        });
+    }
+
+    try std.testing.expectEqual(Graphics.frame_max_count, state.frameCount());
+    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
+        .action = 'f',
+        .image_id = 7,
+        .image_number = 0,
+        .placement_id = Graphics.frame_max_count + 1,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = true,
+        .delete_target = 0,
+        .payload = "A",
+    }));
+    try std.testing.expectEqual(Graphics.frame_max_count, state.frameCount());
 }

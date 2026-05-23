@@ -58,17 +58,23 @@ pub const Stream = struct {
         var title_changed = false;
         const state = &self.terminal.stream_state;
 
-        const batch = state.events.beginBatch();
-        errdefer state.events.rollbackBatch(batch);
         errdefer state.parser.reset();
 
-        const phases = state.parser.next(byte);
-        if (state.parser.takeStringControlFailed()) |err| return err;
-        try state.events.appendPhases(batch, phases);
-        state.events.finishBatch(batch);
+        {
+            const batch = state.events.beginBatch();
+            errdefer state.events.rollbackBatch(batch);
+
+            const phases = state.parser.next(byte);
+            if (state.parser.takeStringControlFailed()) |err| return err;
+            try state.events.appendPhases(batch, phases);
+            state.events.finishBatch(batch);
+        }
 
         while (state.events.front()) |event_| {
-            const effect = try route.apply(self.terminal, event_);
+            const effect = route.apply(self.terminal, event_) catch |err| {
+                state.events.dropPrefix(state.events.eventCount());
+                return err;
+            };
             state_changed = state_changed or effect.changed;
             title_changed = title_changed or effect.title_changed;
             state.events.popFront();

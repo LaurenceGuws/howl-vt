@@ -1,6 +1,7 @@
 const std = @import("std");
 const vocabulary = @import("../action/vocabulary.zig");
 const host_state = @import("../host/state.zig");
+const parser = @import("../parser.zig");
 
 const KittyGraphicsCommand = vocabulary.KittyGraphicsCommand;
 
@@ -11,6 +12,15 @@ pub const RenderCursorView = struct {
 
 pub const Count = u32;
 pub const Index = u32;
+
+// Keep kitty graphics retained state inside the same bounded 1 MiB burst
+// scale as parser-owned large controls, and cap item counts at the metadata
+// ceiling so tiny records cannot grow without bound.
+pub const image_max_count: Count = parser.max_metadata_control_bytes;
+pub const placement_max_count: Count = parser.max_metadata_control_bytes;
+pub const frame_max_count: Count = parser.max_metadata_control_bytes;
+pub const retained_payload_max_bytes: u32 = parser.max_large_osc_control_bytes;
+pub const upload_max_bytes: u32 = parser.max_large_osc_control_bytes;
 
 pub const Image = struct {
     image_id: u32,
@@ -99,13 +109,13 @@ pub const State = struct {
         return self.frames.items[@intCast(idx)];
     }
 
-    pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) void {
+    pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
         if (cmd.action == 'q') {
-            if (!cmd.quiet) appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:kitty graphics rendering unsupported");
+            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:kitty graphics rendering unsupported");
             return;
         }
         if (cmd.action == 'p') {
-            self.placeImage(allocator, render_view, output, encode_buf, cmd);
+            try self.placeImage(allocator, render_view, output, encode_buf, cmd);
             return;
         }
         if (cmd.action == 'd') {
@@ -113,18 +123,19 @@ pub const State = struct {
             return;
         }
         if (cmd.action == 'f') {
-            self.captureUpload(allocator, output, encode_buf, cmd);
+            try self.captureUpload(allocator, output, encode_buf, cmd);
             return;
         }
-        self.captureUpload(allocator, output, encode_buf, cmd);
+        try self.captureUpload(allocator, output, encode_buf, cmd);
     }
 
-    fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) void {
+    fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
         const image_id = self.resolveImageId(cmd) orelse {
-            if (!cmd.quiet) appendReply(allocator, output, encode_buf, cmd.image_id, "ENOENT:image not found");
+            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENOENT:image not found");
             return;
         };
-        self.placements.append(allocator, .{
+        try ensureCountBound(self.placements.items.len, placement_max_count);
+        try self.placements.append(allocator, .{
             .image_id = image_id,
             .placement_id = cmd.placement_id,
             .row = render_view.row,
@@ -132,8 +143,8 @@ pub const State = struct {
             .columns = cmd.columns,
             .rows = cmd.rows,
             .z_index = cmd.z,
-        }) catch return;
-        if (!cmd.quiet) appendReply(allocator, output, encode_buf, image_id, "OK");
+        });
+        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, image_id, "OK");
     }
 
     fn delete(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, cmd: KittyGraphicsCommand) void {
@@ -180,21 +191,21 @@ pub const State = struct {
         }
     }
 
-    fn captureUpload(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) void {
+    fn captureUpload(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
         if (cmd.medium != 'd') return;
         if (cmd.action != 't' and cmd.action != 'T' and cmd.action != 'f') return;
         if (cmd.more_chunks) {
-            self.appendUploadChunk(allocator, output, encode_buf, cmd, true);
+            try self.appendUploadChunk(allocator, output, encode_buf, cmd, true);
             return;
         }
         if (self.upload != null) {
-            self.appendUploadChunk(allocator, output, encode_buf, cmd, false);
+            try self.appendUploadChunk(allocator, output, encode_buf, cmd, false);
         } else {
-            self.storePayload(allocator, output, encode_buf, cmd, cmd.payload);
+            try self.storePayload(allocator, output, encode_buf, cmd, cmd.payload);
         }
     }
 
-    fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) void {
+    fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) host_state.ApplyError!void {
         if (self.upload == null) {
             const image_id = self.imageIdForUpload(cmd);
             self.upload = .{
@@ -209,7 +220,15 @@ pub const State = struct {
             };
         }
         if (self.upload) |*upload| {
-            upload.data.appendSlice(allocator, cmd.payload) catch return;
+            upload.data.appendSlice(allocator, cmd.payload) catch |err| switch (err) {
+                error.OutOfMemory => {
+                    self.abortUpload(allocator);
+                    return error.OutOfMemory;
+                },
+            };
+            errdefer self.abortUpload(allocator);
+            try ensureRetainedPayloadTotal(self);
+            try ensureUploadBound(count32(upload.data.items));
             if (more) return;
             const image_id = upload.image_id;
             const image_number = upload.image_number;
@@ -218,25 +237,26 @@ pub const State = struct {
             const width = upload.width;
             const height = upload.height;
             const frame_number = upload.frame_number;
-            const owned = upload.data.toOwnedSlice(allocator) catch return;
+            const owned = try upload.data.toOwnedSlice(allocator);
             if (action == 'f') {
-                self.storeFrameOwned(allocator, image_id, frame_number, format, width, height, owned);
+                try self.storeFrameOwned(allocator, image_id, frame_number, format, width, height, owned);
             } else {
-                self.storeImageOwned(allocator, image_id, image_number, format, width, height, owned);
-                if (image_number != 0 and !cmd.quiet) appendNumberReply(allocator, output, encode_buf, image_id, image_number, "OK");
+                try self.storeImageOwned(allocator, image_id, image_number, format, width, height, owned);
+                if (image_number != 0 and !cmd.quiet) try appendNumberReply(allocator, output, encode_buf, image_id, image_number, "OK");
             }
             self.upload = null;
         }
     }
 
-    fn storePayload(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, payload: []const u8) void {
-        const owned = allocator.dupe(u8, payload) catch return;
+    fn storePayload(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, payload: []const u8) host_state.ApplyError!void {
+        try ensureRetainedPayloadStore(self, count32(payload), 0);
+        const owned = try allocator.dupe(u8, payload);
         const image_id = self.imageIdForUpload(cmd);
         if (cmd.action == 'f') {
-            self.storeFrameOwned(allocator, image_id, cmd.placement_id, cmd.format, cmd.width, cmd.height, owned);
+            try self.storeFrameOwned(allocator, image_id, cmd.placement_id, cmd.format, cmd.width, cmd.height, owned);
         } else {
-            self.storeImageOwned(allocator, image_id, cmd.image_number, cmd.format, cmd.width, cmd.height, owned);
-            if (cmd.image_number != 0 and !cmd.quiet) appendNumberReply(allocator, output, encode_buf, image_id, cmd.image_number, "OK");
+            try self.storeImageOwned(allocator, image_id, cmd.image_number, cmd.format, cmd.width, cmd.height, owned);
+            if (cmd.image_number != 0 and !cmd.quiet) try appendNumberReply(allocator, output, encode_buf, image_id, cmd.image_number, "OK");
         }
     }
 
@@ -249,15 +269,23 @@ pub const State = struct {
         return image_id;
     }
 
-    fn storeImageOwned(self: *State, allocator: std.mem.Allocator, image_id: u32, image_number: u32, format: u16, width: u32, height: u32, owned: []u8) void {
+    fn storeImageOwned(self: *State, allocator: std.mem.Allocator, image_id: u32, image_number: u32, format: u16, width: u32, height: u32, owned: []u8) host_state.ApplyError!void {
+        errdefer allocator.free(owned);
+        if (image_id == 0 or self.findImage(image_id) == null) {
+            try ensureCountBound(self.images.items.len, image_max_count);
+        }
+        try ensureRetainedPayloadStore(self, count32(owned), retainedPayloadBytesFreedByImage(self, image_id));
         const image = Image{ .image_id = image_id, .image_number = image_number, .format = format, .width = width, .height = height, .base64_payload = owned };
         if (image_id != 0) self.deleteImage(allocator, image_id);
-        self.images.append(allocator, image) catch allocator.free(owned);
+        try self.images.append(allocator, image);
     }
 
-    fn storeFrameOwned(self: *State, allocator: std.mem.Allocator, image_id: u32, frame_number: u32, format: u16, width: u32, height: u32, owned: []u8) void {
+    fn storeFrameOwned(self: *State, allocator: std.mem.Allocator, image_id: u32, frame_number: u32, format: u16, width: u32, height: u32, owned: []u8) host_state.ApplyError!void {
+        errdefer allocator.free(owned);
+        try ensureCountBound(self.frames.items.len, frame_max_count);
+        try ensureRetainedPayloadStore(self, count32(owned), 0);
         const frame = Frame{ .image_id = image_id, .frame_number = frame_number, .format = format, .width = width, .height = height, .base64_payload = owned };
-        self.frames.append(allocator, frame) catch allocator.free(owned);
+        try self.frames.append(allocator, frame);
     }
 
     fn findImage(self: *const State, image_id: u32) ?Index {
@@ -400,12 +428,63 @@ pub const State = struct {
     }
 };
 
-fn appendReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, msg: []const u8) void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b_Gi={d};{s}\x1b\\", .{ image_id, msg }) catch return;
-    host_state.appendOutput(output, allocator, text) catch unreachable;
+fn retainedPayloadBytes(self: *const State) u32 {
+    var total: u32 = 0;
+    for (self.images.items) |image| total = addPayloadBytes(total, image.base64_payload.len);
+    for (self.frames.items) |frame| total = addPayloadBytes(total, frame.base64_payload.len);
+    if (self.upload) |upload| total = addPayloadBytes(total, upload.data.items.len);
+    return total;
 }
 
-fn appendNumberReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, msg: []const u8) void {
-    const text = std.fmt.bufPrint(encode_buf, "\x1b_Gi={d},I={d};{s}\x1b\\", .{ image_id, image_number, msg }) catch return;
-    host_state.appendOutput(output, allocator, text) catch unreachable;
+fn retainedPayloadBytesFreedByImage(self: *const State, image_id: u32) u32 {
+    if (image_id == 0) return 0;
+    var total: u32 = 0;
+    for (self.images.items) |image| {
+        if (image.image_id == image_id) total = addPayloadBytes(total, image.base64_payload.len);
+    }
+    for (self.frames.items) |frame| {
+        if (frame.image_id == image_id) total = addPayloadBytes(total, frame.base64_payload.len);
+    }
+    return total;
+}
+
+fn addPayloadBytes(total: u32, len: usize) u32 {
+    const payload_len = count32Len(len);
+    return std.math.add(u32, total, payload_len) catch retained_payload_max_bytes + 1;
+}
+
+fn count32Len(len: usize) u32 {
+    std.debug.assert(len <= std.math.maxInt(u32));
+    return @intCast(len);
+}
+
+fn ensureCountBound(current_len: usize, max_len: Count) host_state.ApplyError!void {
+    if (current_len < max_len) return;
+    return error.ConsequenceLimit;
+}
+
+fn ensureUploadBound(len: u32) host_state.ApplyError!void {
+    if (len > upload_max_bytes) return error.ConsequenceLimit;
+}
+
+fn ensureRetainedPayloadStore(self: *const State, next_len: u32, freed_len: u32) host_state.ApplyError!void {
+    if (next_len > retained_payload_max_bytes) return error.ConsequenceLimit;
+    const retained_len = retainedPayloadBytes(self);
+    const kept_len = retained_len -| freed_len;
+    const total_len = std.math.add(u32, kept_len, next_len) catch return error.ConsequenceLimit;
+    if (total_len > retained_payload_max_bytes) return error.ConsequenceLimit;
+}
+
+fn ensureRetainedPayloadTotal(self: *const State) host_state.ApplyError!void {
+    if (retainedPayloadBytes(self) > retained_payload_max_bytes) return error.ConsequenceLimit;
+}
+
+fn appendReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, msg: []const u8) host_state.ApplyError!void {
+    const text = std.fmt.bufPrint(encode_buf, "\x1b_Gi={d};{s}\x1b\\", .{ image_id, msg }) catch unreachable;
+    try host_state.appendOutput(output, allocator, text);
+}
+
+fn appendNumberReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, msg: []const u8) host_state.ApplyError!void {
+    const text = std.fmt.bufPrint(encode_buf, "\x1b_Gi={d},I={d};{s}\x1b\\", .{ image_id, image_number, msg }) catch unreachable;
+    try host_state.appendOutput(output, allocator, text);
 }
