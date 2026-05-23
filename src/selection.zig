@@ -9,3 +9,4 @@ pub const terminalStart = state.terminalStart;
 pub const terminalUpdate = state.terminalUpdate;
 pub const terminalFinish = state.terminalFinish;
 pub const terminalClear = state.terminalClear;
+pub const ordered = state.ordered;

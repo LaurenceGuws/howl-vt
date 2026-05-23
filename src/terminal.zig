@@ -4,6 +4,7 @@ const screen = @import("screen.zig");
 const host_state = @import("host/state.zig");
 const kitty_state = @import("kitty/state.zig");
 const parser_mod = @import("parser.zig");
+const selection = @import("selection.zig");
 const screen_set = @import("screen_set.zig");
 const stream_terminal = @import("stream_terminal.zig");
 
@@ -181,6 +182,37 @@ pub const Terminal = struct {
         return host_state.hyperlinkUriForId(self, view.cellInfoAt(row, col).attrs.link_id);
     }
 
+    pub fn selectionState(self: *const Terminal) ?selection.TerminalSelection {
+        return self.screen_state.activeSelectionConst().state();
+    }
+
+    pub fn startSelection(self: *Terminal, row: i32, col: u16) void {
+        self.screen_state.activeSelection().start(row, col);
+        self.noteSelectionChanged();
+    }
+
+    pub fn updateSelection(self: *Terminal, row: i32, col: u16) void {
+        const before = self.selectionState() orelse return;
+        self.screen_state.activeSelection().update(row, col);
+        const after = self.selectionState() orelse return;
+        if (before.end.row == after.end.row and before.end.col == after.end.col) return;
+        self.noteSelectionChanged();
+    }
+
+    pub fn finishSelection(self: *Terminal) void {
+        const before = self.selectionState() orelse return;
+        self.screen_state.activeSelection().finish();
+        const after = self.selectionState() orelse return;
+        if (before.selecting == after.selecting) return;
+        self.noteSelectionChanged();
+    }
+
+    pub fn clearSelection(self: *Terminal) void {
+        if (self.selectionState() == null) return;
+        self.screen_state.activeSelection().clear();
+        self.noteSelectionChanged();
+    }
+
     fn noteSurfacePublication(self: *Terminal, view: screen_set.View, scrollback_offset: u64) u64 {
         const same_dirty = self.surface_snapshot_dirty_generation == self.dirty_generation;
         const same_offset = self.surface_snapshot_scrollback_offset == scrollback_offset;
@@ -198,6 +230,11 @@ pub const Terminal = struct {
             self.surface_snapshot_alt = view.is_alternate_screen;
         }
         return self.surface_snapshot_seq;
+    }
+
+    fn noteSelectionChanged(self: *Terminal) void {
+        self.screen_state.active().markAllRowsDirty();
+        self.dirty_generation +%= 1;
     }
 
     pub const SurfacePublication = struct {

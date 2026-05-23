@@ -75,6 +75,7 @@ pub const View = struct {
 pub const SurfaceSnapshot = struct {
     view: View,
     dirty: ?Screen.DirtyRows,
+    selection: ?selection.TerminalSelection,
 };
 
 pub const Set = struct {
@@ -200,6 +201,7 @@ pub fn surfaceSnapshot(screen_state: *const Set, scrollback_offset: u64) Surface
     return .{
         .view = view,
         .dirty = dirty,
+        .selection = screen_state.activeSelectionConst().state(),
     };
 }
 

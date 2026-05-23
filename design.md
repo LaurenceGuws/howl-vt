@@ -173,7 +173,7 @@ sequenceDiagram
 - `howl_vt_terminal_feed` must also fail instead of partially mutating VT-owned host consequences
   when retained title, clipboard, hyperlink, DCS, or pending-output state cannot fit within the
   owning bound or cannot allocate.
-- `HowlVtSurface` and `HowlVtSurfaceResult` are the primary renderer-facing VT-surface contract types for visible surface cells, cursor state, publication identity, and dirtiness truth.
+- `HowlVtSurface` and `HowlVtSurfaceResult` are the primary renderer-facing VT-surface contract types for visible surface cells, cursor state, selection truth, publication identity, and dirtiness truth.
 - `HowlVtVisibleMeta` and `HowlVtVisibleMetaResult` are the explicit VT metadata query contract for rows, cols, history count, alternate-screen state, snapshot identity, and dirty generation.
 - `howl_vt_terminal_query_visible_meta` is the explicit VT-visible metadata query seam.
 - `howl_vt_terminal_copy_surface` is the bounded VT-surface export call.
@@ -184,6 +184,7 @@ sequenceDiagram
   VT dirty truth without reclassifying or expanding it for render.
 - `howl_vt_terminal_copy_surface` reports two owner-truth identities: `snapshot_seq` for visible publication identity, including the requested scrollback projection, and `dirty_generation` for the current unretired dirty set.
 - `howl_vt_terminal_ack_surface` is the only public dirty-retirement path. It retires dirty truth only for the captured visible publication identity that the renderer-facing VT-surface copy reported, and only when that identity still points at the current dirty generation.
+- `howl_vt_terminal_query_selection`, `howl_vt_terminal_start_selection`, `howl_vt_terminal_update_selection`, `howl_vt_terminal_finish_selection`, `howl_vt_terminal_clear_selection`, and `howl_vt_terminal_copy_selection` cover host selection UX against VT-owned history-aware coordinates.
 - `howl_vt_terminal_copy_pending_output`, `howl_vt_terminal_clear_pending_output`, and `howl_vt_terminal_drain_pending_clipboard` cover host-facing protocol consequences.
 - `howl_vt_terminal_encode_key`, `howl_vt_terminal_encode_focus`, `howl_vt_terminal_encode_mouse`, `howl_vt_terminal_encode_paste_start`, `howl_vt_terminal_encode_paste_end`, and `howl_vt_terminal_encode_paste` cover host input encoding against current terminal modes.
 - Header-declared key, modifier, and mouse constants are part of the shipped vocabulary contract. Getter and validator helper exports are not.

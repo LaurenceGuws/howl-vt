@@ -106,6 +106,7 @@ typedef struct {
   uint8_t inverse;
   uint8_t invisible;
   uint8_t strikethrough;
+  uint8_t selected;
 } HowlVtSurfaceCellAttrs;
 
 typedef struct {
@@ -151,6 +152,25 @@ typedef struct {
 } HowlVtCursorStyle;
 
 typedef struct {
+  int32_t row;
+  uint16_t col;
+  uint16_t reserved0;
+} HowlVtSelectionPos;
+
+typedef struct {
+  uint8_t active;
+  uint8_t selecting;
+  uint16_t reserved0;
+  HowlVtSelectionPos start;
+  HowlVtSelectionPos end;
+} HowlVtSelection;
+
+typedef struct {
+  int32_t status;
+  HowlVtSelection selection;
+} HowlVtSelectionResult;
+
+typedef struct {
   HowlVtCursorStyle default_cursor_style;
 } HowlVtTerminalInitOptions;
 
@@ -166,6 +186,7 @@ typedef struct {
   HowlVtU16Span dirty_cols_start;
   HowlVtU16Span dirty_cols_end;
   HowlVtCursor cursor;
+  HowlVtSelection selection;
 } HowlVtSurface;
 
 typedef struct {
@@ -197,6 +218,11 @@ int32_t howl_vt_terminal_resize(HowlVtHandle handle, uint16_t rows, uint16_t col
 int32_t howl_vt_terminal_ack_surface(HowlVtHandle handle, uint64_t snapshot_seq);
 HowlVtVisibleMetaResult howl_vt_terminal_query_visible_meta(HowlVtHandle handle, uint64_t scrollback_offset);
 HowlVtSurfaceResult howl_vt_terminal_copy_surface(HowlVtHandle handle, uint64_t scrollback_offset, HowlVtSurfaceCell *cells_ptr, size_t cells_cap, uint8_t *dirty_rows_ptr, size_t dirty_rows_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
+HowlVtSelectionResult howl_vt_terminal_query_selection(HowlVtHandle handle);
+int32_t howl_vt_terminal_start_selection(HowlVtHandle handle, int32_t row, uint16_t col);
+int32_t howl_vt_terminal_update_selection(HowlVtHandle handle, int32_t row, uint16_t col);
+int32_t howl_vt_terminal_finish_selection(HowlVtHandle handle);
+int32_t howl_vt_terminal_clear_selection(HowlVtHandle handle);
 
 /* -------------------------------------------------------------------------- */
 /* 2. Protocol Metadata Host Output                                            */
@@ -220,6 +246,7 @@ HowlVtHandle howl_vt_terminal_init_with_options(uint16_t rows, uint16_t cols, ui
 void howl_vt_terminal_deinit(HowlVtHandle handle);
 HowlVtFeedResult howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
 HowlVtBytesResult howl_vt_terminal_copy_surface_hyperlink(HowlVtHandle handle, uint64_t scrollback_offset, uint64_t snapshot_seq, uint16_t row, uint16_t col, uint8_t *ptr, size_t cap);
+HowlVtBytesResult howl_vt_terminal_copy_selection(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_title(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_pending_output(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 void howl_vt_terminal_clear_pending_output(HowlVtHandle handle);

@@ -1,6 +1,7 @@
 const std = @import("std");
 const screen = @import("screen.zig");
 const input = @import("input.zig");
+const selection = @import("selection.zig");
 const host_state = @import("host/state.zig");
 const screen_set = @import("screen_set.zig");
 const terminal = @import("terminal.zig");
@@ -46,6 +47,7 @@ pub const FfiSurfaceCellAttrs = extern struct {
     inverse: u8 = 0,
     invisible: u8 = 0,
     strikethrough: u8 = 0,
+    selected: u8 = 0,
 };
 
 pub const FfiSurfaceCell = extern struct {
@@ -106,6 +108,25 @@ pub const FfiCursorStyle = extern struct {
     blink: u8 = 1,
 };
 
+pub const FfiSelectionPos = extern struct {
+    row: i32 = 0,
+    col: u16 = 0,
+    reserved0: u16 = 0,
+};
+
+pub const FfiSelection = extern struct {
+    active: u8 = 0,
+    selecting: u8 = 0,
+    reserved0: u16 = 0,
+    start: FfiSelectionPos = .{},
+    end: FfiSelectionPos = .{},
+};
+
+pub const FfiSelectionResult = extern struct {
+    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
+    selection: FfiSelection = .{},
+};
+
 pub const FfiTerminalInitOptions = extern struct {
     default_cursor_style: FfiCursorStyle = .{},
 };
@@ -122,6 +143,7 @@ pub const FfiSurface = extern struct {
     dirty_cols_start: FfiU16Span,
     dirty_cols_end: FfiU16Span,
     cursor: FfiCursor,
+    selection: FfiSelection = .{},
 };
 
 pub const FfiVisibleMeta = extern struct {
@@ -156,6 +178,7 @@ pub const FfiSurfaceResult = extern struct {
         .dirty_cols_start = .{ .ptr = null, .len = 0 },
         .dirty_cols_end = .{ .ptr = null, .len = 0 },
         .cursor = .{ .row = 0, .col = 0, .visible = 0, .shape = 0, .blink = 0 },
+        .selection = .{},
     },
 };
 
@@ -208,6 +231,7 @@ fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
             .underline_color_set = boolByte(value.attrs.underline_color.a != 0),
             .blink = boolByte(value.attrs.blink or value.attrs.blink_fast),
             .inverse = boolByte(value.attrs.reverse),
+            .selected = 0,
         },
         .link_id = value.attrs.link_id,
     };
@@ -260,8 +284,26 @@ fn cursorStyleIn(value: FfiCursorStyle) ?screen.Screen.CursorStyle {
     return .{ .shape = shape, .blink = value.blink != 0 };
 }
 
+fn selectionOut(value: ?selection.TerminalSelection) FfiSelection {
+    const selected = value orelse return .{};
+    return .{
+        .active = boolByte(selected.active),
+        .selecting = boolByte(selected.selecting),
+        .start = .{ .row = selected.start.row, .col = selected.start.col },
+        .end = .{ .row = selected.end.row, .col = selected.end.col },
+    };
+}
+
+fn selectionResult(value: ?selection.TerminalSelection) FfiSelectionResult {
+    return .{
+        .status = @intFromEnum(HowlVtCallStatus.ok),
+        .selection = selectionOut(value),
+    };
+}
+
 fn surfaceResult(
     view: screen_set.View,
+    selected: ?selection.TerminalSelection,
     snapshot_seq: u64,
     dirty_generation: u64,
     cells_ptr: ?[*]FfiSurfaceCell,
@@ -286,6 +328,7 @@ fn surfaceResult(
             .dirty_cols_start = .{ .ptr = cols_start_ptr, .len = view.rows },
             .dirty_cols_end = .{ .ptr = cols_end_ptr, .len = view.rows },
             .cursor = .{ .row = view.cursor_row, .col = view.cursor_col, .visible = boolByte(view.cursor_visible), .shape = @intFromEnum(view.cursor_shape), .blink = boolByte(view.cursor_blink) },
+            .selection = selectionOut(selected),
         },
     };
 }
@@ -302,6 +345,104 @@ fn visibleMetaResult(meta: terminal.Terminal.VisibleMeta) FfiVisibleMetaResult {
             .dirty_generation = meta.dirty_generation,
         },
     };
+}
+
+fn selectionRowSource(screen_state: *const screen_set.Set, row: i32) ?screen_set.RowSource {
+    if (row < 0) {
+        const depth_i64 = -(@as(i64, row) + 1);
+        const depth: u32 = std.math.cast(u32, depth_i64) orelse return null;
+        if (screen_state.alt_active) return null;
+        if (depth >= screen_state.primary.historyCount()) return null;
+        return .{ .history = depth };
+    }
+    const screen_row: u16 = std.math.cast(u16, row) orelse return null;
+    if (screen_row >= screen_state.activeConst().rows) return null;
+    return .{ .screen = screen_row };
+}
+
+fn selectionContentEndExclusive(screen_state: *const screen_set.Set, row: i32) u16 {
+    const source = selectionRowSource(screen_state, row) orelse return 0;
+    const active = screen_state.activeConst();
+    var scan = active.cols;
+    while (scan > 0) {
+        const idx = scan - 1;
+        const cell = switch (source) {
+            .history => |recency| active.historyCellAt(recency, idx),
+            .screen => |screen_row| active.cellInfoAt(screen_row, idx),
+        };
+        if (cell.codepoint != 0 and cell.codepoint != ' ') return scan;
+        scan -= 1;
+    }
+    return if (active.cols > 0) 1 else 0;
+}
+
+fn visibleSelectionRow(view: screen_set.View, row: u16) i32 {
+    return switch (view.rowSource(row)) {
+        .history => |recency| -1 - @as(i32, @intCast(recency)),
+        .screen => |screen_row| screen_row,
+    };
+}
+
+fn visibleSelectionRange(view: screen_set.View, selected: selection.TerminalSelection, row: u16) ?struct { start: u16, end_exclusive: u16 } {
+    const ordered = selection.ordered(selected);
+    const selected_row = visibleSelectionRow(view, row);
+    if (selected_row < ordered.start.row or selected_row > ordered.end.row) return null;
+
+    const row_end = view.contentEndExclusive(row);
+    if (row_end == 0) return null;
+
+    const range_start: u16 = if (selected_row == ordered.start.row) ordered.start.col else 0;
+    const unclamped_end: u32 = if (selected_row == ordered.end.row)
+        @as(u32, ordered.end.col) + 1
+    else
+        row_end;
+    const range_end: u16 = @intCast(@min(unclamped_end, row_end));
+    if (range_start >= range_end) return null;
+    return .{ .start = range_start, .end_exclusive = range_end };
+}
+
+fn applyVisibleSelection(view: screen_set.View, selected: ?selection.TerminalSelection, cells: []FfiSurfaceCell) void {
+    const active = selected orelse return;
+    var row: u16 = 0;
+    while (row < view.rows) : (row += 1) {
+        const range = visibleSelectionRange(view, active, row) orelse continue;
+        const base: usize = @as(usize, row) * @as(usize, view.cols);
+        var col = range.start;
+        while (col < range.end_exclusive) : (col += 1) {
+            cells[base + col].attrs.selected = 1;
+        }
+    }
+}
+
+fn copySelectionText(owned: *terminal.Terminal) ![]const u8 {
+    const selected = owned.selectionState() orelse return &.{};
+    const ordered_selection = selection.ordered(selected);
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(owned.allocator);
+    var row = ordered_selection.start.row;
+    while (row <= ordered_selection.end.row) : (row += 1) {
+        const source = selectionRowSource(&owned.screen_state, row) orelse break;
+        const row_start = if (row == ordered_selection.start.row) ordered_selection.start.col else 0;
+        const row_end = if (row == ordered_selection.end.row)
+            @as(u16, @intCast(@min(@as(u32, ordered_selection.end.col) + 1, @as(u32, owned.screen_state.activeConst().cols))))
+        else
+            selectionContentEndExclusive(&owned.screen_state, row);
+        if (row_end > row_start) {
+            var col = row_start;
+            while (col < row_end) : (col += 1) {
+                const cell = switch (source) {
+                    .history => |recency| owned.screen_state.primary.historyCellAt(recency, col),
+                    .screen => |screen_row| owned.screen_state.activeConst().cellInfoAt(screen_row, col),
+                };
+                if (cell.codepoint == 0) continue;
+                var utf8: [4]u8 = undefined;
+                const len = try std.unicode.utf8Encode(@intCast(cell.codepoint), &utf8);
+                try out.appendSlice(owned.allocator, utf8[0..len]);
+            }
+        }
+        if (row != ordered_selection.end.row) try out.append(owned.allocator, '\n');
+    }
+    return out.toOwnedSlice(owned.allocator);
 }
 
 pub fn terminalInit(rows: u16, cols: u16, history_capacity: u16) callconv(.c) VtHandle {
@@ -375,7 +516,7 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
     const cell_count = surfaceCellCount(view.rows, view.cols);
     // The shipped VT ABI still accepts architecture-sized destination capacities.
     // Validate those seam values against typed VT counts before exposing writable slices.
-    var result = surfaceResult(view, publication.snapshot_seq, publication.dirty_generation, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr);
+    var result = surfaceResult(view, snapshot.selection, publication.snapshot_seq, publication.dirty_generation, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr);
 
     if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < view.rows or cols_end_cap < view.rows) {
         result.status = @intFromEnum(HowlVtCallStatus.short_buffer);
@@ -400,9 +541,47 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
     };
 
     screen_set.copyViewCells(view, cells_out, cellOut);
+    applyVisibleSelection(view, snapshot.selection, cells_out[0..@intCast(cell_count)]);
     screen_set.copyDirtyRows(dirty_rows_out[0..view.rows], cols_start[0..view.rows], cols_end[0..view.rows], snapshot.dirty);
 
     return result;
+}
+
+pub fn terminalQuerySelection(handle: VtHandle) callconv(.c) FfiSelectionResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    return selectionResult(owned.selectionState());
+}
+
+pub fn terminalStartSelection(handle: VtHandle, row: i32, col: u16) callconv(.c) i32 {
+    const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
+    owned.startSelection(row, col);
+    return @intFromEnum(HowlVtCallStatus.ok);
+}
+
+pub fn terminalUpdateSelection(handle: VtHandle, row: i32, col: u16) callconv(.c) i32 {
+    const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
+    owned.updateSelection(row, col);
+    return @intFromEnum(HowlVtCallStatus.ok);
+}
+
+pub fn terminalFinishSelection(handle: VtHandle) callconv(.c) i32 {
+    const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
+    owned.finishSelection();
+    return @intFromEnum(HowlVtCallStatus.ok);
+}
+
+pub fn terminalClearSelection(handle: VtHandle) callconv(.c) i32 {
+    const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
+    owned.clearSelection();
+    return @intFromEnum(HowlVtCallStatus.ok);
+}
+
+pub fn terminalCopySelection(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const text = copySelectionText(owned) catch return .{ .status = @intFromEnum(HowlVtCallStatus.failed) };
+    defer if (text.len != 0) owned.allocator.free(text);
+    return copyBytes(out, text);
 }
 
 pub fn terminalCopySurfaceHyperlink(handle: VtHandle, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
@@ -676,4 +855,75 @@ test "vt ffi rejects visible cell hyperlink lookup for stale snapshot" {
     var out: [32]u8 = undefined;
     const uri = terminalCopySurfaceHyperlink(handle, 0, first_meta.meta.snapshot_seq, 0, 0, out[0..].ptr, out.len);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), uri.status);
+}
+
+test "vt ffi selection query and copy stay history-aware" {
+    const handle = terminalInit(2, 4, 8);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const fed = terminalFeed(handle, "aa\r\nbb\r\ncc".ptr, 8);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), fed.status);
+
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalStartSelection(handle, -1, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalUpdateSelection(handle, 0, 1));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFinishSelection(handle));
+
+    const selection_result = terminalQuerySelection(handle);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), selection_result.status);
+    try std.testing.expectEqual(@as(u8, 1), selection_result.selection.active);
+    try std.testing.expectEqual(@as(i32, -1), selection_result.selection.start.row);
+    try std.testing.expectEqual(@as(i32, 0), selection_result.selection.end.row);
+
+    var text: [32]u8 = undefined;
+    const copied = terminalCopySelection(handle, text[0..].ptr, text.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), copied.status);
+    try std.testing.expectEqualStrings("aa\nbb", text[0..@intCast(copied.written)]);
+
+    var cells: [8]FfiSurfaceCell = undefined;
+    var dirty_rows: [2]u8 = undefined;
+    var cols_start: [2]u16 = undefined;
+    var cols_end: [2]u16 = undefined;
+    const surface = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), surface.status);
+    try std.testing.expectEqual(@as(u8, 1), surface.source.selection.active);
+    try std.testing.expectEqual(@as(i32, -1), surface.source.selection.start.row);
+    try std.testing.expectEqual(@as(i32, 0), surface.source.selection.end.row);
+}
+
+test "vt ffi surface selection follows viewport and hugs visible content" {
+    const handle = terminalInit(2, 4, 8);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const fed = terminalFeed(handle, "aa\r\nbb\r\ncc".ptr, 10);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), fed.status);
+
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalStartSelection(handle, -1, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalUpdateSelection(handle, 0, 1));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFinishSelection(handle));
+
+    var cells: [8]FfiSurfaceCell = undefined;
+    var dirty_rows: [2]u8 = undefined;
+    var cols_start: [2]u16 = undefined;
+    var cols_end: [2]u16 = undefined;
+
+    const live = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), live.status);
+    try std.testing.expectEqual(@as(u8, 1), cells[0].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 1), cells[1].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 0), cells[2].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 0), cells[3].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 0), cells[4].attrs.selected);
+
+    const scrolled = terminalCopySurface(handle, 1, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), scrolled.status);
+    try std.testing.expectEqual(@as(u8, 1), cells[0].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 1), cells[1].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 0), cells[2].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 0), cells[3].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 1), cells[4].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 1), cells[5].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 0), cells[6].attrs.selected);
+    try std.testing.expectEqual(@as(u8, 0), cells[7].attrs.selected);
 }

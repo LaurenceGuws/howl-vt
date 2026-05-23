@@ -81,19 +81,26 @@ pub fn terminalState(vt: anytype) ?TerminalSelection {
 }
 
 pub fn terminalStart(vt: anytype, row: i32, col: u16) void {
-    vt.screen_state.activeSelection().start(row, col);
+    vt.startSelection(row, col);
 }
 
 pub fn terminalUpdate(vt: anytype, row: i32, col: u16) void {
-    vt.screen_state.activeSelection().update(row, col);
+    vt.updateSelection(row, col);
 }
 
 pub fn terminalFinish(vt: anytype) void {
-    vt.screen_state.activeSelection().finish();
+    vt.finishSelection();
 }
 
 pub fn terminalClear(vt: anytype) void {
-    vt.screen_state.activeSelection().clear();
+    vt.clearSelection();
+}
+
+pub fn ordered(sel: TerminalSelection) struct { start: SelectionPos, end: SelectionPos } {
+    if (sel.start.row < sel.end.row) return .{ .start = sel.start, .end = sel.end };
+    if (sel.start.row > sel.end.row) return .{ .start = sel.end, .end = sel.start };
+    if (sel.start.col <= sel.end.col) return .{ .start = sel.start, .end = sel.end };
+    return .{ .start = sel.end, .end = sel.start };
 }
 
 test "selection: start in viewport coordinates" {
