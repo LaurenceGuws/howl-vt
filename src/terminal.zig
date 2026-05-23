@@ -156,6 +156,15 @@ pub const Terminal = struct {
         };
     }
 
+    pub fn visibleCellHyperlinkUri(self: *Terminal, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
+        if (snapshot_seq == 0) return error.InvalidArgument;
+        const publication = self.surfaceSnapshot(scrollback_offset);
+        if (publication.snapshot_seq != snapshot_seq) return error.InvalidArgument;
+        const view = publication.snapshot.view;
+        if (row >= view.rows or col >= view.cols) return error.InvalidArgument;
+        return host_state.hyperlinkUriForId(self, view.cellInfoAt(row, col).attrs.link_id);
+    }
+
     fn noteSurfacePublication(self: *Terminal, view: screen_set.View, scrollback_offset: u64) u64 {
         const same_dirty = self.surface_snapshot_dirty_generation == self.dirty_generation;
         const same_offset = self.surface_snapshot_scrollback_offset == scrollback_offset;

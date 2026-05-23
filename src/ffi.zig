@@ -378,6 +378,15 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
     return result;
 }
 
+pub fn terminalCopySurfaceHyperlink(handle: VtHandle, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const uri = owned.visibleCellHyperlinkUri(scrollback_offset, snapshot_seq, row, col) catch {
+        return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    } orelse &.{};
+    return copyBytes(out, uri);
+}
+
 pub fn terminalCopyPendingOutput(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
@@ -569,4 +578,41 @@ test "vt ffi feed reports and copies title" {
     const title = terminalCopyTitle(handle, title_buf[0..].ptr, title_buf.len);
     try std.testing.expectEqual(@as(i32, 0), title.status);
     try std.testing.expectEqualStrings("My Title", title_buf[0..@intCast(title.written)]);
+}
+
+test "vt ffi copies visible cell hyperlink for matching snapshot" {
+    const handle = terminalInit(1, 8, 4);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const seq = "\x1b]8;;https://example.com\x07abc\x1b]8;;\x07";
+    const fed = terminalFeed(handle, seq.ptr, seq.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), fed.status);
+
+    const meta = terminalQueryVisibleMeta(handle, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
+
+    var out: [32]u8 = undefined;
+    const uri = terminalCopySurfaceHyperlink(handle, 0, meta.meta.snapshot_seq, 0, 1, out[0..].ptr, out.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), uri.status);
+    try std.testing.expectEqualStrings("https://example.com", out[0..@intCast(uri.written)]);
+}
+
+test "vt ffi rejects visible cell hyperlink lookup for stale snapshot" {
+    const handle = terminalInit(1, 8, 4);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const first_seq = "\x1b]8;;https://example.com\x07a\x1b]8;;\x07";
+    const first_feed = terminalFeed(handle, first_seq.ptr, first_seq.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), first_feed.status);
+    const first_meta = terminalQueryVisibleMeta(handle, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), first_meta.status);
+
+    const second_feed = terminalFeed(handle, "b".ptr, 1);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), second_feed.status);
+
+    var out: [32]u8 = undefined;
+    const uri = terminalCopySurfaceHyperlink(handle, 0, first_meta.meta.snapshot_seq, 0, 0, out[0..].ptr, out.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), uri.status);
 }
