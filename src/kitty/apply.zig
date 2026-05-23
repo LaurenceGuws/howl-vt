@@ -18,8 +18,8 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!void {
         .kitty_keyboard_query => try active_screen_const.keyboard.appendReport(allocator, &vt.host.pending_output, scratch.buf[0..]),
         .kitty_keyboard_push => |flags| active_screen.keyboard.push(flags),
         .kitty_keyboard_pop => |count| active_screen.keyboard.pop(count),
-        .kitty_shell_mark => |mark| setShellMark(allocator, &vt.kitty.global.shell_mark, mark),
-        .kitty_notification => |notification| appendNotification(allocator, &vt.kitty.global.notifications, notification),
+        .kitty_shell_mark => |mark| try setShellMark(allocator, &vt.kitty.global.shell_mark, mark),
+        .kitty_notification => |notification| try appendNotification(allocator, &vt.kitty.global.notifications, notification),
         .kitty_pointer_shape => |cmd| {
             switch (cmd.action) {
                 '<' => active_screen.pointer.pop(),
@@ -40,8 +40,8 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!void {
             .cursor_query => try host_state.appendPendingOutput(vt, "\x1b[>100 q"),
             .color_query => try host_state.appendPendingOutput(vt, "\x1b[>101;30:0;40:0 q"),
         },
-        .kitty_file_transfer => |payload| setOptionalPayload(allocator, &vt.kitty.global.file_transfer_request, payload),
-        .kitty_text_size => |payload| setOptionalPayload(allocator, &vt.kitty.global.text_size_request, payload),
+        .kitty_file_transfer => |payload| try setOptionalPayload(allocator, &vt.kitty.global.file_transfer_request, payload),
+        .kitty_text_size => |payload| try setOptionalPayload(allocator, &vt.kitty.global.text_size_request, payload),
         .kitty_graphics => |cmd| {
             const cursor = vt.screen_state.activeConst();
             vt.kitty.global.graphics.handle(allocator, .{
@@ -52,26 +52,34 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!void {
     }
 }
 
-pub fn setShellMark(allocator: std.mem.Allocator, current: *types.ShellMark, mark: KittyShellMark) void {
+pub fn setShellMark(allocator: std.mem.Allocator, current: *types.ShellMark, mark: KittyShellMark) host_state.ApplyError!void {
+    const owned = try replaceOwned(allocator, mark.metadata, host_state.retained_metadata_max_bytes);
     allocator.free(current.metadata);
-    const owned = allocator.dupe(u8, mark.metadata) catch {
-        current.* = .{};
-        return;
-    };
     current.* = .{ .kind = mark.kind, .status = mark.status, .metadata = owned };
 }
 
-pub fn appendNotification(allocator: std.mem.Allocator, notifications: *std.ArrayList(types.NotificationRequest), notification: KittyNotificationCommand) void {
-    const metadata = allocator.dupe(u8, notification.metadata) catch return;
+pub fn appendNotification(allocator: std.mem.Allocator, notifications: *std.ArrayList(types.NotificationRequest), notification: KittyNotificationCommand) host_state.ApplyError!void {
+    try ensureRetainedBound(host_state.count32(notification.metadata), host_state.retained_metadata_max_bytes);
+    try ensureRetainedBound(host_state.count32(notification.payload), host_state.retained_metadata_max_bytes);
+    const metadata = try allocator.dupe(u8, notification.metadata);
     errdefer allocator.free(metadata);
-    const payload = allocator.dupe(u8, notification.payload) catch return;
-    notifications.append(allocator, .{ .metadata = metadata, .payload = payload }) catch {
-        allocator.free(metadata);
-        allocator.free(payload);
-    };
+    const payload = try allocator.dupe(u8, notification.payload);
+    errdefer allocator.free(payload);
+    try notifications.append(allocator, .{ .metadata = metadata, .payload = payload });
 }
 
-pub fn setOptionalPayload(allocator: std.mem.Allocator, slot: *?[]u8, payload: []const u8) void {
+pub fn setOptionalPayload(allocator: std.mem.Allocator, slot: *?[]u8, payload: []const u8) host_state.ApplyError!void {
+    const owned = try replaceOwned(allocator, payload, host_state.retained_payload_max_bytes);
     if (slot.*) |old| allocator.free(old);
-    slot.* = allocator.dupe(u8, payload) catch null;
+    slot.* = owned;
+}
+
+fn replaceOwned(allocator: std.mem.Allocator, next: []const u8, max_len: u32) host_state.ApplyError![]u8 {
+    try ensureRetainedBound(host_state.count32(next), max_len);
+    const owned = try allocator.dupe(u8, next);
+    return owned;
+}
+
+fn ensureRetainedBound(len: u32, max_len: u32) host_state.ApplyError!void {
+    if (len > max_len) return error.ConsequenceLimit;
 }

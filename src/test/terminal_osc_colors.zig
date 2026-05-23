@@ -147,6 +147,34 @@ test "kitty file transfer and text sizing OSC payloads are retained" {
     try std.testing.expectEqualStrings("s=2;Hi", KittyState.textSizeRequest(&terminal).?);
 }
 
+test "kitty file transfer OOM fails feed without dropping retained request" {
+    const seq_a = "\x1b]5113;cmd=data;AAAA\x1b\\";
+    const seq_b = "\x1b]5113;cmd=data;BBBB\x1b\\";
+
+    var probe_allocator_state = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    {
+        var terminal = try Terminal.init(probe_allocator_state.allocator(), 3, 16);
+        defer terminal.deinit();
+        var stream = try StreamHarness.init(&terminal);
+        defer stream.deinit();
+
+        try stream.nextSlice(seq_a);
+    }
+    const fail_index = probe_allocator_state.alloc_index;
+
+    var failing_allocator_state = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+    var terminal = try Terminal.init(failing_allocator_state.allocator(), 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice(seq_a);
+    try std.testing.expectEqualStrings("cmd=data;AAAA", KittyState.fileTransferRequest(&terminal).?);
+
+    try std.testing.expectError(error.OutOfMemory, stream.nextSlice(seq_b));
+    try std.testing.expectEqualStrings("cmd=data;AAAA", KittyState.fileTransferRequest(&terminal).?);
+}
+
 test "kitty shell integration OSC 133 records latest mark" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 8);
@@ -176,6 +204,38 @@ test "kitty notification OSC 99 queues host-neutral request" {
     try std.testing.expectEqualStrings("Hello", KittyState.notificationAt(&terminal, 0).?.payload);
     try std.testing.expectEqualStrings("i=1:p=body", KittyState.notificationAt(&terminal, 1).?.metadata);
     try std.testing.expectEqualStrings("World", KittyState.notificationAt(&terminal, 1).?.payload);
+}
+
+test "kitty notification OOM fails feed without dropping queued requests" {
+    const seq_a = "\x1b]99;i=1:p=body;Hello\x1b\\";
+    const seq_b = "\x1b]99;i=2:p=body;World\x1b\\";
+
+    var probe_allocator_state = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    {
+        var terminal = try Terminal.init(probe_allocator_state.allocator(), 3, 8);
+        defer terminal.deinit();
+        var stream = try StreamHarness.init(&terminal);
+        defer stream.deinit();
+
+        try stream.nextSlice(seq_a);
+    }
+    const fail_index = probe_allocator_state.alloc_index;
+
+    var failing_allocator_state = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+    var terminal = try Terminal.init(failing_allocator_state.allocator(), 3, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice(seq_a);
+    try std.testing.expectEqual(@as(u32, 1), KittyState.notificationCount(&terminal));
+    try std.testing.expectEqualStrings("i=1:p=body", KittyState.notificationAt(&terminal, 0).?.metadata);
+    try std.testing.expectEqualStrings("Hello", KittyState.notificationAt(&terminal, 0).?.payload);
+
+    try std.testing.expectError(error.OutOfMemory, stream.nextSlice(seq_b));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.notificationCount(&terminal));
+    try std.testing.expectEqualStrings("i=1:p=body", KittyState.notificationAt(&terminal, 0).?.metadata);
+    try std.testing.expectEqualStrings("Hello", KittyState.notificationAt(&terminal, 0).?.payload);
 }
 
 test "kitty notification OSC 9 alias queues host-neutral request" {
