@@ -343,6 +343,39 @@ test "kitty graphics place stores metadata and replies with placement id" {
     try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
 }
 
+test "kitty graphics place moves cursor by effective placement rectangle" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=3,c=4,r=2\x1b\\");
+
+    try std.testing.expectEqual(@as(u16, 2), terminal.screen_state.activeConst().cursor_row);
+    try std.testing.expectEqual(@as(u16, 6), terminal.screen_state.activeConst().cursor_col);
+}
+
+test "kitty graphics next physical placement anchors at moved cursor" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=3,c=4,r=2\x1b\\\x1b_Ga=p,i=7,p=4\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsPlacementCount(&terminal));
+    const first = KittyState.graphicsPlacementAt(&terminal, 0).?;
+    const second = KittyState.graphicsPlacementAt(&terminal, 1).?;
+    try expectOnScreenRowAnchor(first.anchor_row, 1);
+    try std.testing.expectEqual(@as(u16, 2), first.anchor_col);
+    try expectOnScreenRowAnchor(second.anchor_row, 2);
+    try std.testing.expectEqual(@as(u16, 6), second.anchor_col);
+}
+
 test "kitty graphics same image and placement id replaces placement" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 16);
@@ -808,7 +841,7 @@ test "kitty graphics image count cap is explicit" {
 
     var image_id: u32 = 1;
     while (image_id <= Graphics.image_max_count) : (image_id += 1) {
-        try state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
+        _ = try state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
             .action = 't',
             .image_id = image_id,
             .image_number = 0,
@@ -910,7 +943,7 @@ test "kitty graphics frame count cap is explicit" {
 
     var frame_number: u32 = 1;
     while (frame_number <= Graphics.frame_max_count) : (frame_number += 1) {
-        try state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
+        _ = try state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
             .action = 'f',
             .image_id = 7,
             .image_number = 0,

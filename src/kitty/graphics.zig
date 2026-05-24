@@ -13,6 +13,11 @@ pub const RenderCursorView = struct {
     col: u16,
 };
 
+pub const CursorMove = struct {
+    cols: u32,
+    rows: u32,
+};
+
 pub const Count = u32;
 pub const Index = u32;
 
@@ -302,50 +307,50 @@ pub const State = struct {
         }
     }
 
-    pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
+    pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
         if (cmd.unsupported_key != 0) {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics control key");
-            return;
+            return null;
         }
         if (cmd.action == 'q') {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:kitty graphics rendering unsupported");
-            return;
+            return null;
         }
         if (cmd.action == 'a' or cmd.action == 'c') {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
-            return;
+            return null;
         }
         if (cmd.action == 'T') {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:kitty graphics transmit+display unsupported");
-            return;
+            return null;
         }
         if (cmd.medium != 'd') {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
-            return;
+            return null;
         }
         if (cmd.action == 'p') {
-            try self.placeImage(allocator, render_view, output, encode_buf, cmd);
-            return;
+            return try self.placeImage(allocator, render_view, output, encode_buf, cmd);
         }
         if (cmd.action == 'd') {
             self.delete(allocator, render_view, cmd);
-            return;
+            return null;
         }
         if (cmd.action == 'f') {
             try self.captureUpload(allocator, render_view, output, encode_buf, cmd);
-            return;
+            return null;
         }
         if (cmd.action != 't') {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
-            return;
+            return null;
         }
         try self.captureUpload(allocator, render_view, output, encode_buf, cmd);
+        return null;
     }
 
-    fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
+    fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
         const image_id = self.resolveImageId(cmd) orelse {
             if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, cmd.placement_id, "ENOENT:image not found");
-            return;
+            return null;
         };
         const image = self.images.items[@intCast(self.findImage(image_id).?)];
         const source_width = if (cmd.source_width != 0) cmd.source_width else image.width;
@@ -373,6 +378,7 @@ pub const State = struct {
         });
         validatePlacement(self.placements.items[self.placements.items.len - 1]);
         if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, image_id, cmd.image_number, cmd.placement_id, "OK");
+        return .{ .cols = effective_columns, .rows = effective_rows };
     }
 
     fn delete(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, cmd: KittyGraphicsCommand) void {
