@@ -1,9 +1,11 @@
 const std = @import("std");
+const screen_mod = @import("../screen.zig");
 const vocabulary = @import("../action/vocabulary.zig");
 const host_state = @import("../host/state.zig");
 const parser = @import("../parser.zig");
 
 const KittyGraphicsCommand = vocabulary.KittyGraphicsCommand;
+const CellPixelSize = screen_mod.Screen.CellPixelSize;
 const reply_max_bytes = 60;
 
 pub const RenderCursorView = struct {
@@ -74,6 +76,32 @@ pub const Placement = struct {
     rows: u32,
     effective_columns: u32,
     effective_rows: u32,
+
+    pub const ResolvedDestGeometry = struct {
+        left_px: u32,
+        top_px: u32,
+        right_px: u32,
+        bottom_px: u32,
+    };
+
+    pub fn resolveDestGeometry(self: Placement, cell_pixel_size: ?CellPixelSize) ?ResolvedDestGeometry {
+        const cell = cell_pixel_size orelse return null;
+        std.debug.assert(cell.width > 0);
+        std.debug.assert(cell.height > 0);
+
+        const left_px = self.cell_x_offset;
+        const top_px = self.cell_y_offset;
+        const width_px = resolvedWidthPx(self, cell);
+        const height_px = resolvedHeightPx(self, cell, width_px);
+        const right_px = std.math.add(u32, left_px, width_px) catch return null;
+        const bottom_px = std.math.add(u32, top_px, height_px) catch return null;
+        return .{
+            .left_px = left_px,
+            .top_px = top_px,
+            .right_px = right_px,
+            .bottom_px = bottom_px,
+        };
+    }
 };
 
 pub const Frame = struct {
@@ -611,6 +639,27 @@ fn rowAnchorVisible(anchor: RowAnchor, effective_rows: u32) bool {
         .on_screen => true,
         .scrollback_above => |rows| rows < effective_rows,
     };
+}
+
+fn resolvedWidthPx(placement: Placement, cell: CellPixelSize) u32 {
+    if (placement.columns != 0) return cell.width * placement.columns;
+    if (placement.rows != 0) {
+        const height_px = cell.height * placement.rows + placement.cell_y_offset;
+        return @intFromFloat(@ceil(@as(f64, @floatFromInt(height_px)) *
+            @as(f64, @floatFromInt(placement.source_width)) /
+            @as(f64, @floatFromInt(placement.source_height))));
+    }
+    return placement.source_width;
+}
+
+fn resolvedHeightPx(placement: Placement, cell: CellPixelSize, width_px: u32) u32 {
+    if (placement.rows != 0) return cell.height * placement.rows;
+    if (placement.columns != 0) {
+        return @intFromFloat(@ceil(@as(f64, @floatFromInt(width_px + placement.cell_x_offset)) *
+            @as(f64, @floatFromInt(placement.source_height)) /
+            @as(f64, @floatFromInt(placement.source_width))));
+    }
+    return placement.source_height;
 }
 
 fn appendReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, msg: []const u8) host_state.ApplyError!void {

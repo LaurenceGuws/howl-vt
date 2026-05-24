@@ -454,6 +454,39 @@ test "kitty graphics screen-owned cell pixel geometry propagates to both screens
     try std.testing.expectEqual(@as(u32, 19), terminal.screen_state.alternate.cellPixelSize().?.height);
 }
 
+test "kitty graphics placement resolves deterministic dest geometry when cell size is known" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    terminal.setCellPixelSize(10, 20);
+    try stream.nextSlice("\x1b_Gi=7,s=40,v=20,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,X=2,Y=5,c=2\x1b\\");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    const geometry = placement.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()).?;
+    try std.testing.expectEqual(@as(u32, 2), geometry.left_px);
+    try std.testing.expectEqual(@as(u32, 5), geometry.top_px);
+    try std.testing.expectEqual(@as(u32, 22), geometry.right_px);
+    try std.testing.expectEqual(@as(u32, 16), geometry.bottom_px);
+}
+
+test "kitty graphics placement geometry stays unresolved without cell size" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=40,v=20,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,X=2,Y=5,c=2\x1b\\");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try std.testing.expect(placement.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()) == null);
+}
+
 test "kitty graphics place defaults crop truth from uploaded image" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
