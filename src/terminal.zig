@@ -191,6 +191,27 @@ pub const Terminal = struct {
         };
     }
 
+    pub fn graphicsMeta(self: *Terminal) GraphicsMeta {
+        const publication = self.graphicsPublication();
+        return .{
+            .image_count = publication.state.imageCount(),
+            .placement_count = publication.state.placementCount(),
+            .is_alternate_screen = publication.is_alternate_screen,
+            .publication_seq = publication.publication_seq,
+            .dirty_generation = publication.dirty_generation,
+        };
+    }
+
+    pub fn graphicsImage(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.Image {
+        const state = try self.graphicsStateForPublication(publication_seq);
+        return state.imageAt(idx);
+    }
+
+    pub fn graphicsPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.Placement {
+        const state = try self.graphicsStateForPublication(publication_seq);
+        return state.placementAt(idx);
+    }
+
     pub fn visibleCellHyperlinkUri(self: *Terminal, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
         if (snapshot_seq == 0) return error.InvalidArgument;
         const publication = self.surfaceSnapshot(scrollback_offset);
@@ -255,6 +276,13 @@ pub const Terminal = struct {
         self.dirty_generation +%= 1;
     }
 
+    fn graphicsStateForPublication(self: *Terminal, publication_seq: u64) error{InvalidArgument}!*const GraphicsState {
+        if (publication_seq == 0) return error.InvalidArgument;
+        const publication = self.graphicsPublication();
+        if (publication.publication_seq != publication_seq) return error.InvalidArgument;
+        return publication.state;
+    }
+
     fn noteGraphicsPublication(self: *Terminal) u64 {
         const same_dirty = self.graphics_publication_dirty_generation == self.dirty_generation;
         const same_alt = self.graphics_publication_alt == self.screen_state.alt_active;
@@ -286,6 +314,14 @@ pub const Terminal = struct {
         dirty_generation: u64,
         is_alternate_screen: bool,
         state: *const GraphicsState,
+    };
+
+    pub const GraphicsMeta = struct {
+        image_count: u32,
+        placement_count: u32,
+        is_alternate_screen: bool,
+        publication_seq: u64,
+        dirty_generation: u64,
     };
 
     pub fn deccirCharsetState(self: *const Terminal) parser_mod.DeccirCharsetState {
