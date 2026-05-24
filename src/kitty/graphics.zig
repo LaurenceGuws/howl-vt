@@ -231,6 +231,50 @@ pub const State = struct {
         }
     }
 
+    pub fn scrollUpRegion(self: *State, top: u16, bottom: u16, count: u16, cell: CellPixelSize) void {
+        if (count == 0 or top > bottom or cell.height == 0) return;
+        const amount = @min(count, bottom - top + 1);
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            var placement = &self.placements.items[@intCast(idx)];
+            if (!placementFullyWithinRegion(placement.*, top, bottom)) {
+                idx += 1;
+                continue;
+            }
+
+            const anchor_row = placement.anchor_row.onScreenRow().?;
+            placement.anchor_row = RowAnchor.initOnScreen(anchor_row -| amount);
+            if (clipPlacementTop(placement, top, cell)) {
+                validatePlacement(placement.*);
+                idx += 1;
+            } else {
+                _ = self.placements.swapRemove(@intCast(idx));
+            }
+        }
+    }
+
+    pub fn scrollDownRegion(self: *State, top: u16, bottom: u16, count: u16, cell: CellPixelSize) void {
+        if (count == 0 or top > bottom or cell.height == 0) return;
+        const amount = @min(count, bottom - top + 1);
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            var placement = &self.placements.items[@intCast(idx)];
+            if (!placementFullyWithinRegion(placement.*, top, bottom)) {
+                idx += 1;
+                continue;
+            }
+
+            const anchor_row = placement.anchor_row.onScreenRow().?;
+            placement.anchor_row = RowAnchor.initOnScreen(anchor_row + amount);
+            if (clipPlacementBottom(placement, bottom, cell)) {
+                validatePlacement(placement.*);
+                idx += 1;
+            } else {
+                _ = self.placements.swapRemove(@intCast(idx));
+            }
+        }
+    }
+
     pub fn clearVisiblePlacements(self: *State) void {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
@@ -657,6 +701,42 @@ fn validatePlacement(placement: Placement) void {
     std.debug.assert(placement.source_height > 0);
     std.debug.assert(placement.effective_columns > 0);
     std.debug.assert(placement.effective_rows > 0);
+}
+
+fn placementFullyWithinRegion(placement: Placement, top: u16, bottom: u16) bool {
+    const anchor_row = placement.anchor_row.onScreenRow() orelse return false;
+    const last_row = std.math.add(u32, anchor_row, placement.effective_rows - 1) catch return false;
+    return anchor_row >= top and last_row <= bottom;
+}
+
+fn clipPlacementTop(placement: *Placement, top: u16, cell: CellPixelSize) bool {
+    const anchor_row = placement.anchor_row.onScreenRow().?;
+    if (anchor_row >= top) return true;
+
+    const clipped_rows = top - anchor_row;
+    const clip_amt = std.math.mul(u32, cell.height, clipped_rows) catch return false;
+    if (placement.source_height <= clip_amt or placement.effective_rows <= clipped_rows) return false;
+
+    placement.source_y += clip_amt;
+    placement.source_height -= clip_amt;
+    placement.effective_rows -= clipped_rows;
+    placement.anchor_row = RowAnchor.initOnScreen(top);
+    return true;
+}
+
+fn clipPlacementBottom(placement: *Placement, bottom: u16, cell: CellPixelSize) bool {
+    const anchor_row = placement.anchor_row.onScreenRow().?;
+    const last_row = std.math.add(u32, anchor_row, placement.effective_rows - 1) catch return false;
+    if (last_row <= bottom) return true;
+    if (anchor_row > bottom) return false;
+
+    const clipped_rows: u32 = last_row - bottom;
+    const clip_amt = std.math.mul(u32, cell.height, clipped_rows) catch return false;
+    if (placement.source_height <= clip_amt or placement.effective_rows <= clipped_rows) return false;
+
+    placement.source_height -= clip_amt;
+    placement.effective_rows -= clipped_rows;
+    return true;
 }
 
 fn rowAnchorRetained(anchor: RowAnchor, history_count: u32, effective_rows: u32, retain_in_scrollback: bool) bool {

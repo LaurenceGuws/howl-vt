@@ -98,20 +98,44 @@ fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!void {
 fn applyGraphicsBeforeScreen(vt: anytype, screen_event: ScreenAction) void {
     const active = vt.screen_state.activeConst();
     if (active.rows == 0) return;
+    const margin_active = active.scroll_top != 0 or active.scrollBottom() != active.rows - 1;
     const full_page = !active.left_right_margin_mode and active.scroll_top == 0 and active.scrollBottom() == active.rows - 1;
-    if (!full_page) return;
 
     switch (screen_event) {
         .line_feed, .next_line => {
             if (active.cursor_row != active.scrollBottom()) return;
-            applyGraphicsScrollUp(vt, 1);
+            if (full_page) {
+                applyGraphicsScrollUp(vt, 1);
+                return;
+            }
+            if (!margin_active or active.left_right_margin_mode) return;
+            applyGraphicsScrollUpMargins(vt, 1);
         },
         .reverse_index => {
             if (active.cursor_row != active.scroll_top) return;
-            applyGraphicsScrollDown(vt, 1);
+            if (full_page) {
+                applyGraphicsScrollDown(vt, 1);
+                return;
+            }
+            if (!margin_active or active.left_right_margin_mode) return;
+            applyGraphicsScrollDownMargins(vt, 1);
         },
-        .scroll_up_lines => |count| applyGraphicsScrollUp(vt, count),
-        .scroll_down_lines => |count| applyGraphicsScrollDown(vt, count),
+        .scroll_up_lines => |count| {
+            if (full_page) {
+                applyGraphicsScrollUp(vt, count);
+                return;
+            }
+            if (!margin_active or active.left_right_margin_mode) return;
+            applyGraphicsScrollUpMargins(vt, count);
+        },
+        .scroll_down_lines => |count| {
+            if (full_page) {
+                applyGraphicsScrollDown(vt, count);
+                return;
+            }
+            if (!margin_active or active.left_right_margin_mode) return;
+            applyGraphicsScrollDownMargins(vt, count);
+        },
         .erase_display => |mode| {
             if (mode == 2 or mode == 3) vt.kitty.activeGraphics(vt.screen_state.alt_active).clearVisiblePlacements();
         },
@@ -135,6 +159,22 @@ fn applyGraphicsScrollDown(vt: anytype, count: u16) void {
     const amount = @min(count, active.rows);
     if (amount == 0) return;
     vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollDownFullPage(active.rows, amount);
+}
+
+fn applyGraphicsScrollUpMargins(vt: anytype, count: u16) void {
+    const active = vt.screen_state.activeConst();
+    const cell = active.cellPixelSize() orelse return;
+    const amount = @min(count, active.scrollBottom() - active.scroll_top + 1);
+    if (amount == 0) return;
+    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollUpRegion(active.scroll_top, active.scrollBottom(), amount, cell);
+}
+
+fn applyGraphicsScrollDownMargins(vt: anytype, count: u16) void {
+    const active = vt.screen_state.activeConst();
+    const cell = active.cellPixelSize() orelse return;
+    const amount = @min(count, active.scrollBottom() - active.scroll_top + 1);
+    if (amount == 0) return;
+    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollDownRegion(active.scroll_top, active.scrollBottom(), amount, cell);
 }
 
 pub fn screenAction(event: SemanticEvent) ?ScreenAction {

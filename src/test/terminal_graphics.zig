@@ -459,6 +459,82 @@ test "kitty graphics upward scroll re-enters below-page placement" {
     try expectOnScreenRowAnchor(terminal.kitty.main.graphics.placementAt(0).?.anchor_row, 2);
 }
 
+test "kitty graphics margin line feed clips top for fully enclosed placement" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 5, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    terminal.setCellPixelSize(10, 10);
+    try stream.nextSlice("\x1b_Gi=7,s=10,v=30,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;4r\x1b[2;3H\x1b_Ga=p,i=7,p=3,r=2\x1b\\");
+    try stream.nextSlice("\x1b[4;1H\n");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 1);
+    try std.testing.expectEqual(@as(u32, 10), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 20), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 1), placement.effective_rows);
+}
+
+test "kitty graphics margin reverse index clips bottom for fully enclosed placement" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 5, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    terminal.setCellPixelSize(10, 10);
+    try stream.nextSlice("\x1b_Gi=7,s=10,v=30,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;4r\x1b[3;3H\x1b_Ga=p,i=7,p=3,r=2\x1b\\");
+    try stream.nextSlice("\x1b[2;1H\x1bM");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 3);
+    try std.testing.expectEqual(@as(u32, 0), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 20), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 1), placement.effective_rows);
+}
+
+test "kitty graphics scroll up lines skips placement not fully inside margins" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 5, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    terminal.setCellPixelSize(10, 10);
+    try stream.nextSlice("\x1b_Gi=7,s=10,v=30,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;4r\x1b[1;3H\x1b_Ga=p,i=7,p=3,r=2\x1b\\");
+    try stream.nextSlice("\x1b[1S");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 0);
+    try std.testing.expectEqual(@as(u32, 0), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 30), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
+}
+
+test "kitty graphics scroll down lines clips bottom for fully enclosed placement" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 5, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    terminal.setCellPixelSize(10, 10);
+    try stream.nextSlice("\x1b_Gi=7,s=10,v=30,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;4r\x1b[3;3H\x1b_Ga=p,i=7,p=3,r=2\x1b\\");
+    try stream.nextSlice("\x1b[1T");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 3);
+    try std.testing.expectEqual(@as(u32, 0), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 20), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 1), placement.effective_rows);
+}
+
 test "kitty graphics erase display 2 clears visible physical placements" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 16, 4);
