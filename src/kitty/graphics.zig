@@ -145,6 +145,7 @@ pub const State = struct {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENOENT:image not found");
             return;
         };
+        if (cmd.placement_id != 0) self.deletePlacement(image_id, cmd.placement_id);
         try ensureCountBound(self.placements.items.len, placement_max_count);
         try self.placements.append(allocator, .{
             .image_id = image_id,
