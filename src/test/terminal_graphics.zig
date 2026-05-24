@@ -15,6 +15,13 @@ fn pendingOutput(terminal: *const Terminal) []const u8 {
     return HostState.pendingOutput(terminal);
 }
 
+fn expectOnScreenRowAnchor(actual: Graphics.RowAnchor, expected: u16) !void {
+    switch (actual) {
+        .on_screen => |row| try std.testing.expectEqual(expected, row),
+        .scrollback_above => return error.TestExpectedEqual,
+    }
+}
+
 test "kitty graphics query returns conservative unsupported reply" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -256,7 +263,7 @@ test "kitty graphics place stores metadata and replies by image id" {
     try std.testing.expectEqual(@as(u32, 7), placement.image_id);
     try std.testing.expectEqual(@as(u32, 3), placement.placement_id);
     try std.testing.expectEqual(@as(i32, 0), placement.z_index);
-    try std.testing.expectEqual(@as(u16, 1), placement.anchor_row);
+    try expectOnScreenRowAnchor(placement.anchor_row, 1);
     try std.testing.expectEqual(@as(u16, 2), placement.anchor_col);
     try std.testing.expectEqual(@as(u32, 0), placement.source_x);
     try std.testing.expectEqual(@as(u32, 0), placement.source_y);
@@ -287,7 +294,7 @@ test "kitty graphics same image and placement id replaces placement" {
     const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 7), placement.image_id);
     try std.testing.expectEqual(@as(u32, 3), placement.placement_id);
-    try std.testing.expectEqual(@as(u16, 3), placement.anchor_row);
+    try expectOnScreenRowAnchor(placement.anchor_row, 3);
     try std.testing.expectEqual(@as(u16, 4), placement.anchor_col);
     try std.testing.expectEqual(@as(u32, 6), placement.columns);
     try std.testing.expectEqual(@as(u32, 2), placement.rows);
@@ -311,7 +318,7 @@ test "kitty graphics place retains physical placement truth" {
     try std.testing.expectEqual(@as(u32, 7), placement.image_id);
     try std.testing.expectEqual(@as(u32, 9), placement.placement_id);
     try std.testing.expectEqual(@as(i32, -7), placement.z_index);
-    try std.testing.expectEqual(@as(u16, 2), placement.anchor_row);
+    try expectOnScreenRowAnchor(placement.anchor_row, 2);
     try std.testing.expectEqual(@as(u16, 4), placement.anchor_col);
     try std.testing.expectEqual(@as(u32, 2), placement.source_x);
     try std.testing.expectEqual(@as(u32, 4), placement.source_y);
@@ -323,6 +330,16 @@ test "kitty graphics place retains physical placement truth" {
     try std.testing.expectEqual(@as(u32, 12), placement.rows);
     try std.testing.expectEqual(@as(u32, 10), placement.effective_columns);
     try std.testing.expectEqual(@as(u32, 12), placement.effective_rows);
+}
+
+test "kitty graphics row anchor represents on-screen and retained above-screen rows" {
+    try expectOnScreenRowAnchor(Graphics.RowAnchor.initOnScreen(4), 4);
+
+    const retained: Graphics.RowAnchor = .{ .scrollback_above = 3 };
+    switch (retained) {
+        .on_screen => return error.TestExpectedEqual,
+        .scrollback_above => |rows| try std.testing.expectEqual(@as(u32, 3), rows),
+    }
 }
 
 test "kitty graphics place defaults crop truth from uploaded image" {

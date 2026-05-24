@@ -32,11 +32,27 @@ pub const Image = struct {
     base64_payload: []u8,
 };
 
+pub const RowAnchor = union(enum) {
+    on_screen: u16,
+    scrollback_above: u32,
+
+    pub fn initOnScreen(row: u16) RowAnchor {
+        return .{ .on_screen = row };
+    }
+
+    fn onScreenRow(self: RowAnchor) ?u16 {
+        return switch (self) {
+            .on_screen => |row| row,
+            .scrollback_above => null,
+        };
+    }
+};
+
 pub const Placement = struct {
     image_id: u32,
     placement_id: u32,
     z_index: i32,
-    anchor_row: u16,
+    anchor_row: RowAnchor,
     anchor_col: u16,
     source_x: u32,
     source_y: u32,
@@ -184,7 +200,7 @@ pub const State = struct {
             .image_id = image_id,
             .placement_id = cmd.placement_id,
             .z_index = cmd.z,
-            .anchor_row = render_view.row,
+            .anchor_row = RowAnchor.initOnScreen(render_view.row),
             .anchor_col = render_view.col,
             .source_x = cmd.x,
             .source_y = cmd.y,
@@ -410,7 +426,11 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const p = self.placements.items[@intCast(idx)];
-            const intersects = col >= p.anchor_col and col < p.anchor_col + p.effective_columns and row >= p.anchor_row and row < p.anchor_row + p.effective_rows and (z == null or p.z_index == z.?);
+            const anchor_row = p.anchor_row.onScreenRow() orelse {
+                idx += 1;
+                continue;
+            };
+            const intersects = col >= p.anchor_col and col < p.anchor_col + p.effective_columns and row >= anchor_row and row < anchor_row + p.effective_rows and (z == null or p.z_index == z.?);
             if (intersects) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
         }
     }
@@ -431,7 +451,11 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const p = self.placements.items[@intCast(idx)];
-            if (row >= p.anchor_row and row < p.anchor_row + p.effective_rows) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
+            const anchor_row = p.anchor_row.onScreenRow() orelse {
+                idx += 1;
+                continue;
+            };
+            if (row >= anchor_row and row < anchor_row + p.effective_rows) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
         }
     }
 
