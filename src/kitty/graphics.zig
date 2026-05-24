@@ -148,6 +148,7 @@ pub const Upload = struct {
     image_id: u32,
     image_number: u32,
     action: u8,
+    quiet: bool,
     format: u16,
     width: u32,
     height: u32,
@@ -320,10 +321,6 @@ pub const State = struct {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
             return null;
         }
-        if (cmd.action == 'T') {
-            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:kitty graphics transmit+display unsupported");
-            return null;
-        }
         if (cmd.medium != 'd') {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
             return null;
@@ -336,15 +333,14 @@ pub const State = struct {
             return null;
         }
         if (cmd.action == 'f') {
-            try self.captureUpload(allocator, render_view, output, encode_buf, cmd);
+            _ = try self.captureUpload(allocator, render_view, output, encode_buf, cmd);
             return null;
         }
-        if (cmd.action != 't') {
+        if (cmd.action != 't' and cmd.action != 'T') {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
             return null;
         }
-        try self.captureUpload(allocator, render_view, output, encode_buf, cmd);
-        return null;
+        return try self.captureUpload(allocator, render_view, output, encode_buf, cmd);
     }
 
     fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
@@ -425,27 +421,27 @@ pub const State = struct {
         }
     }
 
-    fn captureUpload(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
-        if (cmd.medium != 'd') return;
-        if (cmd.action != 't' and cmd.action != 'T' and cmd.action != 'f') return;
+    fn captureUpload(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
+        if (cmd.medium != 'd') return null;
+        if (cmd.action != 't' and cmd.action != 'T' and cmd.action != 'f') return null;
         if (cmd.more_chunks) {
-            try self.appendUploadChunk(allocator, render_view, output, encode_buf, cmd, true);
-            return;
+            return try self.appendUploadChunk(allocator, render_view, output, encode_buf, cmd, true);
         }
         if (self.upload != null) {
-            try self.appendUploadChunk(allocator, render_view, output, encode_buf, cmd, false);
+            return try self.appendUploadChunk(allocator, render_view, output, encode_buf, cmd, false);
         } else {
-            try self.storePayload(allocator, output, encode_buf, cmd, cmd.payload);
+            return try self.storePayload(allocator, render_view, output, encode_buf, cmd, cmd.payload);
         }
     }
 
-    fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) host_state.ApplyError!void {
+    fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) host_state.ApplyError!?CursorMove {
         if (self.upload == null) {
             const image_id = self.imageIdForUpload(cmd);
             self.upload = .{
                 .image_id = image_id,
                 .image_number = cmd.image_number,
                 .action = cmd.action,
+                .quiet = cmd.quiet,
                 .format = cmd.format,
                 .width = cmd.width,
                 .height = cmd.height,
@@ -475,26 +471,61 @@ pub const State = struct {
             errdefer self.abortUpload(allocator);
             try ensureRetainedPayloadTotal(self);
             try ensureUploadBound(count32(upload.data.items));
-            if (more) return;
+            if (more) return null;
             const image_id = upload.image_id;
             const image_number = upload.image_number;
             const action = upload.action;
+            const quiet = upload.quiet;
             const format = upload.format;
             const width = upload.width;
             const height = upload.height;
             const frame_number = upload.frame_number;
+            const placement_id = upload.placement_id;
+            const source_x = upload.source_x;
+            const source_y = upload.source_y;
+            const source_width = upload.source_width;
+            const source_height = upload.source_height;
+            const cell_x_offset = upload.cell_x_offset;
+            const cell_y_offset = upload.cell_y_offset;
+            const columns = upload.columns;
+            const rows = upload.rows;
+            const z_index = upload.z_index;
+            const anchor_row = upload.anchor_row;
+            const anchor_col = upload.anchor_col;
             const owned = try upload.data.toOwnedSlice(allocator);
             if (action == 'f') {
                 try self.storeFrameOwned(allocator, image_id, frame_number, format, width, height, owned);
             } else {
                 try self.storeImageOwned(allocator, image_id, image_number, format, width, height, owned);
-                if (image_number != 0 and !cmd.quiet) try appendNumberReply(allocator, output, encode_buf, image_id, image_number, "OK");
+                if (action == 'T') {
+                    const anonymous = image_id == 0 and image_number == 0;
+                    const move = try self.placeStoredImage(allocator, output, encode_buf, .{
+                        .image_id = image_id,
+                        .image_number = image_number,
+                        .placement_id = if (anonymous) 0 else placement_id,
+                        .z_index = z_index,
+                        .anchor_row = anchor_row,
+                        .anchor_col = anchor_col,
+                        .source_x = source_x,
+                        .source_y = source_y,
+                        .source_width = source_width,
+                        .source_height = source_height,
+                        .cell_x_offset = cell_x_offset,
+                        .cell_y_offset = cell_y_offset,
+                        .columns = columns,
+                        .rows = rows,
+                    }, quiet or anonymous);
+                    self.upload = null;
+                    return move;
+                }
+                if (image_number != 0 and !quiet) try appendNumberReply(allocator, output, encode_buf, image_id, image_number, "OK");
             }
             self.upload = null;
         }
+        return null;
     }
 
-    fn storePayload(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, payload: []const u8) host_state.ApplyError!void {
+    fn storePayload(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, payload: []const u8) host_state.ApplyError!?CursorMove {
         try ensureRetainedPayloadStore(self, count32(payload), 0);
         const owned = try allocator.dupe(u8, payload);
         const image_id = self.imageIdForUpload(cmd);
@@ -502,8 +533,80 @@ pub const State = struct {
             try self.storeFrameOwned(allocator, image_id, cmd.placement_id, cmd.format, cmd.width, cmd.height, owned);
         } else {
             try self.storeImageOwned(allocator, image_id, cmd.image_number, cmd.format, cmd.width, cmd.height, owned);
+            if (cmd.action == 'T') {
+                const anonymous = image_id == 0 and cmd.image_number == 0;
+                return try self.placeStoredImage(allocator, output, encode_buf, .{
+                    .image_id = image_id,
+                    .image_number = cmd.image_number,
+                    .placement_id = if (anonymous) 0 else cmd.placement_id,
+                    .z_index = cmd.z,
+                    .anchor_row = render_view.row,
+                    .anchor_col = render_view.col,
+                    .source_x = cmd.x,
+                    .source_y = cmd.y,
+                    .source_width = cmd.source_width,
+                    .source_height = cmd.source_height,
+                    .cell_x_offset = cmd.cell_x_offset,
+                    .cell_y_offset = cmd.cell_y_offset,
+                    .columns = cmd.columns,
+                    .rows = cmd.rows,
+                }, cmd.quiet or anonymous);
+            }
             if (cmd.image_number != 0 and !cmd.quiet) try appendNumberReply(allocator, output, encode_buf, image_id, cmd.image_number, "OK");
         }
+        return null;
+    }
+
+    const PlacementRequest = struct {
+        image_id: u32,
+        image_number: u32,
+        placement_id: u32,
+        z_index: i32,
+        anchor_row: u16,
+        anchor_col: u16,
+        source_x: u32,
+        source_y: u32,
+        source_width: u32,
+        source_height: u32,
+        cell_x_offset: u32,
+        cell_y_offset: u32,
+        columns: u32,
+        rows: u32,
+    };
+
+    fn placeStoredImage(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, request: PlacementRequest, quiet: bool) host_state.ApplyError!?CursorMove {
+        if (self.findImage(request.image_id) == null) {
+            if (!quiet) try appendPlacementReply(allocator, output, encode_buf, request.image_id, request.image_number, request.placement_id, "ENOENT:image not found");
+            return null;
+        }
+
+        const image = self.images.items[@intCast(self.findImage(request.image_id).?)];
+        const source_width = if (request.source_width != 0) request.source_width else image.width;
+        const source_height = if (request.source_height != 0) request.source_height else image.height;
+        const effective_columns = @max(request.columns, 1);
+        const effective_rows = @max(request.rows, 1);
+        if (request.placement_id != 0) self.deletePlacement(request.image_id, request.placement_id);
+        try ensureCountBound(self.placements.items.len, placement_max_count);
+        try self.placements.append(allocator, .{
+            .image_id = request.image_id,
+            .placement_id = request.placement_id,
+            .z_index = request.z_index,
+            .anchor_row = RowAnchor.initOnScreen(request.anchor_row),
+            .anchor_col = request.anchor_col,
+            .source_x = request.source_x,
+            .source_y = request.source_y,
+            .source_width = source_width,
+            .source_height = source_height,
+            .cell_x_offset = request.cell_x_offset,
+            .cell_y_offset = request.cell_y_offset,
+            .columns = request.columns,
+            .rows = request.rows,
+            .effective_columns = effective_columns,
+            .effective_rows = effective_rows,
+        });
+        validatePlacement(self.placements.items[self.placements.items.len - 1]);
+        if (!quiet) try appendPlacementReply(allocator, output, encode_buf, request.image_id, request.image_number, request.placement_id, "OK");
+        return .{ .cols = effective_columns, .rows = effective_rows };
     }
 
     fn imageIdForUpload(self: *State, cmd: KittyGraphicsCommand) u32 {
@@ -824,18 +927,28 @@ fn appendNumberReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), e
 }
 
 fn appendPlacementReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, placement_id: u32, msg: []const u8) host_state.ApplyError!void {
-    if (image_number != 0 and placement_id != 0) {
+    if (image_id != 0 and image_number != 0 and placement_id != 0) {
         const text = formatReply(encode_buf, "\x1b_Gi={d},I={d},p={d};{s}\x1b\\", .{ image_id, image_number, placement_id, msg });
         try host_state.appendOutput(output, allocator, text);
         return;
     }
-    if (placement_id != 0) {
+    if (image_id != 0 and placement_id != 0) {
         const text = formatReply(encode_buf, "\x1b_Gi={d},p={d};{s}\x1b\\", .{ image_id, placement_id, msg });
         try host_state.appendOutput(output, allocator, text);
         return;
     }
+    if (image_number != 0 and placement_id != 0) {
+        const text = formatReply(encode_buf, "\x1b_GI={d},p={d};{s}\x1b\\", .{ image_number, placement_id, msg });
+        try host_state.appendOutput(output, allocator, text);
+        return;
+    }
     if (image_number != 0) {
-        try appendNumberReply(allocator, output, encode_buf, image_id, image_number, msg);
+        if (image_id != 0) {
+            try appendNumberReply(allocator, output, encode_buf, image_id, image_number, msg);
+        } else {
+            const text = formatReply(encode_buf, "\x1b_GI={d};{s}\x1b\\", .{ image_number, msg });
+            try host_state.appendOutput(output, allocator, text);
+        }
         return;
     }
     try appendReply(allocator, output, encode_buf, image_id, msg);

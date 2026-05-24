@@ -69,18 +69,25 @@ test "kitty graphics direct upload stores single base64 payload" {
     try std.testing.expectEqualStrings("QUJD", image.base64_payload);
 }
 
-test "kitty graphics transmit and display is rejected explicitly" {
+test "kitty graphics transmit and display stores image placement and moves cursor" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,a=T,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Gi=7,p=4,s=2,v=1,a=T,t=d,f=24,c=4,r=2;QUJD\x1b\\");
 
-    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:kitty graphics transmit+display unsupported\x1b\\", pendingOutput(&terminal));
-    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqualStrings("\x1b_Gi=7,p=4;OK\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
+    const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 7), placement.image_id);
+    try std.testing.expectEqual(@as(u32, 4), placement.placement_id);
+    try expectOnScreenRowAnchor(placement.anchor_row, 1);
+    try std.testing.expectEqual(@as(u16, 2), placement.anchor_col);
+    try std.testing.expectEqual(@as(u16, 2), terminal.screen_state.activeConst().cursor_row);
+    try std.testing.expectEqual(@as(u16, 6), terminal.screen_state.activeConst().cursor_col);
 }
 
 test "kitty graphics unsupported action is rejected explicitly" {
@@ -294,6 +301,37 @@ test "kitty graphics chunk upload retains first placement metadata until complet
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqualStrings("QUJ", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics transmit and display chunk completion uses first placement metadata" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 6, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b[2;3H\x1b_GI=13,p=5,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,X=3,Y=5,c=4,r=2,z=-7,m=1;Q\x1b\\");
+    try stream.nextSlice("\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,X=1,Y=1,c=1,r=1,z=9,m=0;U\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=1,I=13,p=5;OK\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
+    const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 1), placement.image_id);
+    try std.testing.expectEqual(@as(u32, 5), placement.placement_id);
+    try std.testing.expectEqual(@as(i32, -7), placement.z_index);
+    try expectOnScreenRowAnchor(placement.anchor_row, 1);
+    try std.testing.expectEqual(@as(u16, 2), placement.anchor_col);
+    try std.testing.expectEqual(@as(u32, 2), placement.source_x);
+    try std.testing.expectEqual(@as(u32, 4), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 6), placement.source_width);
+    try std.testing.expectEqual(@as(u32, 8), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 3), placement.cell_x_offset);
+    try std.testing.expectEqual(@as(u32, 5), placement.cell_y_offset);
+    try std.testing.expectEqual(@as(u32, 4), placement.columns);
+    try std.testing.expectEqual(@as(u32, 2), placement.rows);
+    try std.testing.expectEqual(@as(u16, 5), terminal.screen_state.activeConst().cursor_row);
+    try std.testing.expectEqual(@as(u16, 12), terminal.screen_state.activeConst().cursor_col);
 }
 
 test "kitty graphics upload with same image id replaces image and placements" {
@@ -752,6 +790,18 @@ test "kitty graphics place missing image with placement id replies ENOENT with p
     try stream.nextSlice("\x1b_Ga=p,i=404,p=7\x1b\\");
 
     try std.testing.expectEqualStrings("\x1b_Gi=404,p=7;ENOENT:image not found\x1b\\", pendingOutput(&terminal));
+}
+
+test "kitty graphics place missing image number with placement id replies without fake image id" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Ga=p,I=404,p=7\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_GI=404,p=7;ENOENT:image not found\x1b\\", pendingOutput(&terminal));
 }
 
 test "kitty graphics delete by image id removes image and placements" {
