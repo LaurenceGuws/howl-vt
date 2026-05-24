@@ -122,6 +122,11 @@ pub const Set = struct {
         try self.alternate.resize(allocator, rows, cols);
     }
 
+    pub fn setCellPixelSize(self: *Set, width: u32, height: u32) void {
+        self.primary.setCellPixelSize(width, height);
+        self.alternate.setCellPixelSize(width, height);
+    }
+
     pub fn enterAlt(self: *Set, clear_alt: bool, save_cursor: bool) void {
         if (save_cursor) {
             self.saved_primary_cursor = .{

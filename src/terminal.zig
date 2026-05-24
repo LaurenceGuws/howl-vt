@@ -137,6 +137,10 @@ pub const Terminal = struct {
         self.dirty_generation +%= 1;
     }
 
+    pub fn setCellPixelSize(self: *Terminal, width: u32, height: u32) void {
+        self.screen_state.setCellPixelSize(width, height);
+    }
+
     pub fn resetScreen(self: *Terminal) void {
         self.screen_state.reset();
         self.kitty.resetTerminalState(self.allocator);

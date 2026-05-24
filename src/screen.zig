@@ -38,6 +38,10 @@ pub const Screen = struct {
     pub const default_cell = cell.default_cell;
     pub const isCellContinuation = cell.isCellContinuation;
     pub const DirtyRows = dirty.DirtyRows;
+    pub const CellPixelSize = struct {
+        width: u32,
+        height: u32,
+    };
 
     allocator: ?std.mem.Allocator,
     rows: u16,
@@ -81,6 +85,7 @@ pub const Screen = struct {
     dirty_cols_start: ?[]u16,
     dirty_cols_end: ?[]u16,
     tab_stops: ?[]bool,
+    cell_pixel_size: ?CellPixelSize,
 
     fn cellCount(rows: u16, cols: u16) u32 {
         return @as(u32, rows) * @as(u32, cols);
@@ -131,6 +136,7 @@ pub const Screen = struct {
             .dirty_cols_start = null,
             .dirty_cols_end = null,
             .tab_stops = null,
+            .cell_pixel_size = null,
         };
     }
 
@@ -198,6 +204,7 @@ pub const Screen = struct {
             .dirty_cols_start = dirty_cols_start,
             .dirty_cols_end = dirty_cols_end,
             .tab_stops = tab_stops,
+            .cell_pixel_size = null,
         };
     }
 
@@ -274,6 +281,7 @@ pub const Screen = struct {
             .dirty_cols_start = dirty_cols_start,
             .dirty_cols_end = dirty_cols_end,
             .tab_stops = tab_stops,
+            .cell_pixel_size = null,
         };
     }
 
@@ -469,6 +477,16 @@ pub const Screen = struct {
         self.history_count = 0;
         self.history_write_idx = 0;
         self.markAllRowsDirty();
+    }
+
+    pub fn setCellPixelSize(self: *Screen, width: u32, height: u32) void {
+        std.debug.assert(width > 0);
+        std.debug.assert(height > 0);
+        self.cell_pixel_size = .{ .width = width, .height = height };
+    }
+
+    pub fn cellPixelSize(self: *const Screen) ?CellPixelSize {
+        return self.cell_pixel_size;
     }
 
     pub fn eraseLine(self: *Screen, mode: u2) void {

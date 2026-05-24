@@ -429,6 +429,31 @@ test "kitty graphics erase display 3 keeps fully scrolled-above placement" {
     }
 }
 
+test "kitty graphics screen-owned cell pixel geometry propagates to both screens" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try std.testing.expect(terminal.screen_state.primary.cellPixelSize() == null);
+    try std.testing.expect(terminal.screen_state.alternate.cellPixelSize() == null);
+
+    terminal.setCellPixelSize(11, 19);
+
+    try std.testing.expectEqual(@as(u32, 11), terminal.screen_state.primary.cellPixelSize().?.width);
+    try std.testing.expectEqual(@as(u32, 19), terminal.screen_state.primary.cellPixelSize().?.height);
+    try std.testing.expectEqual(@as(u32, 11), terminal.screen_state.alternate.cellPixelSize().?.width);
+    try std.testing.expectEqual(@as(u32, 19), terminal.screen_state.alternate.cellPixelSize().?.height);
+
+    try stream.nextSlice("\x1b[?1049h\x1bc\x1b[?1049l");
+
+    try std.testing.expectEqual(@as(u32, 11), terminal.screen_state.primary.cellPixelSize().?.width);
+    try std.testing.expectEqual(@as(u32, 19), terminal.screen_state.primary.cellPixelSize().?.height);
+    try std.testing.expectEqual(@as(u32, 11), terminal.screen_state.alternate.cellPixelSize().?.width);
+    try std.testing.expectEqual(@as(u32, 19), terminal.screen_state.alternate.cellPixelSize().?.height);
+}
+
 test "kitty graphics place defaults crop truth from uploaded image" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
