@@ -139,7 +139,7 @@ pub const Terminal = struct {
 
     pub fn resetScreen(self: *Terminal) void {
         self.screen_state.reset();
-        self.kitty.resetTerminalState();
+        self.kitty.resetTerminalState(self.allocator);
         self.host.resetTerminalState();
     }
 

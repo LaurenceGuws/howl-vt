@@ -105,6 +105,54 @@ test "kitty graphics alt screen clear drops previous alt state on re-entry" {
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
 }
 
+test "kitty graphics RIS clears main and alt retained state" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3\x1b\\");
+    try stream.nextSlice("\x1b[?1049h");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=8,p=2,s=1,v=1,t=d,f=24;CCCC\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.imageCount());
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.placementCount());
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.alt.graphics.imageCount());
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.alt.graphics.frameCount());
+
+    try stream.nextSlice("\x1bc");
+
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.imageCount());
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.placementCount());
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.frameCount());
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.alt.graphics.imageCount());
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.alt.graphics.placementCount());
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.alt.graphics.frameCount());
+}
+
+test "kitty graphics RIS aborts partial upload" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24,m=1;QU\x1b\\");
+    try std.testing.expect(terminal.kitty.main.graphics.upload != null);
+
+    try stream.nextSlice("\x1bc");
+
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.imageCount());
+
+    try stream.nextSlice("\x1b_Gi=9,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.imageCount());
+    try std.testing.expectEqual(@as(u32, 9), terminal.kitty.main.graphics.imageAt(0).?.image_id);
+}
+
 test "kitty graphics direct upload assembles chunked base64 payload" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

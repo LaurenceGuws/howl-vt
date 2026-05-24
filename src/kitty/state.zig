@@ -30,9 +30,11 @@ pub const State = struct {
         return &self.activeScreenConst(alt_active).graphics;
     }
 
-    pub fn resetTerminalState(self: *State) void {
+    pub fn resetTerminalState(self: *State, allocator: std.mem.Allocator) void {
         self.main.pointer.len = 0;
         self.alt.pointer.len = 0;
+        self.main.graphics.reset(allocator);
+        self.alt.graphics.reset(allocator);
         self.global.color_stack_depth = 0;
     }
 };
