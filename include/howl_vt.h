@@ -335,8 +335,21 @@ void howl_vt_terminal_deinit(HowlVtHandle handle);
 HowlVtFeedResult howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
 /* Graphics item queries and payload copies are publication-local.
  * Callers must first read `howl_vt_terminal_query_graphics_meta()` and pass the
- * returned `publication_seq` back to per-item queries/copies. Any mutation may
- * invalidate prior publication sequences. */
+ * returned `publication_seq` back to per-item queries/copies.
+ *
+ * Surface publication and graphics publication are separate today:
+ * - `howl_vt_terminal_copy_surface()` yields a visible-surface `snapshot_seq`
+ * - `howl_vt_terminal_query_graphics_meta()` yields a graphics `publication_seq`
+ *
+ * Graphics publication is conservative and may advance on any terminal mutation,
+ * not only graphics-local changes. Callers that need one coherent acquisition of
+ * visible text plus graphics must:
+ * 1. copy the surface snapshot,
+ * 2. query graphics meta,
+ * 3. use that returned graphics `publication_seq` for item queries/copies, and
+ * 4. restart acquisition if any graphics item query reports invalid publication.
+ *
+ * Do not mix item data from different graphics publication sequences. */
 HowlVtBytesResult howl_vt_terminal_copy_surface_hyperlink(HowlVtHandle handle, uint64_t scrollback_offset, uint64_t snapshot_seq, uint16_t row, uint16_t col, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_graphics_payload(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_selection(HowlVtHandle handle, uint8_t *ptr, size_t cap);
