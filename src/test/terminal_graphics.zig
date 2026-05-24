@@ -255,10 +255,19 @@ test "kitty graphics place stores metadata and replies by image id" {
     const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 7), placement.image_id);
     try std.testing.expectEqual(@as(u32, 3), placement.placement_id);
-    try std.testing.expectEqual(@as(u16, 1), placement.row);
-    try std.testing.expectEqual(@as(u16, 2), placement.col);
+    try std.testing.expectEqual(@as(i32, 0), placement.z_index);
+    try std.testing.expectEqual(@as(u16, 1), placement.anchor_row);
+    try std.testing.expectEqual(@as(u16, 2), placement.anchor_col);
+    try std.testing.expectEqual(@as(u32, 0), placement.source_x);
+    try std.testing.expectEqual(@as(u32, 0), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 1), placement.source_width);
+    try std.testing.expectEqual(@as(u32, 1), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 0), placement.cell_x_offset);
+    try std.testing.expectEqual(@as(u32, 0), placement.cell_y_offset);
     try std.testing.expectEqual(@as(u32, 4), placement.columns);
     try std.testing.expectEqual(@as(u32, 2), placement.rows);
+    try std.testing.expectEqual(@as(u32, 4), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
 }
 
 test "kitty graphics same image and placement id replaces placement" {
@@ -278,10 +287,61 @@ test "kitty graphics same image and placement id replaces placement" {
     const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 7), placement.image_id);
     try std.testing.expectEqual(@as(u32, 3), placement.placement_id);
-    try std.testing.expectEqual(@as(u16, 3), placement.row);
-    try std.testing.expectEqual(@as(u16, 4), placement.col);
+    try std.testing.expectEqual(@as(u16, 3), placement.anchor_row);
+    try std.testing.expectEqual(@as(u16, 4), placement.anchor_col);
     try std.testing.expectEqual(@as(u32, 6), placement.columns);
     try std.testing.expectEqual(@as(u32, 2), placement.rows);
+    try std.testing.expectEqual(@as(u32, 6), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
+}
+
+test "kitty graphics place retains physical placement truth" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=11,v=13,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[3;5H");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,x=2,y=4,w=6,h=8,X=3,Y=5,c=10,r=12,z=-7\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
+    const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 7), placement.image_id);
+    try std.testing.expectEqual(@as(u32, 9), placement.placement_id);
+    try std.testing.expectEqual(@as(i32, -7), placement.z_index);
+    try std.testing.expectEqual(@as(u16, 2), placement.anchor_row);
+    try std.testing.expectEqual(@as(u16, 4), placement.anchor_col);
+    try std.testing.expectEqual(@as(u32, 2), placement.source_x);
+    try std.testing.expectEqual(@as(u32, 4), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 6), placement.source_width);
+    try std.testing.expectEqual(@as(u32, 8), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 3), placement.cell_x_offset);
+    try std.testing.expectEqual(@as(u32, 5), placement.cell_y_offset);
+    try std.testing.expectEqual(@as(u32, 10), placement.columns);
+    try std.testing.expectEqual(@as(u32, 12), placement.rows);
+    try std.testing.expectEqual(@as(u32, 10), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 12), placement.effective_rows);
+}
+
+test "kitty graphics place defaults crop truth from uploaded image" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=11,v=13,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=2\x1b\\");
+
+    const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 0), placement.columns);
+    try std.testing.expectEqual(@as(u32, 0), placement.rows);
+    try std.testing.expectEqual(@as(u32, 11), placement.source_width);
+    try std.testing.expectEqual(@as(u32, 13), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 1), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 1), placement.effective_rows);
 }
 
 test "kitty graphics place missing image replies ENOENT" {

@@ -35,11 +35,19 @@ pub const Image = struct {
 pub const Placement = struct {
     image_id: u32,
     placement_id: u32,
-    row: u16,
-    col: u16,
+    z_index: i32,
+    anchor_row: u16,
+    anchor_col: u16,
+    source_x: u32,
+    source_y: u32,
+    source_width: u32,
+    source_height: u32,
+    cell_x_offset: u32,
+    cell_y_offset: u32,
     columns: u32,
     rows: u32,
-    z_index: i32,
+    effective_columns: u32,
+    effective_rows: u32,
 };
 
 pub const Frame = struct {
@@ -165,17 +173,31 @@ pub const State = struct {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENOENT:image not found");
             return;
         };
+        const image = self.images.items[@intCast(self.findImage(image_id).?)];
+        const source_width = if (cmd.source_width != 0) cmd.source_width else image.width;
+        const source_height = if (cmd.source_height != 0) cmd.source_height else image.height;
+        const effective_columns = @max(cmd.columns, 1);
+        const effective_rows = @max(cmd.rows, 1);
         if (cmd.placement_id != 0) self.deletePlacement(image_id, cmd.placement_id);
         try ensureCountBound(self.placements.items.len, placement_max_count);
         try self.placements.append(allocator, .{
             .image_id = image_id,
             .placement_id = cmd.placement_id,
-            .row = render_view.row,
-            .col = render_view.col,
+            .z_index = cmd.z,
+            .anchor_row = render_view.row,
+            .anchor_col = render_view.col,
+            .source_x = cmd.x,
+            .source_y = cmd.y,
+            .source_width = source_width,
+            .source_height = source_height,
+            .cell_x_offset = cmd.cell_x_offset,
+            .cell_y_offset = cmd.cell_y_offset,
             .columns = cmd.columns,
             .rows = cmd.rows,
-            .z_index = cmd.z,
+            .effective_columns = effective_columns,
+            .effective_rows = effective_rows,
         });
+        validatePlacement(self.placements.items[self.placements.items.len - 1]);
         if (!cmd.quiet) try appendReply(allocator, output, encode_buf, image_id, "OK");
     }
 
@@ -388,9 +410,7 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const p = self.placements.items[@intCast(idx)];
-            const cols = @max(p.columns, 1);
-            const rows = @max(p.rows, 1);
-            const intersects = col >= p.col and col < p.col + cols and row >= p.row and row < p.row + rows and (z == null or p.z_index == z.?);
+            const intersects = col >= p.anchor_col and col < p.anchor_col + p.effective_columns and row >= p.anchor_row and row < p.anchor_row + p.effective_rows and (z == null or p.z_index == z.?);
             if (intersects) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
         }
     }
@@ -401,8 +421,7 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const p = self.placements.items[@intCast(idx)];
-            const cols = @max(p.columns, 1);
-            if (col >= p.col and col < p.col + cols) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
+            if (col >= p.anchor_col and col < p.anchor_col + p.effective_columns) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
         }
     }
 
@@ -412,8 +431,7 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const p = self.placements.items[@intCast(idx)];
-            const rows = @max(p.rows, 1);
-            if (row >= p.row and row < p.row + rows) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
+            if (row >= p.anchor_row and row < p.anchor_row + p.effective_rows) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
         }
     }
 
@@ -509,6 +527,13 @@ fn ensureRetainedPayloadStore(self: *const State, next_len: u32, freed_len: u32)
 
 fn ensureRetainedPayloadTotal(self: *const State) host_state.ApplyError!void {
     if (retainedPayloadBytes(self) > retained_payload_max_bytes) return error.ConsequenceLimit;
+}
+
+fn validatePlacement(placement: Placement) void {
+    std.debug.assert(placement.source_width > 0);
+    std.debug.assert(placement.source_height > 0);
+    std.debug.assert(placement.effective_columns > 0);
+    std.debug.assert(placement.effective_rows > 0);
 }
 
 fn appendReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, msg: []const u8) host_state.ApplyError!void {
