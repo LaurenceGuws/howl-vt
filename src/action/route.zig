@@ -107,6 +107,9 @@ fn applyGraphicsBeforeScreen(vt: anytype, screen_event: ScreenAction) void {
             applyGraphicsScrollUp(vt, 1);
         },
         .scroll_up_lines => |count| applyGraphicsScrollUp(vt, count),
+        .erase_display => |mode| {
+            if (mode == 2 or mode == 3) vt.kitty.activeGraphics(vt.screen_state.alt_active).clearVisiblePlacements();
+        },
         else => {},
     }
 }

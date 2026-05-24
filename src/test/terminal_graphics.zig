@@ -394,6 +394,41 @@ test "kitty graphics scroll up lines applies full-page upward movement" {
     try expectOnScreenRowAnchor(placement.anchor_row, 0);
 }
 
+test "kitty graphics erase display 2 clears visible physical placements" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 16, 4);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=3\x1b\\");
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.placementCount());
+
+    try stream.nextSlice("\x1b[2J");
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.placementCount());
+}
+
+test "kitty graphics erase display 3 keeps fully scrolled-above placement" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[1;3H\x1b_Ga=p,i=7,p=3\x1b\\");
+    try stream.nextSlice("\x1b[3;1H\n\n");
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.placementCount());
+
+    try stream.nextSlice("\x1b[3J");
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.placementCount());
+    switch (terminal.kitty.main.graphics.placementAt(0).?.anchor_row) {
+        .on_screen => return error.TestExpectedEqual,
+        .scrollback_above => |rows| try std.testing.expectEqual(@as(u32, 2), rows),
+    }
+}
+
 test "kitty graphics place defaults crop truth from uploaded image" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

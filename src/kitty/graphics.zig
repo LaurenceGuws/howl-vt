@@ -168,6 +168,18 @@ pub const State = struct {
         }
     }
 
+    pub fn clearVisiblePlacements(self: *State) void {
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            const placement = self.placements.items[@intCast(idx)];
+            if (rowAnchorVisible(placement.anchor_row, placement.effective_rows)) {
+                _ = self.placements.swapRemove(@intCast(idx));
+            } else {
+                idx += 1;
+            }
+        }
+    }
+
     pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
         if (cmd.unsupported_key != 0) {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics control key");
@@ -591,6 +603,13 @@ fn rowAnchorRetained(anchor: RowAnchor, history_count: u32, effective_rows: u32,
             const limit = if (retain_in_scrollback) history_count + effective_rows else effective_rows;
             return rows < limit;
         },
+    };
+}
+
+fn rowAnchorVisible(anchor: RowAnchor, effective_rows: u32) bool {
+    return switch (anchor) {
+        .on_screen => true,
+        .scrollback_above => |rows| rows < effective_rows,
     };
 }
 
