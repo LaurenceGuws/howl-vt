@@ -329,7 +329,7 @@ pub const State = struct {
 
     fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
         const image_id = self.resolveImageId(cmd) orelse {
-            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENOENT:image not found");
+            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, cmd.placement_id, "ENOENT:image not found");
             return;
         };
         const image = self.images.items[@intCast(self.findImage(image_id).?)];
@@ -357,7 +357,7 @@ pub const State = struct {
             .effective_rows = effective_rows,
         });
         validatePlacement(self.placements.items[self.placements.items.len - 1]);
-        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, image_id, "OK");
+        if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, image_id, cmd.image_number, cmd.placement_id, "OK");
     }
 
     fn delete(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, cmd: KittyGraphicsCommand) void {
@@ -788,6 +788,24 @@ fn appendReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_
 fn appendNumberReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, msg: []const u8) host_state.ApplyError!void {
     const text = formatReply(encode_buf, "\x1b_Gi={d},I={d};{s}\x1b\\", .{ image_id, image_number, msg });
     try host_state.appendOutput(output, allocator, text);
+}
+
+fn appendPlacementReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, placement_id: u32, msg: []const u8) host_state.ApplyError!void {
+    if (image_number != 0 and placement_id != 0) {
+        const text = formatReply(encode_buf, "\x1b_Gi={d},I={d},p={d};{s}\x1b\\", .{ image_id, image_number, placement_id, msg });
+        try host_state.appendOutput(output, allocator, text);
+        return;
+    }
+    if (placement_id != 0) {
+        const text = formatReply(encode_buf, "\x1b_Gi={d},p={d};{s}\x1b\\", .{ image_id, placement_id, msg });
+        try host_state.appendOutput(output, allocator, text);
+        return;
+    }
+    if (image_number != 0) {
+        try appendNumberReply(allocator, output, encode_buf, image_id, image_number, msg);
+        return;
+    }
+    try appendReply(allocator, output, encode_buf, image_id, msg);
 }
 
 fn formatReply(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {

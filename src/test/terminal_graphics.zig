@@ -263,7 +263,7 @@ test "kitty graphics upload with same image id replaces image and placements" {
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
 }
 
-test "kitty graphics place stores metadata and replies by image id" {
+test "kitty graphics place stores metadata and replies with placement id" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
@@ -274,7 +274,7 @@ test "kitty graphics place stores metadata and replies by image id" {
     try stream.nextSlice("\x1b[2;3H");
     try stream.nextSlice("\x1b_Ga=p,i=7,p=3,c=4,r=2\x1b\\");
 
-    try std.testing.expectEqualStrings("\x1b_Gi=7;OK\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqualStrings("\x1b_Gi=7,p=3;OK\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
     const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 7), placement.image_id);
@@ -660,6 +660,18 @@ test "kitty graphics place missing image replies ENOENT" {
     try std.testing.expectEqualStrings("\x1b_Gi=404;ENOENT:image not found\x1b\\", pendingOutput(&terminal));
 }
 
+test "kitty graphics place missing image with placement id replies ENOENT with p" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Ga=p,i=404,p=7\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=404,p=7;ENOENT:image not found\x1b\\", pendingOutput(&terminal));
+}
+
 test "kitty graphics delete by image id removes image and placements" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -687,8 +699,21 @@ test "kitty graphics image numbers allocate ids and place newest image" {
     try stream.nextSlice("\x1b_Ga=p,I=13,p=2\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("\x1b_Gi=1,I=13;OK\x1b\\\x1b_Gi=2,I=13;OK\x1b\\\x1b_Gi=2;OK\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqualStrings("\x1b_Gi=1,I=13;OK\x1b\\\x1b_Gi=2,I=13;OK\x1b\\\x1b_Gi=2,I=13,p=2;OK\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsPlacementAt(&terminal, 0).?.image_id);
+}
+
+test "kitty graphics place without placement id keeps image-number reply shape" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,I=13\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=1,I=13;OK\x1b\\\x1b_Gi=1,I=13;OK\x1b\\", pendingOutput(&terminal));
 }
 
 test "kitty graphics deletion selectors remove matching placements" {
