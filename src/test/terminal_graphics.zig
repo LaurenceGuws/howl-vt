@@ -342,6 +342,58 @@ test "kitty graphics row anchor represents on-screen and retained above-screen r
     }
 }
 
+test "kitty graphics line feed full-page scroll moves placement up" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 16, 4);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=3\x1b\\");
+    try stream.nextSlice("\x1b[3;1H\n");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 0);
+    try std.testing.expectEqual(@as(u16, 2), placement.anchor_col);
+}
+
+test "kitty graphics full-page scroll retains placement above main screen" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 16, 1);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[1;3H\x1b_Ga=p,i=7,p=3\x1b\\");
+    try stream.nextSlice("\x1b[3;1H\n");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    switch (placement.anchor_row) {
+        .on_screen => return error.TestExpectedEqual,
+        .scrollback_above => |rows| try std.testing.expectEqual(@as(u32, 1), rows),
+    }
+
+    try stream.nextSlice("\x1b[3;1H\n");
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.placementCount());
+}
+
+test "kitty graphics scroll up lines applies full-page upward movement" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 4, 16, 4);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[3;3H\x1b_Ga=p,i=7,p=3\x1b\\");
+    try stream.nextSlice("\x1b[2S");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 0);
+}
+
 test "kitty graphics place defaults crop truth from uploaded image" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

@@ -91,7 +91,35 @@ fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!void {
         return;
     }
     const screen_event = screenAction(event) orelse unreachable;
+    applyGraphicsBeforeScreen(vt, screen_event);
     vt.screen_state.active().applyScreen(screen_event);
+}
+
+fn applyGraphicsBeforeScreen(vt: anytype, screen_event: ScreenAction) void {
+    const active = vt.screen_state.activeConst();
+    if (active.rows == 0) return;
+    const full_page = active.scroll_top == 0 and active.scrollBottom() == active.rows - 1;
+    if (!full_page) return;
+
+    switch (screen_event) {
+        .line_feed, .next_line => {
+            if (active.cursor_row != active.scrollBottom()) return;
+            applyGraphicsScrollUp(vt, 1);
+        },
+        .scroll_up_lines => |count| applyGraphicsScrollUp(vt, count),
+        else => {},
+    }
+}
+
+fn applyGraphicsScrollUp(vt: anytype, count: u16) void {
+    const projected_history_count = if (vt.screen_state.alt_active)
+        0
+    else blk: {
+        const active = vt.screen_state.activeConst();
+        const next = @min(active.historyCount() + count, active.historyCapacity());
+        break :blk next;
+    };
+    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollUpFullPage(projected_history_count, count, !vt.screen_state.alt_active);
 }
 
 pub fn screenAction(event: SemanticEvent) ?ScreenAction {

@@ -46,6 +46,16 @@ pub const RowAnchor = union(enum) {
             .scrollback_above => null,
         };
     }
+
+    pub fn scrollUp(self: RowAnchor, amount: u16) RowAnchor {
+        return switch (self) {
+            .on_screen => |row| {
+                if (row >= amount) return .{ .on_screen = row - amount };
+                return .{ .scrollback_above = amount - row };
+            },
+            .scrollback_above => |rows| return .{ .scrollback_above = rows + amount },
+        };
+    }
 };
 
 pub const Placement = struct {
@@ -142,6 +152,20 @@ pub const State = struct {
     pub fn frameAt(self: *const State, idx: Index) ?Frame {
         if (idx >= self.frameCount()) return null;
         return self.frames.items[@intCast(idx)];
+    }
+
+    pub fn scrollUpFullPage(self: *State, history_count: u32, count: u16, retain_in_scrollback: bool) void {
+        if (count == 0) return;
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            var placement = &self.placements.items[@intCast(idx)];
+            placement.anchor_row = placement.anchor_row.scrollUp(count);
+            if (rowAnchorRetained(placement.anchor_row, history_count, placement.effective_rows, retain_in_scrollback)) {
+                idx += 1;
+            } else {
+                _ = self.placements.swapRemove(@intCast(idx));
+            }
+        }
     }
 
     pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
@@ -558,6 +582,16 @@ fn validatePlacement(placement: Placement) void {
     std.debug.assert(placement.source_height > 0);
     std.debug.assert(placement.effective_columns > 0);
     std.debug.assert(placement.effective_rows > 0);
+}
+
+fn rowAnchorRetained(anchor: RowAnchor, history_count: u32, effective_rows: u32, retain_in_scrollback: bool) bool {
+    return switch (anchor) {
+        .on_screen => true,
+        .scrollback_above => |rows| {
+            const limit = if (retain_in_scrollback) history_count + effective_rows else effective_rows;
+            return rows < limit;
+        },
+    };
 }
 
 fn appendReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, msg: []const u8) host_state.ApplyError!void {
