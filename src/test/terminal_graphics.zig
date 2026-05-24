@@ -45,6 +45,59 @@ test "kitty graphics direct upload stores single base64 payload" {
     try std.testing.expectEqualStrings("QUJD", image.base64_payload);
 }
 
+test "kitty graphics transmit and display is rejected explicitly" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,a=T,t=d,f=24;QUJD\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:kitty graphics transmit+display unsupported\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+}
+
+test "kitty graphics unsupported action is rejected explicitly" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,a=a,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:unsupported kitty graphics action\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+}
+
+test "kitty graphics unsupported medium is rejected explicitly" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=f,f=24;L3RtcC9mb28=\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:unsupported kitty graphics medium\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+}
+
+test "kitty graphics unsupported control key is rejected explicitly" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,a=p,U=1,c=2,r=1\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:unsupported kitty graphics control key\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+}
+
 test "kitty graphics alt screen starts with separate empty state" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

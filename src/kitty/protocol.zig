@@ -55,7 +55,9 @@ pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
             'd' => {
                 if (value.len > 0) cmd.delete_target = value[0];
             },
-            else => {},
+            else => {
+                if (cmd.unsupported_key == 0) cmd.unsupported_key = key;
+            },
         }
     }
     return cmd;
