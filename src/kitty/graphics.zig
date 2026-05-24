@@ -83,6 +83,16 @@ pub const State = struct {
         if (self.upload) |*upload| upload.data.deinit(allocator);
     }
 
+    pub fn reset(self: *State, allocator: std.mem.Allocator) void {
+        for (self.images.items) |image| allocator.free(image.base64_payload);
+        self.images.clearRetainingCapacity();
+        self.placements.clearRetainingCapacity();
+        for (self.frames.items) |frame| allocator.free(frame.base64_payload);
+        self.frames.clearRetainingCapacity();
+        self.abortUpload(allocator);
+        self.next_image_id = 1;
+    }
+
     pub fn imageCount(self: *const State) Count {
         return count32(self.images.items);
     }

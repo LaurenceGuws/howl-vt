@@ -13,6 +13,11 @@ pub const ScreenState = struct {
     keyboard: Key.Stack = .{},
     pointer: Pointer.Stack = .{},
     multiple_cursor_count: u16 = 0,
+    graphics: Graphics.State = .{},
+
+    pub fn deinit(self: *ScreenState, allocator: std.mem.Allocator) void {
+        self.graphics.deinit(allocator);
+    }
 };
 
 pub const ShellMark = struct {
@@ -31,7 +36,6 @@ pub const GlobalState = struct {
     notifications: std.ArrayList(NotificationRequest) = .empty,
     color_stack_depth: u16 = 0,
     color_stack: Color.Stack = .{},
-    graphics: Graphics.State = .{},
     file_transfer_request: ?[]u8 = null,
     text_size_request: ?[]u8 = null,
 
@@ -42,7 +46,6 @@ pub const GlobalState = struct {
             allocator.free(notification.payload);
         }
         self.notifications.deinit(allocator);
-        self.graphics.deinit(allocator);
         if (self.file_transfer_request) |payload| allocator.free(payload);
         if (self.text_size_request) |payload| allocator.free(payload);
     }

@@ -185,6 +185,7 @@ pub fn setAnsiModes(vt: anytype, modes: []const u16, enabled: bool) void {
 }
 
 pub fn enterAltScreen(vt: anytype, clear_alt: bool, save_cursor: bool) void {
+    if (clear_alt) vt.kitty.alt.graphics.reset(vt.allocator);
     vt.screen_state.enterAlt(clear_alt, save_cursor);
 }
 

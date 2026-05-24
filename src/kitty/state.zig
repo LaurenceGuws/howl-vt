@@ -9,6 +9,8 @@ pub const State = struct {
     global: KittyNs.GlobalState = .{},
 
     pub fn deinit(self: *State, allocator: std.mem.Allocator) void {
+        self.main.deinit(allocator);
+        self.alt.deinit(allocator);
         self.global.deinit(allocator);
     }
 
@@ -18,6 +20,14 @@ pub const State = struct {
 
     pub fn activeScreenConst(self: *const State, alt_active: bool) *const KittyNs.ScreenState {
         return if (alt_active) &self.alt else &self.main;
+    }
+
+    pub fn activeGraphics(self: *State, alt_active: bool) *KittyNs.Graphics.State {
+        return &self.activeScreen(alt_active).graphics;
+    }
+
+    pub fn activeGraphicsConst(self: *const State, alt_active: bool) *const KittyNs.Graphics.State {
+        return &self.activeScreenConst(alt_active).graphics;
     }
 
     pub fn resetTerminalState(self: *State) void {
@@ -62,25 +72,25 @@ pub fn colorStackDepth(vt: anytype) u16 {
 }
 
 pub fn graphicsImageCount(vt: anytype) KittyNs.Graphics.Count {
-    return vt.kitty.global.graphics.imageCount();
+    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).imageCount();
 }
 
 pub fn graphicsImageAt(vt: anytype, idx: KittyNs.Graphics.Index) ?KittyNs.Graphics.Image {
-    return vt.kitty.global.graphics.imageAt(idx);
+    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).imageAt(idx);
 }
 
 pub fn graphicsPlacementCount(vt: anytype) KittyNs.Graphics.Count {
-    return vt.kitty.global.graphics.placementCount();
+    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).placementCount();
 }
 
 pub fn graphicsPlacementAt(vt: anytype, idx: KittyNs.Graphics.Index) ?KittyNs.Graphics.Placement {
-    return vt.kitty.global.graphics.placementAt(idx);
+    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).placementAt(idx);
 }
 
 pub fn graphicsFrameCount(vt: anytype) KittyNs.Graphics.Count {
-    return vt.kitty.global.graphics.frameCount();
+    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).frameCount();
 }
 
 pub fn graphicsFrameAt(vt: anytype, idx: KittyNs.Graphics.Index) ?KittyNs.Graphics.Frame {
-    return vt.kitty.global.graphics.frameAt(idx);
+    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).frameAt(idx);
 }

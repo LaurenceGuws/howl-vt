@@ -45,6 +45,66 @@ test "kitty graphics direct upload stores single base64 payload" {
     try std.testing.expectEqualStrings("QUJD", image.base64_payload);
 }
 
+test "kitty graphics alt screen starts with separate empty state" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+
+    try stream.nextSlice("\x1b[?1049h");
+
+    try std.testing.expect(terminal.screen_state.alt_active);
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+}
+
+test "kitty graphics alt screen state does not leak back into main" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[?1049h");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+
+    try std.testing.expect(terminal.screen_state.alt_active);
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 8), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
+
+    try stream.nextSlice("\x1b[?1049l");
+
+    try std.testing.expect(!terminal.screen_state.alt_active);
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 7), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
+}
+
+test "kitty graphics alt screen clear drops previous alt state on re-entry" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b[?1049h");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+
+    try stream.nextSlice("\x1b[?1049l");
+    try stream.nextSlice("\x1b[?1049h");
+
+    try std.testing.expect(terminal.screen_state.alt_active);
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+}
+
 test "kitty graphics direct upload assembles chunked base64 payload" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

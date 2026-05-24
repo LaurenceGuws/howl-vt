@@ -44,7 +44,7 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!void {
         .kitty_text_size => |payload| try setOptionalPayload(allocator, &vt.kitty.global.text_size_request, payload),
         .kitty_graphics => |cmd| {
             const cursor = vt.screen_state.activeConst();
-            try vt.kitty.global.graphics.handle(allocator, .{
+            try vt.kitty.activeGraphics(vt.screen_state.alt_active).handle(allocator, .{
                 .row = cursor.cursor_row,
                 .col = cursor.cursor_col,
             }, &vt.host.pending_output, scratch.buf[0..], cmd);
