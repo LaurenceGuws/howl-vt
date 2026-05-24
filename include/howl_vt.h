@@ -234,6 +234,12 @@ typedef struct {
   HowlVtGraphicsMeta meta;
 } HowlVtGraphicsMetaResult;
 
+enum {
+  HOWL_VT_GRAPHICS_ROW_ANCHOR_ON_SCREEN = 1,
+  HOWL_VT_GRAPHICS_ROW_ANCHOR_SCROLLBACK_ABOVE = 2,
+  HOWL_VT_GRAPHICS_ROW_ANCHOR_BELOW_SCREEN = 3,
+};
+
 typedef struct {
   uint8_t kind;
   uint8_t reserved0;
@@ -250,6 +256,9 @@ typedef struct {
   uint32_t height;
   uint64_t payload_len;
 } HowlVtGraphicsImage;
+
+/* Graphics payload bytes are exposed exactly as VT retains them today.
+ * They are protocol payload bytes, not decoded/render-ready image bytes. */
 
 typedef struct {
   int32_t status;
@@ -290,6 +299,7 @@ typedef struct {
 } HowlVtSurfaceResult;
 
 int32_t howl_vt_terminal_resize(HowlVtHandle handle, uint16_t rows, uint16_t cols);
+int32_t howl_vt_terminal_set_cell_pixel_size(HowlVtHandle handle, uint32_t width, uint32_t height);
 int32_t howl_vt_terminal_ack_surface(HowlVtHandle handle, uint64_t snapshot_seq);
 HowlVtVisibleMetaResult howl_vt_terminal_query_visible_meta(HowlVtHandle handle, uint64_t scrollback_offset);
 HowlVtGraphicsMetaResult howl_vt_terminal_query_graphics_meta(HowlVtHandle handle);
@@ -323,6 +333,10 @@ HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t histor
 HowlVtHandle howl_vt_terminal_init_with_options(uint16_t rows, uint16_t cols, uint16_t history_capacity, HowlVtTerminalInitOptions options);
 void howl_vt_terminal_deinit(HowlVtHandle handle);
 HowlVtFeedResult howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
+/* Graphics item queries and payload copies are publication-local.
+ * Callers must first read `howl_vt_terminal_query_graphics_meta()` and pass the
+ * returned `publication_seq` back to per-item queries/copies. Any mutation may
+ * invalidate prior publication sequences. */
 HowlVtBytesResult howl_vt_terminal_copy_surface_hyperlink(HowlVtHandle handle, uint64_t scrollback_offset, uint64_t snapshot_seq, uint16_t row, uint16_t col, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_graphics_payload(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_selection(HowlVtHandle handle, uint8_t *ptr, size_t cap);

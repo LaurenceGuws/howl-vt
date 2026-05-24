@@ -7,6 +7,7 @@ comptime {
     @export(&ffi.terminalFeed, .{ .name = "howl_vt_terminal_feed" });
     @export(&ffi.terminalCopyTitle, .{ .name = "howl_vt_terminal_copy_title" });
     @export(&ffi.terminalResize, .{ .name = "howl_vt_terminal_resize" });
+    @export(&ffi.terminalSetCellPixelSize, .{ .name = "howl_vt_terminal_set_cell_pixel_size" });
     @export(&ffi.terminalAckSurface, .{ .name = "howl_vt_terminal_ack_surface" });
     @export(&ffi.terminalQueryVisibleMeta, .{ .name = "howl_vt_terminal_query_visible_meta" });
     @export(&ffi.terminalQueryGraphicsMeta, .{ .name = "howl_vt_terminal_query_graphics_meta" });

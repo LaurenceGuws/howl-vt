@@ -653,6 +653,13 @@ pub fn terminalResize(handle: VtHandle, rows: u16, cols: u16) callconv(.c) i32 {
     return @intFromEnum(HowlVtCallStatus.ok);
 }
 
+pub fn terminalSetCellPixelSize(handle: VtHandle, width: u32, height: u32) callconv(.c) i32 {
+    const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
+    if (width == 0 or height == 0) return @intFromEnum(HowlVtCallStatus.invalid_argument);
+    owned.setCellPixelSize(width, height);
+    return @intFromEnum(HowlVtCallStatus.ok);
+}
+
 pub fn terminalAckSurface(handle: VtHandle, snapshot_seq: u64) callconv(.c) i32 {
     const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
     return if (owned.ackSurface(snapshot_seq))
@@ -1068,6 +1075,22 @@ test "vt ffi graphics meta follows active screen only" {
     try std.testing.expectEqual(@as(u32, 0), alt_meta.meta.placement_count);
     try std.testing.expectEqual(@as(u8, 1), alt_meta.meta.is_alternate_screen);
     try std.testing.expect(alt_meta.meta.publication_seq != main_meta.meta.publication_seq);
+}
+
+test "vt ffi set cell pixel size validates and applies" {
+    const handle = terminalInit(3, 16, 4);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalSetCellPixelSize(handle, 0, 10));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalSetCellPixelSize(handle, 10, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalSetCellPixelSize(handle, 11, 19));
+
+    const owned = vtFromHandle(handle).?;
+    try std.testing.expectEqual(@as(u32, 11), owned.screen_state.primary.cellPixelSize().?.width);
+    try std.testing.expectEqual(@as(u32, 19), owned.screen_state.primary.cellPixelSize().?.height);
+    try std.testing.expectEqual(@as(u32, 11), owned.screen_state.alternate.cellPixelSize().?.width);
+    try std.testing.expectEqual(@as(u32, 19), owned.screen_state.alternate.cellPixelSize().?.height);
 }
 
 test "vt ffi surface copy carries render color state" {
