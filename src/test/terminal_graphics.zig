@@ -247,6 +247,55 @@ test "kitty graphics direct upload assembles chunked base64 payload" {
     try std.testing.expectEqualStrings("QUJD", image.base64_payload);
 }
 
+test "kitty graphics chunk upload retains first placement metadata until completion" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=9,s=11,v=13,t=d,f=24,p=5,x=2,y=4,w=6,h=8,X=3,Y=5,c=10,r=12,z=-7,m=1;Q\x1b\\");
+    {
+        const upload = terminal.kitty.main.graphics.upload.?;
+        try std.testing.expectEqual(@as(u32, 5), upload.placement_id);
+        try std.testing.expectEqual(@as(u32, 2), upload.source_x);
+        try std.testing.expectEqual(@as(u32, 4), upload.source_y);
+        try std.testing.expectEqual(@as(u32, 6), upload.source_width);
+        try std.testing.expectEqual(@as(u32, 8), upload.source_height);
+        try std.testing.expectEqual(@as(u32, 3), upload.cell_x_offset);
+        try std.testing.expectEqual(@as(u32, 5), upload.cell_y_offset);
+        try std.testing.expectEqual(@as(u32, 10), upload.columns);
+        try std.testing.expectEqual(@as(u32, 12), upload.rows);
+        try std.testing.expectEqual(@as(i32, -7), upload.z_index);
+        try std.testing.expectEqual(@as(u16, 0), upload.anchor_row);
+        try std.testing.expectEqual(@as(u16, 0), upload.anchor_col);
+    }
+
+    try stream.nextSlice("\x1b[3;4H");
+    try stream.nextSlice("\x1b_Gp=99,x=1,y=1,w=1,h=1,X=1,Y=1,c=1,r=1,z=9,m=1;U\x1b\\");
+    {
+        const upload = terminal.kitty.main.graphics.upload.?;
+        try std.testing.expectEqual(@as(u32, 5), upload.placement_id);
+        try std.testing.expectEqual(@as(u32, 2), upload.source_x);
+        try std.testing.expectEqual(@as(u32, 4), upload.source_y);
+        try std.testing.expectEqual(@as(u32, 6), upload.source_width);
+        try std.testing.expectEqual(@as(u32, 8), upload.source_height);
+        try std.testing.expectEqual(@as(u32, 3), upload.cell_x_offset);
+        try std.testing.expectEqual(@as(u32, 5), upload.cell_y_offset);
+        try std.testing.expectEqual(@as(u32, 10), upload.columns);
+        try std.testing.expectEqual(@as(u32, 12), upload.rows);
+        try std.testing.expectEqual(@as(i32, -7), upload.z_index);
+        try std.testing.expectEqual(@as(u16, 0), upload.anchor_row);
+        try std.testing.expectEqual(@as(u16, 0), upload.anchor_col);
+    }
+
+    try stream.nextSlice("\x1b_Gm=0;J\x1b\\");
+
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJ", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
 test "kitty graphics upload with same image id replaces image and placements" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

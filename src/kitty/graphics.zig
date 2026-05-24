@@ -147,6 +147,21 @@ pub const Upload = struct {
     width: u32,
     height: u32,
     frame_number: u32,
+    // Retain physical placement metadata from the first chunk so a future
+    // honest a=T implementation does not depend on continuation chunks
+    // repeating control fields.
+    placement_id: u32,
+    source_x: u32,
+    source_y: u32,
+    source_width: u32,
+    source_height: u32,
+    cell_x_offset: u32,
+    cell_y_offset: u32,
+    columns: u32,
+    rows: u32,
+    z_index: i32,
+    anchor_row: u16,
+    anchor_col: u16,
     data: std.ArrayList(u8),
 };
 
@@ -317,14 +332,14 @@ pub const State = struct {
             return;
         }
         if (cmd.action == 'f') {
-            try self.captureUpload(allocator, output, encode_buf, cmd);
+            try self.captureUpload(allocator, render_view, output, encode_buf, cmd);
             return;
         }
         if (cmd.action != 't') {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
             return;
         }
-        try self.captureUpload(allocator, output, encode_buf, cmd);
+        try self.captureUpload(allocator, render_view, output, encode_buf, cmd);
     }
 
     fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
@@ -404,21 +419,21 @@ pub const State = struct {
         }
     }
 
-    fn captureUpload(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
+    fn captureUpload(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!void {
         if (cmd.medium != 'd') return;
         if (cmd.action != 't' and cmd.action != 'T' and cmd.action != 'f') return;
         if (cmd.more_chunks) {
-            try self.appendUploadChunk(allocator, output, encode_buf, cmd, true);
+            try self.appendUploadChunk(allocator, render_view, output, encode_buf, cmd, true);
             return;
         }
         if (self.upload != null) {
-            try self.appendUploadChunk(allocator, output, encode_buf, cmd, false);
+            try self.appendUploadChunk(allocator, render_view, output, encode_buf, cmd, false);
         } else {
             try self.storePayload(allocator, output, encode_buf, cmd, cmd.payload);
         }
     }
 
-    fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) host_state.ApplyError!void {
+    fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) host_state.ApplyError!void {
         if (self.upload == null) {
             const image_id = self.imageIdForUpload(cmd);
             self.upload = .{
@@ -429,6 +444,18 @@ pub const State = struct {
                 .width = cmd.width,
                 .height = cmd.height,
                 .frame_number = cmd.placement_id,
+                .placement_id = cmd.placement_id,
+                .source_x = cmd.x,
+                .source_y = cmd.y,
+                .source_width = cmd.source_width,
+                .source_height = cmd.source_height,
+                .cell_x_offset = cmd.cell_x_offset,
+                .cell_y_offset = cmd.cell_y_offset,
+                .columns = cmd.columns,
+                .rows = cmd.rows,
+                .z_index = cmd.z,
+                .anchor_row = render_view.row,
+                .anchor_col = render_view.col,
                 .data = std.ArrayList(u8).empty,
             };
         }
