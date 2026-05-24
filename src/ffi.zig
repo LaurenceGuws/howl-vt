@@ -231,6 +231,12 @@ pub const FfiGraphicsPlacement = extern struct {
     cell_y_offset: u32 = 0,
     columns: u32 = 0,
     rows: u32 = 0,
+    dest_left_cell_px: u32 = 0,
+    dest_top_cell_px: u32 = 0,
+    dest_right_cell_px: u32 = 0,
+    dest_bottom_cell_px: u32 = 0,
+    dest_grid_columns: u32 = 0,
+    dest_grid_rows: u32 = 0,
     effective_columns: u32 = 0,
     effective_rows: u32 = 0,
 };
@@ -483,6 +489,11 @@ fn graphicsImageResult(image: kitty_types.Graphics.Image) FfiGraphicsImageResult
 }
 
 fn graphicsPlacementResult(placement: kitty_types.Graphics.Placement) FfiGraphicsPlacementResult {
+    return graphicsPlacementResultWithCell(placement, null);
+}
+
+fn graphicsPlacementResultWithCell(placement: kitty_types.Graphics.Placement, cell_pixel_size: ?screen.Screen.CellPixelSize) FfiGraphicsPlacementResult {
+    const dest = placement.resolveDestGeometry(cell_pixel_size);
     return .{
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .placement = .{
@@ -499,6 +510,12 @@ fn graphicsPlacementResult(placement: kitty_types.Graphics.Placement) FfiGraphic
             .cell_y_offset = placement.cell_y_offset,
             .columns = placement.columns,
             .rows = placement.rows,
+            .dest_left_cell_px = if (dest) |value| value.left_px else 0,
+            .dest_top_cell_px = if (dest) |value| value.top_px else 0,
+            .dest_right_cell_px = if (dest) |value| value.right_px else 0,
+            .dest_bottom_cell_px = if (dest) |value| value.bottom_px else 0,
+            .dest_grid_columns = placement.effective_columns,
+            .dest_grid_rows = placement.effective_rows,
             .effective_columns = placement.effective_columns,
             .effective_rows = placement.effective_rows,
         },
@@ -691,7 +708,7 @@ pub fn terminalQueryGraphicsPlacement(handle: VtHandle, publication_seq: u64, pl
     const placement = owned.graphicsPlacement(publication_seq, placement_index) catch {
         return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    return graphicsPlacementResult(placement);
+    return graphicsPlacementResultWithCell(placement, owned.screen_state.activeConst().cellPixelSize());
 }
 
 pub fn terminalCopyGraphicsPayload(handle: VtHandle, publication_seq: u64, image_index: u32, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
@@ -991,6 +1008,8 @@ test "vt ffi graphics queries expose active-screen retained truth" {
     defer terminalDeinit(handle);
     try std.testing.expect(handle != null);
 
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalSetCellPixelSize(handle, 10, 20));
+
     const upload = "\x1b_Gi=7,s=11,v=13,t=d,f=24;QUJD\x1b\\";
     const place = "\x1b[3;5H\x1b_Ga=p,i=7,p=9,x=2,y=4,w=6,h=8,X=3,Y=5,c=10,r=12,z=-7\x1b\\";
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
@@ -1028,6 +1047,12 @@ test "vt ffi graphics queries expose active-screen retained truth" {
     try std.testing.expectEqual(@as(u32, 5), placement.placement.cell_y_offset);
     try std.testing.expectEqual(@as(u32, 10), placement.placement.columns);
     try std.testing.expectEqual(@as(u32, 12), placement.placement.rows);
+    try std.testing.expectEqual(@as(u32, 3), placement.placement.dest_left_cell_px);
+    try std.testing.expectEqual(@as(u32, 5), placement.placement.dest_top_cell_px);
+    try std.testing.expectEqual(@as(u32, 103), placement.placement.dest_right_cell_px);
+    try std.testing.expectEqual(@as(u32, 245), placement.placement.dest_bottom_cell_px);
+    try std.testing.expectEqual(@as(u32, 10), placement.placement.dest_grid_columns);
+    try std.testing.expectEqual(@as(u32, 12), placement.placement.dest_grid_rows);
     try std.testing.expectEqual(@as(u32, 10), placement.placement.effective_columns);
     try std.testing.expectEqual(@as(u32, 12), placement.placement.effective_rows);
 
@@ -1035,6 +1060,35 @@ test "vt ffi graphics queries expose active-screen retained truth" {
     const copied = terminalCopyGraphicsPayload(handle, meta.meta.publication_seq, 0, payload[0..].ptr, payload.len);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), copied.status);
     try std.testing.expectEqualStrings("QUJD", payload[0..@intCast(copied.written)]);
+}
+
+test "vt ffi graphics placement query exposes resolved omitted-size destination truth" {
+    const handle = terminalInit(4, 16, 4);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalSetCellPixelSize(handle, 10, 20));
+
+    const upload = "\x1b_Gi=7,s=40,v=20,t=d,f=24;QUJD\x1b\\";
+    const place = "\x1b_Ga=p,i=7,p=3,X=2,Y=5,c=2\x1b\\";
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, place.ptr, place.len).status);
+
+    const meta = terminalQueryGraphicsMeta(handle);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
+
+    const placement = terminalQueryGraphicsPlacement(handle, meta.meta.publication_seq, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), placement.status);
+    try std.testing.expectEqual(@as(u32, 0), placement.placement.rows);
+    try std.testing.expectEqual(@as(u32, 2), placement.placement.columns);
+    try std.testing.expectEqual(@as(u32, 2), placement.placement.dest_left_cell_px);
+    try std.testing.expectEqual(@as(u32, 5), placement.placement.dest_top_cell_px);
+    try std.testing.expectEqual(@as(u32, 22), placement.placement.dest_right_cell_px);
+    try std.testing.expectEqual(@as(u32, 16), placement.placement.dest_bottom_cell_px);
+    try std.testing.expectEqual(@as(u32, 2), placement.placement.dest_grid_columns);
+    try std.testing.expectEqual(@as(u32, 1), placement.placement.dest_grid_rows);
+    try std.testing.expectEqual(@as(u32, 2), placement.placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 1), placement.placement.effective_rows);
 }
 
 test "vt ffi graphics publication token rejects stale queries" {

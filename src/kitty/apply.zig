@@ -47,7 +47,8 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!void {
             if (try vt.kitty.activeGraphics(vt.screen_state.alt_active).handle(allocator, .{
                 .row = cursor.cursor_row,
                 .col = cursor.cursor_col,
-            }, &vt.host.pending_output, scratch.buf[0..], cmd)) |move| {
+                .screen_rows = cursor.rows,
+            }, cursor.cellPixelSize(), &vt.host.pending_output, scratch.buf[0..], cmd)) |move| {
                 applyPlacementCursorMove(vt.screen_state.active(), move.cols, move.rows);
             }
         },

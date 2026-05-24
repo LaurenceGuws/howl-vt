@@ -1362,6 +1362,17 @@ test "actions: kitty graphics APC parses control keys and payload" {
     try std.testing.expectEqualStrings("AAAA", cmd.payload);
 }
 
+test "actions: kitty graphics APC parses relative placement controls" {
+    const sem = process(Event{ .apc = "Ga=p,i=31,p=9,P=7,Q=3,H=-2,V=4;AAAA" }) orelse return error.NoEvent;
+    const cmd = sem.kitty_graphics;
+    try std.testing.expectEqual(@as(u32, 31), cmd.image_id);
+    try std.testing.expectEqual(@as(u32, 9), cmd.placement_id);
+    try std.testing.expectEqual(@as(u32, 7), cmd.parent_image_id);
+    try std.testing.expectEqual(@as(u32, 3), cmd.parent_placement_id);
+    try std.testing.expectEqual(@as(i32, -2), cmd.parent_offset_cols);
+    try std.testing.expectEqual(@as(i32, 4), cmd.parent_offset_rows);
+}
+
 test "actions: kitty shell integration OSC 133 parses mark and status" {
     const sem = process(makeOsc(.{ .shell_mark = .{ .payload = "D;7", .term = .bel } })) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u8, 'D'), sem.kitty_shell_mark.kind);

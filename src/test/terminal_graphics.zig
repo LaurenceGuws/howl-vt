@@ -593,9 +593,29 @@ test "kitty graphics margin line feed clips top for fully enclosed placement" {
 
     const placement = terminal.kitty.main.graphics.placementAt(0).?;
     try expectOnScreenRowAnchor(placement.anchor_row, 1);
-    try std.testing.expectEqual(@as(u32, 10), placement.source_y);
-    try std.testing.expectEqual(@as(u32, 20), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 15), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 15), placement.source_height);
     try std.testing.expectEqual(@as(u32, 1), placement.effective_rows);
+}
+
+test "kitty graphics margin line feed clips top from resolved implicit destination truth" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 5, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    terminal.setCellPixelSize(10, 10);
+    try stream.nextSlice("\x1b_Gi=7,s=40,v=30,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;4r\x1b[2;3H\x1b_Ga=p,i=7,p=3,c=3,Y=5\x1b\\");
+    try stream.nextSlice("\x1b[4;1H\n");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 1);
+    try std.testing.expectEqual(@as(u32, 7), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 23), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 0), placement.cell_y_offset);
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
 }
 
 test "kitty graphics margin reverse index clips bottom for fully enclosed placement" {
@@ -613,7 +633,7 @@ test "kitty graphics margin reverse index clips bottom for fully enclosed placem
     const placement = terminal.kitty.main.graphics.placementAt(0).?;
     try expectOnScreenRowAnchor(placement.anchor_row, 3);
     try std.testing.expectEqual(@as(u32, 0), placement.source_y);
-    try std.testing.expectEqual(@as(u32, 20), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 15), placement.source_height);
     try std.testing.expectEqual(@as(u32, 1), placement.effective_rows);
 }
 
@@ -651,8 +671,28 @@ test "kitty graphics scroll down lines clips bottom for fully enclosed placement
     const placement = terminal.kitty.main.graphics.placementAt(0).?;
     try expectOnScreenRowAnchor(placement.anchor_row, 3);
     try std.testing.expectEqual(@as(u32, 0), placement.source_y);
-    try std.testing.expectEqual(@as(u32, 20), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 15), placement.source_height);
     try std.testing.expectEqual(@as(u32, 1), placement.effective_rows);
+}
+
+test "kitty graphics scroll down lines clips bottom from resolved implicit destination truth" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 5, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    terminal.setCellPixelSize(10, 10);
+    try stream.nextSlice("\x1b_Gi=7,s=40,v=30,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;4r\x1b[2;3H\x1b_Ga=p,i=7,p=3,c=3,Y=5\x1b\\");
+    try stream.nextSlice("\x1b[1T");
+
+    const placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 2);
+    try std.testing.expectEqual(@as(u32, 0), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 19), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 5), placement.cell_y_offset);
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
 }
 
 test "kitty graphics erase display 2 clears visible physical placements" {
@@ -735,6 +775,64 @@ test "kitty graphics placement resolves deterministic dest geometry when cell si
     try std.testing.expectEqual(@as(u32, 16), geometry.bottom_px);
 }
 
+test "kitty graphics place resolves implicit grid extent for all c/r cases when cell size is known" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 4, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    terminal.setCellPixelSize(10, 20);
+    try stream.nextSlice("\x1b_Gi=7,s=40,v=20,t=d,f=24;AAAA\x1b\\");
+
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=1,X=2,Y=5\x1b\\");
+    var placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try std.testing.expectEqual(@as(u32, 5), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
+
+    try stream.nextSlice("\x1b_Ga=d,i=7,p=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=2,X=2,Y=5,c=2\x1b\\");
+    placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 1), placement.effective_rows);
+
+    try stream.nextSlice("\x1b_Ga=d,i=7,p=2\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,X=3,Y=5,r=2\x1b\\");
+    placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try std.testing.expectEqual(@as(u32, 9), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
+
+    try stream.nextSlice("\x1b_Ga=d,i=7,p=3\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=4,X=3,Y=5,c=2,r=2\x1b\\");
+    placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
+}
+
+test "kitty graphics implicit extent rescales when cell size becomes known later" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=40,v=20,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,X=2,Y=5\x1b\\");
+
+    var placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try std.testing.expectEqual(@as(u32, 1), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 1), placement.effective_rows);
+
+    terminal.setCellPixelSize(10, 20);
+
+    placement = terminal.kitty.main.graphics.placementAt(0).?;
+    try std.testing.expectEqual(@as(u32, 5), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
+    const geometry = placement.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()).?;
+    try std.testing.expectEqual(@as(u32, 42), geometry.right_px);
+    try std.testing.expectEqual(@as(u32, 25), geometry.bottom_px);
+}
+
 test "kitty graphics placement geometry stays unresolved without cell size" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -802,6 +900,94 @@ test "kitty graphics place missing image number with placement id replies withou
     try stream.nextSlice("\x1b_Ga=p,I=404,p=7\x1b\\");
 
     try std.testing.expectEqualStrings("\x1b_GI=404,p=7;ENOENT:image not found\x1b\\", pendingOutput(&terminal));
+}
+
+test "kitty graphics relative placement resolves parent anchor and does not move cursor" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=3,c=4,r=2\x1b\\");
+    try stream.nextSlice("\x1b[5;10H\x1b_Ga=p,i=8,p=9,P=7,Q=3,H=2,V=1,c=1,r=1\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsPlacementCount(&terminal));
+    const child = KittyState.graphicsPlacementAt(&terminal, 1).?;
+    try expectOnScreenRowAnchor(child.anchor_row, 2);
+    try std.testing.expectEqual(@as(u16, 4), child.anchor_col);
+    try std.testing.expectEqual(@as(u16, 4), terminal.screen_state.activeConst().cursor_row);
+    try std.testing.expectEqual(@as(u16, 9), terminal.screen_state.activeConst().cursor_col);
+}
+
+test "kitty graphics relative placement cycle is rejected" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=2,P=7,Q=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=1,P=8,Q=2\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7,p=1;OK\x1b\\\x1b_Gi=8,p=2;OK\x1b\\\x1b_Gi=7,p=1;ECYCLE:relative placement cycle\x1b\\", pendingOutput(&terminal));
+    const root = KittyState.graphicsPlacementAt(&terminal, 0).?;
+    try expectOnScreenRowAnchor(root.anchor_row, 1);
+    try std.testing.expectEqual(@as(u16, 2), root.anchor_col);
+}
+
+test "kitty graphics relative placement depth bound rejects ninth ancestor" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 12, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    var image_id: u32 = 1;
+    while (image_id <= 10) : (image_id += 1) {
+        var buf: [64]u8 = undefined;
+        const upload = try std.fmt.bufPrint(&buf, "\x1b_Gi={d},s=1,v=1,t=d,f=24;AAAA\x1b\\", .{image_id});
+        try stream.nextSlice(upload);
+    }
+
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=1,p=1\x1b\\");
+    image_id = 2;
+    while (image_id <= 9) : (image_id += 1) {
+        var buf: [96]u8 = undefined;
+        const place = try std.fmt.bufPrint(&buf, "\x1b_Ga=p,i={d},p=1,P={d},Q=1\x1b\\", .{ image_id, image_id - 1 });
+        try stream.nextSlice(place);
+    }
+
+    try std.testing.expectEqual(@as(u32, 9), KittyState.graphicsPlacementCount(&terminal));
+    try stream.nextSlice("\x1b_Ga=p,i=10,p=1,P=9,Q=1\x1b\\");
+    try std.testing.expectEqual(@as(u32, 9), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expect(std.mem.endsWith(u8, pendingOutput(&terminal), "\x1b_Gi=10,p=1;ETOODEEP:relative placement depth exceeded\x1b\\"));
+}
+
+test "kitty graphics relative placement lifetime removes descendant placements without deleting named images" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=2,P=7,Q=1\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsPlacementCount(&terminal));
+
+    try stream.nextSlice("\x1b_Ga=d,d=i,i=7,p=1\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
 }
 
 test "kitty graphics delete by image id removes image and placements" {
@@ -891,7 +1077,7 @@ test "kitty graphics image count cap is explicit" {
 
     var image_id: u32 = 1;
     while (image_id <= Graphics.image_max_count) : (image_id += 1) {
-        _ = try state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
+        _ = try state.handle(allocator, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
             .action = 't',
             .image_id = image_id,
             .image_number = 0,
@@ -913,7 +1099,7 @@ test "kitty graphics image count cap is explicit" {
     }
 
     try std.testing.expectEqual(Graphics.image_max_count, state.imageCount());
-    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
+    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
         .action = 't',
         .image_id = Graphics.image_max_count + 1,
         .image_number = 0,
@@ -993,7 +1179,7 @@ test "kitty graphics frame count cap is explicit" {
 
     var frame_number: u32 = 1;
     while (frame_number <= Graphics.frame_max_count) : (frame_number += 1) {
-        _ = try state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
+        _ = try state.handle(allocator, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
             .action = 'f',
             .image_id = 7,
             .image_number = 0,
@@ -1015,7 +1201,7 @@ test "kitty graphics frame count cap is explicit" {
     }
 
     try std.testing.expectEqual(Graphics.frame_max_count, state.frameCount());
-    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, .{ .row = 0, .col = 0 }, &output, encode_buf[0..], .{
+    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
         .action = 'f',
         .image_id = 7,
         .image_number = 0,

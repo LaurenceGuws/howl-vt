@@ -11,6 +11,7 @@ const reply_max_bytes = 60;
 pub const RenderCursorView = struct {
     row: u16,
     col: u16,
+    screen_rows: u16,
 };
 
 pub const CursorMove = struct {
@@ -29,6 +30,7 @@ pub const placement_max_count: Count = parser.max_metadata_control_bytes;
 pub const frame_max_count: Count = parser.max_metadata_control_bytes;
 pub const retained_payload_max_bytes: u32 = parser.max_large_osc_control_bytes;
 pub const upload_max_bytes: u32 = parser.max_large_osc_control_bytes;
+pub const parent_depth_limit: u32 = 8;
 
 pub const Image = struct {
     image_id: u32,
@@ -97,6 +99,10 @@ pub const Placement = struct {
     z_index: i32,
     anchor_row: RowAnchor,
     anchor_col: u16,
+    parent_image_id: u32 = 0,
+    parent_placement_id: u32 = 0,
+    parent_offset_cols: i32 = 0,
+    parent_offset_rows: i32 = 0,
     source_x: u32,
     source_y: u32,
     source_width: u32,
@@ -132,6 +138,24 @@ pub const Placement = struct {
             .right_px = right_px,
             .bottom_px = bottom_px,
         };
+    }
+
+    fn recomputeExtent(self: *Placement, cell_pixel_size: ?CellPixelSize) void {
+        const extent = resolveGridExtent(
+            self.source_width,
+            self.source_height,
+            self.cell_x_offset,
+            self.cell_y_offset,
+            self.columns,
+            self.rows,
+            cell_pixel_size,
+        );
+        self.effective_columns = extent.columns;
+        self.effective_rows = extent.rows;
+    }
+
+    fn hasParent(self: Placement) bool {
+        return self.parent_image_id != 0;
     }
 };
 
@@ -220,6 +244,16 @@ pub const State = struct {
         return self.placements.items[@intCast(idx)];
     }
 
+    pub fn placementAtResolved(self: *const State, idx: Index, screen_rows: u16) ?Placement {
+        if (idx >= self.placementCount()) return null;
+        var placement = self.placements.items[@intCast(idx)];
+        const anchor = self.resolvePlacementAnchor(placement, screen_rows) orelse return null;
+        if (anchor.col < 0) return null;
+        placement.anchor_row = anchor.row;
+        placement.anchor_col = std.math.cast(u16, anchor.col) orelse return null;
+        return placement;
+    }
+
     pub fn frameCount(self: *const State) Count {
         return count32(self.frames.items);
     }
@@ -234,8 +268,14 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             var placement = &self.placements.items[@intCast(idx)];
-            placement.anchor_row = placement.anchor_row.scrollUp(count, screen_rows);
-            if (rowAnchorRetained(placement.anchor_row, history_count, placement.effective_rows, retain_in_scrollback)) {
+            if (!placement.hasParent()) {
+                placement.anchor_row = placement.anchor_row.scrollUp(count, screen_rows);
+            }
+            const resolved = self.resolvePlacementAnchor(placement.*, screen_rows) orelse {
+                idx += 1;
+                continue;
+            };
+            if (rowAnchorRetained(resolved.row, history_count, placement.effective_rows, retain_in_scrollback)) {
                 idx += 1;
             } else {
                 _ = self.placements.swapRemove(@intCast(idx));
@@ -247,7 +287,9 @@ pub const State = struct {
         if (count == 0 or screen_rows == 0) return;
         var idx: Index = 0;
         while (idx < self.placementCount()) {
-            self.placements.items[@intCast(idx)].anchor_row = self.placements.items[@intCast(idx)].anchor_row.scrollDown(count, screen_rows);
+            if (!self.placements.items[@intCast(idx)].hasParent()) {
+                self.placements.items[@intCast(idx)].anchor_row = self.placements.items[@intCast(idx)].anchor_row.scrollDown(count, screen_rows);
+            }
             idx += 1;
         }
     }
@@ -258,6 +300,10 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             var placement = &self.placements.items[@intCast(idx)];
+            if (placement.hasParent()) {
+                idx += 1;
+                continue;
+            }
             if (!placementFullyWithinRegion(placement.*, top, bottom)) {
                 idx += 1;
                 continue;
@@ -280,6 +326,10 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             var placement = &self.placements.items[@intCast(idx)];
+            if (placement.hasParent()) {
+                idx += 1;
+                continue;
+            }
             if (!placementFullyWithinRegion(placement.*, top, bottom)) {
                 idx += 1;
                 continue;
@@ -300,7 +350,11 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const placement = self.placements.items[@intCast(idx)];
-            if (rowAnchorVisible(placement.anchor_row, placement.effective_rows)) {
+            const resolved = self.resolvePlacementAnchor(placement, std.math.maxInt(u16)) orelse {
+                idx += 1;
+                continue;
+            };
+            if (rowAnchorVisible(resolved.row, placement.effective_rows)) {
                 _ = self.placements.swapRemove(@intCast(idx));
             } else {
                 idx += 1;
@@ -308,7 +362,7 @@ pub const State = struct {
         }
     }
 
-    pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
+    pub fn handle(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
         if (cmd.unsupported_key != 0) {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics control key");
             return null;
@@ -326,24 +380,24 @@ pub const State = struct {
             return null;
         }
         if (cmd.action == 'p') {
-            return try self.placeImage(allocator, render_view, output, encode_buf, cmd);
+            return try self.placeImage(allocator, render_view, cell_pixel_size, output, encode_buf, cmd);
         }
         if (cmd.action == 'd') {
             self.delete(allocator, render_view, cmd);
             return null;
         }
         if (cmd.action == 'f') {
-            _ = try self.captureUpload(allocator, render_view, output, encode_buf, cmd);
+            _ = try self.captureUpload(allocator, render_view, cell_pixel_size, output, encode_buf, cmd);
             return null;
         }
         if (cmd.action != 't' and cmd.action != 'T') {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
             return null;
         }
-        return try self.captureUpload(allocator, render_view, output, encode_buf, cmd);
+        return try self.captureUpload(allocator, render_view, cell_pixel_size, output, encode_buf, cmd);
     }
 
-    fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
+    fn placeImage(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
         const image_id = self.resolveImageId(cmd) orelse {
             if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, cmd.placement_id, "ENOENT:image not found");
             return null;
@@ -351,16 +405,18 @@ pub const State = struct {
         const image = self.images.items[@intCast(self.findImage(image_id).?)];
         const source_width = if (cmd.source_width != 0) cmd.source_width else image.width;
         const source_height = if (cmd.source_height != 0) cmd.source_height else image.height;
-        const effective_columns = @max(cmd.columns, 1);
-        const effective_rows = @max(cmd.rows, 1);
-        if (cmd.placement_id != 0) self.deletePlacement(image_id, cmd.placement_id);
-        try ensureCountBound(self.placements.items.len, placement_max_count);
-        try self.placements.append(allocator, .{
+        const extent = resolveGridExtent(source_width, source_height, cmd.cell_x_offset, cmd.cell_y_offset, cmd.columns, cmd.rows, cell_pixel_size);
+        const parent = try self.resolveParentPlacement(allocator, output, encode_buf, cmd.image_id, cmd.image_number, cmd.placement_id, cmd.parent_image_id, cmd.parent_placement_id, cmd.quiet) orelse return null;
+        return try self.upsertPlacement(allocator, output, encode_buf, .{
             .image_id = image_id,
             .placement_id = cmd.placement_id,
             .z_index = cmd.z,
             .anchor_row = RowAnchor.initOnScreen(render_view.row),
             .anchor_col = render_view.col,
+            .parent_image_id = parent.image_id,
+            .parent_placement_id = parent.placement_id,
+            .parent_offset_cols = cmd.parent_offset_cols,
+            .parent_offset_rows = cmd.parent_offset_rows,
             .source_x = cmd.x,
             .source_y = cmd.y,
             .source_width = source_width,
@@ -369,12 +425,9 @@ pub const State = struct {
             .cell_y_offset = cmd.cell_y_offset,
             .columns = cmd.columns,
             .rows = cmd.rows,
-            .effective_columns = effective_columns,
-            .effective_rows = effective_rows,
-        });
-        validatePlacement(self.placements.items[self.placements.items.len - 1]);
-        if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, image_id, cmd.image_number, cmd.placement_id, "OK");
-        return .{ .cols = effective_columns, .rows = effective_rows };
+            .effective_columns = extent.columns,
+            .effective_rows = extent.rows,
+        }, cmd.image_number, cmd.quiet);
     }
 
     fn delete(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, cmd: KittyGraphicsCommand) void {
@@ -385,35 +438,35 @@ pub const State = struct {
                 if (cmd.delete_target == 'A') self.deleteUnplacedImages(allocator);
             },
             'i', 'I' => if (self.resolveImageId(cmd)) |image_id| {
-                if (cmd.placement_id != 0) self.deletePlacement(image_id, cmd.placement_id) else self.deleteImage(allocator, image_id);
+                if (cmd.placement_id != 0) self.deletePlacement(allocator, image_id, cmd.placement_id) else self.deleteImage(allocator, image_id);
             },
             'n', 'N' => if (self.findNewestImageByNumber(cmd.image_number)) |idx| {
                 const image_id = self.images.items[@intCast(idx)].image_id;
-                if (cmd.placement_id != 0) self.deletePlacement(image_id, cmd.placement_id) else self.deleteImage(allocator, image_id);
+                if (cmd.placement_id != 0) self.deletePlacement(allocator, image_id, cmd.placement_id) else self.deleteImage(allocator, image_id);
             },
             'c', 'C' => {
-                self.deletePlacementsAt(render_view.col + 1, render_view.row + 1, null);
+                self.deletePlacementsAt(allocator, render_view.col + 1, render_view.row + 1, null);
                 if (cmd.delete_target == 'C') self.deleteUnplacedImages(allocator);
             },
             'p', 'P' => {
-                self.deletePlacementsAt(cmd.x, cmd.y, null);
+                self.deletePlacementsAt(allocator, cmd.x, cmd.y, null);
                 if (cmd.delete_target == 'P') self.deleteUnplacedImages(allocator);
             },
             'q', 'Q' => {
-                self.deletePlacementsAt(cmd.x, cmd.y, cmd.z);
+                self.deletePlacementsAt(allocator, cmd.x, cmd.y, cmd.z);
                 if (cmd.delete_target == 'Q') self.deleteUnplacedImages(allocator);
             },
             'r', 'R' => self.deleteImagesInRange(allocator, cmd.x, cmd.y),
             'x', 'X' => {
-                self.deletePlacementsInColumn(cmd.x);
+                self.deletePlacementsInColumn(allocator, cmd.x);
                 if (cmd.delete_target == 'X') self.deleteUnplacedImages(allocator);
             },
             'y', 'Y' => {
-                self.deletePlacementsInRow(cmd.y);
+                self.deletePlacementsInRow(allocator, cmd.y);
                 if (cmd.delete_target == 'Y') self.deleteUnplacedImages(allocator);
             },
             'z', 'Z' => {
-                self.deletePlacementsByZ(cmd.z);
+                self.deletePlacementsByZ(allocator, cmd.z);
                 if (cmd.delete_target == 'Z') self.deleteUnplacedImages(allocator);
             },
             'f', 'F' => self.deleteFrames(allocator, cmd),
@@ -421,20 +474,20 @@ pub const State = struct {
         }
     }
 
-    fn captureUpload(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
+    fn captureUpload(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
         if (cmd.medium != 'd') return null;
         if (cmd.action != 't' and cmd.action != 'T' and cmd.action != 'f') return null;
         if (cmd.more_chunks) {
-            return try self.appendUploadChunk(allocator, render_view, output, encode_buf, cmd, true);
+            return try self.appendUploadChunk(allocator, render_view, cell_pixel_size, output, encode_buf, cmd, true);
         }
         if (self.upload != null) {
-            return try self.appendUploadChunk(allocator, render_view, output, encode_buf, cmd, false);
+            return try self.appendUploadChunk(allocator, render_view, cell_pixel_size, output, encode_buf, cmd, false);
         } else {
-            return try self.storePayload(allocator, render_view, output, encode_buf, cmd, cmd.payload);
+            return try self.storePayload(allocator, render_view, cell_pixel_size, output, encode_buf, cmd, cmd.payload);
         }
     }
 
-    fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) host_state.ApplyError!?CursorMove {
+    fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) host_state.ApplyError!?CursorMove {
         if (self.upload == null) {
             const image_id = self.imageIdForUpload(cmd);
             self.upload = .{
@@ -499,7 +552,7 @@ pub const State = struct {
                 try self.storeImageOwned(allocator, image_id, image_number, format, width, height, owned);
                 if (action == 'T') {
                     const anonymous = image_id == 0 and image_number == 0;
-                    const move = try self.placeStoredImage(allocator, output, encode_buf, .{
+                    const move = try self.placeStoredImage(allocator, cell_pixel_size, output, encode_buf, .{
                         .image_id = image_id,
                         .image_number = image_number,
                         .placement_id = if (anonymous) 0 else placement_id,
@@ -525,7 +578,7 @@ pub const State = struct {
         return null;
     }
 
-    fn storePayload(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, payload: []const u8) host_state.ApplyError!?CursorMove {
+    fn storePayload(self: *State, allocator: std.mem.Allocator, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, payload: []const u8) host_state.ApplyError!?CursorMove {
         try ensureRetainedPayloadStore(self, count32(payload), 0);
         const owned = try allocator.dupe(u8, payload);
         const image_id = self.imageIdForUpload(cmd);
@@ -535,7 +588,7 @@ pub const State = struct {
             try self.storeImageOwned(allocator, image_id, cmd.image_number, cmd.format, cmd.width, cmd.height, owned);
             if (cmd.action == 'T') {
                 const anonymous = image_id == 0 and cmd.image_number == 0;
-                return try self.placeStoredImage(allocator, output, encode_buf, .{
+                return try self.placeStoredImage(allocator, cell_pixel_size, output, encode_buf, .{
                     .image_id = image_id,
                     .image_number = cmd.image_number,
                     .placement_id = if (anonymous) 0 else cmd.placement_id,
@@ -564,6 +617,10 @@ pub const State = struct {
         z_index: i32,
         anchor_row: u16,
         anchor_col: u16,
+        parent_image_id: u32 = 0,
+        parent_placement_id: u32 = 0,
+        parent_offset_cols: i32 = 0,
+        parent_offset_rows: i32 = 0,
         source_x: u32,
         source_y: u32,
         source_width: u32,
@@ -574,7 +631,7 @@ pub const State = struct {
         rows: u32,
     };
 
-    fn placeStoredImage(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, request: PlacementRequest, quiet: bool) host_state.ApplyError!?CursorMove {
+    fn placeStoredImage(self: *State, allocator: std.mem.Allocator, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, request: PlacementRequest, quiet: bool) host_state.ApplyError!?CursorMove {
         if (self.findImage(request.image_id) == null) {
             if (!quiet) try appendPlacementReply(allocator, output, encode_buf, request.image_id, request.image_number, request.placement_id, "ENOENT:image not found");
             return null;
@@ -583,16 +640,18 @@ pub const State = struct {
         const image = self.images.items[@intCast(self.findImage(request.image_id).?)];
         const source_width = if (request.source_width != 0) request.source_width else image.width;
         const source_height = if (request.source_height != 0) request.source_height else image.height;
-        const effective_columns = @max(request.columns, 1);
-        const effective_rows = @max(request.rows, 1);
-        if (request.placement_id != 0) self.deletePlacement(request.image_id, request.placement_id);
-        try ensureCountBound(self.placements.items.len, placement_max_count);
-        try self.placements.append(allocator, .{
+        const extent = resolveGridExtent(source_width, source_height, request.cell_x_offset, request.cell_y_offset, request.columns, request.rows, cell_pixel_size);
+        const parent = try self.resolveParentPlacement(allocator, output, encode_buf, request.image_id, request.image_number, request.placement_id, request.parent_image_id, request.parent_placement_id, quiet) orelse return null;
+        return try self.upsertPlacement(allocator, output, encode_buf, .{
             .image_id = request.image_id,
             .placement_id = request.placement_id,
             .z_index = request.z_index,
             .anchor_row = RowAnchor.initOnScreen(request.anchor_row),
             .anchor_col = request.anchor_col,
+            .parent_image_id = parent.image_id,
+            .parent_placement_id = parent.placement_id,
+            .parent_offset_cols = request.parent_offset_cols,
+            .parent_offset_rows = request.parent_offset_rows,
             .source_x = request.source_x,
             .source_y = request.source_y,
             .source_width = source_width,
@@ -601,12 +660,19 @@ pub const State = struct {
             .cell_y_offset = request.cell_y_offset,
             .columns = request.columns,
             .rows = request.rows,
-            .effective_columns = effective_columns,
-            .effective_rows = effective_rows,
-        });
-        validatePlacement(self.placements.items[self.placements.items.len - 1]);
-        if (!quiet) try appendPlacementReply(allocator, output, encode_buf, request.image_id, request.image_number, request.placement_id, "OK");
-        return .{ .cols = effective_columns, .rows = effective_rows };
+            .effective_columns = extent.columns,
+            .effective_rows = extent.rows,
+        }, request.image_number, quiet);
+    }
+
+    pub fn rescaleImplicitPlacements(self: *State, cell: CellPixelSize) void {
+        std.debug.assert(cell.width > 0);
+        std.debug.assert(cell.height > 0);
+        for (self.placements.items) |*placement| {
+            if (placement.columns != 0 and placement.rows != 0) continue;
+            placement.recomputeExtent(cell);
+            validatePlacement(placement.*);
+        }
     }
 
     fn imageIdForUpload(self: *State, cmd: KittyGraphicsCommand) u32 {
@@ -670,6 +736,14 @@ pub const State = struct {
     }
 
     fn deleteImage(self: *State, allocator: std.mem.Allocator, image_id: u32) void {
+        while (self.findPlacementIndexForImage(image_id)) |idx| {
+            const placement = self.placements.items[@intCast(idx)];
+            self.deletePlacement(allocator, placement.image_id, placement.placement_id);
+        }
+        self.deleteImageData(allocator, image_id);
+    }
+
+    fn deleteImageData(self: *State, allocator: std.mem.Allocator, image_id: u32) void {
         var idx: Index = 0;
         while (idx < self.imageCount()) {
             if (self.images.items[@intCast(idx)].image_id == image_id) {
@@ -690,58 +764,90 @@ pub const State = struct {
         }
     }
 
-    fn deletePlacement(self: *State, image_id: u32, placement_id: u32) void {
+    fn deletePlacement(self: *State, allocator: std.mem.Allocator, image_id: u32, placement_id: u32) void {
+        _ = allocator;
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const placement = self.placements.items[@intCast(idx)];
-            if (placement.image_id == image_id and placement.placement_id == placement_id) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
+            if (placement.image_id == image_id and placement.placement_id == placement_id) {
+                _ = self.placements.swapRemove(@intCast(idx));
+                continue;
+            }
+            if (self.placementDescendsFrom(placement, image_id, placement_id)) {
+                _ = self.placements.swapRemove(@intCast(idx));
+                continue;
+            }
+            idx += 1;
         }
     }
 
-    fn deletePlacementsAt(self: *State, x: u32, y: u32, z: ?i32) void {
+    fn deletePlacementsAt(self: *State, allocator: std.mem.Allocator, x: u32, y: u32, z: ?i32) void {
         if (x == 0 or y == 0) return;
         const col = x - 1;
         const row = y - 1;
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const p = self.placements.items[@intCast(idx)];
-            const anchor_row = p.anchor_row.onScreenRow() orelse {
+            const resolved = self.resolvePlacementAnchor(p, std.math.maxInt(u16)) orelse {
                 idx += 1;
                 continue;
             };
-            const intersects = col >= p.anchor_col and col < p.anchor_col + p.effective_columns and row >= anchor_row and row < anchor_row + p.effective_rows and (z == null or p.z_index == z.?);
-            if (intersects) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
+            const anchor_row = resolved.row.onScreenRow() orelse {
+                idx += 1;
+                continue;
+            };
+            if (resolved.col < 0) {
+                idx += 1;
+                continue;
+            }
+            const anchor_col: u32 = @intCast(resolved.col);
+            const intersects = col >= anchor_col and col < anchor_col + p.effective_columns and row >= anchor_row and row < anchor_row + p.effective_rows and (z == null or p.z_index == z.?);
+            if (intersects) self.deletePlacement(allocator, p.image_id, p.placement_id) else idx += 1;
         }
     }
 
-    fn deletePlacementsInColumn(self: *State, x: u32) void {
+    fn deletePlacementsInColumn(self: *State, allocator: std.mem.Allocator, x: u32) void {
         if (x == 0) return;
         const col = x - 1;
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const p = self.placements.items[@intCast(idx)];
-            if (col >= p.anchor_col and col < p.anchor_col + p.effective_columns) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
+            const resolved = self.resolvePlacementAnchor(p, std.math.maxInt(u16)) orelse {
+                idx += 1;
+                continue;
+            };
+            if (resolved.col < 0) {
+                idx += 1;
+                continue;
+            }
+            const anchor_col: u32 = @intCast(resolved.col);
+            if (col >= anchor_col and col < anchor_col + p.effective_columns) self.deletePlacement(allocator, p.image_id, p.placement_id) else idx += 1;
         }
     }
 
-    fn deletePlacementsInRow(self: *State, y: u32) void {
+    fn deletePlacementsInRow(self: *State, allocator: std.mem.Allocator, y: u32) void {
         if (y == 0) return;
         const row = y - 1;
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const p = self.placements.items[@intCast(idx)];
-            const anchor_row = p.anchor_row.onScreenRow() orelse {
+            const resolved = self.resolvePlacementAnchor(p, std.math.maxInt(u16)) orelse {
                 idx += 1;
                 continue;
             };
-            if (row >= anchor_row and row < anchor_row + p.effective_rows) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
+            const anchor_row = resolved.row.onScreenRow() orelse {
+                idx += 1;
+                continue;
+            };
+            if (row >= anchor_row and row < anchor_row + p.effective_rows) self.deletePlacement(allocator, p.image_id, p.placement_id) else idx += 1;
         }
     }
 
-    fn deletePlacementsByZ(self: *State, z: i32) void {
+    fn deletePlacementsByZ(self: *State, allocator: std.mem.Allocator, z: i32) void {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
-            if (self.placements.items[@intCast(idx)].z_index == z) _ = self.placements.swapRemove(@intCast(idx)) else idx += 1;
+            const placement = self.placements.items[@intCast(idx)];
+            if (placement.z_index == z) self.deletePlacement(allocator, placement.image_id, placement.placement_id) else idx += 1;
         }
     }
 
@@ -766,6 +872,128 @@ pub const State = struct {
     fn imageHasPlacement(self: *const State, image_id: u32) bool {
         for (self.placements.items) |placement| if (placement.image_id == image_id) return true;
         return false;
+    }
+
+    fn findPlacementIndex(self: *const State, image_id: u32, placement_id: u32) ?Index {
+        for (self.placements.items, 0..) |placement, idx| {
+            if (placement.image_id != image_id) continue;
+            if (placement.placement_id == placement_id) return @intCast(idx);
+        }
+        return null;
+    }
+
+    fn findPlacementIndexForImage(self: *const State, image_id: u32) ?Index {
+        for (self.placements.items, 0..) |placement, idx| {
+            if (placement.image_id == image_id) return @intCast(idx);
+        }
+        return null;
+    }
+
+    fn firstPlacementIndexForImage(self: *const State, image_id: u32) ?Index {
+        for (self.placements.items, 0..) |placement, idx| {
+            if (placement.image_id == image_id) return @intCast(idx);
+        }
+        return null;
+    }
+
+    fn placementDescendsFrom(self: *const State, placement: Placement, image_id: u32, placement_id: u32) bool {
+        var current = placement;
+        var depth: u32 = 0;
+        while (current.parent_image_id != 0) {
+            if (depth >= parent_depth_limit) return false;
+            if (current.parent_image_id == image_id and current.parent_placement_id == placement_id) return true;
+            const parent_idx = self.findPlacementIndex(current.parent_image_id, current.parent_placement_id) orelse return false;
+            current = self.placements.items[@intCast(parent_idx)];
+            depth += 1;
+        }
+        return false;
+    }
+
+    fn resolveParentPlacement(self: *const State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, placement_id: u32, parent_image_id: u32, parent_placement_id: u32, quiet: bool) host_state.ApplyError!?struct { image_id: u32, placement_id: u32 } {
+        if (parent_image_id == 0) return .{ .image_id = 0, .placement_id = 0 };
+        if (self.findImage(parent_image_id) == null) {
+            if (!quiet) try appendPlacementReply(allocator, output, encode_buf, image_id, image_number, placement_id, "ENOPARENT:parent image not found");
+            return null;
+        }
+        const parent_idx = if (parent_placement_id != 0)
+            self.findPlacementIndex(parent_image_id, parent_placement_id)
+        else
+            self.firstPlacementIndexForImage(parent_image_id);
+        const resolved_parent_idx = parent_idx orelse {
+            if (!quiet) try appendPlacementReply(allocator, output, encode_buf, image_id, image_number, placement_id, "ENOPARENT:parent placement not found");
+            return null;
+        };
+        const parent = self.placements.items[@intCast(resolved_parent_idx)];
+        if (placement_id != 0 and image_id == parent.image_id and placement_id == parent.placement_id) {
+            if (!quiet) try appendPlacementReply(allocator, output, encode_buf, image_id, image_number, placement_id, "EINVAL:placement cannot parent itself");
+            return null;
+        }
+        return .{ .image_id = parent.image_id, .placement_id = parent.placement_id };
+    }
+
+    fn upsertPlacement(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: Placement, image_number: u32, quiet: bool) host_state.ApplyError!?CursorMove {
+        if (placement.hasParent()) {
+            const ok = try self.validatePlacementAncestry(allocator, output, encode_buf, placement, image_number, quiet);
+            if (!ok) return null;
+        }
+        if (placement.placement_id != 0) {
+            if (self.findPlacementIndex(placement.image_id, placement.placement_id)) |idx| {
+                self.placements.items[@intCast(idx)] = placement;
+                validatePlacement(self.placements.items[@intCast(idx)]);
+                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
+                if (placement.hasParent()) return null;
+                return .{ .cols = placement.effective_columns, .rows = placement.effective_rows };
+            }
+        }
+        try ensureCountBound(self.placements.items.len, placement_max_count);
+        try self.placements.append(allocator, placement);
+        validatePlacement(self.placements.items[self.placements.items.len - 1]);
+        if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
+        if (placement.hasParent()) return null;
+        return .{ .cols = placement.effective_columns, .rows = placement.effective_rows };
+    }
+
+    fn validatePlacementAncestry(self: *const State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: Placement, image_number: u32, quiet: bool) host_state.ApplyError!bool {
+        var depth: u32 = 0;
+        var current_image_id = placement.parent_image_id;
+        var current_placement_id = placement.parent_placement_id;
+        while (current_image_id != 0) {
+            if (current_image_id == placement.image_id and current_placement_id == placement.placement_id) {
+                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ECYCLE:relative placement cycle");
+                return false;
+            }
+            if (depth >= parent_depth_limit) {
+                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ETOODEEP:relative placement depth exceeded");
+                return false;
+            }
+            const parent_idx = self.findPlacementIndex(current_image_id, current_placement_id) orelse {
+                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ENOPARENT:ancestor placement not found");
+                return false;
+            };
+            const parent = self.placements.items[@intCast(parent_idx)];
+            current_image_id = parent.parent_image_id;
+            current_placement_id = parent.parent_placement_id;
+            depth += 1;
+        }
+        return true;
+    }
+
+    fn resolvePlacementAnchor(self: *const State, placement: Placement, screen_rows: u16) ?struct { row: RowAnchor, col: i32 } {
+        var current = placement;
+        var depth: u32 = 0;
+        var offset_rows: i64 = 0;
+        var offset_cols: i64 = 0;
+        while (current.parent_image_id != 0) {
+            if (depth >= parent_depth_limit) return null;
+            offset_rows = std.math.add(i64, offset_rows, current.parent_offset_rows) catch return null;
+            offset_cols = std.math.add(i64, offset_cols, current.parent_offset_cols) catch return null;
+            const parent_idx = self.findPlacementIndex(current.parent_image_id, current.parent_placement_id) orelse return null;
+            current = self.placements.items[@intCast(parent_idx)];
+            depth += 1;
+        }
+        const row = offsetRowAnchor(current.anchor_row, offset_rows, screen_rows) orelse return null;
+        const col = std.math.add(i64, current.anchor_col, offset_cols) catch return null;
+        return .{ .row = row, .col = std.math.cast(i32, col) orelse return null };
     }
 
     fn deleteFrames(self: *State, allocator: std.mem.Allocator, cmd: KittyGraphicsCommand) void {
@@ -849,30 +1077,46 @@ fn clipPlacementTop(placement: *Placement, top: u16, cell: CellPixelSize) bool {
     const anchor_row = placement.anchor_row.onScreenRow().?;
     if (anchor_row >= top) return true;
 
-    const clipped_rows = top - anchor_row;
-    const clip_amt = std.math.mul(u32, cell.height, clipped_rows) catch return false;
-    if (placement.source_height <= clip_amt or placement.effective_rows <= clipped_rows) return false;
+    const dest = placement.resolveDestGeometry(cell) orelse return false;
+    const boundary_top_px = std.math.mul(u32, top - anchor_row, cell.height) catch return false;
+    if (dest.bottom_px <= boundary_top_px) return false;
 
-    placement.source_y += clip_amt;
-    placement.source_height -= clip_amt;
-    placement.effective_rows -= clipped_rows;
+    const clip_px = boundary_top_px - dest.top_px;
+    const source_clip_px = sourceClipForDestClip(placement.source_height, dest.bottom_px - dest.top_px, clip_px) orelse return false;
+    if (placement.source_height <= source_clip_px) return false;
+
+    placement.source_y += source_clip_px;
+    placement.source_height -= source_clip_px;
+    placement.cell_y_offset = 0;
+    placement.effective_rows = ceilDiv(dest.bottom_px - boundary_top_px, cell.height);
     placement.anchor_row = RowAnchor.initOnScreen(top);
     return true;
 }
 
 fn clipPlacementBottom(placement: *Placement, bottom: u16, cell: CellPixelSize) bool {
     const anchor_row = placement.anchor_row.onScreenRow().?;
-    const last_row = std.math.add(u32, anchor_row, placement.effective_rows - 1) catch return false;
-    if (last_row <= bottom) return true;
-    if (anchor_row > bottom) return false;
+    const dest = placement.resolveDestGeometry(cell) orelse return false;
+    const boundary_bottom_px = std.math.mul(u32, bottom - anchor_row + 1, cell.height) catch return false;
+    if (dest.top_px >= boundary_bottom_px) return false;
+    if (dest.bottom_px <= boundary_bottom_px) return true;
 
-    const clipped_rows: u32 = last_row - bottom;
-    const clip_amt = std.math.mul(u32, cell.height, clipped_rows) catch return false;
-    if (placement.source_height <= clip_amt or placement.effective_rows <= clipped_rows) return false;
+    const clip_px = dest.bottom_px - boundary_bottom_px;
+    const source_clip_px = sourceClipForDestClip(placement.source_height, dest.bottom_px - dest.top_px, clip_px) orelse return false;
+    if (placement.source_height <= source_clip_px) return false;
 
-    placement.source_height -= clip_amt;
-    placement.effective_rows -= clipped_rows;
+    placement.source_height -= source_clip_px;
+    placement.effective_rows = ceilDiv(boundary_bottom_px - dest.top_px, cell.height);
     return true;
+}
+
+fn sourceClipForDestClip(source_height: u32, dest_height_px: u32, clip_px: u32) ?u32 {
+    std.debug.assert(source_height > 0);
+    std.debug.assert(dest_height_px > 0);
+    if (clip_px == 0) return 0;
+
+    const scaled = std.math.mul(u64, clip_px, source_height) catch return null;
+    const clipped: u64 = @intCast(std.math.divCeil(u64, scaled, dest_height_px) catch return null);
+    return std.math.cast(u32, clipped);
 }
 
 fn rowAnchorRetained(anchor: RowAnchor, history_count: u32, effective_rows: u32, retain_in_scrollback: bool) bool {
@@ -894,11 +1138,79 @@ fn rowAnchorVisible(anchor: RowAnchor, effective_rows: u32) bool {
     };
 }
 
+fn offsetRowAnchor(anchor: RowAnchor, offset_rows: i64, screen_rows: u16) ?RowAnchor {
+    const base_row: i64 = switch (anchor) {
+        .on_screen => |row| row,
+        .scrollback_above => |rows| -@as(i64, rows),
+        .below_screen => |rows| std.math.add(i64, screen_rows, rows) catch return null,
+    };
+    const resolved_row = std.math.add(i64, base_row, offset_rows) catch return null;
+    if (resolved_row < 0) {
+        const above = std.math.cast(u32, -resolved_row) orelse return null;
+        return .{ .scrollback_above = above };
+    }
+    if (resolved_row < screen_rows) return .{ .on_screen = std.math.cast(u16, resolved_row) orelse return null };
+    const below = resolved_row - screen_rows;
+    return .{ .below_screen = std.math.cast(u32, below) orelse return null };
+}
+
+
+const GridExtent = struct {
+    columns: u32,
+    rows: u32,
+};
+
+fn resolveGridExtent(source_width: u32, source_height: u32, cell_x_offset: u32, cell_y_offset: u32, columns: u32, rows: u32, cell_pixel_size: ?CellPixelSize) GridExtent {
+    const cell = cell_pixel_size orelse return .{
+        .columns = @max(columns, 1),
+        .rows = @max(rows, 1),
+    };
+    std.debug.assert(cell.width > 0);
+    std.debug.assert(cell.height > 0);
+
+    var effective_columns = columns;
+    var effective_rows = rows;
+    if (effective_columns == 0) {
+        if (effective_rows == 0) {
+            const width_px = std.math.add(u32, source_width, cell_x_offset) catch std.math.maxInt(u32);
+            effective_columns = ceilDiv(width_px, cell.width);
+        } else {
+            const height_px = std.math.add(u32, std.math.mul(u32, cell.height, effective_rows) catch std.math.maxInt(u32), cell_y_offset) catch std.math.maxInt(u32);
+            const width_px = @as(f64, @floatFromInt(height_px)) * @as(f64, @floatFromInt(source_width)) / @as(f64, @floatFromInt(source_height));
+            effective_columns = ceilDivFloat(width_px, cell.width);
+        }
+    }
+    if (effective_rows == 0) {
+        if (rows == 0 and columns == 0) {
+            const height_px = std.math.add(u32, source_height, cell_y_offset) catch std.math.maxInt(u32);
+            effective_rows = ceilDiv(height_px, cell.height);
+        } else {
+            const width_px = std.math.add(u32, std.math.mul(u32, cell.width, effective_columns) catch std.math.maxInt(u32), cell_x_offset) catch std.math.maxInt(u32);
+            const height_px = @as(f64, @floatFromInt(width_px)) * @as(f64, @floatFromInt(source_height)) / @as(f64, @floatFromInt(source_width));
+            effective_rows = ceilDivFloat(height_px, cell.height);
+        }
+    }
+    return .{ .columns = @max(effective_columns, 1), .rows = @max(effective_rows, 1) };
+}
+
+fn ceilDiv(value: u32, divisor: u32) u32 {
+    std.debug.assert(divisor > 0);
+    const quotient = value / divisor;
+    if (value > quotient * divisor) return quotient + 1;
+    return quotient;
+}
+
+fn ceilDivFloat(value: f64, divisor: u32) u32 {
+    std.debug.assert(divisor > 0);
+    const units: u32 = @intFromFloat(@ceil(value / @as(f64, @floatFromInt(divisor))));
+    return @max(units, 1);
+}
+
 
 fn resolvedWidthPx(placement: Placement, cell: CellPixelSize) u32 {
-    if (placement.columns != 0) return cell.width * placement.columns;
+    if (placement.columns != 0) return cell.width * placement.effective_columns;
     if (placement.rows != 0) {
-        const height_px = cell.height * placement.rows + placement.cell_y_offset;
+        const height_px = cell.height * placement.effective_rows + placement.cell_y_offset;
         return @intFromFloat(@ceil(@as(f64, @floatFromInt(height_px)) *
             @as(f64, @floatFromInt(placement.source_width)) /
             @as(f64, @floatFromInt(placement.source_height))));
@@ -907,7 +1219,7 @@ fn resolvedWidthPx(placement: Placement, cell: CellPixelSize) u32 {
 }
 
 fn resolvedHeightPx(placement: Placement, cell: CellPixelSize, width_px: u32) u32 {
-    if (placement.rows != 0) return cell.height * placement.rows;
+    if (placement.rows != 0) return cell.height * placement.effective_rows;
     if (placement.columns != 0) {
         return @intFromFloat(@ceil(@as(f64, @floatFromInt(width_px + placement.cell_x_offset)) *
             @as(f64, @floatFromInt(placement.source_height)) /

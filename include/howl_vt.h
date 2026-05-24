@@ -280,6 +280,12 @@ typedef struct {
   uint32_t cell_y_offset;
   uint32_t columns;
   uint32_t rows;
+  uint32_t dest_left_cell_px;
+  uint32_t dest_top_cell_px;
+  uint32_t dest_right_cell_px;
+  uint32_t dest_bottom_cell_px;
+  uint32_t dest_grid_columns;
+  uint32_t dest_grid_rows;
   uint32_t effective_columns;
   uint32_t effective_rows;
 } HowlVtGraphicsPlacement;

@@ -86,7 +86,7 @@ pub fn graphicsPlacementCount(vt: anytype) KittyNs.Graphics.Count {
 }
 
 pub fn graphicsPlacementAt(vt: anytype, idx: KittyNs.Graphics.Index) ?KittyNs.Graphics.Placement {
-    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).placementAt(idx);
+    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).placementAtResolved(idx, vt.screen_state.activeConst().rows);
 }
 
 pub fn graphicsFrameCount(vt: anytype) KittyNs.Graphics.Count {

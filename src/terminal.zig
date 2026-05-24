@@ -144,6 +144,8 @@ pub const Terminal = struct {
 
     pub fn setCellPixelSize(self: *Terminal, width: u32, height: u32) void {
         self.screen_state.setCellPixelSize(width, height);
+        self.kitty.main.graphics.rescaleImplicitPlacements(.{ .width = width, .height = height });
+        self.kitty.alt.graphics.rescaleImplicitPlacements(.{ .width = width, .height = height });
     }
 
     pub fn resetScreen(self: *Terminal) void {
@@ -209,7 +211,7 @@ pub const Terminal = struct {
 
     pub fn graphicsPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.Placement {
         const state = try self.graphicsStateForPublication(publication_seq);
-        return state.placementAt(idx);
+        return state.placementAtResolved(idx, self.screen_state.activeConst().rows);
     }
 
     pub fn visibleCellHyperlinkUri(self: *Terminal, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
