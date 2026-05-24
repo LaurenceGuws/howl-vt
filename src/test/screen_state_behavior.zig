@@ -193,12 +193,8 @@ test "screen: sgr applies ansi and 256-color attrs to written cells" {
 
     const cell = s.cellInfoAt(0, 0);
     try std.testing.expectEqual(@as(u21, 'X'), s.cellAt(0, 0));
-    try std.testing.expectEqual(@as(u8, 255), cell.attrs.fg.r);
-    try std.testing.expectEqual(@as(u8, 0), cell.attrs.fg.g);
-    try std.testing.expectEqual(@as(u8, 0), cell.attrs.fg.b);
-    try std.testing.expectEqual(@as(u8, 0), cell.attrs.bg.r);
-    try std.testing.expectEqual(@as(u8, 51), cell.attrs.bg.g);
-    try std.testing.expectEqual(@as(u8, 51), cell.attrs.bg.b);
+    try std.testing.expectEqual(Grid.Color.indexed(196), cell.attrs.fg);
+    try std.testing.expectEqual(Grid.Color.indexed(23), cell.attrs.bg);
 }
 
 test "screen: sgr reset restores default attrs for later writes" {
@@ -215,10 +211,8 @@ test "screen: sgr reset restores default attrs for later writes" {
 
     const a = s.cellInfoAt(0, 0);
     const b = s.cellInfoAt(0, 1);
-    try std.testing.expectEqual(@as(u8, 170), a.attrs.fg.r);
-    try std.testing.expectEqual(Screen.default_fg.r, b.attrs.fg.r);
-    try std.testing.expectEqual(Screen.default_fg.g, b.attrs.fg.g);
-    try std.testing.expectEqual(Screen.default_fg.b, b.attrs.fg.b);
+    try std.testing.expectEqual(Grid.Color.indexed(1), a.attrs.fg);
+    try std.testing.expectEqual(Screen.default_fg, b.attrs.fg);
 }
 
 test "screen: kitty colon SGR sets underline styles without stealing semicolon params" {
@@ -258,11 +252,9 @@ test "screen: kitty underline color SGR sets and resets color" {
     const colored = s.cellInfoAt(0, 0);
     const reset = s.cellInfoAt(0, 1);
     try std.testing.expect(colored.attrs.underline);
-    try std.testing.expectEqual(@as(u8, 1), colored.attrs.underline_color.r);
-    try std.testing.expectEqual(@as(u8, 2), colored.attrs.underline_color.g);
-    try std.testing.expectEqual(@as(u8, 3), colored.attrs.underline_color.b);
+    try std.testing.expectEqual(Grid.Color.rgbComponents(1, 2, 3), colored.attrs.underline_color);
     try std.testing.expect(reset.attrs.underline);
-    try std.testing.expectEqual(Grid.Color{ .r = 0, .g = 0, .b = 0, .a = 0 }, reset.attrs.underline_color);
+    try std.testing.expectEqual(Grid.default_underline_color, reset.attrs.underline_color);
 }
 
 test "screen: write_text wraps to next row after filled column" {
@@ -654,7 +646,7 @@ test "screen: ICH inserts blanks and shifts suffix right" {
 
     s.apply(SemanticEvent{ .write_text = "abcdef" });
     s.cursor_col = 2;
-    s.current_attrs.bg = .{ .r = 40, .g = 44, .b = 52 };
+    s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
     s.apply(SemanticEvent{ .insert_chars = 2 });
 
     try std.testing.expectEqual(@as(u21, 'a'), s.cellAt(0, 0));
@@ -666,7 +658,7 @@ test "screen: ICH inserts blanks and shifts suffix right" {
     try std.testing.expectEqual(@as(u21, 'e'), s.cellAt(0, 6));
     try std.testing.expectEqual(@as(u21, 'f'), s.cellAt(0, 7));
     const blank = s.cellInfoAt(0, 2);
-    try std.testing.expectEqual(@as(u8, 40), blank.attrs.bg.r);
+    try std.testing.expectEqual(Grid.Color.rgbComponents(40, 44, 52), blank.attrs.bg);
     try std.testing.expectEqual(@as(u16, 2), s.cursor_col);
 }
 
@@ -733,15 +725,13 @@ test "screen: erase_line uses current background for empty cells" {
     var s = try Grid.initWithCells(gpa, 1, 5);
     defer s.deinit(gpa);
 
-    s.current_attrs.bg = .{ .r = 40, .g = 44, .b = 52 };
+    s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
     s.apply(SemanticEvent{ .write_text = "~" });
     s.apply(SemanticEvent{ .erase_line = 0 });
 
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 1));
     const cell = s.cellInfoAt(0, 1);
-    try std.testing.expectEqual(@as(u8, 40), cell.attrs.bg.r);
-    try std.testing.expectEqual(@as(u8, 44), cell.attrs.bg.g);
-    try std.testing.expectEqual(@as(u8, 52), cell.attrs.bg.b);
+    try std.testing.expectEqual(Grid.Color.rgbComponents(40, 44, 52), cell.attrs.bg);
 }
 
 test "screen: ECH uses current background without moving cursor" {
@@ -749,7 +739,7 @@ test "screen: ECH uses current background without moving cursor" {
     var s = try Grid.initWithCells(gpa, 1, 8);
     defer s.deinit(gpa);
 
-    s.current_attrs.bg = .{ .r = 40, .g = 44, .b = 52 };
+    s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
     s.cursor_col = 2;
     s.apply(SemanticEvent{ .erase_chars = 3 });
 
@@ -758,9 +748,7 @@ test "screen: ECH uses current background without moving cursor" {
     while (col < 5) : (col += 1) {
         const cell = s.cellInfoAt(0, col);
         try std.testing.expectEqual(@as(u21, 0), @as(u21, @intCast(cell.codepoint)));
-        try std.testing.expectEqual(@as(u8, 40), cell.attrs.bg.r);
-        try std.testing.expectEqual(@as(u8, 44), cell.attrs.bg.g);
-        try std.testing.expectEqual(@as(u8, 52), cell.attrs.bg.b);
+        try std.testing.expectEqual(Grid.Color.rgbComponents(40, 44, 52), cell.attrs.bg);
     }
 }
 
@@ -891,13 +879,13 @@ test "screen: DECFRA fills clipped rectangle with current attrs" {
     var s = try Grid.initWithCells(gpa, 3, 3);
     defer s.deinit(gpa);
 
-    s.current_attrs.bg = .{ .r = 40, .g = 44, .b = 52 };
+    s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
     s.apply(SemanticEvent{ .rect_fill = .{ .area = .{ .top = 1, .left = 1, .bottom = 9, .right = 9 }, .ch = 'X' } });
 
     try std.testing.expectEqual(@as(u21, 'X'), s.cellAt(1, 1));
     try std.testing.expectEqual(@as(u21, 'X'), s.cellAt(2, 2));
     const cell = s.cellInfoAt(1, 1);
-    try std.testing.expectEqual(@as(u8, 40), cell.attrs.bg.r);
+    try std.testing.expectEqual(Grid.Color.rgbComponents(40, 44, 52), cell.attrs.bg);
 }
 
 test "screen: DECCRA copies overlapping rectangle through temporary buffer" {
@@ -938,7 +926,7 @@ test "screen: DECIC and DECDC shift columns inside scroll region" {
 
     s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
     s.cursor_col = 1;
-    s.current_attrs.bg = .{ .r = 40, .g = 44, .b = 52 };
+    s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
     s.apply(SemanticEvent{ .insert_columns = 2 });
 
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));

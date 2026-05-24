@@ -10,6 +10,7 @@ const KittyState = kitty_state;
 const Terminal = terminal_mod.Terminal;
 const Screen = screen_mod.Screen;
 const Grid = Screen;
+const Rgb = Screen.Rgb;
 const StreamHarness = stream_harness.Harness;
 
 test "OSC title updates terminal title under stream path" {
@@ -322,14 +323,14 @@ test "kitty OSC 21 sets queries and resets terminal colors" {
     try stream.nextSlice("\x1b]21;foreground=?;background=?;cursor=?;no_such=?\x1b\\");
 
     const colors = HostState.terminalColorState(&terminal);
-    try std.testing.expectEqual(Grid.Color{ .r = 0x11, .g = 0x22, .b = 0x33 }, colors.foreground);
-    try std.testing.expectEqual(Grid.Color{ .r = 0x44, .g = 0x55, .b = 0x66 }, colors.background);
-    try std.testing.expectEqual(@as(?Grid.Color, null), colors.cursor);
+    try std.testing.expectEqual(Rgb{ .r = 0x11, .g = 0x22, .b = 0x33 }, colors.foreground);
+    try std.testing.expectEqual(Rgb{ .r = 0x44, .g = 0x55, .b = 0x66 }, colors.background);
+    try std.testing.expectEqual(@as(?Rgb, null), colors.cursor);
     try std.testing.expectEqualStrings("\x1b]21;foreground=rgb:11/22/33\x1b\\\x1b]21;background=rgb:44/55/66\x1b\\\x1b]21;cursor=\x1b\\\x1b]21;no_such=?\x1b\\", HostState.pendingOutput(&terminal));
 
     try stream.nextSlice("\x1b]21;foreground;background\x1b\\");
-    try std.testing.expectEqual(Grid.default_fg, HostState.terminalColorState(&terminal).foreground);
-    try std.testing.expectEqual(Grid.default_bg, HostState.terminalColorState(&terminal).background);
+    try std.testing.expectEqual(Rgb{ .r = 220, .g = 220, .b = 220 }, HostState.terminalColorState(&terminal).foreground);
+    try std.testing.expectEqual(Rgb{ .r = 24, .g = 25, .b = 33 }, HostState.terminalColorState(&terminal).background);
 }
 
 test "xterm OSC colors set query and reset palette and dynamic colors" {
@@ -342,14 +343,14 @@ test "xterm OSC colors set query and reset palette and dynamic colors" {
     try stream.nextSlice("\x1b]4;1;#010203\x1b\\\x1b]10;#aabbcc\x1b\\\x1b]11;rgb:0d/0e/0f\x1b\\\x1b]12;red\x1b\\");
     try stream.nextSlice("\x1b]4;1;?\x1b\\\x1b]10;?\x1b\\\x1b]11;?\x1b\\\x1b]12;?\x1b\\");
 
-    try std.testing.expectEqual(Grid.Color{ .r = 1, .g = 2, .b = 3 }, HostState.terminalColorState(&terminal).palette[1]);
+    try std.testing.expectEqual(Rgb{ .r = 1, .g = 2, .b = 3 }, HostState.terminalColorState(&terminal).palette[1]);
     try std.testing.expectEqualStrings("\x1b]4;1;rgb:01/02/03\x1b\\\x1b]10;rgb:aa/bb/cc\x1b\\\x1b]11;rgb:0d/0e/0f\x1b\\\x1b]12;rgb:ff/00/00\x1b\\", HostState.pendingOutput(&terminal));
 
     try stream.nextSlice("\x1b]104;1\x1b\\\x1b]110\x1b\\\x1b]111\x1b\\\x1b]112\x1b\\");
-    try std.testing.expectEqual(Grid.Color{ .r = 205, .g = 49, .b = 49 }, HostState.terminalColorState(&terminal).palette[1]);
-    try std.testing.expectEqual(Grid.default_fg, HostState.terminalColorState(&terminal).foreground);
-    try std.testing.expectEqual(Grid.default_bg, HostState.terminalColorState(&terminal).background);
-    try std.testing.expectEqual(@as(?Grid.Color, null), HostState.terminalColorState(&terminal).cursor);
+    try std.testing.expectEqual(Rgb{ .r = 205, .g = 49, .b = 49 }, HostState.terminalColorState(&terminal).palette[1]);
+    try std.testing.expectEqual(Rgb{ .r = 220, .g = 220, .b = 220 }, HostState.terminalColorState(&terminal).foreground);
+    try std.testing.expectEqual(Rgb{ .r = 24, .g = 25, .b = 33 }, HostState.terminalColorState(&terminal).background);
+    try std.testing.expectEqual(@as(?Rgb, null), HostState.terminalColorState(&terminal).cursor);
 }
 
 test "xterm extra dynamic colors set query and reset host-neutral state" {
@@ -363,25 +364,25 @@ test "xterm extra dynamic colors set query and reset host-neutral state" {
     try stream.nextSlice("\x1b]13;?\x1b\\\x1b]14;?\x1b\\\x1b]15;?\x1b\\\x1b]16;?\x1b\\\x1b]17;?\x1b\\\x1b]18;?\x1b\\\x1b]19;?\x1b\\");
 
     const colors = HostState.terminalColorState(&terminal);
-    try std.testing.expectEqual(Grid.Color{ .r = 1, .g = 2, .b = 3 }, colors.pointer_foreground.?);
-    try std.testing.expectEqual(Grid.Color{ .r = 4, .g = 5, .b = 6 }, colors.pointer_background.?);
-    try std.testing.expectEqual(Grid.Color{ .r = 7, .g = 8, .b = 9 }, colors.tektronix_foreground.?);
-    try std.testing.expectEqual(Grid.Color{ .r = 10, .g = 11, .b = 12 }, colors.tektronix_background.?);
-    try std.testing.expectEqual(Grid.Color{ .r = 13, .g = 14, .b = 15 }, colors.selection_background.?);
-    try std.testing.expectEqual(Grid.Color{ .r = 16, .g = 17, .b = 18 }, colors.tektronix_cursor.?);
-    try std.testing.expectEqual(Grid.Color{ .r = 19, .g = 20, .b = 21 }, colors.selection_foreground.?);
+    try std.testing.expectEqual(Rgb{ .r = 1, .g = 2, .b = 3 }, colors.pointer_foreground.?);
+    try std.testing.expectEqual(Rgb{ .r = 4, .g = 5, .b = 6 }, colors.pointer_background.?);
+    try std.testing.expectEqual(Rgb{ .r = 7, .g = 8, .b = 9 }, colors.tektronix_foreground.?);
+    try std.testing.expectEqual(Rgb{ .r = 10, .g = 11, .b = 12 }, colors.tektronix_background.?);
+    try std.testing.expectEqual(Rgb{ .r = 13, .g = 14, .b = 15 }, colors.selection_background.?);
+    try std.testing.expectEqual(Rgb{ .r = 16, .g = 17, .b = 18 }, colors.tektronix_cursor.?);
+    try std.testing.expectEqual(Rgb{ .r = 19, .g = 20, .b = 21 }, colors.selection_foreground.?);
     try std.testing.expectEqualStrings("\x1b]13;rgb:01/02/03\x1b\\\x1b]14;rgb:04/05/06\x1b\\\x1b]15;rgb:07/08/09\x1b\\\x1b]16;rgb:0a/0b/0c\x1b\\\x1b]17;rgb:0d/0e/0f\x1b\\\x1b]18;rgb:10/11/12\x1b\\\x1b]19;rgb:13/14/15\x1b\\", HostState.pendingOutput(&terminal));
 
     HostState.clearPendingOutput(&terminal);
     try stream.nextSlice("\x1b]113\x1b\\\x1b]114\x1b\\\x1b]115\x1b\\\x1b]116\x1b\\\x1b]117\x1b\\\x1b]118\x1b\\\x1b]119\x1b\\");
     const reset = HostState.terminalColorState(&terminal);
-    try std.testing.expectEqual(@as(?Grid.Color, null), reset.pointer_foreground);
-    try std.testing.expectEqual(@as(?Grid.Color, null), reset.pointer_background);
-    try std.testing.expectEqual(@as(?Grid.Color, null), reset.tektronix_foreground);
-    try std.testing.expectEqual(@as(?Grid.Color, null), reset.tektronix_background);
-    try std.testing.expectEqual(@as(?Grid.Color, null), reset.selection_background);
-    try std.testing.expectEqual(@as(?Grid.Color, null), reset.tektronix_cursor);
-    try std.testing.expectEqual(@as(?Grid.Color, null), reset.selection_foreground);
+    try std.testing.expectEqual(@as(?Rgb, null), reset.pointer_foreground);
+    try std.testing.expectEqual(@as(?Rgb, null), reset.pointer_background);
+    try std.testing.expectEqual(@as(?Rgb, null), reset.tektronix_foreground);
+    try std.testing.expectEqual(@as(?Rgb, null), reset.tektronix_background);
+    try std.testing.expectEqual(@as(?Rgb, null), reset.selection_background);
+    try std.testing.expectEqual(@as(?Rgb, null), reset.tektronix_cursor);
+    try std.testing.expectEqual(@as(?Rgb, null), reset.selection_foreground);
 }
 
 test "xterm special colors via OSC 5 and OSC 4 special offsets" {
@@ -395,17 +396,17 @@ test "xterm special colors via OSC 5 and OSC 4 special offsets" {
     try stream.nextSlice("\x1b]5;0;?;1;?\x1b\\\x1b]4;258;?;260;?\x1b\\");
 
     const colors = HostState.terminalColorState(&terminal);
-    try std.testing.expectEqual(Grid.Color{ .r = 1, .g = 2, .b = 3 }, colors.special_palette[0].?);
-    try std.testing.expectEqual(Grid.Color{ .r = 4, .g = 5, .b = 6 }, colors.special_palette[1].?);
-    try std.testing.expectEqual(Grid.Color{ .r = 7, .g = 8, .b = 9 }, colors.special_palette[2].?);
-    try std.testing.expectEqual(Grid.Color{ .r = 10, .g = 11, .b = 12 }, colors.special_palette[4].?);
+    try std.testing.expectEqual(Rgb{ .r = 1, .g = 2, .b = 3 }, colors.special_palette[0].?);
+    try std.testing.expectEqual(Rgb{ .r = 4, .g = 5, .b = 6 }, colors.special_palette[1].?);
+    try std.testing.expectEqual(Rgb{ .r = 7, .g = 8, .b = 9 }, colors.special_palette[2].?);
+    try std.testing.expectEqual(Rgb{ .r = 10, .g = 11, .b = 12 }, colors.special_palette[4].?);
     try std.testing.expectEqualStrings("\x1b]5;0;rgb:01/02/03\x1b\\\x1b]5;1;rgb:04/05/06\x1b\\\x1b]4;258;rgb:07/08/09\x1b\\\x1b]4;260;rgb:0a/0b/0c\x1b\\", HostState.pendingOutput(&terminal));
 
     HostState.clearPendingOutput(&terminal);
     try stream.nextSlice("\x1b]104;258;260\x1b\\");
     const reset = HostState.terminalColorState(&terminal);
-    try std.testing.expectEqual(@as(?Grid.Color, null), reset.special_palette[2]);
-    try std.testing.expectEqual(@as(?Grid.Color, null), reset.special_palette[4]);
+    try std.testing.expectEqual(@as(?Rgb, null), reset.special_palette[2]);
+    try std.testing.expectEqual(@as(?Rgb, null), reset.special_palette[4]);
 }
 
 test "kitty color stack restores terminal color snapshots" {
@@ -419,6 +420,21 @@ test "kitty color stack restores terminal color snapshots" {
     try stream.nextSlice("\x1b]21;foreground=#aabbcc;1=#ddeeff\x1b\\\x1b]30101\x1b\\");
 
     try std.testing.expectEqual(@as(u16, 0), KittyState.colorStackDepth(&terminal));
-    try std.testing.expectEqual(Grid.Color{ .r = 1, .g = 2, .b = 3 }, HostState.terminalColorState(&terminal).foreground);
-    try std.testing.expectEqual(Grid.Color{ .r = 4, .g = 5, .b = 6 }, HostState.terminalColorState(&terminal).palette[1]);
+    try std.testing.expectEqual(Rgb{ .r = 1, .g = 2, .b = 3 }, HostState.terminalColorState(&terminal).foreground);
+    try std.testing.expectEqual(Rgb{ .r = 4, .g = 5, .b = 6 }, HostState.terminalColorState(&terminal).palette[1]);
+}
+
+test "kitty tui CSI save and restore colors use the same stack" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b]21;foreground=#010203;1=#040506\x1b\\\x1b[#P");
+    try stream.nextSlice("\x1b]21;foreground=#aabbcc;1=#ddeeff\x1b\\\x1b[#Q");
+
+    try std.testing.expectEqual(@as(u16, 0), KittyState.colorStackDepth(&terminal));
+    try std.testing.expectEqual(Rgb{ .r = 1, .g = 2, .b = 3 }, HostState.terminalColorState(&terminal).foreground);
+    try std.testing.expectEqual(Rgb{ .r = 4, .g = 5, .b = 6 }, HostState.terminalColorState(&terminal).palette[1]);
 }

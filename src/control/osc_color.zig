@@ -4,24 +4,28 @@ const host_state = @import("../host/state.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
+const Rgb = Screen.Rgb;
 const osc_reply_max_bytes = 8;
 const color_osc_max_bytes = 16;
 
 pub const State = struct {
-    foreground: Screen.Color = Screen.default_fg,
-    background: Screen.Color = Screen.default_bg,
-    cursor: ?Screen.Color = null,
-    pointer_foreground: ?Screen.Color = null,
-    pointer_background: ?Screen.Color = null,
-    tektronix_foreground: ?Screen.Color = null,
-    tektronix_background: ?Screen.Color = null,
-    tektronix_cursor: ?Screen.Color = null,
-    cursor_text: ?Screen.Color = null,
-    selection_background: ?Screen.Color = null,
-    selection_foreground: ?Screen.Color = null,
-    special_palette: [5]?Screen.Color = [_]?Screen.Color{null} ** 5,
-    palette: [256]Screen.Color = defaultPalette(),
+    foreground: Rgb = default_fg,
+    background: Rgb = default_bg,
+    cursor: ?Rgb = null,
+    pointer_foreground: ?Rgb = null,
+    pointer_background: ?Rgb = null,
+    tektronix_foreground: ?Rgb = null,
+    tektronix_background: ?Rgb = null,
+    tektronix_cursor: ?Rgb = null,
+    cursor_text: ?Rgb = null,
+    selection_background: ?Rgb = null,
+    selection_foreground: ?Rgb = null,
+    special_palette: [5]?Rgb = [_]?Rgb{null} ** 5,
+    palette: [256]Rgb = defaultPalette(),
 };
+
+pub const default_fg = Rgb{ .r = 220, .g = 220, .b = 220 };
+pub const default_bg = Rgb{ .r = 24, .g = 25, .b = 33 };
 
 pub const SpecialKey = enum { foreground, background, cursor, cursor_text, selection_background, selection_foreground };
 pub const DynamicKey = enum {
@@ -111,7 +115,7 @@ pub fn resetXtermDynamicColor(colors: *State, command: u16, payload: []const u8)
     resetDynamicColor(colors, key);
 }
 
-pub fn parseColor(value: []const u8) ?Screen.Color {
+pub fn parseColor(value: []const u8) ?Rgb {
     const color_text = stripAlpha(std.mem.trim(u8, value, " \t\r\n"));
     if (color_text.len == 0) return null;
     if (std.mem.startsWith(u8, color_text, "#")) return parseHashColor(color_text[1..]);
@@ -124,11 +128,11 @@ pub fn parseColor(value: []const u8) ?Screen.Color {
     return null;
 }
 
-pub fn defaultPalette() [256]Screen.Color {
+pub fn defaultPalette() [256]Rgb {
     return buildDefaultPalette();
 }
 
-pub fn defaultPaletteColor(idx: u8) Screen.Color {
+pub fn defaultPaletteColor(idx: u8) Rgb {
     return paletteColor(idx);
 }
 
@@ -148,7 +152,7 @@ pub fn isKnownColorKey(key: []const u8) bool {
     return true;
 }
 
-pub fn colorForKey(colors: State, key: []const u8) ?Screen.Color {
+pub fn colorForKey(colors: State, key: []const u8) ?Rgb {
     if (std.fmt.parseUnsigned(u8, key, 10)) |idx| return colors.palette[idx] else |_| {}
     if (specialColorKey(key)) |special| return switch (special) {
         .foreground => colors.foreground,
@@ -161,14 +165,14 @@ pub fn colorForKey(colors: State, key: []const u8) ?Screen.Color {
     return null;
 }
 
-fn paletteTargetColor(colors: State, idx: u16) ?Screen.Color {
+fn paletteTargetColor(colors: State, idx: u16) ?Rgb {
     if (idx < 256) return colors.palette[@intCast(idx)];
     const special_idx = idx - 256;
     if (special_idx >= colors.special_palette.len) return null;
     return colors.special_palette[special_idx];
 }
 
-fn setPaletteTarget(colors: *State, idx: u16, color: Screen.Color) void {
+fn setPaletteTarget(colors: *State, idx: u16, color: Rgb) void {
     if (idx < 256) {
         colors.palette[@intCast(idx)] = color;
         return;
@@ -250,7 +254,7 @@ fn dynamicCommandForKey(key: DynamicKey) u16 {
     };
 }
 
-fn dynamicColor(colors: State, key: DynamicKey) ?Screen.Color {
+fn dynamicColor(colors: State, key: DynamicKey) ?Rgb {
     return switch (key) {
         .foreground => colors.foreground,
         .background => colors.background,
@@ -265,7 +269,7 @@ fn dynamicColor(colors: State, key: DynamicKey) ?Screen.Color {
     };
 }
 
-fn setDynamicColor(colors: *State, key: DynamicKey, color: Grid.Color) void {
+fn setDynamicColor(colors: *State, key: DynamicKey, color: Rgb) void {
     switch (key) {
         .foreground => colors.foreground = color,
         .background => colors.background = color,
@@ -282,8 +286,8 @@ fn setDynamicColor(colors: *State, key: DynamicKey, color: Grid.Color) void {
 
 fn resetDynamicColor(colors: *State, key: DynamicKey) void {
     switch (key) {
-        .foreground => colors.foreground = Grid.default_fg,
-        .background => colors.background = Grid.default_bg,
+        .foreground => colors.foreground = default_fg,
+        .background => colors.background = default_bg,
         .cursor => colors.cursor = null,
         .pointer_foreground => colors.pointer_foreground = null,
         .pointer_background => colors.pointer_background = null,
@@ -295,7 +299,7 @@ fn resetDynamicColor(colors: *State, key: DynamicKey) void {
     }
 }
 
-pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), color: Screen.Color) host_state.ApplyError!void {
+pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), color: Rgb) host_state.ApplyError!void {
     var buf: [32]u8 = undefined;
     const text = formatColorOsc(buf[0..], color);
     try host_state.appendOutput(output, allocator, text);
@@ -319,8 +323,8 @@ pub fn resetColorKey(colors: *State, key: []const u8) void {
         return;
     } else |_| {}
     if (specialColorKey(key)) |special| switch (special) {
-        .foreground => colors.foreground = Grid.default_fg,
-        .background => colors.background = Grid.default_bg,
+        .foreground => colors.foreground = default_fg,
+        .background => colors.background = default_bg,
         .cursor => colors.cursor = null,
         .cursor_text => colors.cursor_text = null,
         .selection_background => colors.selection_background = null,
@@ -358,7 +362,7 @@ fn appendXtermDynamicColorReply(allocator: std.mem.Allocator, output: *std.Array
     try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
-fn setSpecialColor(colors: *State, key: SpecialKey, color: Grid.Color) void {
+fn setSpecialColor(colors: *State, key: SpecialKey, color: Rgb) void {
     switch (key) {
         .foreground => colors.foreground = color,
         .background => colors.background = color,
@@ -385,20 +389,20 @@ fn formatOscReply(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []c
     return std.fmt.bufPrint(encode_buf, fmt, args) catch unreachable;
 }
 
-fn formatColorOsc(buf: []u8, color: Screen.Color) []const u8 {
+fn formatColorOsc(buf: []u8, color: Rgb) []const u8 {
     std.debug.assert(buf.len >= color_osc_max_bytes);
     return std.fmt.bufPrint(buf, "rgb:{x:0>2}/{x:0>2}/{x:0>2}", .{ color.r, color.g, color.b }) catch unreachable;
 }
 
-fn buildDefaultPalette() [256]Grid.Color {
+fn buildDefaultPalette() [256]Rgb {
     @setEvalBranchQuota(4096);
-    var palette: [256]Grid.Color = undefined;
+    var palette: [256]Rgb = undefined;
     var idx: u16 = 0;
     while (idx < 256) : (idx += 1) palette[idx] = paletteColor(@intCast(idx));
     return palette;
 }
 
-fn paletteColor(idx: u8) Grid.Color {
+fn paletteColor(idx: u8) Rgb {
     if (idx < 16) return ansi16Color(idx);
     if (idx < 232) {
         const n = idx - 16;
@@ -415,7 +419,7 @@ fn cubeComponent(v: u8) u8 {
     return if (v == 0) 0 else 55 + v * 40;
 }
 
-fn ansi16Color(idx: u8) Grid.Color {
+fn ansi16Color(idx: u8) Rgb {
     return switch (idx) {
         0 => .{ .r = 0, .g = 0, .b = 0 },
         1 => .{ .r = 205, .g = 49, .b = 49 },
@@ -441,7 +445,7 @@ fn stripAlpha(value: []const u8) []const u8 {
     return value[0..at];
 }
 
-fn parseHashColor(hex: []const u8) ?Grid.Color {
+fn parseHashColor(hex: []const u8) ?Rgb {
     return switch (hex.len) {
         3 => blk: {
             const r = parseHexNibble(hex[0]) orelse return null;
@@ -456,7 +460,7 @@ fn parseHashColor(hex: []const u8) ?Grid.Color {
     };
 }
 
-fn parseRgbColor(text: []const u8) ?Grid.Color {
+fn parseRgbColor(text: []const u8) ?Rgb {
     var parts = std.mem.splitScalar(u8, text, '/');
     const r = parseRgbComponent(parts.next() orelse return null) orelse return null;
     const g = parseRgbComponent(parts.next() orelse return null) orelse return null;

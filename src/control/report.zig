@@ -427,26 +427,42 @@ fn underlineStyleParam(style: Grid.UnderlineStyle) []const u8 {
 
 fn appendColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, is_fg: bool, color: Grid.Color, default_color: Grid.Color) host_state.ApplyError!void {
     if (colorEq(color, default_color)) return;
-    if (ansi16Index(color)) |idx| {
-        const code: u16 = if (is_fg)
-            (if (idx < 8) 30 + idx else 90 + (idx - 8))
-        else
-            (if (idx < 8) 40 + idx else 100 + (idx - 8));
-        const text = formatOutput(encode_buf, "{d}", .{code});
-        try appendSgrParam(allocator, output, first, text);
-        return;
+    switch (color.kind) {
+        .default => return,
+        .indexed => {
+            const idx: u8 = @truncate(color.value);
+            if (idx < 16) {
+                const code: u16 = if (is_fg)
+                    (if (idx < 8) 30 + idx else 90 + (idx - 8))
+                else
+                    (if (idx < 8) 40 + idx else 100 + (idx - 8));
+                const text = formatOutput(encode_buf, "{d}", .{code});
+                try appendSgrParam(allocator, output, first, text);
+                return;
+            }
+            try appendExtendedColorParam(allocator, output, encode_buf, first, if (is_fg) 38 else 48, color);
+        },
+        .rgb => try appendExtendedColorParam(allocator, output, encode_buf, first, if (is_fg) 38 else 48, color),
     }
-    try appendExtendedColorParam(allocator, output, encode_buf, first, if (is_fg) 38 else 48, color);
 }
 
 fn appendExtendedColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, prefix: u8, color: Grid.Color) host_state.ApplyError!void {
-    if (indexed256Index(color)) |idx| {
-        const text = formatOutput(encode_buf, "{d};5;{d}", .{ prefix, idx });
-        try appendSgrParam(allocator, output, first, text);
-        return;
+    switch (color.kind) {
+        .default => return,
+        .indexed => {
+            const text = formatOutput(encode_buf, "{d};5;{d}", .{ prefix, color.value });
+            try appendSgrParam(allocator, output, first, text);
+        },
+        .rgb => {
+            const text = formatOutput(encode_buf, "{d};2;{d};{d};{d}", .{
+                prefix,
+                (color.value >> 16) & 0xFF,
+                (color.value >> 8) & 0xFF,
+                color.value & 0xFF,
+            });
+            try appendSgrParam(allocator, output, first, text);
+        },
     }
-    const text = formatOutput(encode_buf, "{d};2;{d};{d};{d}", .{ prefix, color.r, color.g, color.b });
-    try appendSgrParam(allocator, output, first, text);
 }
 
 fn formatOutput(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
@@ -454,58 +470,6 @@ fn formatOutput(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []con
     return std.fmt.bufPrint(encode_buf, fmt, args) catch unreachable;
 }
 
-fn ansi16Index(color: Grid.Color) ?u8 {
-    var idx: u8 = 0;
-    while (idx < 16) : (idx += 1) {
-        if (colorEq(color, ansi16Color(idx))) return idx;
-    }
-    return null;
-}
-
-fn indexed256Index(color: Grid.Color) ?u8 {
-    var idx: u16 = 0;
-    while (idx < 256) : (idx += 1) {
-        if (colorEq(color, indexed256Color(@intCast(idx)))) return @intCast(idx);
-    }
-    return null;
-}
-
 fn colorEq(a: Grid.Color, b: Grid.Color) bool {
-    return a.r == b.r and a.g == b.g and a.b == b.b and a.a == b.a;
-}
-
-fn ansi16Color(idx: u8) Grid.Color {
-    return switch (idx) {
-        0 => .{ .r = 0, .g = 0, .b = 0 },
-        1 => .{ .r = 170, .g = 0, .b = 0 },
-        2 => .{ .r = 0, .g = 170, .b = 0 },
-        3 => .{ .r = 170, .g = 85, .b = 0 },
-        4 => .{ .r = 0, .g = 0, .b = 170 },
-        5 => .{ .r = 170, .g = 0, .b = 170 },
-        6 => .{ .r = 0, .g = 170, .b = 170 },
-        7 => .{ .r = 170, .g = 170, .b = 170 },
-        8 => .{ .r = 85, .g = 85, .b = 85 },
-        9 => .{ .r = 255, .g = 85, .b = 85 },
-        10 => .{ .r = 85, .g = 255, .b = 85 },
-        11 => .{ .r = 255, .g = 255, .b = 85 },
-        12 => .{ .r = 85, .g = 85, .b = 255 },
-        13 => .{ .r = 255, .g = 85, .b = 255 },
-        14 => .{ .r = 85, .g = 255, .b = 255 },
-        15 => .{ .r = 255, .g = 255, .b = 255 },
-        else => Grid.default_fg,
-    };
-}
-
-fn indexed256Color(idx: u8) Grid.Color {
-    if (idx < 16) return ansi16Color(idx);
-    if (idx < 232) {
-        const n: u32 = idx - 16;
-        return .{
-            .r = @intCast((n / 36) * 51),
-            .g = @intCast(((n / 6) % 6) * 51),
-            .b = @intCast((n % 6) * 51),
-        };
-    }
-    const gray: u8 = 8 + (idx - 232) * 10;
-    return .{ .r = gray, .g = gray, .b = gray };
+    return a.kind == b.kind and a.value == b.value;
 }

@@ -14,6 +14,8 @@ comptime {
     std.debug.assert(host_state.pending_output_max_bytes == 1024 * 1024);
     std.debug.assert(host_state.retained_payload_max_bytes == 1024 * 1024);
     std.debug.assert(@sizeOf(input.Scratch) == 64);
+    std.debug.assert(@sizeOf(FfiRgb8) == 3);
+    std.debug.assert(@sizeOf(FfiRenderColorState) == 777);
 }
 
 pub const HowlVtCallStatus = enum(c_int) {
@@ -28,6 +30,19 @@ pub const HowlVtCallStatus = enum(c_int) {
 pub const FfiColor = extern struct {
     kind: u8 = 0,
     value: u32 = 0,
+};
+
+pub const FfiRgb8 = extern struct {
+    r: u8 = 0,
+    g: u8 = 0,
+    b: u8 = 0,
+};
+
+pub const FfiRenderColorState = extern struct {
+    foreground: FfiRgb8 = .{},
+    background: FfiRgb8 = .{},
+    cursor: FfiRgb8 = .{},
+    palette: [256]FfiRgb8 = [_]FfiRgb8{.{}} ** 256,
 };
 
 pub const FfiSurfaceCellFlags = extern struct {
@@ -143,6 +158,7 @@ pub const FfiSurface = extern struct {
     dirty_cols_start: FfiU16Span,
     dirty_cols_end: FfiU16Span,
     cursor: FfiCursor,
+    colors: FfiRenderColorState = .{},
     selection: FfiSelection = .{},
 };
 
@@ -178,6 +194,7 @@ pub const FfiSurfaceResult = extern struct {
         .dirty_cols_start = .{ .ptr = null, .len = 0 },
         .dirty_cols_end = .{ .ptr = null, .len = 0 },
         .cursor = .{ .row = 0, .col = 0, .visible = 0, .shape = 0, .blink = 0 },
+        .colors = .{},
         .selection = .{},
     },
 };
@@ -214,7 +231,25 @@ fn bytesOut(ptr: ?[*]u8, len: usize) ?[]u8 {
 }
 
 fn colorOut(value: screen.Screen.Color) FfiColor {
-    return .{ .kind = 2, .value = (@as(u32, value.r) << 16) | (@as(u32, value.g) << 8) | @as(u32, value.b) };
+    return switch (value.kind) {
+        .default => .{ .kind = 0, .value = 0 },
+        .indexed => .{ .kind = 1, .value = value.value },
+        .rgb => .{ .kind = 2, .value = value.value },
+    };
+}
+
+fn rgbOut(value: screen.Screen.Rgb) FfiRgb8 {
+    return .{ .r = value.r, .g = value.g, .b = value.b };
+}
+
+fn renderColorStateOut(value: anytype) FfiRenderColorState {
+    var out = FfiRenderColorState{
+        .foreground = rgbOut(value.foreground),
+        .background = rgbOut(value.background),
+        .cursor = rgbOut(value.cursor orelse value.foreground),
+    };
+    for (value.palette, 0..) |color, idx| out.palette[idx] = rgbOut(color);
+    return out;
 }
 
 fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
@@ -228,7 +263,7 @@ fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
         .attrs = .{
             .bold = boolByte(value.attrs.bold),
             .underline = boolByte(value.attrs.underline),
-            .underline_color_set = boolByte(value.attrs.underline_color.a != 0),
+            .underline_color_set = boolByte(value.attrs.underline_color.kind != .default),
             .blink = boolByte(value.attrs.blink or value.attrs.blink_fast),
             .inverse = boolByte(value.attrs.reverse),
             .selected = 0,
@@ -302,6 +337,7 @@ fn selectionResult(value: ?selection.TerminalSelection) FfiSelectionResult {
 }
 
 fn surfaceResult(
+    vt: *terminal.Terminal,
     view: screen_set.View,
     selected: ?selection.TerminalSelection,
     snapshot_seq: u64,
@@ -311,6 +347,7 @@ fn surfaceResult(
     cols_start_ptr: ?[*]u16,
     cols_end_ptr: ?[*]u16,
 ) FfiSurfaceResult {
+    const colors = renderColorStateOut(host_state.terminalColorState(vt));
     return .{
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .history_count = view.history_count,
@@ -328,6 +365,7 @@ fn surfaceResult(
             .dirty_cols_start = .{ .ptr = cols_start_ptr, .len = view.rows },
             .dirty_cols_end = .{ .ptr = cols_end_ptr, .len = view.rows },
             .cursor = .{ .row = view.cursor_row, .col = view.cursor_col, .visible = boolByte(view.cursor_visible), .shape = @intFromEnum(view.cursor_shape), .blink = boolByte(view.cursor_blink) },
+            .colors = colors,
             .selection = selectionOut(selected),
         },
     };
@@ -516,7 +554,7 @@ pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: 
     const cell_count = surfaceCellCount(view.rows, view.cols);
     // The shipped VT ABI still accepts architecture-sized destination capacities.
     // Validate those seam values against typed VT counts before exposing writable slices.
-    var result = surfaceResult(view, snapshot.selection, publication.snapshot_seq, publication.dirty_generation, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr);
+    var result = surfaceResult(owned, view, snapshot.selection, publication.snapshot_seq, publication.dirty_generation, cells_ptr, dirty_rows_ptr, cols_start_ptr, cols_end_ptr);
 
     if (cells_cap < cell_count or dirty_rows_cap < view.rows or cols_start_cap < view.rows or cols_end_cap < view.rows) {
         result.status = @intFromEnum(HowlVtCallStatus.short_buffer);
@@ -789,6 +827,50 @@ test "vt ffi query visible meta reports explicit surface metadata" {
     try std.testing.expectEqual(@as(u8, 0), meta.meta.is_alternate_screen);
     try std.testing.expect(meta.meta.snapshot_seq != 0);
     try std.testing.expect(meta.meta.dirty_generation != 0);
+}
+
+test "vt ffi surface copy carries render color state" {
+    const handle = terminalInit(2, 2, 4);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const bytes = "\x1b]4;1;#010203\x1b\\\x1b]10;#040506\x1b\\\x1b]11;#070809\x1b\\\x1b]12;#0a0b0c\x1b\\";
+    try std.testing.expectEqual(@as(i32, 0), terminalFeed(handle, bytes.ptr, bytes.len).status);
+
+    var cells: [4]FfiSurfaceCell = undefined;
+    var dirty_rows: [2]u8 = undefined;
+    var cols_start: [2]u16 = undefined;
+    var cols_end: [2]u16 = undefined;
+    const surface = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), surface.status);
+    try std.testing.expectEqual(FfiRgb8{ .r = 4, .g = 5, .b = 6 }, surface.source.colors.foreground);
+    try std.testing.expectEqual(FfiRgb8{ .r = 7, .g = 8, .b = 9 }, surface.source.colors.background);
+    try std.testing.expectEqual(FfiRgb8{ .r = 10, .g = 11, .b = 12 }, surface.source.colors.cursor);
+    try std.testing.expectEqual(FfiRgb8{ .r = 1, .g = 2, .b = 3 }, surface.source.colors.palette[1]);
+}
+
+test "vt ffi surface copy preserves semantic cell color identity" {
+    const handle = terminalInit(1, 3, 0);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const bytes = "\x1b[31;44mA\x1b[38;2;1;2;3;48;5;200mB\x1b[39;49mC";
+    try std.testing.expectEqual(@as(i32, 0), terminalFeed(handle, bytes.ptr, bytes.len).status);
+
+    var cells: [3]FfiSurfaceCell = undefined;
+    var dirty_rows: [1]u8 = undefined;
+    var cols_start: [1]u16 = undefined;
+    var cols_end: [1]u16 = undefined;
+    const surface = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), surface.status);
+    try std.testing.expectEqual(FfiColor{ .kind = 1, .value = 1 }, cells[0].fg_color);
+    try std.testing.expectEqual(FfiColor{ .kind = 1, .value = 4 }, cells[0].bg_color);
+    try std.testing.expectEqual(FfiColor{ .kind = 2, .value = 0x010203 }, cells[1].fg_color);
+    try std.testing.expectEqual(FfiColor{ .kind = 1, .value = 200 }, cells[1].bg_color);
+    try std.testing.expectEqual(FfiColor{ .kind = 0, .value = 0 }, cells[2].fg_color);
+    try std.testing.expectEqual(FfiColor{ .kind = 0, .value = 0 }, cells[2].bg_color);
 }
 
 test "vt ffi copy surface clamps oversized scrollback offset" {

@@ -75,6 +75,8 @@ fn processPlus(final: u8, params: []const i32) ?SemanticEvent {
 
 fn processHash(final: u8, params: []const i32) ?SemanticEvent {
     return switch (final) {
+        'P' => if (params.len == 0) SemanticEvent{ .kitty_color_stack = .push } else null,
+        'Q' => if (params.len == 0) SemanticEvent{ .kitty_color_stack = .pop } else null,
         'S' => SemanticEvent.xttitlepos,
         'y' => SemanticEvent{ .xtchecksum = params_mod.paramAtOrDefault0(params, 0) },
         'R' => SemanticEvent.xtreportcolors,

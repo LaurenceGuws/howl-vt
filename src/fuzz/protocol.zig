@@ -146,7 +146,6 @@ const Harness = struct {
             .esc_dispatch => |esc| try self.events.append(self.allocator, Event{ .esc_dispatch = esc }),
         };
     }
-
 };
 
 const VtDigest = struct {
@@ -453,10 +452,8 @@ fn hashCell(hasher: *std.hash.Wyhash, cell: anytype) void {
 }
 
 fn hashColor(hasher: *std.hash.Wyhash, color: anytype) void {
-    hashValue(hasher, color.r);
-    hashValue(hasher, color.g);
-    hashValue(hasher, color.b);
-    hashValue(hasher, color.a);
+    hashValue(hasher, color.kind);
+    hashValue(hasher, color.value);
 }
 
 fn hashValue(hasher: *std.hash.Wyhash, value: anytype) void {

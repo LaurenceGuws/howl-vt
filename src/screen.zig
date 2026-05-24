@@ -23,6 +23,7 @@ const HistoryLine = history_mod.HistoryLine;
 
 /// Terminal screen state for cursor, cells, margins, and history.
 pub const Screen = struct {
+    pub const Rgb = color.Rgb;
     pub const Color = color.Color;
     pub const UnderlineStyle = cell.UnderlineStyle;
     pub const CellAttrs = cell.CellAttrs;

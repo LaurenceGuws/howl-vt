@@ -105,16 +105,16 @@ fn decodeExtendedColor(params: []const i32, idx: *u8) ?Color {
     if (mode == 5) {
         if (idx.* + 2 >= params.len) return null;
         idx.* += 2;
-        return indexed256Color(clampByte(params[idxOf(idx.*)]));
+        return .indexed(clampByte(params[idxOf(idx.*)]));
     }
     if (mode == 2) {
         if (idx.* + 4 >= params.len) return null;
         idx.* += 4;
-        return .{
+        return Color.rgb(.{
             .r = clampByte(params[idxOf(idx.* - 2)]),
             .g = clampByte(params[idxOf(idx.* - 1)]),
             .b = clampByte(params[idxOf(idx.*)]),
-        };
+        });
     }
     return null;
 }
@@ -181,36 +181,11 @@ fn clampByte(v: i32) u8 {
 
 fn ansi16Color(idx: u8) Color {
     return switch (idx) {
-        0 => .{ .r = 0, .g = 0, .b = 0 },
-        1 => .{ .r = 170, .g = 0, .b = 0 },
-        2 => .{ .r = 0, .g = 170, .b = 0 },
-        3 => .{ .r = 170, .g = 85, .b = 0 },
-        4 => .{ .r = 0, .g = 0, .b = 170 },
-        5 => .{ .r = 170, .g = 0, .b = 170 },
-        6 => .{ .r = 0, .g = 170, .b = 170 },
-        7 => .{ .r = 170, .g = 170, .b = 170 },
-        8 => .{ .r = 85, .g = 85, .b = 85 },
-        9 => .{ .r = 255, .g = 85, .b = 85 },
-        10 => .{ .r = 85, .g = 255, .b = 85 },
-        11 => .{ .r = 255, .g = 255, .b = 85 },
-        12 => .{ .r = 85, .g = 85, .b = 255 },
-        13 => .{ .r = 255, .g = 85, .b = 255 },
-        14 => .{ .r = 85, .g = 255, .b = 255 },
-        15 => .{ .r = 255, .g = 255, .b = 255 },
+        0...15 => .indexed(idx),
         else => default_cell_attrs.fg,
     };
 }
 
 fn indexed256Color(idx: u8) Color {
-    if (idx < 16) return ansi16Color(idx);
-    if (idx < 232) {
-        const i: u32 = idx - 16;
-        return .{
-            .r = @intCast((i / 36) * 51),
-            .g = @intCast(((i / 6) % 6) * 51),
-            .b = @intCast((i % 6) * 51),
-        };
-    }
-    const gray: u8 = @intCast((@as(u32, idx) - 232) * 10 + 8);
-    return .{ .r = gray, .g = gray, .b = gray };
+    return .indexed(idx);
 }

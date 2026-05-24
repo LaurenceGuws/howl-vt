@@ -97,6 +97,19 @@ typedef struct {
 } HowlVtColor;
 
 typedef struct {
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+} HowlVtRgb8;
+
+typedef struct {
+  HowlVtRgb8 foreground;
+  HowlVtRgb8 background;
+  HowlVtRgb8 cursor;
+  HowlVtRgb8 palette[256];
+} HowlVtRenderColorState;
+
+typedef struct {
   uint8_t bold;
   uint8_t dim;
   uint8_t italic;
@@ -186,6 +199,7 @@ typedef struct {
   HowlVtU16Span dirty_cols_start;
   HowlVtU16Span dirty_cols_end;
   HowlVtCursor cursor;
+  HowlVtRenderColorState colors;
   HowlVtSelection selection;
 } HowlVtSurface;
 
