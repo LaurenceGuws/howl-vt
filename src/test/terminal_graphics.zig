@@ -19,6 +19,23 @@ fn expectOnScreenRowAnchor(actual: Graphics.RowAnchor, expected: u16) !void {
     switch (actual) {
         .on_screen => |row| try std.testing.expectEqual(expected, row),
         .scrollback_above => return error.TestExpectedEqual,
+        .below_screen => return error.TestExpectedEqual,
+    }
+}
+
+fn expectScrollbackAboveRowAnchor(actual: Graphics.RowAnchor, expected: u32) !void {
+    switch (actual) {
+        .on_screen => return error.TestExpectedEqual,
+        .scrollback_above => |rows| try std.testing.expectEqual(expected, rows),
+        .below_screen => return error.TestExpectedEqual,
+    }
+}
+
+fn expectBelowScreenRowAnchor(actual: Graphics.RowAnchor, expected: u32) !void {
+    switch (actual) {
+        .on_screen => return error.TestExpectedEqual,
+        .scrollback_above => return error.TestExpectedEqual,
+        .below_screen => |rows| try std.testing.expectEqual(expected, rows),
     }
 }
 
@@ -336,10 +353,10 @@ test "kitty graphics row anchor represents on-screen and retained above-screen r
     try expectOnScreenRowAnchor(Graphics.RowAnchor.initOnScreen(4), 4);
 
     const retained: Graphics.RowAnchor = .{ .scrollback_above = 3 };
-    switch (retained) {
-        .on_screen => return error.TestExpectedEqual,
-        .scrollback_above => |rows| try std.testing.expectEqual(@as(u32, 3), rows),
-    }
+    try expectScrollbackAboveRowAnchor(retained, 3);
+
+    const below: Graphics.RowAnchor = .{ .below_screen = 2 };
+    try expectBelowScreenRowAnchor(below, 2);
 }
 
 test "kitty graphics line feed full-page scroll moves placement up" {
@@ -373,6 +390,7 @@ test "kitty graphics full-page scroll retains placement above main screen" {
     switch (placement.anchor_row) {
         .on_screen => return error.TestExpectedEqual,
         .scrollback_above => |rows| try std.testing.expectEqual(@as(u32, 1), rows),
+        .below_screen => return error.TestExpectedEqual,
     }
 
     try stream.nextSlice("\x1b[3;1H\n");
@@ -392,6 +410,53 @@ test "kitty graphics scroll up lines applies full-page upward movement" {
 
     const placement = terminal.kitty.main.graphics.placementAt(0).?;
     try expectOnScreenRowAnchor(placement.anchor_row, 0);
+}
+
+test "kitty graphics reverse index re-enters retained placement from scrollback" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[1;3H\x1b_Ga=p,i=7,p=3\x1b\\");
+    try stream.nextSlice("\x1b[3;1H\n");
+    try expectScrollbackAboveRowAnchor(terminal.kitty.main.graphics.placementAt(0).?.anchor_row, 1);
+
+    try stream.nextSlice("\x1b[1;1H\x1bM");
+    try expectOnScreenRowAnchor(terminal.kitty.main.graphics.placementAt(0).?.anchor_row, 0);
+}
+
+test "kitty graphics scroll down lines moves placement below page without deleting" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=3\x1b\\");
+    try stream.nextSlice("\x1b[2T");
+
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.placementCount());
+    try expectBelowScreenRowAnchor(terminal.kitty.main.graphics.placementAt(0).?.anchor_row, 0);
+}
+
+test "kitty graphics upward scroll re-enters below-page placement" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 16, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=3\x1b\\");
+    try stream.nextSlice("\x1b[2T");
+    try expectBelowScreenRowAnchor(terminal.kitty.main.graphics.placementAt(0).?.anchor_row, 0);
+
+    try stream.nextSlice("\x1b[3;1H\n");
+    try expectOnScreenRowAnchor(terminal.kitty.main.graphics.placementAt(0).?.anchor_row, 2);
 }
 
 test "kitty graphics erase display 2 clears visible physical placements" {
@@ -426,6 +491,7 @@ test "kitty graphics erase display 3 keeps fully scrolled-above placement" {
     switch (terminal.kitty.main.graphics.placementAt(0).?.anchor_row) {
         .on_screen => return error.TestExpectedEqual,
         .scrollback_above => |rows| try std.testing.expectEqual(@as(u32, 2), rows),
+        .below_screen => return error.TestExpectedEqual,
     }
 }
 

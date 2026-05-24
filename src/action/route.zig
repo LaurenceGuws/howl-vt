@@ -98,7 +98,7 @@ fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!void {
 fn applyGraphicsBeforeScreen(vt: anytype, screen_event: ScreenAction) void {
     const active = vt.screen_state.activeConst();
     if (active.rows == 0) return;
-    const full_page = active.scroll_top == 0 and active.scrollBottom() == active.rows - 1;
+    const full_page = !active.left_right_margin_mode and active.scroll_top == 0 and active.scrollBottom() == active.rows - 1;
     if (!full_page) return;
 
     switch (screen_event) {
@@ -106,7 +106,12 @@ fn applyGraphicsBeforeScreen(vt: anytype, screen_event: ScreenAction) void {
             if (active.cursor_row != active.scrollBottom()) return;
             applyGraphicsScrollUp(vt, 1);
         },
+        .reverse_index => {
+            if (active.cursor_row != active.scroll_top) return;
+            applyGraphicsScrollDown(vt, 1);
+        },
         .scroll_up_lines => |count| applyGraphicsScrollUp(vt, count),
+        .scroll_down_lines => |count| applyGraphicsScrollDown(vt, count),
         .erase_display => |mode| {
             if (mode == 2 or mode == 3) vt.kitty.activeGraphics(vt.screen_state.alt_active).clearVisiblePlacements();
         },
@@ -115,14 +120,21 @@ fn applyGraphicsBeforeScreen(vt: anytype, screen_event: ScreenAction) void {
 }
 
 fn applyGraphicsScrollUp(vt: anytype, count: u16) void {
+    const active = vt.screen_state.activeConst();
     const projected_history_count = if (vt.screen_state.alt_active)
         0
     else blk: {
-        const active = vt.screen_state.activeConst();
         const next = @min(active.historyCount() + count, active.historyCapacity());
         break :blk next;
     };
-    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollUpFullPage(projected_history_count, count, !vt.screen_state.alt_active);
+    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollUpFullPage(active.rows, projected_history_count, count, !vt.screen_state.alt_active);
+}
+
+fn applyGraphicsScrollDown(vt: anytype, count: u16) void {
+    const active = vt.screen_state.activeConst();
+    const amount = @min(count, active.rows);
+    if (amount == 0) return;
+    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollDownFullPage(active.rows, amount);
 }
 
 pub fn screenAction(event: SemanticEvent) ?ScreenAction {

@@ -37,6 +37,7 @@ pub const Image = struct {
 pub const RowAnchor = union(enum) {
     on_screen: u16,
     scrollback_above: u32,
+    below_screen: u32,
 
     pub fn initOnScreen(row: u16) RowAnchor {
         return .{ .on_screen = row };
@@ -46,16 +47,41 @@ pub const RowAnchor = union(enum) {
         return switch (self) {
             .on_screen => |row| row,
             .scrollback_above => null,
+            .below_screen => null,
         };
     }
 
-    pub fn scrollUp(self: RowAnchor, amount: u16) RowAnchor {
+    pub fn scrollUp(self: RowAnchor, amount: u16, screen_rows: u16) RowAnchor {
         return switch (self) {
             .on_screen => |row| {
                 if (row >= amount) return .{ .on_screen = row - amount };
                 return .{ .scrollback_above = amount - row };
             },
             .scrollback_above => |rows| return .{ .scrollback_above = rows + amount },
+            .below_screen => |rows| {
+                if (rows >= amount) return .{ .below_screen = rows - amount };
+                const delta = amount - rows;
+                if (delta <= screen_rows) return .{ .on_screen = @intCast(screen_rows - @as(u16, @intCast(delta))) };
+                return .{ .scrollback_above = delta - screen_rows };
+            },
+        };
+    }
+
+    pub fn scrollDown(self: RowAnchor, amount: u16, screen_rows: u16) RowAnchor {
+        return switch (self) {
+            .scrollback_above => |rows| {
+                if (rows > amount) return .{ .scrollback_above = rows - amount };
+                const delta = amount - rows;
+                if (delta == 0) return .{ .on_screen = 0 };
+                if (delta <= screen_rows) return .{ .on_screen = @intCast(delta - 1) };
+                return .{ .below_screen = delta - screen_rows };
+            },
+            .on_screen => |row| {
+                const next = @as(u32, row) + amount;
+                if (next < screen_rows) return .{ .on_screen = @intCast(next) };
+                return .{ .below_screen = next - screen_rows };
+            },
+            .below_screen => |rows| return .{ .below_screen = rows + amount },
         };
     }
 };
@@ -182,17 +208,26 @@ pub const State = struct {
         return self.frames.items[@intCast(idx)];
     }
 
-    pub fn scrollUpFullPage(self: *State, history_count: u32, count: u16, retain_in_scrollback: bool) void {
-        if (count == 0) return;
+    pub fn scrollUpFullPage(self: *State, screen_rows: u16, history_count: u32, count: u16, retain_in_scrollback: bool) void {
+        if (count == 0 or screen_rows == 0) return;
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             var placement = &self.placements.items[@intCast(idx)];
-            placement.anchor_row = placement.anchor_row.scrollUp(count);
+            placement.anchor_row = placement.anchor_row.scrollUp(count, screen_rows);
             if (rowAnchorRetained(placement.anchor_row, history_count, placement.effective_rows, retain_in_scrollback)) {
                 idx += 1;
             } else {
                 _ = self.placements.swapRemove(@intCast(idx));
             }
+        }
+    }
+
+    pub fn scrollDownFullPage(self: *State, screen_rows: u16, count: u16) void {
+        if (count == 0 or screen_rows == 0) return;
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            self.placements.items[@intCast(idx)].anchor_row = self.placements.items[@intCast(idx)].anchor_row.scrollDown(count, screen_rows);
+            idx += 1;
         }
     }
 
@@ -631,6 +666,7 @@ fn rowAnchorRetained(anchor: RowAnchor, history_count: u32, effective_rows: u32,
             const limit = if (retain_in_scrollback) history_count + effective_rows else effective_rows;
             return rows < limit;
         },
+        .below_screen => true,
     };
 }
 
@@ -638,8 +674,10 @@ fn rowAnchorVisible(anchor: RowAnchor, effective_rows: u32) bool {
     return switch (anchor) {
         .on_screen => true,
         .scrollback_above => |rows| rows < effective_rows,
+        .below_screen => |rows| rows < effective_rows,
     };
 }
+
 
 fn resolvedWidthPx(placement: Placement, cell: CellPixelSize) u32 {
     if (placement.columns != 0) return cell.width * placement.columns;
