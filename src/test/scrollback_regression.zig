@@ -1,5 +1,9 @@
 const std = @import("std");
-const scrollback = @import("fuzz_scrollback");
+const scrollback = @import("scrollback_verifier");
+
+// Proof statement: these regression tests replay deterministic VT-owned
+// scrollback churn and prove canonical logical content plus core invariants are
+// preserved across known expensive resize and zoom scenarios.
 
 test "scrollback regression: deterministic seeded churn" {
     const seed: u64 = 0x6f686f776c5f7363;

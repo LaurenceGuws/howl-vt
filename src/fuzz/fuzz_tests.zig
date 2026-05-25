@@ -2,6 +2,10 @@ const std = @import("std");
 const protocol = @import("protocol.zig");
 const scrollback = @import("scrollback.zig");
 
+// Proof statement: this root searches VT-owned protocol and scrollback churn
+// state space for invariant violations; it is fuzz evidence, not a unit or
+// regression proof surface.
+
 const Fuzzer = enum {
     smoke,
     protocol,

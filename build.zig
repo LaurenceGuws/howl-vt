@@ -26,12 +26,12 @@ pub fn build(b: *std.Build) void {
     });
     internal_mod.addOptions("vt_options", module_options);
     addStbImage(internal_mod, b);
-    const fuzz_scrollback_mod = b.createModule(.{
+    const scrollback_verifier_mod = b.createModule(.{
         .root_source_file = b.path("src/fuzz/scrollback.zig"),
         .target = target,
         .optimize = optimize,
     });
-    fuzz_scrollback_mod.addImport("howl_vt", internal_mod);
+    scrollback_verifier_mod.addImport("howl_vt", internal_mod);
     const mod_tests = b.addTest(.{
         .name = "test-unit",
         .root_module = internal_mod,
@@ -71,7 +71,7 @@ pub fn build(b: *std.Build) void {
     }
 
     const check_step = b.step("check", "Build the shipped VT ABI surface");
-    const test_step = b.step("test", "Run all tests");
+    const test_step = b.step("test", "Run all VT correctness proofs");
     const test_abi_step = b.step("test:abi", "Run shipped VT ABI contract tests");
     const test_abi_build_step = b.step("test:abi:build", "Build shipped VT ABI contract tests");
     const test_unit_step = b.step("test:unit", "Run unit tests");
@@ -105,7 +105,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    regression_mod.addImport("fuzz_scrollback", fuzz_scrollback_mod);
+    regression_mod.addImport("scrollback_verifier", scrollback_verifier_mod);
 
     const regression_tests = b.addTest(.{
         .name = "test-regression",
@@ -122,6 +122,7 @@ pub fn build(b: *std.Build) void {
     const test_regression_build_step = b.step("test:regression:build", "Build slow regression tests");
     test_regression_build_step.dependOn(&regression_tests.step);
     test_regression_step.dependOn(&run_regression_tests.step);
+    test_step.dependOn(test_regression_step);
 
     const fuzz_module = b.createModule(.{
         .root_source_file = b.path("src/fuzz/fuzz_tests.zig"),
@@ -135,8 +136,8 @@ pub fn build(b: *std.Build) void {
         .root_module = fuzz_module,
     });
     fuzz_exe.use_llvm = true;
-    const fuzz_step = b.step("fuzz", "Run fuzzers");
-    const fuzz_build_step = b.step("fuzz:build", "Build fuzzers");
+    const fuzz_step = b.step("fuzz", "Run VT protocol and scrollback fuzz search");
+    const fuzz_build_step = b.step("fuzz:build", "Build VT protocol and scrollback fuzz search");
     fuzz_build_step.dependOn(&fuzz_exe.step);
     const run_fuzz = b.addRunArtifact(fuzz_exe);
     if (b.args) |args| run_fuzz.addArgs(args);
@@ -146,13 +147,17 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/terminal_benchmark_main.zig"),
         .target = target,
         .optimize = .ReleaseFast,
+        .link_libc = true,
     });
+    addStbImage(baseline_mod, b);
     const baseline_exe = b.addExecutable(.{
         .name = "m7_baseline",
         .root_module = baseline_mod,
     });
     const run_baseline = b.addRunArtifact(baseline_exe);
     if (b.args) |args| run_baseline.addArgs(args);
-    const baseline_step = b.step("terminal-benchmark", "Run terminal benchmark suite");
+    const baseline_build_step = b.step("benchmark:m7_baseline:build", "Build the m7_baseline VT benchmark");
+    const baseline_step = b.step("benchmark:m7_baseline", "Run the m7_baseline VT benchmark");
+    baseline_build_step.dependOn(&baseline_exe.step);
     baseline_step.dependOn(&run_baseline.step);
 }

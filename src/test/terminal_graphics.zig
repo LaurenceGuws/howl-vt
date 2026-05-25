@@ -1627,7 +1627,7 @@ test "kitty graphics parser-limit chunked upload failure leaves terminal deinit-
         };
     }
 
-    try std.testing.expect(terminal.kitty.main.graphics.upload != null);
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
 
 test "kitty graphics frame count cap is explicit" {

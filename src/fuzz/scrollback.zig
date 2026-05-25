@@ -1,6 +1,10 @@
 const std = @import("std");
 const howl_vt = @import("howl_vt");
 
+// Shared VT verification helper for scrollback churn. Fuzz uses it to search
+// seeded input space; regression uses it to replay named expensive scenarios
+// with explicit preservation claims.
+
 const screen_set = howl_vt.ScreenSet;
 const Terminal = howl_vt.Terminal;
 
