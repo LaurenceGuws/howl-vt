@@ -180,6 +180,40 @@ test "screen: write_text stores bytes in cells" {
     try std.testing.expectEqual(@as(u21, 'c'), s.cellAt(0, 2));
 }
 
+test "screen: combining codepoints stay on the lead cell" {
+    const gpa = std.testing.allocator;
+    var s = try Screen.initWithCells(gpa, 2, 4);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .write_codepoint = 'o' });
+    s.apply(SemanticEvent{ .write_codepoint = 0x0300 });
+
+    const cell = s.cellInfoAt(0, 0);
+    try std.testing.expectEqual(@as(u21, 'o'), cell.codepoint);
+    try std.testing.expectEqual(@as(u8, 1), cell.combining_len);
+    try std.testing.expectEqual(@as(u32, 0x0300), cell.combining[0]);
+    try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor_col);
+}
+
+test "screen: placeholder lead cell retains three kitty diacritics" {
+    const gpa = std.testing.allocator;
+    var s = try Screen.initWithCells(gpa, 2, 4);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .write_codepoint = 0x10EEEE });
+    s.apply(SemanticEvent{ .write_codepoint = 0x0305 });
+    s.apply(SemanticEvent{ .write_codepoint = 0x030D });
+    s.apply(SemanticEvent{ .write_codepoint = 0x030E });
+
+    const cell = s.cellInfoAt(0, 0);
+    try std.testing.expectEqual(@as(u21, 0x10EEEE), cell.codepoint);
+    try std.testing.expectEqual(@as(u8, 3), cell.combining_len);
+    try std.testing.expectEqualSlices(u32, &.{ 0x0305, 0x030D, 0x030E }, cell.combining[0..3]);
+    try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor_col);
+}
+
 test "screen: sgr applies ansi and 256-color attrs to written cells" {
     const gpa = std.testing.allocator;
     var s = try Screen.initWithCells(gpa, 2, 4);
@@ -281,6 +315,22 @@ test "screen: exact line fill leaves cursor at last column until next write" {
     try std.testing.expectEqual(@as(u16, 1), s.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), s.cursor_col);
     try std.testing.expectEqual(@as(u21, 'f'), s.cellAt(1, 0));
+}
+
+test "screen: combining after exact fill stays on the wrapped lead cell" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCells(gpa, 2, 2);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .write_text = "ab" });
+    s.apply(SemanticEvent{ .write_codepoint = 0x0300 });
+
+    const cell = s.cellInfoAt(0, 1);
+    try std.testing.expectEqual(@as(u21, 'b'), cell.codepoint);
+    try std.testing.expectEqual(@as(u8, 1), cell.combining_len);
+    try std.testing.expectEqual(@as(u32, 0x0300), cell.combining[0]);
+    try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor_col);
 }
 
 test "screen: wrap at bottom scrolls cell buffer up" {

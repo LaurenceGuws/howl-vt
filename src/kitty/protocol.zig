@@ -9,6 +9,7 @@ pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
     const payload = if (separator < body.len) body[separator + 1 ..] else "";
     var cmd = vocabulary.KittyGraphicsCommand{
         .action = 't',
+        .unicode_placement = false,
         .image_id = 0,
         .image_number = 0,
         .placement_id = 0,
@@ -17,18 +18,28 @@ pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
         .format = 32,
         .width = 0,
         .height = 0,
+        .data_size = 0,
+        .data_offset = 0,
         .source_width = 0,
         .source_height = 0,
         .columns = 0,
         .rows = 0,
+        .current_frame_number = 0,
+        .edit_frame_number = 0,
+        .base_frame_number = 0,
         .x = 0,
         .y = 0,
         .parent_offset_cols = 0,
         .parent_offset_rows = 0,
         .cell_x_offset = 0,
         .cell_y_offset = 0,
+        .compose_mode = 0,
+        .background_rgba = 0,
+        .animation_state = 0,
+        .loop_count = 0,
         .z = 0,
         .medium = 'd',
+        .compression = 0,
         .more_chunks = false,
         .quiet = false,
         .delete_target = 0,
@@ -50,22 +61,53 @@ pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
             'P' => cmd.parent_image_id = parseU32(value),
             'Q' => cmd.parent_placement_id = parseU32(value),
             'f' => cmd.format = parseU16(value),
-            's' => cmd.width = parseU32(value),
-            'v' => cmd.height = parseU32(value),
+            's' => {
+                const parsed = parseU32(value);
+                cmd.width = parsed;
+                cmd.animation_state = parsed;
+            },
+            'v' => {
+                const parsed = parseU32(value);
+                cmd.height = parsed;
+                cmd.loop_count = parsed;
+            },
+            'S' => cmd.data_size = parseU32(value),
             'w' => cmd.source_width = parseU32(value),
             'h' => cmd.source_height = parseU32(value),
-            'c' => cmd.columns = parseU32(value),
-            'r' => cmd.rows = parseU32(value),
+            'c' => {
+                const parsed = parseU32(value);
+                cmd.columns = parsed;
+                cmd.current_frame_number = parsed;
+                cmd.base_frame_number = parsed;
+            },
+            'r' => {
+                const parsed = parseU32(value);
+                cmd.rows = parsed;
+                cmd.edit_frame_number = parsed;
+            },
+            'O' => cmd.data_offset = parseU32(value),
             'H' => cmd.parent_offset_cols = parseI32(value),
             'V' => cmd.parent_offset_rows = parseI32(value),
             'x' => cmd.x = parseU32(value),
             'y' => cmd.y = parseU32(value),
-            'X' => cmd.cell_x_offset = parseU32(value),
-            'Y' => cmd.cell_y_offset = parseU32(value),
+            'X' => {
+                const parsed = parseU32(value);
+                cmd.cell_x_offset = parsed;
+                cmd.compose_mode = parsed;
+            },
+            'Y' => {
+                const parsed = parseU32(value);
+                cmd.cell_y_offset = parsed;
+                cmd.background_rgba = parsed;
+            },
             'z' => cmd.z = parseI32(value),
+            'o' => {
+                if (value.len > 0) cmd.compression = value[0];
+            },
             't' => {
                 if (value.len > 0) cmd.medium = value[0];
             },
+            'U' => cmd.unicode_placement = parseU32(value) != 0,
             'm' => cmd.more_chunks = parseU32(value) != 0,
             'q' => cmd.quiet = parseU32(value) != 0,
             'd' => {

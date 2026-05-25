@@ -124,14 +124,19 @@ typedef struct {
 
 typedef struct {
   uint32_t codepoint;
+  uint8_t combining_len;
+  uint8_t reserved0;
+  uint8_t reserved1;
+  uint8_t reserved2;
+  uint32_t combining[3];
   HowlVtSurfaceCellFlags flags;
   HowlVtColor fg_color;
   HowlVtColor bg_color;
   HowlVtColor underline_color;
   uint8_t underline_style;
-  uint8_t reserved0;
-  uint8_t reserved1;
-  uint8_t reserved2;
+  uint8_t reserved3;
+  uint8_t reserved4;
+  uint8_t reserved5;
   HowlVtSurfaceCellAttrs attrs;
   uint32_t link_id;
 } HowlVtSurfaceCell;
@@ -222,9 +227,9 @@ typedef struct {
 typedef struct {
   uint32_t image_count;
   uint32_t placement_count;
+  uint32_t virtual_placement_count;
   uint8_t is_alternate_screen;
   uint8_t reserved0;
-  uint16_t reserved1;
   uint64_t publication_seq;
   uint64_t dirty_generation;
 } HowlVtGraphicsMeta;
@@ -296,6 +301,22 @@ typedef struct {
 } HowlVtGraphicsPlacementResult;
 
 typedef struct {
+  uint32_t image_id;
+  uint32_t placement_id;
+  uint32_t source_x;
+  uint32_t source_y;
+  uint32_t source_width;
+  uint32_t source_height;
+  uint32_t columns;
+  uint32_t rows;
+} HowlVtGraphicsVirtualPlacement;
+
+typedef struct {
+  int32_t status;
+  HowlVtGraphicsVirtualPlacement placement;
+} HowlVtGraphicsVirtualPlacementResult;
+
+typedef struct {
   int32_t status;
   uint64_t history_count;
   uint64_t scrollback_offset;
@@ -311,6 +332,7 @@ HowlVtVisibleMetaResult howl_vt_terminal_query_visible_meta(HowlVtHandle handle,
 HowlVtGraphicsMetaResult howl_vt_terminal_query_graphics_meta(HowlVtHandle handle);
 HowlVtGraphicsImageResult howl_vt_terminal_query_graphics_image(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index);
 HowlVtGraphicsPlacementResult howl_vt_terminal_query_graphics_placement(HowlVtHandle handle, uint64_t publication_seq, uint32_t placement_index);
+HowlVtGraphicsVirtualPlacementResult howl_vt_terminal_query_graphics_virtual_placement(HowlVtHandle handle, uint64_t publication_seq, uint32_t placement_index);
 HowlVtSurfaceResult howl_vt_terminal_copy_surface(HowlVtHandle handle, uint64_t scrollback_offset, HowlVtSurfaceCell *cells_ptr, size_t cells_cap, uint8_t *dirty_rows_ptr, size_t dirty_rows_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 HowlVtSelectionResult howl_vt_terminal_query_selection(HowlVtHandle handle);
 int32_t howl_vt_terminal_start_selection(HowlVtHandle handle, int32_t row, uint16_t col);
@@ -334,6 +356,26 @@ typedef struct {
   uint8_t title_changed;
   uint16_t reserved0;
 } HowlVtFeedResult;
+
+typedef struct {
+  uint8_t pending_now;
+  uint8_t reserved0;
+  uint16_t reserved1;
+  uint64_t deadline_ns;
+} HowlVtRuntimeObligation;
+
+typedef struct {
+  int32_t status;
+  HowlVtRuntimeObligation obligation;
+} HowlVtRuntimeObligationResult;
+
+typedef struct {
+  int32_t status;
+  uint8_t state_changed;
+  uint8_t reserved0;
+  uint16_t reserved1;
+  HowlVtRuntimeObligation obligation;
+} HowlVtRuntimeProgressResult;
 
 HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t history_capacity);
 HowlVtHandle howl_vt_terminal_init_with_options(uint16_t rows, uint16_t cols, uint16_t history_capacity, HowlVtTerminalInitOptions options);
@@ -365,7 +407,14 @@ void howl_vt_terminal_clear_pending_output(HowlVtHandle handle);
 HowlVtBytesResult howl_vt_terminal_drain_pending_clipboard(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 
 /* -------------------------------------------------------------------------- */
-/* 3. Shell Input                                                              */
+/* 3. Runtime Obligation                                                       */
+/* -------------------------------------------------------------------------- */
+
+HowlVtRuntimeObligationResult howl_vt_terminal_query_runtime_obligation(HowlVtHandle handle, uint64_t now_ns);
+HowlVtRuntimeProgressResult howl_vt_terminal_progress_runtime(HowlVtHandle handle, uint64_t now_ns);
+
+/* -------------------------------------------------------------------------- */
+/* 4. Shell Input                                                              */
 /* -------------------------------------------------------------------------- */
 
 HowlVtBytesResult howl_vt_terminal_encode_key(HowlVtHandle handle, uint32_t key, uint8_t mods, uint8_t *ptr, size_t cap);

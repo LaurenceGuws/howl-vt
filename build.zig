@@ -4,6 +4,11 @@
 
 const std = @import("std");
 
+fn addStbImage(module: *std.Build.Module, b: *std.Build) void {
+    module.addIncludePath(b.path("../howl-render/src"));
+    module.addCSourceFile(.{ .file = b.path("../howl-render/src/stb_image.c") });
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -20,11 +25,13 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     internal_mod.addOptions("vt_options", module_options);
+    addStbImage(internal_mod, b);
     const fuzz_scrollback_mod = b.createModule(.{
         .root_source_file = b.path("src/fuzz/scrollback.zig"),
         .target = target,
         .optimize = optimize,
     });
+    fuzz_scrollback_mod.addImport("howl_vt", internal_mod);
     const mod_tests = b.addTest(.{
         .name = "test-unit",
         .root_module = internal_mod,
@@ -36,11 +43,44 @@ pub fn build(b: *std.Build) void {
         run_mod_tests.has_side_effects = true;
     }
 
+    const abi_mod = b.createModule(.{
+        .root_source_file = b.path("src/test/abi.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    abi_mod.addIncludePath(b.path("include"));
+    const abi_ffi_mod = b.createModule(.{
+        .root_source_file = b.path("src/ffi.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    abi_ffi_mod.addOptions("vt_options", ffi_options);
+    addStbImage(abi_ffi_mod, b);
+    abi_mod.addImport("ffi", abi_ffi_mod);
+    const abi_tests = b.addTest(.{
+        .name = "test-abi",
+        .root_module = abi_mod,
+        .filters = b.args orelse &.{},
+    });
+    abi_tests.use_llvm = true;
+    const run_abi_tests = b.addRunArtifact(abi_tests);
+    if (b.args != null) {
+        run_abi_tests.has_side_effects = true;
+    }
+
+    const check_step = b.step("check", "Build the shipped VT ABI surface");
     const test_step = b.step("test", "Run all tests");
+    const test_abi_step = b.step("test:abi", "Run shipped VT ABI contract tests");
+    const test_abi_build_step = b.step("test:abi:build", "Build shipped VT ABI contract tests");
     const test_unit_step = b.step("test:unit", "Run unit tests");
     const test_unit_build_step = b.step("test:unit:build", "Build unit tests");
-    test_unit_build_step.dependOn(&b.addInstallArtifact(mod_tests, .{}).step);
+    test_abi_build_step.dependOn(&abi_tests.step);
+    test_abi_step.dependOn(&run_abi_tests.step);
+    test_unit_build_step.dependOn(&mod_tests.step);
     test_unit_step.dependOn(&run_mod_tests.step);
+    test_step.dependOn(test_abi_step);
     test_step.dependOn(test_unit_step);
 
     const ffi_mod = b.createModule(.{
@@ -50,13 +90,13 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     ffi_mod.addOptions("vt_options", ffi_options);
+    addStbImage(ffi_mod, b);
     const ffi_lib = b.addLibrary(.{
         .name = "howl_vt",
         .linkage = .dynamic,
         .root_module = ffi_mod,
     });
-    const ffi_build_step = b.step("ffi:build", "Build the howl-vt C FFI library");
-    ffi_build_step.dependOn(&b.addInstallArtifact(ffi_lib, .{}).step);
+    check_step.dependOn(&ffi_lib.step);
     b.installArtifact(ffi_lib);
     b.installFile("include/howl_vt.h", "include/howl_vt.h");
 
@@ -80,7 +120,7 @@ pub fn build(b: *std.Build) void {
 
     const test_regression_step = b.step("test:regression", "Run slow regression tests");
     const test_regression_build_step = b.step("test:regression:build", "Build slow regression tests");
-    test_regression_build_step.dependOn(&b.addInstallArtifact(regression_tests, .{}).step);
+    test_regression_build_step.dependOn(&regression_tests.step);
     test_regression_step.dependOn(&run_regression_tests.step);
 
     const fuzz_module = b.createModule(.{
@@ -97,7 +137,7 @@ pub fn build(b: *std.Build) void {
     fuzz_exe.use_llvm = true;
     const fuzz_step = b.step("fuzz", "Run fuzzers");
     const fuzz_build_step = b.step("fuzz:build", "Build fuzzers");
-    fuzz_build_step.dependOn(&b.addInstallArtifact(fuzz_exe, .{}).step);
+    fuzz_build_step.dependOn(&fuzz_exe.step);
     const run_fuzz = b.addRunArtifact(fuzz_exe);
     if (b.args) |args| run_fuzz.addArgs(args);
     fuzz_step.dependOn(&run_fuzz.step);

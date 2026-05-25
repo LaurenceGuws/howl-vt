@@ -386,6 +386,44 @@ test "scrollback projection change gets a new surface snapshot sequence" {
     try std.testing.expectEqual(live.dirty_generation, scrolled.dirty_generation);
 }
 
+test "copy surface exports bounded combining truth" {
+    const handle = ffi.terminalInit(1, 2, 4);
+    defer ffi.terminalDeinit(handle);
+
+    const payload = [_]u8{ 0x6F, 0xCC, 0x80 };
+    const fed = ffi.terminalFeed(handle, payload[0..].ptr, payload.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), fed.status);
+
+    var cells: [2]ffi.FfiSurfaceCell = undefined;
+    var dirty_rows: [1]u8 = undefined;
+    var cols_start: [1]u16 = undefined;
+    var cols_end: [1]u16 = undefined;
+    _ = try copySurfaceOk(handle, 1, 2, &cells, &dirty_rows, &cols_start, &cols_end);
+
+    try std.testing.expectEqual(@as(u32, 'o'), cells[0].codepoint);
+    try std.testing.expectEqual(@as(u8, 1), cells[0].combining_len);
+    try std.testing.expectEqual(@as(u32, 0x0300), cells[0].combining[0]);
+}
+
+test "copy surface exports three kitty placeholder diacritics" {
+    const handle = ffi.terminalInit(1, 2, 4);
+    defer ffi.terminalDeinit(handle);
+
+    const payload = [_]u8{ 0xF4, 0x8E, 0xBB, 0xAE, 0xCC, 0x85, 0xCC, 0x8D, 0xCC, 0x8E };
+    const fed = ffi.terminalFeed(handle, payload[0..].ptr, payload.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), fed.status);
+
+    var cells: [2]ffi.FfiSurfaceCell = undefined;
+    var dirty_rows: [1]u8 = undefined;
+    var cols_start: [1]u16 = undefined;
+    var cols_end: [1]u16 = undefined;
+    _ = try copySurfaceOk(handle, 1, 2, &cells, &dirty_rows, &cols_start, &cols_end);
+
+    try std.testing.expectEqual(@as(u32, 0x10EEEE), cells[0].codepoint);
+    try std.testing.expectEqual(@as(u8, 3), cells[0].combining_len);
+    try std.testing.expectEqualSlices(u32, &.{ 0x0305, 0x030D, 0x030E }, cells[0].combining[0..3]);
+}
+
 test "copy surface keeps metadata on invalid output pointers" {
     const handle = ffi.terminalInit(2, 4, 4);
     defer ffi.terminalDeinit(handle);

@@ -1357,6 +1357,8 @@ test "actions: kitty graphics APC parses control keys and payload" {
     try std.testing.expectEqual(@as(u32, 3), cmd.x);
     try std.testing.expectEqual(@as(u32, 5), cmd.y);
     try std.testing.expectEqual(@as(i32, -1), cmd.z);
+    try std.testing.expectEqual(@as(u32, 10), cmd.animation_state);
+    try std.testing.expectEqual(@as(u32, 2), cmd.loop_count);
     try std.testing.expectEqual(@as(u16, 24), cmd.format);
     try std.testing.expectEqual(@as(u8, 'd'), cmd.medium);
     try std.testing.expectEqualStrings("AAAA", cmd.payload);

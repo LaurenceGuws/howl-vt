@@ -13,6 +13,7 @@ comptime {
     @export(&ffi.terminalQueryGraphicsMeta, .{ .name = "howl_vt_terminal_query_graphics_meta" });
     @export(&ffi.terminalQueryGraphicsImage, .{ .name = "howl_vt_terminal_query_graphics_image" });
     @export(&ffi.terminalQueryGraphicsPlacement, .{ .name = "howl_vt_terminal_query_graphics_placement" });
+    @export(&ffi.terminalQueryGraphicsVirtualPlacement, .{ .name = "howl_vt_terminal_query_graphics_virtual_placement" });
     @export(&ffi.terminalCopySurface, .{ .name = "howl_vt_terminal_copy_surface" });
     @export(&ffi.terminalQuerySelection, .{ .name = "howl_vt_terminal_query_selection" });
     @export(&ffi.terminalStartSelection, .{ .name = "howl_vt_terminal_start_selection" });
@@ -25,6 +26,8 @@ comptime {
     @export(&ffi.terminalCopyPendingOutput, .{ .name = "howl_vt_terminal_copy_pending_output" });
     @export(&ffi.terminalClearPendingOutput, .{ .name = "howl_vt_terminal_clear_pending_output" });
     @export(&ffi.terminalDrainPendingClipboard, .{ .name = "howl_vt_terminal_drain_pending_clipboard" });
+    @export(&ffi.terminalQueryRuntimeObligation, .{ .name = "howl_vt_terminal_query_runtime_obligation" });
+    @export(&ffi.terminalProgressRuntime, .{ .name = "howl_vt_terminal_progress_runtime" });
     @export(&ffi.terminalEncodeKey, .{ .name = "howl_vt_terminal_encode_key" });
     @export(&ffi.terminalEncodeFocus, .{ .name = "howl_vt_terminal_encode_focus" });
     @export(&ffi.terminalEncodePasteStart, .{ .name = "howl_vt_terminal_encode_paste_start" });

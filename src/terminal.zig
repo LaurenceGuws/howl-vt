@@ -45,6 +45,16 @@ pub const Terminal = struct {
     graphics_publication_dirty_generation: u64 = 0,
     graphics_publication_alt: bool = false,
 
+    pub const RuntimeObligation = struct {
+        pending_now: bool,
+        deadline_ns: u64,
+    };
+
+    pub const RuntimeProgress = struct {
+        state_changed: bool,
+        obligation: RuntimeObligation,
+    };
+
     pub const InitOptions = struct {
         default_cursor_style: ScreenNs.CursorStyle = ScreenNs.default_cursor_style,
     };
@@ -197,10 +207,25 @@ pub const Terminal = struct {
         const publication = self.graphicsPublication();
         return .{
             .image_count = publication.state.imageCount(),
-            .placement_count = publication.state.placementCount(),
+            .placement_count = publication.state.resolvedPlacementCount(self.screen_state.activeConst()),
+            .virtual_placement_count = publication.state.virtualPlacementCount(),
             .is_alternate_screen = publication.is_alternate_screen,
             .publication_seq = publication.publication_seq,
             .dirty_generation = publication.dirty_generation,
+        };
+    }
+
+    pub fn runtimeObligation(self: *const Terminal, now_ns: u64) RuntimeObligation {
+        const obligation = self.kitty.activeGraphicsConst(self.screen_state.alt_active).runtimeObligation(now_ns);
+        return .{ .pending_now = obligation.pending_now, .deadline_ns = obligation.deadline_ns };
+    }
+
+    pub fn progressRuntime(self: *Terminal, now_ns: u64) host_state.ApplyError!RuntimeProgress {
+        const changed = try self.kitty.activeGraphics(self.screen_state.alt_active).progressRuntime(self.allocator, now_ns);
+        if (changed) self.dirty_generation +%= 1;
+        return .{
+            .state_changed = changed,
+            .obligation = self.runtimeObligation(now_ns),
         };
     }
 
@@ -211,7 +236,12 @@ pub const Terminal = struct {
 
     pub fn graphicsPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.Placement {
         const state = try self.graphicsStateForPublication(publication_seq);
-        return state.placementAtResolved(idx, self.screen_state.activeConst().rows);
+        return state.resolvedPlacementAt(idx, self.screen_state.activeConst());
+    }
+
+    pub fn graphicsVirtualPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.VirtualPlacement {
+        const state = try self.graphicsStateForPublication(publication_seq);
+        return state.virtualPlacementAt(idx);
     }
 
     pub fn visibleCellHyperlinkUri(self: *Terminal, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
@@ -321,6 +351,7 @@ pub const Terminal = struct {
     pub const GraphicsMeta = struct {
         image_count: u32,
         placement_count: u32,
+        virtual_placement_count: u32,
         is_alternate_screen: bool,
         publication_seq: u64,
         dirty_generation: u64,

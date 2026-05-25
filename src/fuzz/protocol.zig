@@ -371,7 +371,7 @@ fn feedBytesToParser(parser: *parser_mod.Parser, output: *ParserOutput, harness:
     }
 }
 
-fn feedBytesToTerminal(terminal: *Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: ChunkLen) error{ OutOfMemory, ParsedEventLimit, StringControlLimit }!void {
+fn feedBytesToTerminal(terminal: *Terminal, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: ChunkLen) error{ ConsequenceLimit, OutOfMemory, ParsedEventLimit, StringControlLimit }!void {
     var stream = terminal.vtStream();
     defer stream.deinit();
     switch (mode) {

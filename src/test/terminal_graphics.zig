@@ -2,17 +2,43 @@ const std = @import("std");
 const host_state = @import("../host/state.zig");
 const graphics = @import("../kitty/graphics.zig");
 const kitty_state = @import("../kitty/state.zig");
+const screen_mod = @import("../screen.zig");
 const terminal_mod = @import("../terminal.zig");
 const stream_harness = @import("stream_harness.zig");
+const c = @cImport({
+    @cInclude("fcntl.h");
+    @cInclude("sys/mman.h");
+    @cInclude("unistd.h");
+});
 
 const HostState = host_state;
 const Graphics = graphics;
 const KittyState = kitty_state;
+const Screen = screen_mod.Screen;
 const Terminal = terminal_mod.Terminal;
 const StreamHarness = stream_harness.Harness;
 
 fn pendingOutput(terminal: *const Terminal) []const u8 {
     return HostState.pendingOutput(terminal);
+}
+
+fn base64Owned(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
+    const encoded = try allocator.alloc(u8, std.base64.standard.Encoder.calcSize(bytes.len));
+    _ = std.base64.standard.Encoder.encode(encoded, bytes);
+    return encoded;
+}
+
+const zlib_rgb_abc = [_]u8{ 0x78, 0x9c, 0x73, 0x74, 0x72, 0x06, 0x00, 0x01, 0x8d, 0x00, 0xc7 };
+const zlib_rgba_abcd = [_]u8{ 0x78, 0x9c, 0x73, 0x74, 0x72, 0x76, 0x01, 0x00, 0x02, 0x98, 0x01, 0x0b };
+const png_rgba_11223344 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMQVDJ2AQABWQCrEyolqwAAAABJRU5ErkJggg==";
+
+fn writeSharedMemory(name: [:0]const u8, bytes: []const u8) !void {
+    const fd = c.shm_open(name, c.O_CREAT | c.O_RDWR, 0o600);
+    if (fd < 0) return error.Unexpected;
+    defer _ = c.close(fd);
+    errdefer _ = c.shm_unlink(name);
+    if (c.ftruncate(fd, @intCast(bytes.len)) != 0) return error.Unexpected;
+    if (c.pwrite(fd, bytes.ptr, bytes.len, 0) != bytes.len) return error.Unexpected;
 }
 
 fn expectOnScreenRowAnchor(actual: Graphics.RowAnchor, expected: u16) !void {
@@ -90,7 +116,7 @@ test "kitty graphics transmit and display stores image placement and moves curso
     try std.testing.expectEqual(@as(u16, 6), terminal.screen_state.activeConst().cursor_col);
 }
 
-test "kitty graphics unsupported action is rejected explicitly" {
+test "kitty graphics animation control for missing image is rejected explicitly" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
@@ -99,8 +125,95 @@ test "kitty graphics unsupported action is rejected explicitly" {
 
     try stream.nextSlice("\x1b_Gi=7,a=a,s=2,v=1,t=d,f=24;QUJD\x1b\\");
 
-    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:unsupported kitty graphics action\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqualStrings("\x1b_Gi=7;ENOENT:image not found\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+}
+
+test "kitty graphics file upload loads and normalizes base64 payload" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const io = std.Io.Threaded.global_single_threaded.io();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "image.bin", .data = "ZABCY" });
+    const path = try tmp.dir.realPathFileAlloc(io, "image.bin", allocator);
+    defer allocator.free(path);
+    const encoded_path = try base64Owned(allocator, path);
+    defer allocator.free(encoded_path);
+
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,S=3,O=1,t=f,f=24;{s}\x1b\\", .{encoded_path});
+    defer allocator.free(seq);
+
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics temp file upload deletes safe temp file" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const path_text = try std.fmt.allocPrint(allocator, "/tmp/howl-tty-graphics-protocol-{s}.bin", .{tmp.sub_path});
+    defer allocator.free(path_text);
+    const path = try allocator.dupeZ(u8, path_text);
+    defer allocator.free(path);
+    defer _ = c.unlink(path);
+    const fd = c.open(path, c.O_CREAT | c.O_WRONLY | c.O_TRUNC, @as(c_uint, 0o600));
+    if (fd < 0) return error.Unexpected;
+    defer _ = c.close(fd);
+    if (c.write(fd, "ABC", 3) != 3) return error.Unexpected;
+    const encoded_path = try base64Owned(allocator, path);
+    defer allocator.free(encoded_path);
+
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=t,f=24;{s}\x1b\\", .{encoded_path});
+    defer allocator.free(seq);
+
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectError(error.FileNotFound, std.Io.Dir.openFileAbsolute(io, path, .{}));
+}
+
+test "kitty graphics shared memory upload loads and unlinks object" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    const shm_name = "/howl-kitty-graphics-test";
+    const shm_name_z = try allocator.dupeZ(u8, shm_name);
+    defer allocator.free(shm_name_z);
+    _ = c.shm_unlink(shm_name_z);
+    try writeSharedMemory(shm_name_z, "ABC");
+
+    const encoded_name = try base64Owned(allocator, shm_name);
+    defer allocator.free(encoded_name);
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=s,f=24;{s}\x1b\\", .{encoded_name});
+    defer allocator.free(seq);
+
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectError(error.FileNotFound, cShmOpenReadOnly(shm_name_z));
+}
+
+fn cShmOpenReadOnly(name: [:0]const u8) !void {
+    const fd = c.shm_open(name, c.O_RDONLY, 0);
+    if (fd < 0) return error.FileNotFound;
+    _ = c.close(fd);
 }
 
 test "kitty graphics unsupported medium is rejected explicitly" {
@@ -110,23 +223,154 @@ test "kitty graphics unsupported medium is rejected explicitly" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=f,f=24;L3RtcC9mb28=\x1b\\");
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=x,f=24;AAAA\x1b\\");
 
     try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:unsupported kitty graphics medium\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 
-test "kitty graphics unsupported control key is rejected explicitly" {
+test "kitty graphics direct upload decompresses raw zlib payload" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,o=z,f=24;eJxzdHIGAAGNAMc=\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics direct chunked upload decompresses raw zlib payload" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=9,s=1,v=1,t=d,o=z,f=24,m=1;eJxz\x1b\\");
+    try stream.nextSlice("\x1b_Gm=0;dHIGAAGNAMc=\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics file upload decompresses raw zlib payload" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const io = std.Io.Threaded.global_single_threaded.io();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "image.bin", .data = zlib_rgb_abc[0..] });
+    const path = try tmp.dir.realPathFileAlloc(io, "image.bin", allocator);
+    defer allocator.free(path);
+    const encoded_path = try base64Owned(allocator, path);
+    defer allocator.free(encoded_path);
+
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,S={d},t=f,o=z,f=24;{s}\x1b\\", .{ zlib_rgb_abc.len, encoded_path });
+    defer allocator.free(seq);
+
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics temp file upload decompresses raw zlib payload and deletes safe temp file" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const path_text = try std.fmt.allocPrint(allocator, "/tmp/howl-tty-graphics-protocol-{s}.bin", .{tmp.sub_path});
+    defer allocator.free(path_text);
+    const path = try allocator.dupeZ(u8, path_text);
+    defer allocator.free(path);
+    defer _ = c.unlink(path);
+    const fd = c.open(path, c.O_CREAT | c.O_WRONLY | c.O_TRUNC, @as(c_uint, 0o600));
+    if (fd < 0) return error.Unexpected;
+    defer _ = c.close(fd);
+    if (c.write(fd, zlib_rgba_abcd[0..].ptr, zlib_rgba_abcd.len) != zlib_rgba_abcd.len) return error.Unexpected;
+    const encoded_path = try base64Owned(allocator, path);
+    defer allocator.free(encoded_path);
+
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,S={d},t=t,o=z,f=32;{s}\x1b\\", .{ zlib_rgba_abcd.len, encoded_path });
+    defer allocator.free(seq);
+
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJDRA==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectError(error.FileNotFound, std.Io.Dir.openFileAbsolute(io, path, .{}));
+}
+
+test "kitty graphics shared memory upload decompresses raw zlib payload" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    const shm_name = "/howl-kitty-graphics-zlib-test";
+    const shm_name_z = try allocator.dupeZ(u8, shm_name);
+    defer allocator.free(shm_name_z);
+    _ = c.shm_unlink(shm_name_z);
+    try writeSharedMemory(shm_name_z, zlib_rgb_abc[0..]);
+
+    const encoded_name = try base64Owned(allocator, shm_name);
+    defer allocator.free(encoded_name);
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,S={d},t=s,o=z,f=24;{s}\x1b\\", .{ zlib_rgb_abc.len, encoded_name });
+    defer allocator.free(seq);
+
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectError(error.FileNotFound, cShmOpenReadOnly(shm_name_z));
+}
+
+test "kitty graphics png zlib compression is rejected explicitly" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,t=d,o=z,f=100;eJxzdHIGAAGNAMc=\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:unsupported kitty graphics compression\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+}
+
+test "kitty graphics place stores virtual placement prototype for U=1" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=11,v=13,t=d,f=24;AAAA\x1b\\");
     try stream.nextSlice("\x1b_Gi=7,a=p,U=1,c=2,r=1\x1b\\");
 
-    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:unsupported kitty graphics control key\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqualStrings("\x1b_Gi=7;OK\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
+    const placement = terminal.kitty.main.graphics.virtualPlacementAt(0).?;
+    try std.testing.expectEqual(@as(u32, 7), placement.image_id);
+    try std.testing.expectEqual(@as(u32, 0), placement.placement_id);
+    try std.testing.expectEqual(@as(u32, 11), placement.source_width);
+    try std.testing.expectEqual(@as(u32, 13), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 2), placement.columns);
+    try std.testing.expectEqual(@as(u32, 1), placement.rows);
 }
 
 test "kitty graphics alt screen starts with separate empty state" {
@@ -922,6 +1166,68 @@ test "kitty graphics relative placement resolves parent anchor and does not move
     try std.testing.expectEqual(@as(u16, 9), terminal.screen_state.activeConst().cursor_col);
 }
 
+test "kitty graphics relative placement resolves virtual parent from live placeholder cell" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 8, 16, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=3,P=7,Q=9,H=2,V=1,c=1,r=1\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.placementCount());
+    try std.testing.expectEqual(@as(u32, 0), terminal.graphicsMeta().placement_count);
+
+    terminal.screen_state.active().cells.?[1 * 16 + 3] = Screen.Cell{
+        .codepoint = 0x10EEEE,
+        .combining_len = 0,
+        .attrs = .{
+            .fg = Screen.Color.indexed(7),
+            .bg = Screen.default_bg,
+            .bold = false,
+            .blink = false,
+            .blink_fast = false,
+            .reverse = false,
+            .underline = true,
+            .underline_style = .straight,
+            .underline_color = Screen.Color.indexed(9),
+            .protected = false,
+            .link_id = 0,
+        },
+    };
+    terminal.postApply(true);
+
+    const meta = terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), meta.placement_count);
+    const placement = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 2);
+    try std.testing.expectEqual(@as(u16, 5), placement.anchor_col);
+}
+
+test "kitty graphics deleting virtual parent removes descendant placements" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=3,P=7,Q=9,H=2,V=1,c=1,r=1\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.placementCount());
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
+
+    try stream.nextSlice("\x1b_Ga=d,d=i,i=7,p=9\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.placementCount());
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.virtualPlacementCount());
+}
+
 test "kitty graphics relative placement cycle is rejected" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 8, 16);
@@ -1058,26 +1364,151 @@ test "kitty graphics animation frame upload stores frame metadata" {
     defer stream.deinit();
 
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,p=3,s=1,v=1,t=d,f=24;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;CCCC\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
     const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 7), frame.image_id);
-    try std.testing.expectEqual(@as(u32, 3), frame.frame_number);
+    try std.testing.expectEqual(@as(u32, 2), frame.frame_number);
     try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+}
+
+test "kitty graphics client-driven current frame republishes selected raw frame" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;REVG\x1b\\");
+
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+
+    try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
+
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), image.current_frame_number);
+    try std.testing.expectEqualStrings("REVG", image.base64_payload);
+}
+
+test "kitty graphics selecting current frame twice stays publication-noop" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
+
+    const first = terminal.graphicsMeta();
+    try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
+    const second = terminal.graphicsMeta();
+
+    try std.testing.expectEqual(first.publication_seq, second.publication_seq);
+}
+
+test "kitty graphics client-driven current png frame republishes normalized rgba" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=100;{s}\x1b\\", .{png_rgba_11223344});
+    defer allocator.free(upload);
+    try stream.nextSlice(upload);
+    try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
+
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u16, 32), image.format);
+    try std.testing.expectEqual(@as(u32, 1), image.width);
+    try std.testing.expectEqual(@as(u32, 1), image.height);
+    try std.testing.expectEqualStrings("ESIzRA==", image.base64_payload);
+}
+
+test "kitty graphics selected raw frame over png root republishes normalized rgba" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    const root = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=d,f=100;{s}\x1b\\", .{png_rgba_11223344});
+    defer allocator.free(root);
+    try stream.nextSlice(root);
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,c=1,t=d,f=32;/wAAgA==\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
+
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u16, 32), image.format);
+    try std.testing.expectEqualStrings("zQcLog==", image.base64_payload);
+}
+
+test "kitty graphics runtime obligation starts due and arms first frame deadline" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
+
+    const due = terminal.runtimeObligation(100);
+    try std.testing.expect(due.pending_now);
+    try std.testing.expectEqual(@as(u64, 0), due.deadline_ns);
+
+    const first = try terminal.progressRuntime(100);
+    try std.testing.expect(!first.state_changed);
+    try std.testing.expect(!first.obligation.pending_now);
+    try std.testing.expectEqual(@as(u64, 100 + 7 * std.time.ns_per_ms), first.obligation.deadline_ns);
+}
+
+test "kitty graphics runtime progress advances timed animation frames autonomously" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
+
+    _ = try terminal.progressRuntime(100);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+
+    const second = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
+    try std.testing.expect(second.state_changed);
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
+    try std.testing.expectEqualStrings("REVG", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqual(@as(u64, 100 + 12 * std.time.ns_per_ms), second.obligation.deadline_ns);
+
+    const third = try terminal.progressRuntime(100 + 12 * std.time.ns_per_ms);
+    try std.testing.expect(third.state_changed);
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
 }
 
 test "kitty graphics image count cap is explicit" {
     const allocator = std.testing.allocator;
     var state: Graphics.State = .{};
     defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
     var output = std.ArrayList(u8).empty;
     defer output.deinit(allocator);
     var encode_buf: [128]u8 = undefined;
 
     var image_id: u32 = 1;
     while (image_id <= Graphics.image_max_count) : (image_id += 1) {
-        _ = try state.handle(allocator, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
             .action = 't',
             .image_id = image_id,
             .image_number = 0,
@@ -1099,7 +1530,7 @@ test "kitty graphics image count cap is explicit" {
     }
 
     try std.testing.expectEqual(Graphics.image_max_count, state.imageCount());
-    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
         .action = 't',
         .image_id = Graphics.image_max_count + 1,
         .image_number = 0,
@@ -1169,21 +1600,73 @@ test "kitty graphics upload byte cap propagates and aborts upload" {
     try std.testing.expectEqual(@as(u32, 9), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
 }
 
+test "kitty graphics parser-limit chunked upload failure leaves terminal deinit-safe" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    var first = std.ArrayList(u8).empty;
+    defer first.deinit(allocator);
+    try first.appendSlice(allocator, "\x1b_Gi=7,s=1,v=1365,t=d,f=24,m=1;");
+    try first.appendNTimes(allocator, 'A', 4095);
+    try first.appendSlice(allocator, "\x1b\\");
+
+    var continuation = std.ArrayList(u8).empty;
+    defer continuation.deinit(allocator);
+    try continuation.appendSlice(allocator, "\x1b_Gm=1;");
+    try continuation.appendNTimes(allocator, 'A', 4095);
+    try continuation.appendSlice(allocator, "\x1b\\");
+
+    try stream.nextSlice(first.items);
+    while (true) {
+        stream.nextSlice(continuation.items) catch |err| {
+            try std.testing.expectEqual(error.ConsequenceLimit, err);
+            break;
+        };
+    }
+
+    try std.testing.expect(terminal.kitty.main.graphics.upload != null);
+}
+
 test "kitty graphics frame count cap is explicit" {
     const allocator = std.testing.allocator;
     var state: Graphics.State = .{};
     defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
     var output = std.ArrayList(u8).empty;
     defer output.deinit(allocator);
     var encode_buf: [128]u8 = undefined;
 
-    var frame_number: u32 = 1;
-    while (frame_number <= Graphics.frame_max_count) : (frame_number += 1) {
-        _ = try state.handle(allocator, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+    _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 't',
+        .image_id = 7,
+        .image_number = 0,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = true,
+        .delete_target = 0,
+        .payload = "A",
+    });
+
+    var frame_number: u32 = 2;
+    while (frame_number <= Graphics.frame_max_count + 1) : (frame_number += 1) {
+        _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
             .action = 'f',
             .image_id = 7,
             .image_number = 0,
-            .placement_id = frame_number,
+            .placement_id = 0,
+            .edit_frame_number = frame_number,
             .format = 24,
             .width = 1,
             .height = 1,
@@ -1201,11 +1684,12 @@ test "kitty graphics frame count cap is explicit" {
     }
 
     try std.testing.expectEqual(Graphics.frame_max_count, state.frameCount());
-    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
         .action = 'f',
         .image_id = 7,
         .image_number = 0,
-        .placement_id = Graphics.frame_max_count + 1,
+        .placement_id = 0,
+        .edit_frame_number = Graphics.frame_max_count + 2,
         .format = 24,
         .width = 1,
         .height = 1,

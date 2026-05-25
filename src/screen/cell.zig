@@ -27,7 +27,7 @@ pub const CellAttrs = struct {
 pub const Cell = struct {
     codepoint: u32,
     combining_len: u8 = 0,
-    combining: [2]u32 = .{ 0, 0 },
+    combining: [3]u32 = .{ 0, 0, 0 },
     width: u8 = 1,
     height: u8 = 1,
     x: u8 = 0,

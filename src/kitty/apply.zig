@@ -8,18 +8,36 @@ const KittyNotificationCommand = vocabulary.KittyNotificationCommand;
 const KittyShellMark = vocabulary.KittyShellMark;
 const KittyAction = vocabulary.KittyAction;
 
-pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!void {
+pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!bool {
     var scratch: input.Scratch = .{};
     const allocator = vt.allocator;
     const active_screen = vt.kitty.activeScreen(vt.screen_state.alt_active);
     const active_screen_const = vt.kitty.activeScreenConst(vt.screen_state.alt_active);
     switch (action) {
-        .kitty_keyboard_set => |req| active_screen.keyboard.set(req.flags, req.mode),
-        .kitty_keyboard_query => try active_screen_const.keyboard.appendReport(allocator, &vt.host.pending_output, scratch.buf[0..]),
-        .kitty_keyboard_push => |flags| active_screen.keyboard.push(flags),
-        .kitty_keyboard_pop => |count| active_screen.keyboard.pop(count),
-        .kitty_shell_mark => |mark| try setShellMark(allocator, &vt.kitty.global.shell_mark, mark),
-        .kitty_notification => |notification| try appendNotification(allocator, &vt.kitty.global.notifications, notification),
+        .kitty_keyboard_set => |req| {
+            active_screen.keyboard.set(req.flags, req.mode);
+            return true;
+        },
+        .kitty_keyboard_query => {
+            try active_screen_const.keyboard.appendReport(allocator, &vt.host.pending_output, scratch.buf[0..]);
+            return true;
+        },
+        .kitty_keyboard_push => |flags| {
+            active_screen.keyboard.push(flags);
+            return true;
+        },
+        .kitty_keyboard_pop => |count| {
+            active_screen.keyboard.pop(count);
+            return true;
+        },
+        .kitty_shell_mark => |mark| {
+            try setShellMark(allocator, &vt.kitty.global.shell_mark, mark);
+            return true;
+        },
+        .kitty_notification => |notification| {
+            try appendNotification(allocator, &vt.kitty.global.notifications, notification);
+            return true;
+        },
         .kitty_pointer_shape => |cmd| {
             switch (cmd.action) {
                 '<' => active_screen.pointer.pop(),
@@ -27,30 +45,43 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!void {
                 '?' => try active_screen_const.pointer.appendQuery(allocator, &vt.host.pending_output, cmd.names),
                 else => active_screen.pointer.set(cmd.names),
             }
+            return true;
         },
         .kitty_color_stack => |cmd| {
             switch (cmd) {
                 .push => types.Color.pushState(&vt.kitty.global.color_stack, &vt.host.colors, &vt.kitty.global.color_stack_depth),
                 .pop => types.Color.popState(&vt.kitty.global.color_stack, &vt.host.colors, &vt.kitty.global.color_stack_depth),
             }
+            return true;
         },
-        .kitty_multiple_cursor => |cmd| switch (cmd) {
-            .support_query => try host_state.appendPendingOutput(vt, "\x1b[>1;2;3;29;30;40;100;101 q"),
-            .clear_all => active_screen.multiple_cursor_count = 0,
-            .cursor_query => try host_state.appendPendingOutput(vt, "\x1b[>100 q"),
-            .color_query => try host_state.appendPendingOutput(vt, "\x1b[>101;30:0;40:0 q"),
+        .kitty_multiple_cursor => |cmd| {
+            switch (cmd) {
+                .support_query => try host_state.appendPendingOutput(vt, "\x1b[>1;2;3;29;30;40;100;101 q"),
+                .clear_all => active_screen.multiple_cursor_count = 0,
+                .cursor_query => try host_state.appendPendingOutput(vt, "\x1b[>100 q"),
+                .color_query => try host_state.appendPendingOutput(vt, "\x1b[>101;30:0;40:0 q"),
+            }
+            return true;
         },
-        .kitty_file_transfer => |payload| try setOptionalPayload(allocator, &vt.kitty.global.file_transfer_request, payload),
-        .kitty_text_size => |payload| try setOptionalPayload(allocator, &vt.kitty.global.text_size_request, payload),
+        .kitty_file_transfer => |payload| {
+            try setOptionalPayload(allocator, &vt.kitty.global.file_transfer_request, payload);
+            return true;
+        },
+        .kitty_text_size => |payload| {
+            try setOptionalPayload(allocator, &vt.kitty.global.text_size_request, payload);
+            return true;
+        },
         .kitty_graphics => |cmd| {
             const cursor = vt.screen_state.activeConst();
-            if (try vt.kitty.activeGraphics(vt.screen_state.alt_active).handle(allocator, .{
+            const result = try vt.kitty.activeGraphics(vt.screen_state.alt_active).handle(allocator, cursor, .{
                 .row = cursor.cursor_row,
                 .col = cursor.cursor_col,
                 .screen_rows = cursor.rows,
-            }, cursor.cellPixelSize(), &vt.host.pending_output, scratch.buf[0..], cmd)) |move| {
+            }, cursor.cellPixelSize(), &vt.host.pending_output, scratch.buf[0..], cmd);
+            if (result.move) |move| {
                 applyPlacementCursorMove(vt.screen_state.active(), move.cols, move.rows);
             }
+            return result.changed;
         },
     }
 }

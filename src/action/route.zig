@@ -65,34 +65,34 @@ pub fn apply(vt: anytype, event: Event) host_state.ApplyError!EventEffect {
     }
 
     const semantic = process(event) orelse return .{ .changed = false, .title_changed = false };
-    try applySemantic(vt, semantic);
-    return .{ .changed = true, .title_changed = semantic == .title_set };
+    const changed = try applySemantic(vt, semantic);
+    return .{ .changed = changed, .title_changed = semantic == .title_set };
 }
 
-fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!void {
+fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!bool {
     if (event == .reset_screen) {
         vt.resetScreen();
-        return;
+        return true;
     }
     if (reportAction(event)) |report_action| {
         try report_apply.apply(vt, report_action);
-        return;
+        return true;
     }
     if (kittyAction(event)) |kitty_action| {
-        try kitty_apply.apply(vt, kitty_action);
-        return;
+        return try kitty_apply.apply(vt, kitty_action);
     }
     if (modeAction(event)) |mode_action| {
         mode_apply.apply(vt, mode_action);
-        return;
+        return true;
     }
     if (hostAction(event)) |host_action| {
         try host_apply.apply(vt, host_action);
-        return;
+        return true;
     }
     const screen_event = screenAction(event) orelse unreachable;
     applyGraphicsBeforeScreen(vt, screen_event);
     vt.screen_state.active().applyScreen(screen_event);
+    return true;
 }
 
 fn applyGraphicsBeforeScreen(vt: anytype, screen_event: ScreenAction) void {
@@ -137,7 +137,7 @@ fn applyGraphicsBeforeScreen(vt: anytype, screen_event: ScreenAction) void {
             applyGraphicsScrollDownMargins(vt, count);
         },
         .erase_display => |mode| {
-            if (mode == 2 or mode == 3) vt.kitty.activeGraphics(vt.screen_state.alt_active).clearVisiblePlacements();
+            if (mode == 2 or mode == 3) vt.kitty.activeGraphics(vt.screen_state.alt_active).clearVisiblePlacements(vt.screen_state.activeConst());
         },
         else => {},
     }
@@ -151,14 +151,14 @@ fn applyGraphicsScrollUp(vt: anytype, count: u16) void {
         const next = @min(active.historyCount() + count, active.historyCapacity());
         break :blk next;
     };
-    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollUpFullPage(active.rows, projected_history_count, count, !vt.screen_state.alt_active);
+    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollUpFullPage(active, projected_history_count, count, !vt.screen_state.alt_active);
 }
 
 fn applyGraphicsScrollDown(vt: anytype, count: u16) void {
     const active = vt.screen_state.activeConst();
     const amount = @min(count, active.rows);
     if (amount == 0) return;
-    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollDownFullPage(active.rows, amount);
+    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollDownFullPage(active, amount);
 }
 
 fn applyGraphicsScrollUpMargins(vt: anytype, count: u16) void {
@@ -166,7 +166,7 @@ fn applyGraphicsScrollUpMargins(vt: anytype, count: u16) void {
     const cell = active.cellPixelSize() orelse return;
     const amount = @min(count, active.scrollBottom() - active.scroll_top + 1);
     if (amount == 0) return;
-    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollUpRegion(active.scroll_top, active.scrollBottom(), amount, cell);
+    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollUpRegion(active, active.scroll_top, active.scrollBottom(), amount, cell);
 }
 
 fn applyGraphicsScrollDownMargins(vt: anytype, count: u16) void {
@@ -174,7 +174,7 @@ fn applyGraphicsScrollDownMargins(vt: anytype, count: u16) void {
     const cell = active.cellPixelSize() orelse return;
     const amount = @min(count, active.scrollBottom() - active.scroll_top + 1);
     if (amount == 0) return;
-    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollDownRegion(active.scroll_top, active.scrollBottom(), amount, cell);
+    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollDownRegion(active, active.scroll_top, active.scrollBottom(), amount, cell);
 }
 
 pub fn screenAction(event: SemanticEvent) ?ScreenAction {
