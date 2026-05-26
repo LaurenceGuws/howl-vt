@@ -29,6 +29,7 @@ pub const KittyGraphicsCommand = struct {
     parent_offset_rows: i32 = 0,
     cell_x_offset: u32 = 0,
     cell_y_offset: u32 = 0,
+    no_move_cursor: bool = false,
     compose_mode: u32 = 0,
     background_rgba: u32 = 0,
     animation_state: u32 = 0,

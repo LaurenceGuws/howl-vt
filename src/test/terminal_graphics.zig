@@ -66,7 +66,7 @@ fn expectBelowScreenRowAnchor(actual: Graphics.RowAnchor, expected: u32) !void {
     }
 }
 
-test "kitty graphics query returns conservative unsupported reply" {
+test "kitty graphics query returns OK without storing image" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
@@ -75,7 +75,8 @@ test "kitty graphics query returns conservative unsupported reply" {
 
     try stream.nextSlice("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\");
 
-    try std.testing.expectEqualStrings("\x1b_Gi=31;EINVAL:kitty graphics rendering unsupported\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqualStrings("\x1b_Gi=31;OK\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 
 test "kitty graphics direct upload stores single base64 payload" {
@@ -577,6 +578,33 @@ test "kitty graphics transmit and display chunk completion uses first placement 
     try std.testing.expectEqual(@as(u32, 2), placement.rows);
     try std.testing.expectEqual(@as(u16, 5), terminal.screen_state.activeConst().cursor_row);
     try std.testing.expectEqual(@as(u16, 12), terminal.screen_state.activeConst().cursor_col);
+}
+
+test "kitty graphics transmit and display chunk completion keeps first unicode placement metadata" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 6, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,X=3,Y=5,m=1;Q\x1b\\");
+    try stream.nextSlice("\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=7,r=3,m=0;U\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=1,I=13,p=5;OK\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
+    const placement = terminal.kitty.main.graphics.virtualPlacementAt(0).?;
+    try std.testing.expectEqual(@as(u32, 1), placement.image_id);
+    try std.testing.expectEqual(@as(u32, 5), placement.placement_id);
+    try std.testing.expectEqual(@as(u32, 2), placement.source_x);
+    try std.testing.expectEqual(@as(u32, 4), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 6), placement.source_width);
+    try std.testing.expectEqual(@as(u32, 8), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 1), placement.columns);
+    try std.testing.expectEqual(@as(u32, 1), placement.rows);
+    try std.testing.expectEqual(@as(u16, 4), terminal.screen_state.activeConst().cursor_row);
+    try std.testing.expectEqual(@as(u16, 8), terminal.screen_state.activeConst().cursor_col);
 }
 
 test "kitty graphics upload with same image id replaces image and placements" {
@@ -1728,6 +1756,22 @@ test "kitty graphics a=T cursor move leaves the placed image rows" {
     const active = terminal.screen_state.activeConst();
     try std.testing.expectEqual(@as(u16, 8), active.cursor_col);
     try std.testing.expectEqual(@as(u16, 4), active.cursor_row);
+}
+
+test "kitty graphics placement accepts C=1 and leaves cursor untouched" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 12, 80);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,C=1\x1b\\");
+
+    const active = terminal.screen_state.activeConst();
+    try std.testing.expectEqual(@as(u16, 0), active.cursor_col);
+    try std.testing.expectEqual(@as(u16, 0), active.cursor_row);
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
 }
 
 test "kitty graphics frame count cap is explicit" {

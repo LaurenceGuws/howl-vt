@@ -321,6 +321,7 @@ pub const Upload = struct {
     source_height: u32,
     cell_x_offset: u32,
     cell_y_offset: u32,
+    no_move_cursor: bool,
     columns: u32,
     rows: u32,
     z_index: i32,
@@ -728,7 +729,7 @@ pub const State = struct {
             return .{ .changed = false, .move = null };
         }
         if (cmd.action == 'q') {
-            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:kitty graphics rendering unsupported");
+            try self.queryImageSupport(allocator, cmd, output, encode_buf);
             return .{ .changed = false, .move = null };
         }
         if (cmd.action == 'a') {
@@ -789,6 +790,61 @@ pub const State = struct {
         return .{ .changed = changed, .move = null };
     }
 
+    fn queryImageSupport(self: *State, allocator: std.mem.Allocator, cmd: KittyGraphicsCommand, output: *std.ArrayList(u8), encode_buf: []u8) host_state.ApplyError!void {
+        _ = self;
+        switch (cmd.medium) {
+            'd' => {
+                const normalized = normalizeDirectPayloadOwned(allocator, cmd.compression, cmd.format, cmd.width, cmd.height, cmd.payload) catch |err| {
+                    switch (err) {
+                        error.InvalidGraphicsCompression => {
+                            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
+                            return;
+                        },
+                        error.InvalidGraphicsData => {
+                            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
+                            return;
+                        },
+                        error.OutOfMemory => return error.OutOfMemory,
+                        error.ConsequenceLimit => return error.ConsequenceLimit,
+                    }
+                };
+                defer allocator.free(normalized);
+            },
+            'f', 't', 's' => {
+                const normalized = loadIndirectPayloadNormalized(allocator, cmd) catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    error.ConsequenceLimit => return error.ConsequenceLimit,
+                    error.InvalidGraphicsLocator => {
+                        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:invalid kitty graphics locator");
+                        return;
+                    },
+                    error.InvalidGraphicsMedium => {
+                        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
+                        return;
+                    },
+                    error.InvalidGraphicsCompression => {
+                        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
+                        return;
+                    },
+                    error.InvalidGraphicsData => {
+                        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
+                        return;
+                    },
+                    error.GraphicsIo => {
+                        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADF:failed to read kitty graphics medium");
+                        return;
+                    },
+                };
+                defer allocator.free(normalized);
+            },
+            else => {
+                if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
+                return;
+            },
+        }
+        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "OK");
+    }
+
     fn placeImage(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
         const image_id = self.resolveImageId(cmd) orelse {
             if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, cmd.placement_id, "ENOENT:image not found");
@@ -836,7 +892,7 @@ pub const State = struct {
             .rows = cmd.rows,
             .effective_columns = extent.columns,
             .effective_rows = extent.rows,
-        }, screen, cmd.image_number, cmd.quiet);
+        }, screen, cmd.image_number, cmd.quiet, cmd.no_move_cursor);
     }
 
     fn delete(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cmd: KittyGraphicsCommand) void {
@@ -929,6 +985,7 @@ pub const State = struct {
                 .source_height = cmd.source_height,
                 .cell_x_offset = cmd.cell_x_offset,
                 .cell_y_offset = cmd.cell_y_offset,
+                .no_move_cursor = cmd.no_move_cursor,
                 .columns = cmd.columns,
                 .rows = cmd.rows,
                 .z_index = cmd.z,
@@ -969,6 +1026,7 @@ pub const State = struct {
             const source_height = upload.source_height;
             const cell_x_offset = upload.cell_x_offset;
             const cell_y_offset = upload.cell_y_offset;
+            const no_move_cursor = upload.no_move_cursor;
             const columns = upload.columns;
             const rows = upload.rows;
             const z_index = upload.z_index;
@@ -1011,6 +1069,7 @@ pub const State = struct {
                         .source_height = source_height,
                         .cell_x_offset = cell_x_offset,
                         .cell_y_offset = cell_y_offset,
+                        .no_move_cursor = no_move_cursor,
                         .columns = columns,
                         .rows = rows,
                     }, quiet or anonymous);
@@ -1107,6 +1166,7 @@ pub const State = struct {
                     .source_height = cmd.source_height,
                     .cell_x_offset = cmd.cell_x_offset,
                     .cell_y_offset = cmd.cell_y_offset,
+                    .no_move_cursor = cmd.no_move_cursor,
                     .columns = cmd.columns,
                     .rows = cmd.rows,
                 }, cmd.quiet or anonymous);
@@ -1134,6 +1194,7 @@ pub const State = struct {
         source_height: u32,
         cell_x_offset: u32,
         cell_y_offset: u32,
+        no_move_cursor: bool = false,
         columns: u32,
         rows: u32,
     };
@@ -1186,7 +1247,7 @@ pub const State = struct {
             .rows = request.rows,
             .effective_columns = extent.columns,
             .effective_rows = extent.rows,
-        }, screen, request.image_number, quiet);
+        }, screen, request.image_number, quiet, request.no_move_cursor);
     }
 
     pub fn rescaleImplicitPlacements(self: *State, cell: CellPixelSize) void {
@@ -1719,7 +1780,7 @@ pub const State = struct {
         return resolved_parent;
     }
 
-    fn upsertPlacement(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: Placement, screen: *const screen_mod.Screen, image_number: u32, quiet: bool) host_state.ApplyError!?CursorMove {
+    fn upsertPlacement(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: Placement, screen: *const screen_mod.Screen, image_number: u32, quiet: bool, no_move_cursor: bool) host_state.ApplyError!?CursorMove {
         if (placement.hasParent()) {
             const ok = try self.validatePlacementAncestry(allocator, output, encode_buf, placement, image_number, quiet);
             if (!ok) return null;
@@ -1729,7 +1790,7 @@ pub const State = struct {
                 self.placements.items[@intCast(idx)] = placement;
                 validatePlacement(self.placements.items[@intCast(idx)]);
                 if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
-                if (placement.hasParent()) {
+                if (placement.hasParent() or no_move_cursor) {
                     _ = self.resolvePlacementAnchor(placement, screen) orelse return null;
                     return null;
                 }
@@ -1740,7 +1801,7 @@ pub const State = struct {
         try self.placements.append(allocator, placement);
         validatePlacement(self.placements.items[self.placements.items.len - 1]);
         if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
-        if (placement.hasParent()) {
+        if (placement.hasParent() or no_move_cursor) {
             _ = self.resolvePlacementAnchor(placement, screen) orelse return null;
             return null;
         }

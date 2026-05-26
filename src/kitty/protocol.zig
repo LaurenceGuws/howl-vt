@@ -100,6 +100,7 @@ pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
                 cmd.cell_y_offset = parsed;
                 cmd.background_rgba = parsed;
             },
+            'C' => cmd.no_move_cursor = parseU32(value) != 0,
             'z' => cmd.z = parseI32(value),
             'o' => {
                 if (value.len > 0) cmd.compression = value[0];
