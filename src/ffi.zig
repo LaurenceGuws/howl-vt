@@ -1226,6 +1226,45 @@ test "vt ffi graphics queries expose virtual placement prototypes separately" {
     try std.testing.expectEqual(@as(u32, 12), placement.placement.rows);
 }
 
+test "vt ffi graphics queries expose chunked unicode no-move virtual contract" {
+    const handle = terminalInit(6, 16, 6);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const first = "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;Q\x1b\\";
+    const second = "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;UJD\x1b\\";
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, first.ptr, first.len).status);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, second.ptr, second.len).status);
+
+    const meta = terminalQueryGraphicsMeta(handle);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
+    try std.testing.expectEqual(@as(u32, 1), meta.meta.image_count);
+    try std.testing.expectEqual(@as(u32, 0), meta.meta.placement_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.meta.virtual_placement_count);
+
+    const image = terminalQueryGraphicsImage(handle, meta.meta.publication_seq, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), image.status);
+    try std.testing.expectEqual(@as(u32, 1), image.image.image_id);
+    try std.testing.expectEqual(@as(u32, 13), image.image.image_number);
+    try std.testing.expectEqual(@as(u64, 4), image.image.payload_len);
+
+    var payload: [8]u8 = undefined;
+    const copied = terminalCopyGraphicsPayload(handle, meta.meta.publication_seq, 0, payload[0..].ptr, payload.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), copied.status);
+    try std.testing.expectEqualStrings("QUJD", payload[0..@intCast(copied.written)]);
+
+    const placement = terminalQueryGraphicsVirtualPlacement(handle, meta.meta.publication_seq, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), placement.status);
+    try std.testing.expectEqual(@as(u32, 1), placement.placement.image_id);
+    try std.testing.expectEqual(@as(u32, 5), placement.placement.placement_id);
+    try std.testing.expectEqual(@as(u32, 2), placement.placement.source_x);
+    try std.testing.expectEqual(@as(u32, 4), placement.placement.source_y);
+    try std.testing.expectEqual(@as(u32, 6), placement.placement.source_width);
+    try std.testing.expectEqual(@as(u32, 8), placement.placement.source_height);
+    try std.testing.expectEqual(@as(u32, 7), placement.placement.columns);
+    try std.testing.expectEqual(@as(u32, 3), placement.placement.rows);
+}
+
 test "vt ffi graphics publication token rejects stale queries" {
     const handle = terminalInit(3, 16, 4);
     defer terminalDeinit(handle);

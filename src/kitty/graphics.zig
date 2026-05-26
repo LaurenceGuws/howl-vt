@@ -2430,6 +2430,7 @@ fn scanPlaceholderParentRow(
     best_row_pos: *i32,
     best_col: *?u16,
 ) void {
+    const row_pos = rowAnchorPosition(row);
     var col: u16 = 0;
     while (col < screen.cols) : (col += 1) {
         const cell = switch (source) {
@@ -2441,13 +2442,72 @@ fn scanPlaceholderParentRow(
         if (placeholderImageId(cell) != image_id) continue;
         if (placeholderColorId(cell.attrs.underline_color) != placement_id) continue;
 
-        const row_pos = rowAnchorPosition(row);
         if (best_row.* == null or row_pos < best_row_pos.*) {
             best_row.* = row;
             best_row_pos.* = row_pos;
+            best_col.* = col;
+            continue;
         }
-        if (best_col.* == null or col < best_col.*.?) best_col.* = col;
+        if (row_pos == best_row_pos.* and (best_col.* == null or col < best_col.*.?)) {
+            best_col.* = col;
+        }
     }
+}
+
+test "kitty graphics ancestry validation rejects missing ancestor explicitly" {
+    const allocator = std.testing.allocator;
+    var state: State = .{};
+    defer state.deinit(allocator);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    try state.placements.append(allocator, .{
+        .image_id = 8,
+        .placement_id = 2,
+        .z_index = 0,
+        .anchor_row = RowAnchor.initOnScreen(0),
+        .anchor_col = 0,
+        .parent_image_id = 9,
+        .parent_placement_id = 3,
+        .parent_offset_cols = 0,
+        .parent_offset_rows = 0,
+        .source_x = 0,
+        .source_y = 0,
+        .source_width = 1,
+        .source_height = 1,
+        .cell_x_offset = 0,
+        .cell_y_offset = 0,
+        .columns = 1,
+        .rows = 1,
+        .effective_columns = 1,
+        .effective_rows = 1,
+    });
+
+    const ok = try state.validatePlacementAncestry(allocator, &output, encode_buf[0..], .{
+        .image_id = 7,
+        .placement_id = 1,
+        .z_index = 0,
+        .anchor_row = RowAnchor.initOnScreen(0),
+        .anchor_col = 0,
+        .parent_image_id = 8,
+        .parent_placement_id = 2,
+        .parent_offset_cols = 0,
+        .parent_offset_rows = 0,
+        .source_x = 0,
+        .source_y = 0,
+        .source_width = 1,
+        .source_height = 1,
+        .cell_x_offset = 0,
+        .cell_y_offset = 0,
+        .columns = 1,
+        .rows = 1,
+        .effective_columns = 1,
+        .effective_rows = 1,
+    }, 0, false);
+
+    try std.testing.expect(!ok);
+    try std.testing.expectEqualStrings("\x1b_Gi=7,p=1;ENOPARENT:ancestor placement not found\x1b\\", output.items);
 }
 
 fn placeholderImageId(cell: screen_mod.Screen.Cell) u32 {

@@ -66,6 +66,36 @@ fn expectBelowScreenRowAnchor(actual: Graphics.RowAnchor, expected: u32) !void {
     }
 }
 
+fn setPlaceholderCell(
+    terminal: *Terminal,
+    row: u16,
+    col: u16,
+    image_color: Screen.Color,
+    placement_id: u8,
+    high_byte: ?u32,
+) void {
+    var cell = Screen.default_cell;
+    cell.codepoint = 0x10EEEE;
+    cell.attrs = .{
+        .fg = image_color,
+        .bg = Screen.default_bg,
+        .bold = false,
+        .blink = false,
+        .blink_fast = false,
+        .reverse = false,
+        .underline = true,
+        .underline_style = .straight,
+        .underline_color = Screen.Color.indexed(placement_id),
+        .protected = false,
+        .link_id = 0,
+    };
+    if (high_byte) |value| {
+        cell.combining_len = 3;
+        cell.combining[2] = value;
+    }
+    terminal.screen_state.active().cells.?[@as(usize, row) * terminal.screen_state.activeConst().cols + col] = cell;
+}
+
 test "kitty graphics query returns OK without storing image" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -603,6 +633,40 @@ test "kitty graphics transmit and display chunk completion keeps first unicode p
     try std.testing.expectEqual(@as(u32, 8), placement.source_height);
     try std.testing.expectEqual(@as(u32, 1), placement.columns);
     try std.testing.expectEqual(@as(u32, 1), placement.rows);
+    try std.testing.expectEqual(@as(u16, 4), terminal.screen_state.activeConst().cursor_row);
+    try std.testing.expectEqual(@as(u16, 8), terminal.screen_state.activeConst().cursor_col);
+}
+
+test "kitty graphics chunked yazi-like unicode no-move contract publishes one coherent virtual placement" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 6, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;Q\x1b\\");
+    try stream.nextSlice("\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;UJD\x1b\\");
+
+    const meta = terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), meta.image_count);
+    try std.testing.expectEqual(@as(u32, 0), meta.placement_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.virtual_placement_count);
+    try std.testing.expect(meta.publication_seq != 0);
+
+    const image = (try terminal.graphicsImage(meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(@as(u32, 1), image.image_id);
+    try std.testing.expectEqual(@as(u32, 13), image.image_number);
+    try std.testing.expectEqualStrings("QUJD", image.base64_payload);
+
+    const placement = (try terminal.graphicsVirtualPlacement(meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(@as(u32, 1), placement.image_id);
+    try std.testing.expectEqual(@as(u32, 5), placement.placement_id);
+    try std.testing.expectEqual(@as(u32, 2), placement.source_x);
+    try std.testing.expectEqual(@as(u32, 4), placement.source_y);
+    try std.testing.expectEqual(@as(u32, 6), placement.source_width);
+    try std.testing.expectEqual(@as(u32, 8), placement.source_height);
+    try std.testing.expectEqual(@as(u32, 7), placement.columns);
+    try std.testing.expectEqual(@as(u32, 3), placement.rows);
     try std.testing.expectEqual(@as(u16, 4), terminal.screen_state.activeConst().cursor_row);
     try std.testing.expectEqual(@as(u16, 8), terminal.screen_state.activeConst().cursor_col);
 }
@@ -1253,6 +1317,108 @@ test "kitty graphics relative placement resolves virtual parent from live placeh
     try std.testing.expectEqual(@as(u16, 5), placement.anchor_col);
 }
 
+test "kitty graphics relative placement rejects missing parent image explicitly" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=3,P=7,Q=9,H=2,V=1,c=1,r=1\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=8,p=3;ENOPARENT:parent image not found\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+}
+
+test "kitty graphics relative placement rejects missing parent placement explicitly" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=3,P=7,Q=9,H=2,V=1,c=1,r=1\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=8,p=3;ENOPARENT:parent placement not found\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+}
+
+test "kitty graphics relative placement rejects self-parent explicitly" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=1,P=7,Q=1\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7,p=1;OK\x1b\\\x1b_Gi=7,p=1;EINVAL:placement cannot parent itself\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
+}
+
+test "kitty graphics virtual placement rejects parent reference explicitly" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,P=7,Q=1,c=1,r=1\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7,p=9;EINVAL:virtual placement cannot refer to a parent\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.virtualPlacementCount());
+}
+
+test "kitty graphics virtual parent anchor keeps row and column from the same matched cell" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 8, 16, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=3,P=7,Q=9,c=1,r=1\x1b\\");
+
+    setPlaceholderCell(&terminal, 1, 9, Screen.Color.indexed(7), 9, null);
+    setPlaceholderCell(&terminal, 3, 1, Screen.Color.indexed(7), 9, null);
+    terminal.postApply(true);
+
+    const meta = terminal.graphicsMeta();
+    const placement = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 1);
+    try std.testing.expectEqual(@as(u16, 9), placement.anchor_col);
+}
+
+test "kitty graphics virtual parent anchor matches image id high byte" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 8, 16, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=16777223,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=16777223,p=9,U=1,c=1,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=3,P=16777223,Q=9,c=1,r=1\x1b\\");
+
+    setPlaceholderCell(&terminal, 2, 6, Screen.Color.rgbComponents(0, 0, 7), 9, 0x030D);
+    terminal.postApply(true);
+
+    const meta = terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), meta.placement_count);
+    const placement = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    try expectOnScreenRowAnchor(placement.anchor_row, 2);
+    try std.testing.expectEqual(@as(u16, 6), placement.anchor_col);
+}
+
 test "kitty graphics deleting virtual parent removes descendant placements" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 8, 16);
@@ -1400,6 +1566,29 @@ test "kitty graphics deletion selectors remove matching placements" {
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsPlacementAt(&terminal, 0).?.placement_id);
+}
+
+test "kitty graphics delete selectors remove resolved virtual children without deleting prototypes" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 8, 16, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=3,P=7,Q=9,c=1,r=1\x1b\\");
+    setPlaceholderCell(&terminal, 2, 5, Screen.Color.indexed(7), 9, null);
+    terminal.postApply(true);
+
+    try std.testing.expectEqual(@as(u32, 1), terminal.graphicsMeta().placement_count);
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
+
+    try stream.nextSlice("\x1b_Ga=d,d=p,x=6,y=3\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 0), terminal.graphicsMeta().placement_count);
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
 }
 
 test "kitty graphics animation frame upload stores frame metadata" {
