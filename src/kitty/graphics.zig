@@ -41,14 +41,16 @@ pub const CursorMove = struct {
 pub const Count = u32;
 pub const Index = u32;
 
-// Keep kitty graphics retained state inside the same bounded 1 MiB burst
-// scale as parser-owned large controls, and cap item counts at the metadata
-// ceiling so tiny records cannot grow without bound.
+// Ghostty accepts substantially larger Kitty APC payloads than the generic
+// large-control ceiling because real direct-upload image traffic can exceed a
+// 1 MiB burst. Keep Howl explicit and bounded, but give Kitty-owned retained
+// payload state the same 65 MiB remote-upload scale while item counts stay
+// capped at the metadata ceiling.
 pub const image_max_count: Count = parser.max_metadata_control_bytes;
 pub const placement_max_count: Count = parser.max_metadata_control_bytes;
 pub const frame_max_count: Count = parser.max_metadata_control_bytes;
-pub const retained_payload_max_bytes: u32 = parser.max_large_osc_control_bytes;
-pub const upload_max_bytes: u32 = parser.max_large_osc_control_bytes;
+pub const retained_payload_max_bytes: u32 = 65 * 1024 * 1024;
+pub const upload_max_bytes: u32 = retained_payload_max_bytes;
 pub const parent_depth_limit: u32 = 8;
 const kitty_placeholder_codepoint: u21 = 0x10EEEE;
 const kitty_placeholder_diacritics = [_]u21{
@@ -192,12 +194,24 @@ pub const Placement = struct {
     };
 
     pub fn resolveDestGeometry(self: Placement, cell_pixel_size: ?CellPixelSize) ?ResolvedDestGeometry {
-        const cell = cell_pixel_size orelse return null;
+        const left_px = self.cell_x_offset;
+        const top_px = self.cell_y_offset;
+
+        if (cell_pixel_size == null) {
+            const right_px = std.math.add(u32, left_px, self.effective_columns) catch return null;
+            const bottom_px = std.math.add(u32, top_px, self.effective_rows) catch return null;
+            return .{
+                .left_px = left_px,
+                .top_px = top_px,
+                .right_px = right_px,
+                .bottom_px = bottom_px,
+            };
+        }
+
+        const cell = cell_pixel_size.?;
         std.debug.assert(cell.width > 0);
         std.debug.assert(cell.height > 0);
 
-        const left_px = self.cell_x_offset;
-        const top_px = self.cell_y_offset;
         const width_px = resolvedWidthPx(self, cell);
         const height_px = resolvedHeightPx(self, cell, width_px);
         const right_px = std.math.add(u32, left_px, width_px) catch return null;
@@ -1200,7 +1214,8 @@ pub const State = struct {
             try ensureCountBound(self.images.items.len, image_max_count);
         }
         try ensureRetainedPayloadStore(self, count32(owned), retainedPayloadBytesFreedByImage(self, image_id));
-        const image = Image{ .image_id = image_id, .image_number = image_number, .format = format, .width = width, .height = height, .base64_payload = owned };
+        const image_size = try intrinsicImageSize(format, width, height, owned);
+        const image = Image{ .image_id = image_id, .image_number = image_number, .format = format, .width = image_size.width, .height = image_size.height, .base64_payload = owned };
         if (image_id != 0) self.deleteImage(allocator, image_id);
         try self.images.append(allocator, image);
     }
@@ -1214,6 +1229,7 @@ pub const State = struct {
         const target_frame_number = if (frame_number == 0) self.nextFrameNumber(image_id) else frame_number;
         const uses_root_base = base_frame_number == 1;
         const base_frame_id = if (base_frame_number <= 1) 0 else self.frameIdForNumber(image_id, base_frame_number) orelse return;
+        const frame_size = try intrinsicImageSize(format, width, height, owned);
         if (!currentFramePublicationFormatSupported(image.format)) return;
         if (!currentFramePublicationFormatSupported(format)) return;
         const png_backed = image.format == 100 or format == 100 or self.frameChainIncludesPng(image.*, base_frame_id);
@@ -1224,8 +1240,8 @@ pub const State = struct {
             allocator.free(image.base64_payload);
             image.base64_payload = owned;
             ownership_transferred = true;
-            image.width = width;
-            image.height = height;
+            image.width = frame_size.width;
+            image.height = frame_size.height;
             image.format = format;
             if (image.current_frame_number != 1) try self.refreshCurrentFramePublication(allocator, @intCast(image_idx));
             return;
@@ -1240,8 +1256,8 @@ pub const State = struct {
             const frame = &self.frames.items[@intCast(existing_idx)];
             allocator.free(frame.base64_payload);
             frame.format = format;
-            frame.width = width;
-            frame.height = height;
+            frame.width = frame_size.width;
+            frame.height = frame_size.height;
             frame.x = x;
             frame.y = y;
             frame.uses_root_base = uses_root_base;
@@ -1257,8 +1273,8 @@ pub const State = struct {
                 .image_id = image_id,
                 .frame_number = target_frame_number,
                 .format = format,
-                .width = width,
-                .height = height,
+                .width = frame_size.width,
+                .height = frame_size.height,
                 .x = x,
                 .y = y,
                 .uses_root_base = uses_root_base,
@@ -2004,17 +2020,12 @@ fn decodeBase64PngRgbaOwned(allocator: std.mem.Allocator, width: u32, height: u3
     defer allocator.free(png_bytes);
     std.base64.standard.Decoder.decode(png_bytes, payload) catch unreachable;
 
-    var decoded_width: c_int = 0;
-    var decoded_height: c_int = 0;
-    var comp: c_int = 0;
-    const ptr = c.stbi_load_from_memory(png_bytes.ptr, @intCast(png_bytes.len), &decoded_width, &decoded_height, &comp, 4) orelse unreachable;
+    var image_size = decodePngSize(png_bytes);
+    const ptr = c.stbi_load_from_memory(png_bytes.ptr, @intCast(png_bytes.len), &image_size.width, &image_size.height, &image_size.comp, 4) orelse unreachable;
     defer c.stbi_image_free(ptr);
 
-    std.debug.assert(decoded_width > 0);
-    std.debug.assert(decoded_height > 0);
-
-    const decoded_width_u32: u32 = @intCast(decoded_width);
-    const decoded_height_u32: u32 = @intCast(decoded_height);
+    const decoded_width_u32: u32 = @intCast(image_size.width);
+    const decoded_height_u32: u32 = @intCast(image_size.height);
     std.debug.assert(decoded_width_u32 == width);
     std.debug.assert(decoded_height_u32 == height);
 
@@ -2023,6 +2034,38 @@ fn decodeBase64PngRgbaOwned(allocator: std.mem.Allocator, width: u32, height: u3
     const raw_len_usize = std.math.cast(usize, raw_len) orelse return error.ConsequenceLimit;
     const pixels = @as([*]const u8, @ptrCast(ptr))[0..raw_len_usize];
     return try allocator.dupe(u8, pixels);
+}
+
+const PngImageSize = struct {
+    width: c_int,
+    height: c_int,
+    comp: c_int,
+};
+
+fn intrinsicImageSize(format: u16, width: u32, height: u32, payload: []const u8) host_state.ApplyError!struct { width: u32, height: u32 } {
+    if (format != 100) return .{ .width = width, .height = height };
+    const image_size = try decodeBase64PngSize(payload);
+    return .{ .width = image_size.width, .height = image_size.height };
+}
+
+fn decodeBase64PngSize(payload: []const u8) host_state.ApplyError!struct { width: u32, height: u32 } {
+    const png_len = std.base64.standard.Decoder.calcSizeForSlice(payload) catch unreachable;
+    const png_bytes = try std.heap.c_allocator.alloc(u8, png_len);
+    defer std.heap.c_allocator.free(png_bytes);
+    std.base64.standard.Decoder.decode(png_bytes, payload) catch unreachable;
+    const image_size = decodePngSize(png_bytes);
+    return .{ .width = @intCast(image_size.width), .height = @intCast(image_size.height) };
+}
+
+fn decodePngSize(png_bytes: []const u8) PngImageSize {
+    var width: c_int = 0;
+    var height: c_int = 0;
+    var comp: c_int = 0;
+    const ok = c.stbi_info_from_memory(png_bytes.ptr, @intCast(png_bytes.len), &width, &height, &comp);
+    std.debug.assert(ok != 0);
+    std.debug.assert(width > 0);
+    std.debug.assert(height > 0);
+    return .{ .width = width, .height = height, .comp = comp };
 }
 
 fn allocateBackgroundRaw(allocator: std.mem.Allocator, format: u16, width: u32, height: u32, rgba: u32) host_state.ApplyError![]u8 {

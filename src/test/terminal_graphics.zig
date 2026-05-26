@@ -31,6 +31,7 @@ fn base64Owned(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
 const zlib_rgb_abc = [_]u8{ 0x78, 0x9c, 0x73, 0x74, 0x72, 0x06, 0x00, 0x01, 0x8d, 0x00, 0xc7 };
 const zlib_rgba_abcd = [_]u8{ 0x78, 0x9c, 0x73, 0x74, 0x72, 0x76, 0x01, 0x00, 0x02, 0x98, 0x01, 0x0b };
 const png_rgba_11223344 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMQVDJ2AQABWQCrEyolqwAAAABJRU5ErkJggg==";
+const howl_app_icon_rel_path = "../howl-linux-host/assets/icon/howl_window_icon.png";
 
 fn writeSharedMemory(name: [:0]const u8, bytes: []const u8) !void {
     const fd = c.shm_open(name, c.O_CREAT | c.O_RDWR, 0o600);
@@ -112,7 +113,7 @@ test "kitty graphics transmit and display stores image placement and moves curso
     try std.testing.expectEqual(@as(u32, 4), placement.placement_id);
     try expectOnScreenRowAnchor(placement.anchor_row, 1);
     try std.testing.expectEqual(@as(u16, 2), placement.anchor_col);
-    try std.testing.expectEqual(@as(u16, 2), terminal.screen_state.activeConst().cursor_row);
+    try std.testing.expectEqual(@as(u16, 3), terminal.screen_state.activeConst().cursor_row);
     try std.testing.expectEqual(@as(u16, 6), terminal.screen_state.activeConst().cursor_col);
 }
 
@@ -635,7 +636,7 @@ test "kitty graphics place moves cursor by effective placement rectangle" {
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
     try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=3,c=4,r=2\x1b\\");
 
-    try std.testing.expectEqual(@as(u16, 2), terminal.screen_state.activeConst().cursor_row);
+    try std.testing.expectEqual(@as(u16, 3), terminal.screen_state.activeConst().cursor_row);
     try std.testing.expectEqual(@as(u16, 6), terminal.screen_state.activeConst().cursor_col);
 }
 
@@ -654,7 +655,7 @@ test "kitty graphics next physical placement anchors at moved cursor" {
     const second = KittyState.graphicsPlacementAt(&terminal, 1).?;
     try expectOnScreenRowAnchor(first.anchor_row, 1);
     try std.testing.expectEqual(@as(u16, 2), first.anchor_col);
-    try expectOnScreenRowAnchor(second.anchor_row, 2);
+    try expectOnScreenRowAnchor(second.anchor_row, 3);
     try std.testing.expectEqual(@as(u16, 6), second.anchor_col);
 }
 
@@ -1067,17 +1068,30 @@ test "kitty graphics implicit extent rescales when cell size becomes known later
     try std.testing.expectEqual(@as(u32, 1), placement.effective_columns);
     try std.testing.expectEqual(@as(u32, 1), placement.effective_rows);
 
+    const fallback_meta = terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), fallback_meta.placement_count);
+
     terminal.setCellPixelSize(10, 20);
+
+    const refreshed_meta = terminal.graphicsMeta();
+    try std.testing.expect(refreshed_meta.publication_seq != fallback_meta.publication_seq);
+    try std.testing.expect(refreshed_meta.dirty_generation != fallback_meta.dirty_generation);
+    try std.testing.expectError(error.InvalidArgument, terminal.graphicsPlacement(fallback_meta.publication_seq, 0));
 
     placement = terminal.kitty.main.graphics.placementAt(0).?;
     try std.testing.expectEqual(@as(u32, 5), placement.effective_columns);
     try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
-    const geometry = placement.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()).?;
+
+    const published = (try terminal.graphicsPlacement(refreshed_meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(@as(u32, 5), published.effective_columns);
+    try std.testing.expectEqual(@as(u32, 2), published.effective_rows);
+
+    const geometry = published.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()).?;
     try std.testing.expectEqual(@as(u32, 42), geometry.right_px);
     try std.testing.expectEqual(@as(u32, 25), geometry.bottom_px);
 }
 
-test "kitty graphics placement geometry stays unresolved without cell size" {
+test "kitty graphics placement geometry falls back to positive grid-local pixels without cell size" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
@@ -1088,7 +1102,11 @@ test "kitty graphics placement geometry stays unresolved without cell size" {
     try stream.nextSlice("\x1b_Ga=p,i=7,p=3,X=2,Y=5,c=2\x1b\\");
 
     const placement = terminal.kitty.main.graphics.placementAt(0).?;
-    try std.testing.expect(placement.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()) == null);
+    const geometry = placement.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()).?;
+    try std.testing.expectEqual(@as(u32, 2), geometry.left_px);
+    try std.testing.expectEqual(@as(u32, 5), geometry.top_px);
+    try std.testing.expectEqual(@as(u32, 4), geometry.right_px);
+    try std.testing.expectEqual(@as(u32, 6), geometry.bottom_px);
 }
 
 test "kitty graphics place defaults crop truth from uploaded image" {
@@ -1628,6 +1646,88 @@ test "kitty graphics parser-limit chunked upload failure leaves terminal deinit-
     }
 
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+}
+
+test "kitty graphics direct png upload accepts howl app icon replay" {
+    const allocator = std.testing.allocator;
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const png_bytes = try std.Io.Dir.cwd().readFileAlloc(io, howl_app_icon_rel_path, allocator, .limited(4 * 1024 * 1024));
+    defer allocator.free(png_bytes);
+
+    const encoded = try base64Owned(allocator, png_bytes);
+    defer allocator.free(encoded);
+
+    var terminal = try Terminal.initWithCells(allocator, 12, 80);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    const chunk_len: usize = 4096;
+    var offset: usize = 0;
+    while (offset < encoded.len) : (offset += chunk_len) {
+        const end = @min(offset + chunk_len, encoded.len);
+        const chunk = encoded[offset..end];
+        const more: u8 = if (end < encoded.len) 1 else 0;
+
+        var seq = std.ArrayList(u8).empty;
+        defer seq.deinit(allocator);
+        var control_buf: [64]u8 = undefined;
+        if (offset == 0) {
+            const control = try std.fmt.bufPrint(control_buf[0..], "\x1b_Gi=4242,f=100,t=d,a=T,c=8,r=4,m={d};", .{more});
+            try seq.appendSlice(allocator, control);
+        } else {
+            const control = try std.fmt.bufPrint(control_buf[0..], "\x1b_Gm={d};", .{more});
+            try seq.appendSlice(allocator, control);
+        }
+        try seq.appendSlice(allocator, chunk);
+        try seq.appendSlice(allocator, "\x1b\\");
+        try stream.nextSlice(seq.items);
+    }
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 4242), image.image_id);
+    try std.testing.expectEqual(@as(u16, 100), image.format);
+
+    const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 8), placement.effective_columns);
+    try std.testing.expectEqual(@as(u32, 4), placement.effective_rows);
+
+    const fallback_meta = terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), fallback_meta.placement_count);
+
+    var geometry = placement.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()).?;
+    try std.testing.expectEqual(@as(u32, 0), geometry.left_px);
+    try std.testing.expectEqual(@as(u32, 0), geometry.top_px);
+    try std.testing.expectEqual(@as(u32, 8), geometry.right_px);
+    try std.testing.expectEqual(@as(u32, 4), geometry.bottom_px);
+
+    terminal.setCellPixelSize(10, 20);
+
+    const refreshed_meta = terminal.graphicsMeta();
+    try std.testing.expect(refreshed_meta.publication_seq != fallback_meta.publication_seq);
+    try std.testing.expect(refreshed_meta.dirty_generation != fallback_meta.dirty_generation);
+    try std.testing.expectError(error.InvalidArgument, terminal.graphicsPlacement(fallback_meta.publication_seq, 0));
+
+    const published = (try terminal.graphicsPlacement(refreshed_meta.publication_seq, 0)).?;
+    geometry = published.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()).?;
+    try std.testing.expectEqual(@as(u32, 80), geometry.right_px);
+    try std.testing.expectEqual(@as(u32, 80), geometry.bottom_px);
+}
+
+test "kitty graphics a=T cursor move leaves the placed image rows" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 12, 80);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24,a=T,c=8,r=4;AAAA\x1b\\");
+
+    const active = terminal.screen_state.activeConst();
+    try std.testing.expectEqual(@as(u16, 8), active.cursor_col);
+    try std.testing.expectEqual(@as(u16, 4), active.cursor_row);
 }
 
 test "kitty graphics frame count cap is explicit" {

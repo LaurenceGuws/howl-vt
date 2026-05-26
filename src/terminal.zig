@@ -153,9 +153,21 @@ pub const Terminal = struct {
     }
 
     pub fn setCellPixelSize(self: *Terminal, width: u32, height: u32) void {
+        const previous = self.screen_state.primary.cellPixelSize();
+        if (previous) |cell| {
+            if (cell.width == width and cell.height == height) return;
+        }
+
         self.screen_state.setCellPixelSize(width, height);
         self.kitty.main.graphics.rescaleImplicitPlacements(.{ .width = width, .height = height });
         self.kitty.alt.graphics.rescaleImplicitPlacements(.{ .width = width, .height = height });
+
+        if (self.kitty.activeGraphicsConst(self.screen_state.alt_active).resolvedPlacementCount(self.screen_state.activeConst()) == 0) {
+            return;
+        }
+
+        self.screen_state.active().markAllRowsDirty();
+        self.dirty_generation +%= 1;
     }
 
     pub fn resetScreen(self: *Terminal) void {

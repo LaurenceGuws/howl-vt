@@ -26,7 +26,7 @@ fn makeStyleChange(comptime final: u8, comptime p0: i32, comptime p1: i32, compt
 
 fn makeStyleChangeWithIntermediate(comptime final: u8, comptime intermediate: u8) Event {
     const params = [_]i32{0} ** csi_max_params;
-    const intermediates = [_]u8{ intermediate } ++ [_]u8{0} ** (parser_mod.max_intermediates - 1);
+    const intermediates = [_]u8{intermediate} ++ [_]u8{0} ** (parser_mod.max_intermediates - 1);
     return Event{ .style_change = .{
         .final = final,
         .params = params[0..],
@@ -40,8 +40,8 @@ fn makeStyleChangeWithIntermediate(comptime final: u8, comptime intermediate: u8
 }
 
 fn makeStyleChangeWithParamAndIntermediate(comptime final: u8, comptime p0: i32, comptime intermediate: u8) Event {
-    const params = [_]i32{ p0 } ++ [_]i32{0} ** (csi_max_params - 1);
-    const intermediates = [_]u8{ intermediate } ++ [_]u8{0} ** (parser_mod.max_intermediates - 1);
+    const params = [_]i32{p0} ++ [_]i32{0} ** (csi_max_params - 1);
+    const intermediates = [_]u8{intermediate} ++ [_]u8{0} ** (parser_mod.max_intermediates - 1);
     return Event{ .style_change = .{
         .final = final,
         .params = params[0..],
@@ -107,7 +107,7 @@ fn makeDcs(comptime payload: []const u8) Event {
             if (in_param) param_count += 1;
             return Event{ .dcs = .{
                 .body = payload,
-                .payload = payload[@intCast(payload_start + 1) ..],
+                .payload = payload[@intCast(payload_start + 1)..],
                 .final = byte,
                 .params = params[0..],
                 .param_count = param_count,

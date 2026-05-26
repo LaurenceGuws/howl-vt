@@ -460,13 +460,21 @@ test "terminal feed fails overlong APC instead of truncating it" {
     const handle = ffi.terminalInit(2, 4, 4);
     defer ffi.terminalDeinit(handle);
 
-    var bytes = try std.ArrayList(u8).initCapacity(allocator, parser_mod.max_apc_control_bytes + 5);
-    defer bytes.deinit(allocator);
-    try bytes.appendSlice(allocator, "\x1b_");
-    try bytes.appendNTimes(allocator, 'A', parser_mod.max_apc_control_bytes + 1);
-    try bytes.appendSlice(allocator, "\x1b\\");
+    const begin = ffi.terminalFeed(handle, "\x1b_".ptr, 2);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), begin.status);
 
-    const failed = ffi.terminalFeed(handle, bytes.items.ptr, bytes.items.len);
+    const chunk_len: usize = 4096;
+    const chunk = try allocator.alloc(u8, chunk_len);
+    defer allocator.free(chunk);
+    @memset(chunk, 'A');
+
+    var sent: usize = 0;
+    while (sent + chunk_len <= parser_mod.max_apc_control_bytes) : (sent += chunk_len) {
+        const result = ffi.terminalFeed(handle, chunk.ptr, chunk.len);
+        try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), result.status);
+    }
+
+    const failed = ffi.terminalFeed(handle, chunk.ptr, 1);
     try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)), failed.status);
 
     const recovered = ffi.terminalFeed(handle, "A".ptr, 1);

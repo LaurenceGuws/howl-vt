@@ -42,8 +42,7 @@ pub const Stream = struct {
         return .{ .terminal = terminal };
     }
 
-    pub fn deinit(_: *Stream) void {
-    }
+    pub fn deinit(_: *Stream) void {}
 
     pub fn next(self: *Stream, byte: u8) FeedError!void {
         _ = try self.nextSummary(byte);

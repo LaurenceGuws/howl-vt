@@ -478,7 +478,7 @@ pub const ParsedEvents = struct {
         try self.appendMeta(.{ .esc_dispatch = esc });
     }
 
-    fn appendMeta(self: *ParsedEvents, meta: EventMeta) error{ParsedEventLimit, OutOfMemory}!void {
+    fn appendMeta(self: *ParsedEvents, meta: EventMeta) error{ ParsedEventLimit, OutOfMemory }!void {
         if (self.eventCount() >= max_queued_events) return error.ParsedEventLimit;
         try self.events.append(self.allocator, meta);
     }

@@ -89,8 +89,7 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!bool {
 fn applyPlacementCursorMove(screen: anytype, cols: u32, rows: u32) void {
     screen.wrap_pending = false;
     screen.cursor_col = @intCast(@min(@as(u32, screen.rightBoundary()), @as(u32, screen.cursor_col) + cols));
-    const row_delta = rows -| 1;
-    screen.cursor_row = @intCast(@min(@as(u32, screen.rows -| 1), @as(u32, screen.cursor_row) + row_delta));
+    screen.cursor_row = @intCast(@min(@as(u32, screen.rows -| 1), @as(u32, screen.cursor_row) + rows));
 }
 
 pub fn setShellMark(allocator: std.mem.Allocator, current: *types.ShellMark, mark: KittyShellMark) host_state.ApplyError!void {

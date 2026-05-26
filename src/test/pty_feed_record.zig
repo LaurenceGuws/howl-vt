@@ -70,7 +70,8 @@ fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
 
 test "pty feed record parses chunk lines" {
     const gpa = std.testing.allocator;
-    var record = try parse(gpa,
+    var record = try parse(
+        gpa,
         record_header ++ "\n" ++
             "4142\n" ++
             "434445\n",
@@ -94,7 +95,8 @@ test "pty feed replay matches whole feed" {
     var whole_snap = try captureSnapshot(&whole);
     defer whole_snap.deinit();
 
-    var record = try parse(gpa,
+    var record = try parse(
+        gpa,
         record_header ++ "\n" ++
             "4142430a44\n" ++
             "45461b5b33316d52\n" ++
