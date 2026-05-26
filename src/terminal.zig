@@ -215,12 +215,13 @@ pub const Terminal = struct {
         };
     }
 
-    pub fn graphicsMeta(self: *Terminal) GraphicsMeta {
+    pub fn graphicsMeta(self: *Terminal) host_state.ApplyError!GraphicsMeta {
         const publication = self.graphicsPublication();
         return .{
             .image_count = publication.state.imageCount(),
             .placement_count = publication.state.resolvedPlacementCount(self.screen_state.activeConst()),
             .virtual_placement_count = publication.state.virtualPlacementCount(),
+            .placeholder_run_count = try publication.state.resolvedPlaceholderRunCount(self.allocator, self.screen_state.activeConst()),
             .is_alternate_screen = publication.is_alternate_screen,
             .publication_seq = publication.publication_seq,
             .dirty_generation = publication.dirty_generation,
@@ -254,6 +255,15 @@ pub const Terminal = struct {
     pub fn graphicsVirtualPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.VirtualPlacement {
         const state = try self.graphicsStateForPublication(publication_seq);
         return state.virtualPlacementAt(idx);
+    }
+
+    pub fn graphicsPlaceholderRun(
+        self: *Terminal,
+        publication_seq: u64,
+        idx: kitty_types.Graphics.Index,
+    ) (error{InvalidArgument} || host_state.ApplyError)!?kitty_types.Graphics.ResolvedPlaceholderRun {
+        const state = try self.graphicsStateForPublication(publication_seq);
+        return state.resolvedPlaceholderRunAt(self.allocator, idx, self.screen_state.activeConst());
     }
 
     pub fn visibleCellHyperlinkUri(self: *Terminal, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
@@ -364,6 +374,7 @@ pub const Terminal = struct {
         image_count: u32,
         placement_count: u32,
         virtual_placement_count: u32,
+        placeholder_run_count: u32,
         is_alternate_screen: bool,
         publication_seq: u64,
         dirty_generation: u64,

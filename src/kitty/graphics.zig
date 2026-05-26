@@ -261,9 +261,59 @@ pub const VirtualPlacement = struct {
     }
 };
 
+pub const ResolvedPlaceholderRun = struct {
+    image_id: u32,
+    placement_id: u32,
+    virtual_placement_index: u32,
+    run_order: u32,
+    cell_row: u16,
+    cell_col: u16,
+    image_row: u32,
+    image_col: u32,
+    columns: u32,
+};
+
 const PlaceholderParentMatch = struct {
     row: RowAnchor,
     col: u16,
+};
+
+const PlaceholderCell = struct {
+    image_id_low: u32,
+    image_id_high: ?u8,
+    placement_id: u32,
+    row: ?u32,
+    col: ?u32,
+    cell_row: u16,
+    cell_col: u16,
+
+    fn imageId(self: PlaceholderCell) u32 {
+        return self.image_id_low | (@as(u32, self.image_id_high orelse 0) << 24);
+    }
+};
+
+const PlaceholderRun = struct {
+    cell: PlaceholderCell,
+    width: u32 = 1,
+
+    fn canAppend(self: PlaceholderRun, next: PlaceholderCell) bool {
+        const row = self.cell.row orelse return false;
+        const col = self.cell.col orelse return false;
+        const next_row = next.row orelse return false;
+        const next_col = next.col orelse return false;
+
+        if (self.cell.imageId() != next.imageId()) return false;
+        if (self.cell.placement_id != next.placement_id) return false;
+        if (row != next_row) return false;
+        if (next_col != col + self.width) return false;
+        if (next.cell_row != self.cell.cell_row) return false;
+        if (next.cell_col != self.cell.cell_col + self.width) return false;
+        return true;
+    }
+
+    fn append(self: *PlaceholderRun) void {
+        self.width += 1;
+    }
 };
 
 const ParentPlacementRef = struct {
@@ -576,6 +626,29 @@ pub const State = struct {
     pub fn virtualPlacementAt(self: *const State, idx: Index) ?VirtualPlacement {
         if (idx >= self.virtualPlacementCount()) return null;
         return self.virtual_placements.items[@intCast(idx)];
+    }
+
+    pub fn resolvedPlaceholderRunCount(
+        self: *const State,
+        allocator: std.mem.Allocator,
+        screen: *const screen_mod.Screen,
+    ) host_state.ApplyError!Count {
+        var count: Count = 0;
+        var context = PlaceholderRunCountContext{ .count = &count };
+        try self.walkResolvedPlaceholderRuns(allocator, screen, PlaceholderRunCountContext, &context, placeholderRunCountVisit);
+        return count;
+    }
+
+    pub fn resolvedPlaceholderRunAt(
+        self: *const State,
+        allocator: std.mem.Allocator,
+        idx: Index,
+        screen: *const screen_mod.Screen,
+    ) host_state.ApplyError!?ResolvedPlaceholderRun {
+        var found: ?ResolvedPlaceholderRun = null;
+        var context = PlaceholderRunAtContext{ .target = idx, .found = &found };
+        try self.walkResolvedPlaceholderRuns(allocator, screen, PlaceholderRunAtContext, &context, placeholderRunAtVisit);
+        return found;
     }
 
     pub fn placementAtResolved(self: *const State, idx: Index, screen: *const screen_mod.Screen) ?Placement {
@@ -1917,6 +1990,101 @@ pub const State = struct {
         return .{ .row = best_row orelse return null, .col = best_col orelse return null };
     }
 
+    fn walkResolvedPlaceholderRuns(
+        self: *const State,
+        allocator: std.mem.Allocator,
+        screen: *const screen_mod.Screen,
+        comptime Context: type,
+        context: *Context,
+        comptime visit: fn (*Context, ResolvedPlaceholderRun) bool,
+    ) host_state.ApplyError!void {
+        var run_order: u32 = 0;
+        var previous_placeholder: ?PlaceholderCell = null;
+        var row: u16 = 0;
+        while (row < screen.rows) : (row += 1) {
+            var row_cells = std.ArrayList(PlaceholderCell).empty;
+            defer row_cells.deinit(allocator);
+
+            var col: u16 = 0;
+            while (col < screen.cols) : (col += 1) {
+                const current = placeholderCellFromScreenCell(screen.cellInfoAt(row, col), row, col) orelse continue;
+                var next = current;
+                inheritWrappedPlaceholderCell(&next, previous_placeholder, screen.cols);
+                try row_cells.append(allocator, next);
+            }
+
+            backfillPlaceholderRow(row_cells.items);
+
+            var pending: ?PlaceholderRun = null;
+            for (row_cells.items) |next| {
+                if (pending) |*run| {
+                    if (run.canAppend(next)) {
+                        run.append();
+                        previous_placeholder = next;
+                        continue;
+                    }
+                    if (self.resolvedPlaceholderRunFrom(run.*, run_order)) |resolved| {
+                        if (!visit(context, resolved)) return;
+                        run_order +%= 1;
+                    }
+                }
+
+                if (next.row == null) {
+                    previous_placeholder = next;
+                    pending = null;
+                    continue;
+                }
+                var start = next;
+                if (start.col == null) start.col = 0;
+                if (start.image_id_high == null) start.image_id_high = 0;
+                pending = .{ .cell = start };
+                previous_placeholder = start;
+            }
+
+            if (pending) |run| {
+                if (self.resolvedPlaceholderRunFrom(run, run_order)) |resolved| {
+                    if (!visit(context, resolved)) return;
+                    run_order +%= 1;
+                }
+            }
+        }
+    }
+
+    fn resolvedPlaceholderRunFrom(self: *const State, run: PlaceholderRun, run_order: u32) ?ResolvedPlaceholderRun {
+        const image_row = run.cell.row orelse return null;
+        const image_col = run.cell.col orelse return null;
+        const virtual_placement_index = self.findVirtualPlacementRunIndex(run.cell.imageId(), run.cell.placement_id) orelse return null;
+        const columns = run.width;
+        if (columns == 0) return null;
+        return .{
+            .image_id = run.cell.imageId(),
+            .placement_id = run.cell.placement_id,
+            .virtual_placement_index = virtual_placement_index,
+            .run_order = run_order,
+            .cell_row = run.cell.cell_row,
+            .cell_col = run.cell.cell_col,
+            .image_row = image_row,
+            .image_col = image_col,
+            .columns = columns,
+        };
+    }
+
+    fn findVirtualPlacementRunIndex(self: *const State, image_id: u32, placement_id: u32) ?u32 {
+        if (placement_id != 0) {
+            for (self.virtual_placements.items, 0..) |placement, idx| {
+                if (placement.image_id != image_id) continue;
+                if (placement.placement_id != placement_id) continue;
+                return std.math.cast(u32, idx) orelse unreachable;
+            }
+            return null;
+        }
+        for (self.virtual_placements.items, 0..) |placement, idx| {
+            if (placement.image_id != image_id) continue;
+            return std.math.cast(u32, idx) orelse unreachable;
+        }
+        return null;
+    }
+
     fn deleteFrames(self: *State, allocator: std.mem.Allocator, cmd: KittyGraphicsCommand) void {
         const image_id = self.resolveImageId(cmd) orelse cmd.image_id;
         const deleted_frame_number = cmd.edit_frame_number;
@@ -2451,6 +2619,106 @@ fn scanPlaceholderParentRow(
         if (row_pos == best_row_pos.* and (best_col.* == null or col < best_col.*.?)) {
             best_col.* = col;
         }
+    }
+}
+
+const PlaceholderRunCountContext = struct {
+    count: *Count,
+};
+
+fn placeholderRunCountVisit(context: *PlaceholderRunCountContext, run: ResolvedPlaceholderRun) bool {
+    _ = run;
+    context.count.* +%= 1;
+    return true;
+}
+
+const PlaceholderRunAtContext = struct {
+    target: Index,
+    found: *?ResolvedPlaceholderRun,
+};
+
+fn placeholderRunAtVisit(context: *PlaceholderRunAtContext, run: ResolvedPlaceholderRun) bool {
+    if (run.run_order != context.target) return true;
+    context.found.* = run;
+    return false;
+}
+
+fn placeholderCellFromScreenCell(cell: screen_mod.Screen.Cell, row: u16, col: u16) ?PlaceholderCell {
+    if (screen_mod.Screen.isCellContinuation(cell)) return null;
+    if (cell.codepoint != kitty_placeholder_codepoint) return null;
+    return .{
+        .image_id_low = placeholderColorId(cell.attrs.fg),
+        .image_id_high = placeholderHighByte(cell),
+        .placement_id = placeholderColorId(cell.attrs.underline_color),
+        .row = placeholderIndex(cell, 0),
+        .col = placeholderIndex(cell, 1),
+        .cell_row = row,
+        .cell_col = col,
+    };
+}
+
+fn inheritWrappedPlaceholderCell(next: *PlaceholderCell, previous: ?PlaceholderCell, cols: u16) void {
+    if (next.row != null) return;
+    if (next.col != null) return;
+    if (next.cell_col != 0) return;
+
+    const prev = previous orelse return;
+    if (prev.row == null) return;
+    if (prev.cell_col + 1 != cols) return;
+    if (prev.image_id_low != next.image_id_low) return;
+    if (prev.placement_id != next.placement_id) return;
+
+    next.row = prev.row.? + 1;
+    next.col = 0;
+    if (next.image_id_high == null) next.image_id_high = prev.image_id_high;
+}
+
+fn backfillPlaceholderRow(cells: []PlaceholderCell) void {
+    var start: usize = 0;
+    while (start < cells.len) {
+        const first = cells[start];
+        var end = start + 1;
+        while (end < cells.len) : (end += 1) {
+            const next = cells[end];
+            if (next.cell_col != cells[end - 1].cell_col + 1) break;
+            if (next.image_id_low != first.image_id_low) break;
+            if (next.placement_id != first.placement_id) break;
+            if (first.image_id_high != null) {
+                if (next.image_id_high) |high| {
+                    if (high != first.image_id_high.?) break;
+                }
+            } else if (next.image_id_high != null) break;
+        }
+
+        backfillPlaceholderGroup(cells[start..end]);
+        start = end;
+    }
+}
+
+fn backfillPlaceholderGroup(cells: []PlaceholderCell) void {
+    if (cells.len == 0) return;
+
+    var anchor_index: ?usize = null;
+    var inherited_high: ?u8 = null;
+    for (cells, 0..) |cell, idx| {
+        if (cell.image_id_high != null) inherited_high = cell.image_id_high;
+        if (cell.row != null) anchor_index = idx;
+    }
+
+    const anchor_idx = anchor_index orelse return;
+    const anchor = cells[anchor_idx];
+    const row = anchor.row orelse return;
+    const anchor_col = anchor.col orelse std.math.cast(u32, anchor_idx) orelse return;
+
+    var idx: usize = 0;
+    while (idx < cells.len) : (idx += 1) {
+        var cell = &cells[idx];
+        if (cell.row == null) cell.row = row;
+        if (cell.col == null) {
+            const col = @as(i64, @intCast(anchor_col)) + @as(i64, @intCast(idx)) - @as(i64, @intCast(anchor_idx));
+            if (col >= 0) cell.col = @intCast(col);
+        }
+        if (cell.image_id_high == null) cell.image_id_high = inherited_high;
     }
 }
 
