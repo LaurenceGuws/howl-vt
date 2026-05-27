@@ -246,6 +246,10 @@ enum {
   HOWL_VT_GRAPHICS_ROW_ANCHOR_BELOW_SCREEN = 3,
 };
 
+enum {
+  HOWL_VT_GRAPHICS_PLACEMENT_GENERATED_PLACEHOLDER = 1u,
+};
+
 typedef struct {
   uint8_t kind;
   uint8_t reserved0;
@@ -294,6 +298,7 @@ typedef struct {
   uint32_t dest_grid_rows;
   uint32_t effective_columns;
   uint32_t effective_rows;
+  uint32_t flags;
 } HowlVtGraphicsPlacement;
 
 typedef struct {

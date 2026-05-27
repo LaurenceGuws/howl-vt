@@ -17,6 +17,8 @@ comptime {
     std.debug.assert(@sizeOf(input.Scratch) == 64);
     std.debug.assert(@sizeOf(FfiRgb8) == 3);
     std.debug.assert(@sizeOf(FfiRenderColorState) == 777);
+    std.debug.assert(@sizeOf(FfiGraphicsPlacement) == 92);
+    std.debug.assert(@offsetOf(FfiGraphicsPlacement, "flags") == 88);
 }
 
 pub const HowlVtCallStatus = enum(c_int) {
@@ -27,6 +29,8 @@ pub const HowlVtCallStatus = enum(c_int) {
     short_buffer = -4,
     limit_reached = -5,
 };
+
+pub const HOWL_VT_GRAPHICS_PLACEMENT_GENERATED_PLACEHOLDER: u32 = 1;
 
 pub const FfiColor = extern struct {
     kind: u8 = 0,
@@ -265,6 +269,7 @@ pub const FfiGraphicsPlacement = extern struct {
     dest_grid_rows: u32 = 0,
     effective_columns: u32 = 0,
     effective_rows: u32 = 0,
+    flags: u32 = 0,
 };
 
 pub const FfiGraphicsPlacementResult = extern struct {
