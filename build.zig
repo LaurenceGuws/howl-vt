@@ -100,29 +100,50 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(ffi_lib);
     b.installFile("include/howl_vt.h", "include/howl_vt.h");
 
-    const regression_mod = b.createModule(.{
+    const scrollback_regression_mod = b.createModule(.{
         .root_source_file = b.path("src/test/scrollback_regression.zig"),
         .target = target,
         .optimize = optimize,
     });
-    regression_mod.addImport("scrollback_verifier", scrollback_verifier_mod);
+    scrollback_regression_mod.addImport("scrollback_verifier", scrollback_verifier_mod);
 
-    const regression_tests = b.addTest(.{
-        .name = "test-regression",
-        .root_module = regression_mod,
+    const snapshot_regression_mod = b.createModule(.{
+        .root_source_file = b.path("src/test_regression_snapshot.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    snapshot_regression_mod.addOptions("vt_options", module_options);
+    addStbImage(snapshot_regression_mod, b);
+
+    const scrollback_regression_tests = b.addTest(.{
+        .name = "test-regression-scrollback",
+        .root_module = scrollback_regression_mod,
         .filters = b.args orelse &.{},
     });
-    regression_tests.use_llvm = true;
-    const run_regression_tests = b.addRunArtifact(regression_tests);
+    scrollback_regression_tests.use_llvm = true;
+    const run_scrollback_regression_tests = b.addRunArtifact(scrollback_regression_tests);
     if (b.args != null) {
-        run_regression_tests.has_side_effects = true;
+        run_scrollback_regression_tests.has_side_effects = true;
+    }
+
+    const snapshot_regression_tests = b.addTest(.{
+        .name = "test-regression-snapshot",
+        .root_module = snapshot_regression_mod,
+        .filters = b.args orelse &.{},
+    });
+    snapshot_regression_tests.use_llvm = true;
+    const run_snapshot_regression_tests = b.addRunArtifact(snapshot_regression_tests);
+    if (b.args != null) {
+        run_snapshot_regression_tests.has_side_effects = true;
     }
 
     const test_regression_step = b.step("test:regression", "Run slow regression tests");
     const test_regression_build_step = b.step("test:regression:build", "Build slow regression tests");
-    test_regression_build_step.dependOn(&regression_tests.step);
-    test_regression_step.dependOn(&run_regression_tests.step);
-    test_step.dependOn(test_regression_step);
+    test_regression_build_step.dependOn(&scrollback_regression_tests.step);
+    test_regression_build_step.dependOn(&snapshot_regression_tests.step);
+    test_regression_step.dependOn(&run_scrollback_regression_tests.step);
+    test_regression_step.dependOn(&run_snapshot_regression_tests.step);
 
     const fuzz_module = b.createModule(.{
         .root_source_file = b.path("src/fuzz/fuzz_tests.zig"),

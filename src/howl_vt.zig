@@ -27,7 +27,6 @@ test {
     _ = @import("test/parser_csi_behavior.zig");
     _ = @import("test/parser_behavior.zig");
     _ = @import("test/screen_state_behavior.zig");
-    _ = @import("test/snapshot_regression.zig");
     _ = @import("test/terminal_end_to_end.zig");
     _ = @import("test/terminal_graphics.zig");
     _ = @import("test/terminal_modes_reports.zig");
