@@ -730,6 +730,93 @@ test "kitty graphics placeholder-run export resolves left-to-right row inheritan
     try std.testing.expectEqual(@as(u32, 3), run.columns);
 }
 
+test "kitty graphics placeholder-run export maps U+0305 to row and column zero" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\");
+
+    setPlaceholderCell(&terminal, 1, 2, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    terminal.postApply(true);
+
+    const meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
+    const run = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(@as(u32, 0), run.image_row);
+    try std.testing.expectEqual(@as(u32, 0), run.image_col);
+}
+
+test "kitty graphics placeholder-run export infers missing column and high byte on same row" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=16777223,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=16777223,p=9,U=1,c=3,r=1\x1b\\");
+
+    setPlaceholderCell(&terminal, 1, 2, Screen.Color.rgbComponents(0, 0, 7), 9, 0x0305, 0x0305, 0x030D);
+    setPlaceholderCell(&terminal, 1, 3, Screen.Color.rgbComponents(0, 0, 7), 9, 0x0305, null, null);
+    setPlaceholderCell(&terminal, 1, 4, Screen.Color.rgbComponents(0, 0, 7), 9, null, null, null);
+    terminal.postApply(true);
+
+    const meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
+    const run = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(@as(u32, 16777223), run.image_id);
+    try std.testing.expectEqual(@as(u32, 0), run.image_row);
+    try std.testing.expectEqual(@as(u32, 0), run.image_col);
+    try std.testing.expectEqual(@as(u32, 3), run.columns);
+}
+
+test "kitty graphics placeholder-run export breaks on mismatched fields" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 5, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Gi=16777223,s=1,v=1,t=d,f=24;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=3,r=2\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=10,U=1,c=3,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=9,U=1,c=3,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=16777223,p=9,U=1,c=3,r=1\x1b\\");
+
+    setPlaceholderCell(&terminal, 0, 0, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 0, 1, Screen.Color.indexed(7), 9, 0x030D, null, null);
+    setPlaceholderCell(&terminal, 1, 0, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 1, 1, Screen.Color.indexed(7), 9, 0x0305, 0x030E, null);
+    setPlaceholderCell(&terminal, 2, 0, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 2, 1, Screen.Color.indexed(8), 9, 0x0305, 0x030D, null);
+    setPlaceholderCell(&terminal, 3, 0, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 3, 1, Screen.Color.indexed(7), 10, 0x0305, 0x030D, null);
+    setPlaceholderCell(&terminal, 4, 0, Screen.Color.rgbComponents(0, 0, 7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 4, 1, Screen.Color.rgbComponents(0, 0, 7), 9, 0x0305, 0x030D, 0x030D);
+    terminal.postApply(true);
+
+    const meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 10), meta.placeholder_run_count);
+    const row_mismatch_second = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 1)).?;
+    const col_mismatch_second = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 3)).?;
+    const image_mismatch_second = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 5)).?;
+    const placement_mismatch_second = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 7)).?;
+    const high_mismatch_second = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 9)).?;
+    try std.testing.expectEqual(@as(u32, 1), row_mismatch_second.image_row);
+    try std.testing.expectEqual(@as(u32, 0), row_mismatch_second.image_col);
+    try std.testing.expectEqual(@as(u32, 0), col_mismatch_second.image_row);
+    try std.testing.expectEqual(@as(u32, 2), col_mismatch_second.image_col);
+    try std.testing.expectEqual(@as(u32, 8), image_mismatch_second.image_id);
+    try std.testing.expectEqual(@as(u32, 10), placement_mismatch_second.placement_id);
+    try std.testing.expectEqual(@as(u32, 16777223), high_mismatch_second.image_id);
+}
+
 test "kitty graphics placeholder-run export does not inherit across rows" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
@@ -745,12 +832,17 @@ test "kitty graphics placeholder-run export does not inherit across rows" {
     terminal.postApply(true);
 
     const meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
-    const run = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 0)).?;
-    try std.testing.expectEqual(@as(u16, 0), run.cell_row);
-    try std.testing.expectEqual(@as(u16, 7), run.cell_col);
-    try std.testing.expectEqual(@as(u32, 0), run.image_row);
-    try std.testing.expectEqual(@as(u32, 7), run.image_col);
+    try std.testing.expectEqual(@as(u32, 2), meta.placeholder_run_count);
+    const first = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 0)).?;
+    const second = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 1)).?;
+    try std.testing.expectEqual(@as(u16, 0), first.cell_row);
+    try std.testing.expectEqual(@as(u16, 7), first.cell_col);
+    try std.testing.expectEqual(@as(u32, 0), first.image_row);
+    try std.testing.expectEqual(@as(u32, 7), first.image_col);
+    try std.testing.expectEqual(@as(u16, 1), second.cell_row);
+    try std.testing.expectEqual(@as(u16, 0), second.cell_col);
+    try std.testing.expectEqual(@as(u32, 0), second.image_row);
+    try std.testing.expectEqual(@as(u32, 0), second.image_col);
 }
 
 test "kitty graphics placeholder-run export matches image id high byte" {

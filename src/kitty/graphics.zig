@@ -2654,51 +2654,30 @@ fn placeholderCellFromScreenCell(cell: screen_mod.Screen.Cell, row: u16, col: u1
 }
 
 fn backfillPlaceholderRow(cells: []PlaceholderCell) void {
-    var start: usize = 0;
-    while (start < cells.len) {
-        const first = cells[start];
-        var end = start + 1;
-        while (end < cells.len) : (end += 1) {
-            const next = cells[end];
-            if (next.cell_col != cells[end - 1].cell_col + 1) break;
-            if (next.image_id_low != first.image_id_low) break;
-            if (next.placement_id != first.placement_id) break;
-            if (first.image_id_high != null) {
-                if (next.image_id_high) |high| {
-                    if (high != first.image_id_high.?) break;
-                }
-            } else if (next.image_id_high != null) break;
+    var previous: ?PlaceholderCell = null;
+    for (cells) |*cell| {
+        const continues = if (previous) |prev|
+            cell.cell_col == prev.cell_col + 1 and
+                cell.image_id_low == prev.image_id_low and
+                cell.placement_id == prev.placement_id and
+                (cell.row == null or cell.row.? == prev.row.?) and
+                (cell.col == null or cell.col.? == prev.col.? + 1) and
+                (cell.image_id_high == null or cell.image_id_high.? == prev.image_id_high.?)
+        else
+            false;
+
+        if (continues) {
+            const prev = previous.?;
+            if (cell.row == null) cell.row = prev.row.?;
+            if (cell.col == null) cell.col = prev.col.? + 1;
+            if (cell.image_id_high == null) cell.image_id_high = prev.image_id_high.?;
+        } else {
+            if (cell.row == null) cell.row = 0;
+            if (cell.col == null) cell.col = 0;
+            if (cell.image_id_high == null) cell.image_id_high = 0;
         }
 
-        backfillPlaceholderGroup(cells[start..end]);
-        start = end;
-    }
-}
-
-fn backfillPlaceholderGroup(cells: []PlaceholderCell) void {
-    if (cells.len == 0) return;
-
-    var anchor_index: ?usize = null;
-    var inherited_high: ?u8 = null;
-    for (cells, 0..) |cell, idx| {
-        if (cell.image_id_high != null) inherited_high = cell.image_id_high;
-        if (cell.row != null) anchor_index = idx;
-    }
-
-    const anchor_idx = anchor_index orelse return;
-    const anchor = cells[anchor_idx];
-    const row = anchor.row orelse return;
-    const anchor_col = anchor.col orelse std.math.cast(u32, anchor_idx) orelse return;
-
-    var idx: usize = 0;
-    while (idx < cells.len) : (idx += 1) {
-        var cell = &cells[idx];
-        if (cell.row == null) cell.row = row;
-        if (cell.col == null) {
-            const col = @as(i64, @intCast(anchor_col)) + @as(i64, @intCast(idx)) - @as(i64, @intCast(anchor_idx));
-            if (col >= 0) cell.col = @intCast(col);
-        }
-        if (cell.image_id_high == null) cell.image_id_high = inherited_high;
+        previous = cell.*;
     }
 }
 
