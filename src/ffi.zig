@@ -32,6 +32,8 @@ pub const HowlVtCallStatus = enum(c_int) {
 
 pub const HOWL_VT_GRAPHICS_PLACEMENT_GENERATED_PLACEHOLDER: u32 = 1;
 
+const kitty_placeholder_codepoint: u32 = 0x10EEEE;
+
 pub const FfiColor = extern struct {
     kind: u8 = 0,
     value: u32 = 0,
@@ -386,7 +388,7 @@ fn renderColorStateOut(value: anytype) FfiRenderColorState {
 }
 
 fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
-    return .{
+    var out = FfiSurfaceCell{
         .codepoint = value.codepoint,
         .combining_len = value.combining_len,
         .combining = value.combining,
@@ -409,6 +411,17 @@ fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
         },
         .link_id = value.attrs.link_id,
     };
+    if (value.codepoint == kitty_placeholder_codepoint and out.flags.continuation == 0) {
+        out.codepoint = ' ';
+        out.combining_len = 0;
+        out.combining = [_]u32{0} ** 3;
+        out.underline_color = .{};
+        out.underline_style = 0;
+        out.attrs.underline = 0;
+        out.attrs.underline_color_set = 0;
+        out.attrs.strikethrough = 0;
+    }
+    return out;
 }
 
 fn mouseKindIn(kind: u8) ?input.MouseEventKind {
