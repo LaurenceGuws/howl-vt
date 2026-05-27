@@ -163,7 +163,7 @@ pub const Terminal = struct {
         self.kitty.main.graphics.rescaleImplicitPlacements(.{ .width = width, .height = height });
         self.kitty.alt.graphics.rescaleImplicitPlacements(.{ .width = width, .height = height });
 
-        if (self.kitty.activeGraphicsConst(self.screen_state.alt_active).resolvedPlacementCount(self.screen_state.activeConst()) == 0) {
+        if ((self.kitty.activeGraphicsConst(self.screen_state.alt_active).resolvedPlacementCount(self.allocator, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize()) catch 1) == 0) {
             return;
         }
 
@@ -220,9 +220,9 @@ pub const Terminal = struct {
         const publication = self.graphicsPublication();
         const meta = GraphicsMeta{
             .image_count = publication.state.imageCount(),
-            .placement_count = publication.state.resolvedPlacementCount(self.screen_state.activeConst()),
+            .placement_count = try publication.state.resolvedPlacementCount(self.allocator, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize()),
             .virtual_placement_count = publication.state.virtualPlacementCount(),
-            .placeholder_run_count = try publication.state.resolvedPlaceholderRunCount(self.allocator, self.screen_state.activeConst()),
+            .placeholder_run_count = 0,
             .is_alternate_screen = publication.is_alternate_screen,
             .publication_seq = publication.publication_seq,
             .dirty_generation = publication.dirty_generation,
@@ -262,9 +262,9 @@ pub const Terminal = struct {
         return state.imageAt(idx);
     }
 
-    pub fn graphicsPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.Placement {
+    pub fn graphicsPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) (error{InvalidArgument} || host_state.ApplyError)!?kitty_types.Graphics.Placement {
         const state = try self.graphicsStateForPublication(publication_seq);
-        return state.resolvedPlacementAt(idx, self.screen_state.activeConst());
+        return try state.resolvedPlacementAt(self.allocator, idx, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize());
     }
 
     pub fn graphicsVirtualPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.VirtualPlacement {
@@ -273,6 +273,21 @@ pub const Terminal = struct {
     }
 
     pub fn graphicsPlaceholderRun(
+        self: *Terminal,
+        publication_seq: u64,
+        idx: kitty_types.Graphics.Index,
+    ) (error{InvalidArgument} || host_state.ApplyError)!?kitty_types.Graphics.ResolvedPlaceholderRun {
+        _ = idx;
+        _ = try self.graphicsStateForPublication(publication_seq);
+        return null;
+    }
+
+    pub fn graphicsPlaceholderRunProofCount(self: *Terminal, publication_seq: u64) (error{InvalidArgument} || host_state.ApplyError)!u32 {
+        const state = try self.graphicsStateForPublication(publication_seq);
+        return try state.resolvedPlaceholderRunCount(self.allocator, self.screen_state.activeConst());
+    }
+
+    pub fn graphicsPlaceholderRunProof(
         self: *Terminal,
         publication_seq: u64,
         idx: kitty_types.Graphics.Index,

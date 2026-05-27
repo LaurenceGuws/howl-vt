@@ -613,6 +613,7 @@ fn graphicsPlacementResultWithCell(placement: kitty_types.Graphics.Placement, ce
             .dest_grid_rows = placement.effective_rows,
             .effective_columns = placement.effective_columns,
             .effective_rows = placement.effective_rows,
+            .flags = placement.flags,
         },
     };
 }
@@ -834,8 +835,11 @@ pub fn terminalQueryGraphicsImage(handle: VtHandle, publication_seq: u64, image_
 
 pub fn terminalQueryGraphicsPlacement(handle: VtHandle, publication_seq: u64, placement_index: u32) callconv(.c) FfiGraphicsPlacementResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const placement = owned.graphicsPlacement(publication_seq, placement_index) catch {
-        return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const placement = owned.graphicsPlacement(publication_seq, placement_index) catch |err| {
+        return .{ .status = @intFromEnum(switch (err) {
+            error.InvalidArgument => HowlVtCallStatus.invalid_argument,
+            error.OutOfMemory, error.ConsequenceLimit => HowlVtCallStatus.failed,
+        }) };
     } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     return graphicsPlacementResultWithCell(placement, owned.screen_state.activeConst().cellPixelSize());
 }
@@ -1354,13 +1358,14 @@ test "vt ffi graphics queries expose chunked unicode no-move virtual contract" {
     try std.testing.expectEqual(@as(u32, 3), placement.placement.rows);
 }
 
-test "vt ffi graphics queries expose resolved placeholder runs" {
+test "vt ffi graphics publication suppresses render-facing placeholder runs" {
     const handle = terminalInit(4, 8, 4);
     defer terminalDeinit(handle);
     try std.testing.expect(handle != null);
 
     const upload = "\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\";
     const place = "\x1b_Ga=p,i=7,p=9,U=1,c=3,r=1\x1b\\";
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalSetCellPixelSize(handle, 10, 20));
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, place.ptr, place.len).status);
 
@@ -1381,19 +1386,13 @@ test "vt ffi graphics queries expose resolved placeholder runs" {
 
     const meta = terminalQueryGraphicsMeta(handle);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
-    try std.testing.expectEqual(@as(u32, 1), meta.meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.meta.placement_count);
+    try std.testing.expectEqual(@as(u32, 0), meta.meta.placeholder_run_count);
 
-    const run = terminalQueryGraphicsPlaceholderRun(handle, meta.meta.publication_seq, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), run.status);
-    try std.testing.expectEqual(@as(u32, 7), run.run.image_id);
-    try std.testing.expectEqual(@as(u32, 9), run.run.placement_id);
-    try std.testing.expectEqual(@as(u32, 0), run.run.virtual_placement_index);
-    try std.testing.expectEqual(@as(u32, 0), run.run.run_order);
-    try std.testing.expectEqual(@as(u16, 0), run.run.cell_row);
-    try std.testing.expectEqual(@as(u16, 2), run.run.cell_col);
-    try std.testing.expectEqual(@as(u32, 0), run.run.image_row);
-    try std.testing.expectEqual(@as(u32, 0), run.run.image_col);
-    try std.testing.expectEqual(@as(u32, 3), run.run.columns);
+    try std.testing.expectEqual(
+        @as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)),
+        terminalQueryGraphicsPlaceholderRun(handle, meta.meta.publication_seq, 0).status,
+    );
 }
 
 test "vt ffi graphics publication token rejects stale queries" {
@@ -1439,7 +1438,7 @@ test "vt ffi graphics publication token rejects stale placeholder runs" {
     owned.postApply(true);
 
     const meta = terminalQueryGraphicsMeta(handle);
-    try std.testing.expectEqual(@as(u32, 1), meta.meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 0), meta.meta.placeholder_run_count);
 
     const enter_alt = "\x1b[?1049h";
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, enter_alt.ptr, enter_alt.len).status);
