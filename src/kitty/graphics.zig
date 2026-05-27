@@ -931,6 +931,7 @@ pub const State = struct {
                 if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, cmd.placement_id, "EINVAL:virtual placement cannot refer to a parent");
                 return null;
             }
+            const extent = resolveGridExtent(source_width, source_height, cmd.cell_x_offset, cmd.cell_y_offset, cmd.columns, cmd.rows, cell_pixel_size);
             return try self.upsertVirtualPlacement(allocator, output, encode_buf, .{
                 .image_id = image_id,
                 .placement_id = cmd.placement_id,
@@ -938,8 +939,8 @@ pub const State = struct {
                 .source_y = cmd.y,
                 .source_width = source_width,
                 .source_height = source_height,
-                .columns = @max(cmd.columns, 1),
-                .rows = @max(cmd.rows, 1),
+                .columns = extent.columns,
+                .rows = extent.rows,
             }, cmd.image_number, cmd.quiet);
         }
         const extent = resolveGridExtent(source_width, source_height, cmd.cell_x_offset, cmd.cell_y_offset, cmd.columns, cmd.rows, cell_pixel_size);
@@ -1286,6 +1287,7 @@ pub const State = struct {
                 if (!quiet) try appendPlacementReply(allocator, output, encode_buf, request.image_id, request.image_number, request.placement_id, "EINVAL:virtual placement cannot refer to a parent");
                 return null;
             }
+            const extent = resolveGridExtent(source_width, source_height, request.cell_x_offset, request.cell_y_offset, request.columns, request.rows, cell_pixel_size);
             return try self.upsertVirtualPlacement(allocator, output, encode_buf, .{
                 .image_id = request.image_id,
                 .placement_id = request.placement_id,
@@ -1293,8 +1295,8 @@ pub const State = struct {
                 .source_y = request.source_y,
                 .source_width = source_width,
                 .source_height = source_height,
-                .columns = @max(request.columns, 1),
-                .rows = @max(request.rows, 1),
+                .columns = extent.columns,
+                .rows = extent.rows,
             }, request.image_number, quiet);
         }
         const extent = resolveGridExtent(source_width, source_height, request.cell_x_offset, request.cell_y_offset, request.columns, request.rows, cell_pixel_size);
@@ -1999,7 +2001,6 @@ pub const State = struct {
         comptime visit: fn (*Context, ResolvedPlaceholderRun) bool,
     ) host_state.ApplyError!void {
         var run_order: u32 = 0;
-        var previous_placeholder: ?PlaceholderCell = null;
         var row: u16 = 0;
         while (row < screen.rows) : (row += 1) {
             var row_cells = std.ArrayList(PlaceholderCell).empty;
@@ -2008,9 +2009,7 @@ pub const State = struct {
             var col: u16 = 0;
             while (col < screen.cols) : (col += 1) {
                 const current = placeholderCellFromScreenCell(screen.cellInfoAt(row, col), row, col) orelse continue;
-                var next = current;
-                inheritWrappedPlaceholderCell(&next, previous_placeholder, screen.cols);
-                try row_cells.append(allocator, next);
+                try row_cells.append(allocator, current);
             }
 
             backfillPlaceholderRow(row_cells.items);
@@ -2020,7 +2019,6 @@ pub const State = struct {
                 if (pending) |*run| {
                     if (run.canAppend(next)) {
                         run.append();
-                        previous_placeholder = next;
                         continue;
                     }
                     if (self.resolvedPlaceholderRunFrom(run.*, run_order)) |resolved| {
@@ -2030,7 +2028,6 @@ pub const State = struct {
                 }
 
                 if (next.row == null) {
-                    previous_placeholder = next;
                     pending = null;
                     continue;
                 }
@@ -2038,7 +2035,6 @@ pub const State = struct {
                 if (start.col == null) start.col = 0;
                 if (start.image_id_high == null) start.image_id_high = 0;
                 pending = .{ .cell = start };
-                previous_placeholder = start;
             }
 
             if (pending) |run| {
@@ -2655,22 +2651,6 @@ fn placeholderCellFromScreenCell(cell: screen_mod.Screen.Cell, row: u16, col: u1
         .cell_row = row,
         .cell_col = col,
     };
-}
-
-fn inheritWrappedPlaceholderCell(next: *PlaceholderCell, previous: ?PlaceholderCell, cols: u16) void {
-    if (next.row != null) return;
-    if (next.col != null) return;
-    if (next.cell_col != 0) return;
-
-    const prev = previous orelse return;
-    if (prev.row == null) return;
-    if (prev.cell_col + 1 != cols) return;
-    if (prev.image_id_low != next.image_id_low) return;
-    if (prev.placement_id != next.placement_id) return;
-
-    next.row = prev.row.? + 1;
-    next.col = 0;
-    if (next.image_id_high == null) next.image_id_high = prev.image_id_high;
 }
 
 fn backfillPlaceholderRow(cells: []PlaceholderCell) void {

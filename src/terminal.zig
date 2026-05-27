@@ -1,4 +1,5 @@
 const std = @import("std");
+const graphics_log = @import("graphics_log.zig");
 const mode = @import("control/mode.zig");
 const screen = @import("screen.zig");
 const host_state = @import("host/state.zig");
@@ -217,7 +218,7 @@ pub const Terminal = struct {
 
     pub fn graphicsMeta(self: *Terminal) host_state.ApplyError!GraphicsMeta {
         const publication = self.graphicsPublication();
-        return .{
+        const meta = GraphicsMeta{
             .image_count = publication.state.imageCount(),
             .placement_count = publication.state.resolvedPlacementCount(self.screen_state.activeConst()),
             .virtual_placement_count = publication.state.virtualPlacementCount(),
@@ -226,6 +227,20 @@ pub const Terminal = struct {
             .publication_seq = publication.publication_seq,
             .dirty_generation = publication.dirty_generation,
         };
+        graphics_log.event(
+            "vt-export-meta",
+            "publication_seq={d} dirty_generation={d} images={d} placements={d} virtuals={d} placeholders={d} alt={d}",
+            .{
+                meta.publication_seq,
+                meta.dirty_generation,
+                meta.image_count,
+                meta.placement_count,
+                meta.virtual_placement_count,
+                meta.placeholder_run_count,
+                @intFromBool(meta.is_alternate_screen),
+            },
+        );
+        return meta;
     }
 
     pub fn runtimeObligation(self: *const Terminal, now_ns: u64) RuntimeObligation {

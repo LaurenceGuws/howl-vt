@@ -1,4 +1,5 @@
 const std = @import("std");
+const graphics_log = @import("../graphics_log.zig");
 const input = @import("../input.zig");
 const vocabulary = @import("../action/vocabulary.zig");
 const types = @import("types.zig");
@@ -73,11 +74,37 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!bool {
         },
         .kitty_graphics => |cmd| {
             const cursor = vt.screen_state.activeConst();
-            const result = try vt.kitty.activeGraphics(vt.screen_state.alt_active).handle(allocator, cursor, .{
+            const graphics = vt.kitty.activeGraphics(vt.screen_state.alt_active);
+            const result = try graphics.handle(allocator, cursor, .{
                 .row = cursor.cursor_row,
                 .col = cursor.cursor_col,
                 .screen_rows = cursor.rows,
             }, cursor.cellPixelSize(), &vt.host.pending_output, scratch.buf[0..], cmd);
+            graphics_log.event(
+                "vt-mutate",
+                "action={c} changed={d} image_id={d} image_number={d} placement_id={d} unicode={d} no_move={d} medium={c} compression={d} more={d} payload_len={d} source=({d},{d}) grid=({d},{d}) images={d} placements={d} virtuals={d} alt={d}",
+                .{
+                    cmd.action,
+                    @intFromBool(result.changed),
+                    cmd.image_id,
+                    cmd.image_number,
+                    cmd.placement_id,
+                    @intFromBool(cmd.unicode_placement),
+                    @intFromBool(cmd.no_move_cursor),
+                    cmd.medium,
+                    cmd.compression,
+                    @intFromBool(cmd.more_chunks),
+                    cmd.payload.len,
+                    cmd.source_width,
+                    cmd.source_height,
+                    cmd.columns,
+                    cmd.rows,
+                    graphics.imageCount(),
+                    graphics.placementCount(),
+                    graphics.virtualPlacementCount(),
+                    @intFromBool(vt.screen_state.alt_active),
+                },
+            );
             if (result.move) |move| {
                 applyPlacementCursorMove(vt.screen_state.active(), move.cols, move.rows);
             }

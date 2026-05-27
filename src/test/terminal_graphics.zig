@@ -419,6 +419,22 @@ test "kitty graphics place stores virtual placement prototype for U=1" {
     try std.testing.expectEqual(@as(u32, 1), placement.rows);
 }
 
+test "kitty graphics virtual placement derives omitted grid extent" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    terminal.setCellPixelSize(10, 20);
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=20,v=40,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=7,a=p,U=1,w=20,h=40\x1b\\");
+
+    const placement = terminal.kitty.main.graphics.virtualPlacementAt(0).?;
+    try std.testing.expectEqual(@as(u32, 2), placement.columns);
+    try std.testing.expectEqual(@as(u32, 2), placement.rows);
+}
+
 test "kitty graphics alt screen starts with separate empty state" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -712,6 +728,29 @@ test "kitty graphics placeholder-run export resolves left-to-right row inheritan
     try std.testing.expectEqual(@as(u32, 0), run.image_row);
     try std.testing.expectEqual(@as(u32, 0), run.image_col);
     try std.testing.expectEqual(@as(u32, 3), run.columns);
+}
+
+test "kitty graphics placeholder-run export does not inherit across rows" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=8,r=2\x1b\\");
+
+    setPlaceholderCell(&terminal, 0, 7, Screen.Color.indexed(7), 9, 0x0305, 0x033F, null);
+    setPlaceholderCell(&terminal, 1, 0, Screen.Color.indexed(7), 9, null, null, null);
+    terminal.postApply(true);
+
+    const meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
+    const run = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(@as(u16, 0), run.cell_row);
+    try std.testing.expectEqual(@as(u16, 7), run.cell_col);
+    try std.testing.expectEqual(@as(u32, 0), run.image_row);
+    try std.testing.expectEqual(@as(u32, 7), run.image_col);
 }
 
 test "kitty graphics placeholder-run export matches image id high byte" {
