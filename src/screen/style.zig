@@ -33,12 +33,22 @@ fn applyBasicSgr(self: anytype, param: i32) void {
     switch (param) {
         0 => self.current_attrs = default_cell_attrs,
         1 => self.current_attrs.bold = true,
+        2 => self.current_attrs.dim = true,
+        3 => self.current_attrs.italic = true,
         5, 6 => self.current_attrs.blink = true,
         7 => self.current_attrs.reverse = true,
-        22 => self.current_attrs.bold = false,
+        8 => self.current_attrs.invisible = true,
+        9 => self.current_attrs.strikethrough = true,
+        22 => {
+            self.current_attrs.bold = false;
+            self.current_attrs.dim = false;
+        },
+        23 => self.current_attrs.italic = false,
         24 => clearUnderline(self),
         25 => clearBlink(self),
         27 => self.current_attrs.reverse = false,
+        28 => self.current_attrs.invisible = false,
+        29 => self.current_attrs.strikethrough = false,
         30...37 => self.current_attrs.fg = ansi16Color(@intCast(param - 30)),
         39 => self.current_attrs.fg = default_cell_attrs.fg,
         40...47 => self.current_attrs.bg = ansi16Color(@intCast(param - 40)),
@@ -128,14 +138,24 @@ pub fn applyRectAttrOps(target: *CellAttrs, attrs: []const u16, reverse: bool) v
         switch (attr) {
             0 => if (!reverse) {
                 target.bold = false;
+                target.dim = false;
+                target.italic = false;
                 target.underline = false;
                 target.underline_style = .straight;
                 target.blink = false;
                 target.blink_fast = false;
                 target.reverse = false;
+                target.invisible = false;
+                target.strikethrough = false;
             },
             1 => {
                 if (reverse) target.bold = !target.bold else target.bold = true;
+            },
+            2 => {
+                if (reverse) target.dim = !target.dim else target.dim = true;
+            },
+            3 => {
+                if (reverse) target.italic = !target.italic else target.italic = true;
             },
             4 => {
                 if (reverse) {
@@ -152,8 +172,20 @@ pub fn applyRectAttrOps(target: *CellAttrs, attrs: []const u16, reverse: bool) v
             7 => {
                 if (reverse) target.reverse = !target.reverse else target.reverse = true;
             },
+            8 => {
+                if (reverse) target.invisible = !target.invisible else target.invisible = true;
+            },
+            9 => {
+                if (reverse) target.strikethrough = !target.strikethrough else target.strikethrough = true;
+            },
             22 => {
-                if (!reverse) target.bold = false;
+                if (!reverse) {
+                    target.bold = false;
+                    target.dim = false;
+                }
+            },
+            23 => {
+                if (!reverse) target.italic = false;
             },
             24 => {
                 if (!reverse) {
@@ -169,6 +201,12 @@ pub fn applyRectAttrOps(target: *CellAttrs, attrs: []const u16, reverse: bool) v
             },
             27 => {
                 if (!reverse) target.reverse = false;
+            },
+            28 => {
+                if (!reverse) target.invisible = false;
+            },
+            29 => {
+                if (!reverse) target.strikethrough = false;
             },
             else => {},
         }

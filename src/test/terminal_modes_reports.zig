@@ -399,6 +399,17 @@ test "XTREPORTSGR reports common rectangle attrs conservatively" {
     try std.testing.expectEqualStrings("\x1b[0;31m\x1b[0m", pendingOutput(&terminal));
 }
 
+test "XTREPORTSGR reports extended style attrs" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 1, 2);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    write(&stream, "\x1b[1;2;3;8;9mAB\x1b[1;1;1;2#|");
+    try std.testing.expectEqualStrings("\x1b[0;1;2;3;8;9m", pendingOutput(&terminal));
+}
+
 test "ANSI modes affect key encoding and insert writes" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 2, 4);

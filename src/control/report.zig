@@ -325,9 +325,13 @@ pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output
     var first = true;
     try appendSgrParam(allocator, output, &first, "0");
     if (common.bold) try appendSgrParam(allocator, output, &first, "1");
+    if (common.dim) try appendSgrParam(allocator, output, &first, "2");
+    if (common.italic) try appendSgrParam(allocator, output, &first, "3");
     if (common.underline) try appendSgrParam(allocator, output, &first, underlineStyleParam(common.underline_style));
     if (common.blink) try appendSgrParam(allocator, output, &first, "5");
     if (common.reverse) try appendSgrParam(allocator, output, &first, "7");
+    if (common.invisible) try appendSgrParam(allocator, output, &first, "8");
+    if (common.strikethrough) try appendSgrParam(allocator, output, &first, "9");
     try appendColorParam(allocator, output, encode_buf, &first, true, common.fg, Grid.default_cell_attrs.fg);
     try appendColorParam(allocator, output, encode_buf, &first, false, common.bg, Grid.default_cell_attrs.bg);
     if (common.underline and !colorEq(common.underline_color, Grid.default_underline_color)) {
@@ -364,11 +368,15 @@ pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16
 
 const CommonAttrs = struct {
     bold: bool,
+    dim: bool,
+    italic: bool,
     underline: bool,
     underline_style: Grid.UnderlineStyle,
     underline_color: Grid.Color,
     blink: bool,
     reverse: bool,
+    invisible: bool,
+    strikethrough: bool,
     fg: Grid.Color,
     bg: Grid.Color,
 };
@@ -378,11 +386,15 @@ fn commonAttrsForRect(screen: *const Grid, area: action_mod.SemanticEvent.RectAr
     const first_cell = screen.cellInfoAt(bounds.top, bounds.left);
     var common = CommonAttrs{
         .bold = first_cell.attrs.bold,
+        .dim = first_cell.attrs.dim,
+        .italic = first_cell.attrs.italic,
         .underline = first_cell.attrs.underline,
         .underline_style = first_cell.attrs.underline_style,
         .underline_color = first_cell.attrs.underline_color,
         .blink = first_cell.attrs.blink,
         .reverse = first_cell.attrs.reverse,
+        .invisible = first_cell.attrs.invisible,
+        .strikethrough = first_cell.attrs.strikethrough,
         .fg = first_cell.attrs.fg,
         .bg = first_cell.attrs.bg,
     };
@@ -393,9 +405,13 @@ fn commonAttrsForRect(screen: *const Grid, area: action_mod.SemanticEvent.RectAr
         while (col <= bounds.right) : (col += 1) {
             const attrs = screen.cellInfoAt(row, col).attrs;
             if (attrs.bold != common.bold) common.bold = false;
+            if (attrs.dim != common.dim) common.dim = false;
+            if (attrs.italic != common.italic) common.italic = false;
             if (attrs.underline != common.underline) common.underline = false;
             if (attrs.blink != common.blink) common.blink = false;
             if (attrs.reverse != common.reverse) common.reverse = false;
+            if (attrs.invisible != common.invisible) common.invisible = false;
+            if (attrs.strikethrough != common.strikethrough) common.strikethrough = false;
             if (attrs.underline_style != common.underline_style) common.underline_style = .straight;
             if (!colorEq(attrs.fg, common.fg)) common.fg = Grid.default_cell_attrs.fg;
             if (!colorEq(attrs.bg, common.bg)) common.bg = Grid.default_cell_attrs.bg;

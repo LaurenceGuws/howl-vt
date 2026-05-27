@@ -392,10 +392,14 @@ fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
         .underline_style = @intFromEnum(value.attrs.underline_style),
         .attrs = .{
             .bold = boolByte(value.attrs.bold),
+            .dim = boolByte(value.attrs.dim),
+            .italic = boolByte(value.attrs.italic),
             .underline = boolByte(value.attrs.underline),
             .underline_color_set = boolByte(value.attrs.underline_color.kind != .default),
             .blink = boolByte(value.attrs.blink or value.attrs.blink_fast),
             .inverse = boolByte(value.attrs.reverse),
+            .invisible = boolByte(value.attrs.invisible),
+            .strikethrough = boolByte(value.attrs.strikethrough),
             .selected = 0,
         },
         .link_id = value.attrs.link_id,
@@ -1104,6 +1108,37 @@ test "vt ffi runtime surface covers feed encode and surface" {
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.short_buffer)), source.status);
     try std.testing.expectEqual(@as(u16, 2), source.source.rows);
     try std.testing.expectEqual(@as(u16, 4), source.source.cols);
+}
+
+test "vt ffi exports style attrs and resets" {
+    const handle = terminalInit(1, 2, 0);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const bytes = "\x1b[1;2;3;8;9mA\x1b[22;23;28;29mB";
+    const fed = terminalFeed(handle, bytes.ptr, bytes.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), fed.status);
+
+    var cells: [2]FfiSurfaceCell = undefined;
+    var dirty_rows: [1]u8 = undefined;
+    var cols_start: [1]u16 = undefined;
+    var cols_end: [1]u16 = undefined;
+    const surface = terminalCopySurface(handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), surface.status);
+
+    try std.testing.expectEqual(@as(u32, 'A'), cells[0].codepoint);
+    try std.testing.expectEqual(@as(u8, 1), cells[0].attrs.bold);
+    try std.testing.expectEqual(@as(u8, 1), cells[0].attrs.dim);
+    try std.testing.expectEqual(@as(u8, 1), cells[0].attrs.italic);
+    try std.testing.expectEqual(@as(u8, 1), cells[0].attrs.invisible);
+    try std.testing.expectEqual(@as(u8, 1), cells[0].attrs.strikethrough);
+
+    try std.testing.expectEqual(@as(u32, 'B'), cells[1].codepoint);
+    try std.testing.expectEqual(@as(u8, 0), cells[1].attrs.bold);
+    try std.testing.expectEqual(@as(u8, 0), cells[1].attrs.dim);
+    try std.testing.expectEqual(@as(u8, 0), cells[1].attrs.italic);
+    try std.testing.expectEqual(@as(u8, 0), cells[1].attrs.invisible);
+    try std.testing.expectEqual(@as(u8, 0), cells[1].attrs.strikethrough);
 }
 
 test "vt ffi init options seed default cursor style and blink" {

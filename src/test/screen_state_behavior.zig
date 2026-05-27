@@ -249,6 +249,34 @@ test "screen: sgr reset restores default attrs for later writes" {
     try std.testing.expectEqual(Screen.default_fg, b.attrs.fg);
 }
 
+test "screen: style attrs set and reset with SGR" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCells(gpa, 1, 2);
+    defer s.deinit(gpa);
+
+    const set_params = [_]i32{ 1, 2, 3, 8, 9 };
+    s.apply(SemanticEvent{ .sgr = .{ .params = set_params[0..], .separators = emptySeparators() } });
+    s.apply(SemanticEvent{ .write_text = "A" });
+
+    const reset_params = [_]i32{ 22, 23, 28, 29 };
+    s.apply(SemanticEvent{ .sgr = .{ .params = reset_params[0..], .separators = emptySeparators() } });
+    s.apply(SemanticEvent{ .write_text = "B" });
+
+    const a = s.cellInfoAt(0, 0);
+    try std.testing.expect(a.attrs.bold);
+    try std.testing.expect(a.attrs.dim);
+    try std.testing.expect(a.attrs.italic);
+    try std.testing.expect(a.attrs.invisible);
+    try std.testing.expect(a.attrs.strikethrough);
+
+    const b = s.cellInfoAt(0, 1);
+    try std.testing.expect(!b.attrs.bold);
+    try std.testing.expect(!b.attrs.dim);
+    try std.testing.expect(!b.attrs.italic);
+    try std.testing.expect(!b.attrs.invisible);
+    try std.testing.expect(!b.attrs.strikethrough);
+}
+
 test "screen: kitty colon SGR sets underline styles without stealing semicolon params" {
     const gpa = std.testing.allocator;
     var s = try Screen.initWithCells(gpa, 2, 4);
