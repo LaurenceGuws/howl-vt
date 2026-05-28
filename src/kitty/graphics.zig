@@ -27,6 +27,7 @@ const DirectPayloadError = error{
     InvalidGraphicsData,
     InvalidRawGraphicsData,
     InvalidPngData,
+    TooMuchData,
 };
 const PngDecodeError = error{
     InvalidGraphicsData,
@@ -1042,6 +1043,18 @@ pub const State = struct {
                             if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADPNG:invalid PNG data");
                             return;
                         },
+                        error.TooMuchData => {
+                            if (shouldReplyFailure(cmd.quiet)) {
+                                try appendReply(
+                                    allocator,
+                                    output,
+                                    encode_buf,
+                                    cmd.image_id,
+                                    "EFBIG:Too much data",
+                                );
+                            }
+                            return;
+                        },
                         error.OutOfMemory => return error.OutOfMemory,
                         error.ConsequenceLimit => return error.ConsequenceLimit,
                     }
@@ -1295,6 +1308,18 @@ pub const State = struct {
                         if (shouldReplyFailure(quiet)) try appendReply(allocator, output, encode_buf, image_id, "EBADPNG:invalid PNG data");
                         return null;
                     },
+                    error.TooMuchData => {
+                        if (shouldReplyFailure(quiet)) {
+                            try appendReply(
+                                allocator,
+                                output,
+                                encode_buf,
+                                image_id,
+                                "EFBIG:Too much data",
+                            );
+                        }
+                        return null;
+                    },
                     error.OutOfMemory => return error.OutOfMemory,
                     error.ConsequenceLimit => return error.ConsequenceLimit,
                 }
@@ -1355,6 +1380,18 @@ pub const State = struct {
                 },
                 error.InvalidPngData => {
                     if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADPNG:invalid PNG data");
+                    return null;
+                },
+                error.TooMuchData => {
+                    if (shouldReplyFailure(cmd.quiet)) {
+                        try appendReply(
+                            allocator,
+                            output,
+                            encode_buf,
+                            cmd.image_id,
+                            "EFBIG:Too much data",
+                        );
+                    }
                     return null;
                 },
                 error.OutOfMemory => return error.OutOfMemory,
@@ -3193,7 +3230,13 @@ fn normalizeDirectPayloadOwned(allocator: std.mem.Allocator, compression: u8, fo
     return encoded;
 }
 
-fn normalizeBase64RawPayloadOwned(allocator: std.mem.Allocator, format: u16, width: u32, height: u32, payload: []const u8) (error{InvalidRawGraphicsData} || host_state.ApplyError)![]u8 {
+fn normalizeBase64RawPayloadOwned(
+    allocator: std.mem.Allocator,
+    format: u16,
+    width: u32,
+    height: u32,
+    payload: []const u8,
+) (error{ InvalidRawGraphicsData, TooMuchData } || host_state.ApplyError)![]u8 {
     const raw_len = expectedRawPayloadLen(format, width, height) catch |err| switch (err) {
         error.InvalidGraphicsCompression => unreachable,
         error.InvalidGraphicsData => return error.InvalidRawGraphicsData,
@@ -3201,11 +3244,12 @@ fn normalizeBase64RawPayloadOwned(allocator: std.mem.Allocator, format: u16, wid
         error.ConsequenceLimit => return error.ConsequenceLimit,
     };
     const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(payload) catch return error.InvalidRawGraphicsData;
-    if (decoded_len < raw_len or decoded_len - raw_len > 10) return error.InvalidRawGraphicsData;
+    if (decoded_len < raw_len) return error.InvalidRawGraphicsData;
 
     const raw = try allocator.alloc(u8, decoded_len);
     defer allocator.free(raw);
     std.base64.standard.Decoder.decode(raw, payload) catch return error.InvalidRawGraphicsData;
+    if (decoded_len - raw_len > 10) return error.TooMuchData;
 
     if (decoded_len == raw_len) return try allocator.dupe(u8, payload);
 
