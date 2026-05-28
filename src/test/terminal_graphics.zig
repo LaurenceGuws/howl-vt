@@ -31,6 +31,7 @@ fn base64Owned(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
 const zlib_rgb_abc = [_]u8{ 0x78, 0x9c, 0x73, 0x74, 0x72, 0x06, 0x00, 0x01, 0x8d, 0x00, 0xc7 };
 const zlib_rgba_abcd = [_]u8{ 0x78, 0x9c, 0x73, 0x74, 0x72, 0x76, 0x01, 0x00, 0x02, 0x98, 0x01, 0x0b };
 const png_rgba_11223344 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMQVDJ2AQABWQCrEyolqwAAAABJRU5ErkJggg==";
+const kitty_png_rgba_00ffff7f = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFhAJ/wlseKgAAAABJRU5ErkJggg==";
 const howl_app_icon_rel_path = "../howl-linux-host/assets/icon/howl_window_icon.png";
 
 fn writeSharedMemory(name: [:0]const u8, bytes: []const u8) !void {
@@ -3363,6 +3364,26 @@ test "kitty graphics client-driven current png frame republishes normalized rgba
     try std.testing.expectEqual(@as(u32, 1), image.width);
     try std.testing.expectEqual(@as(u32, 1), image.height);
     try std.testing.expectEqualStrings("ESIzRA==", image.base64_payload);
+}
+
+test "kitty graphics client-driven current kitty png frame republishes exact rgba" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=32;AAAAAA==\x1b\\");
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=100;{s}\x1b\\", .{kitty_png_rgba_00ffff7f});
+    defer allocator.free(upload);
+    try stream.nextSlice(upload);
+    try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
+
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u16, 32), image.format);
+    try std.testing.expectEqual(@as(u32, 1), image.width);
+    try std.testing.expectEqual(@as(u32, 1), image.height);
+    try std.testing.expectEqualStrings("AP//fw==", image.base64_payload);
 }
 
 test "kitty graphics selected raw frame over png root republishes normalized rgba" {
