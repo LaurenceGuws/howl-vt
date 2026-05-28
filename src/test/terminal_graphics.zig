@@ -2104,6 +2104,111 @@ test "kitty graphics image numbers allocate ids and place newest image" {
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsPlacementAt(&terminal, 0).?.image_id);
 }
 
+test "kitty graphics image number upload avoids existing explicit image id" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=1,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
+    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageAt(&terminal, 1).?.image_id);
+    try std.testing.expectEqual(@as(u32, 13), KittyState.graphicsImageAt(&terminal, 1).?.image_number);
+    try std.testing.expectEqualStrings("\x1b_Gi=2,I=13;OK\x1b\\", pendingOutput(&terminal));
+}
+
+test "kitty graphics image number upload reuses lowest freed positive id" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=1,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=d,d=I,i=1\x1b\\");
+    try stream.nextSlice("\x1b_GI=14,s=1,v=1,t=d,f=24;CCCC\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expect(imageIndexById(&terminal.kitty.main.graphics, 1) != null);
+    try std.testing.expect(imageIndexById(&terminal.kitty.main.graphics, 2) != null);
+    const reused = KittyState.graphicsImageAt(&terminal, imageIndexById(&terminal.kitty.main.graphics, 1).?).?;
+    try std.testing.expectEqual(@as(u32, 14), reused.image_number);
+    try std.testing.expectEqualStrings("\x1b_Gi=2,I=13;OK\x1b\\\x1b_Gi=1,I=14;OK\x1b\\", pendingOutput(&terminal));
+}
+
+test "kitty graphics frame upload by image number targets newest image" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,I=13,r=2,s=1,v=1,t=d,f=24;CCCC\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
+    const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), frame.image_id);
+    try std.testing.expectEqual(@as(u32, 2), frame.frame_number);
+    try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+}
+
+test "kitty graphics chunked frame upload by image number captures newest image" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,I=13,r=2,s=1,v=1,t=d,f=24,m=1;CC\x1b\\");
+    try stream.nextSlice("\x1b_GI=99,m=0;CC\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
+    const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), frame.image_id);
+    try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+}
+
+test "kitty graphics frame upload by missing image number replies not found without allocation" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Ga=f,I=404,r=2,s=1,v=1,t=d,f=24;CCCC\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_GI=404;ENOENT:image not found\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+}
+
+test "kitty graphics chunked frame upload by missing image number replies not found without allocation" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Ga=f,I=404,r=2,s=1,v=1,t=d,f=24,m=1;CC\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_GI=404;ENOENT:image not found\x1b\\", pendingOutput(&terminal));
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+}
+
 test "kitty graphics place without placement id keeps image-number reply shape" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

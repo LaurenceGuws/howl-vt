@@ -388,7 +388,6 @@ pub const State = struct {
     virtual_placements: std.ArrayList(VirtualPlacement) = .empty,
     frames: std.ArrayList(Frame) = .empty,
     upload: ?Upload = null,
-    next_image_id: u32 = 1,
 
     fn count32(items: anytype) u32 {
         std.debug.assert(items.len <= std.math.maxInt(u32));
@@ -591,7 +590,6 @@ pub const State = struct {
         for (self.frames.items) |frame| allocator.free(frame.base64_payload);
         self.frames.clearRetainingCapacity();
         self.abortUpload(allocator);
-        self.next_image_id = 1;
     }
 
     pub fn imageCount(self: *const State) Count {
@@ -1056,7 +1054,10 @@ pub const State = struct {
 
     fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) host_state.ApplyError!?CursorMove {
         if (self.upload == null) {
-            const image_id = self.imageIdForUpload(cmd);
+            const image_id = if (cmd.action == 'f') self.resolveImageId(cmd) orelse {
+                if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:image not found");
+                return null;
+            } else self.imageIdForUpload(cmd);
             self.upload = .{
                 .image_id = image_id,
                 .image_number = cmd.image_number,
@@ -1230,15 +1231,11 @@ pub const State = struct {
     }
 
     fn storePayload(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, payload: []const u8) host_state.ApplyError!?CursorMove {
-        if (cmd.action == 'f') {
-            const image_id = self.resolveImageId(cmd) orelse cmd.image_id;
-            if (self.findImage(image_id) == null) {
-                if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENOENT:image not found");
-                return null;
-            }
-        }
+        const image_id = if (cmd.action == 'f') self.resolveImageId(cmd) orelse {
+            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:image not found");
+            return null;
+        } else self.imageIdForUpload(cmd);
         const owned = try allocator.dupe(u8, payload);
-        const image_id = self.imageIdForUpload(cmd);
         if (cmd.action == 'f') {
             try self.storeFrameOwned(allocator, image_id, cmd.edit_frame_number, cmd.format, cmd.width, cmd.height, cmd.x, cmd.y, cmd.base_frame_number, cmd.compose_mode, cmd.background_rgba, cmd.z, owned);
         } else {
@@ -1357,10 +1354,15 @@ pub const State = struct {
     fn imageIdForUpload(self: *State, cmd: KittyGraphicsCommand) u32 {
         if (cmd.image_id != 0) return cmd.image_id;
         if (cmd.image_number == 0) return 0;
-        const image_id = self.next_image_id;
-        self.next_image_id +%= 1;
-        if (self.next_image_id == 0) self.next_image_id = 1;
-        return image_id;
+        return self.nextFreeClientImageId();
+    }
+
+    fn nextFreeClientImageId(self: *const State) u32 {
+        var candidate: u32 = 1;
+        while (candidate != 0) : (candidate +%= 1) {
+            if (self.findImage(candidate) == null) return candidate;
+        }
+        unreachable;
     }
 
     fn storeImageOwned(self: *State, allocator: std.mem.Allocator, image_id: u32, image_number: u32, format: u16, width: u32, height: u32, owned: []u8) host_state.ApplyError!void {
