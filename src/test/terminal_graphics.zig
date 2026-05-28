@@ -357,6 +357,39 @@ test "kitty graphics mismatched direct raw payload length returns EINVAL without
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 
+test "kitty graphics direct upload with both id forms rejects without storing" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 't',
+        .image_id = 7,
+        .image_number = 13,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 0,
+        .delete_target = 0,
+        .payload = "AAAA",
+    });
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7,I=13;EINVAL:Must not specify both image id and image number\x1b\\", output.items);
+    try std.testing.expectEqual(@as(u32, 0), state.imageCount());
+}
+
 test "kitty graphics quiet modes split direct upload failures" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -397,6 +430,21 @@ test "kitty graphics quiet modes split successful upload query and placement rep
     try stream_q2.nextSlice("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24,q=2;AAAA\x1b\\");
     try stream_q2.nextSlice("\x1b_Ga=p,i=1,p=4,q=2\x1b\\");
     try std.testing.expectEqualStrings("", pendingOutput(&terminal_q2));
+}
+
+test "kitty graphics q2 suppresses both id forms rejection without mutating" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,I=13,s=1,v=1,t=d,f=24,q=2;AAAA\x1b\\");
+
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
 }
 
 test "kitty graphics quiet modes persist through failed chunked upload" {
@@ -2732,6 +2780,39 @@ test "kitty graphics place missing image number with placement id replies withou
     try std.testing.expectEqualStrings("\x1b_GI=404,p=7;ENOENT:image not found\x1b\\", pendingOutput(&terminal));
 }
 
+test "kitty graphics place with both id forms rejects before lookup" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 'p',
+        .image_id = 404,
+        .image_number = 13,
+        .placement_id = 7,
+        .format = 0,
+        .width = 0,
+        .height = 0,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 0,
+        .more_chunks = false,
+        .quiet = 0,
+        .delete_target = 0,
+        .payload = "",
+    });
+
+    try std.testing.expectEqualStrings("\x1b_Gi=404,I=13;EINVAL:Must not specify both image id and image number\x1b\\", output.items);
+    try std.testing.expectEqual(@as(u32, 0), state.placementCount());
+}
+
 test "kitty graphics relative placement resolves parent anchor and does not move cursor" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 8, 16);
@@ -3515,6 +3596,42 @@ test "kitty graphics animation frame upload stores frame metadata" {
     try std.testing.expectEqual(@as(u32, 7), frame.image_id);
     try std.testing.expectEqual(@as(u32, 2), frame.frame_number);
     try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+}
+
+test "kitty graphics animation frame upload with both id forms rejects without storing frame" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    try appendTestImage(&state, allocator, 7, 4);
+    _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 'f',
+        .image_id = 7,
+        .image_number = 13,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .edit_frame_number = 2,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 0,
+        .delete_target = 0,
+        .payload = "CCCC",
+    });
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7,I=13;EINVAL:Must not specify both image id and image number\x1b\\", output.items);
+    try std.testing.expectEqual(@as(u32, 1), state.imageCount());
+    try std.testing.expectEqual(@as(u32, 0), state.frameCount());
 }
 
 test "kitty graphics oversized animation frame width rejects without storing frame" {

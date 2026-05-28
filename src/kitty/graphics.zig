@@ -856,6 +856,10 @@ pub const State = struct {
     }
 
     pub fn handle(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!HandleResult {
+        if (cmd.image_id != 0 and cmd.image_number != 0) {
+            if (shouldReplyFailure(cmd.quiet)) try appendNumberReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, "EINVAL:Must not specify both image id and image number");
+            return .{ .changed = false, .move = null };
+        }
         if (cmd.action == 'q') {
             if (cmd.image_id == 0) return .{ .changed = false, .move = null };
             try self.queryImageSupport(allocator, cmd, output, encode_buf);
