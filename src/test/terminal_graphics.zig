@@ -258,6 +258,51 @@ test "kitty graphics transmit and display stores image placement and moves curso
     try std.testing.expectEqual(@as(u16, 6), terminal.screen_state.activeConst().cursor_col);
 }
 
+test "kitty graphics anonymous physical placements publish distinct render order keys" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,c=1,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,c=1,r=1\x1b\\");
+
+    const meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 2), meta.placement_count);
+    const first = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    const second = (try terminal.graphicsPlacement(meta.publication_seq, 1)).?;
+    try std.testing.expect(first.render_order_key != 0);
+    try std.testing.expect(second.render_order_key != 0);
+    try std.testing.expect(first.render_order_key != second.render_order_key);
+}
+
+test "kitty graphics physical placement updates and conversion preserve render order key" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=5,c=1,r=1\x1b\\");
+    var meta = try terminal.graphicsMeta();
+    const initial = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    try std.testing.expect(initial.render_order_key != 0);
+
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=5,c=2,r=1\x1b\\");
+    meta = try terminal.graphicsMeta();
+    const updated = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(initial.render_order_key, updated.render_order_key);
+
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=5,U=1,c=3,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=5,c=4,r=1\x1b\\");
+    meta = try terminal.graphicsMeta();
+    const converted = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(initial.render_order_key, converted.render_order_key);
+}
+
 test "kitty graphics animation control for missing image is rejected explicitly" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -866,6 +911,41 @@ test "kitty graphics placeholder cells publish generated placements and suppress
     try std.testing.expectEqual(@as(u32, 15), dest.top_px);
     try std.testing.expectEqual(@as(u32, 20), dest.right_px);
     try std.testing.expectEqual(@as(u32, 20), dest.bottom_px);
+}
+
+test "kitty graphics generated placements publish stable synthetic render order keys" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    defer terminal.deinit();
+    terminal.setCellPixelSize(10, 20);
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=100,v=40,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,x=0,y=0,w=80,h=20,c=4,r=2\x1b\\");
+    const virtual = terminal.kitty.main.graphics.virtualPlacementAt(0).?;
+    try std.testing.expect(virtual.ref_id != 0);
+
+    setPlaceholderCell(&terminal, 1, 1, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 2, 1, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    terminal.postApply(true);
+
+    var meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 2), meta.placement_count);
+    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    var first = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    var second = (try terminal.graphicsPlacement(meta.publication_seq, 1)).?;
+    try std.testing.expectEqual((@as(u64, virtual.ref_id) << 32) | @as(u64, 0), first.render_order_key);
+    try std.testing.expectEqual((@as(u64, virtual.ref_id) << 32) | @as(u64, 1), second.render_order_key);
+    try std.testing.expect(first.render_order_key != 0);
+    try std.testing.expect(second.render_order_key != 0);
+    try std.testing.expect(first.render_order_key != second.render_order_key);
+
+    meta = try terminal.graphicsMeta();
+    first = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    second = (try terminal.graphicsPlacement(meta.publication_seq, 1)).?;
+    try std.testing.expectEqual((@as(u64, virtual.ref_id) << 32) | @as(u64, 0), first.render_order_key);
+    try std.testing.expectEqual((@as(u64, virtual.ref_id) << 32) | @as(u64, 1), second.render_order_key);
 }
 
 test "kitty graphics generated placements clear and update from VT truth" {

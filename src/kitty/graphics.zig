@@ -189,6 +189,7 @@ pub const Placement = struct {
     effective_columns: u32,
     effective_rows: u32,
     flags: u32 = 0,
+    render_order_key: u64 = 0,
 
     pub const ResolvedDestGeometry = struct {
         left_px: u32,
@@ -707,6 +708,8 @@ pub const State = struct {
         var resolved_idx: u32 = 0;
         for (self.placements.items) |placement| {
             var resolved = placement;
+            std.debug.assert(resolved.ref_id != 0);
+            resolved.render_order_key = @as(u64, resolved.ref_id);
             const anchor = self.resolvePlacementAnchor(resolved, screen) orelse continue;
             if (anchor.col < 0) continue;
             if (resolved_idx == idx) {
@@ -2087,6 +2090,7 @@ pub const State = struct {
             next.ref_id = self.allocRefId();
         }
         std.debug.assert(next.ref_id != 0);
+        next.render_order_key = @as(u64, next.ref_id);
         if (next.hasParent()) {
             const ok = try self.validatePlacementAncestry(allocator, output, encode_buf, next, image_number, quiet);
             if (!ok) return null;
@@ -2137,6 +2141,7 @@ pub const State = struct {
             }
         }
         if (next.ref_id == 0) next.ref_id = self.allocRefId();
+        std.debug.assert(next.ref_id != 0);
         next.validate();
         if (next.placement_id != 0) {
             if (self.findVirtualPlacementIndex(next.image_id, next.placement_id)) |idx| {
@@ -3050,6 +3055,7 @@ fn generatedPlacementFrom(self: *const State, run: ResolvedPlaceholderRun, cell_
     const cell = cell_pixel_size orelse CellPixelSize{ .width = 1, .height = 1 };
     if (cell.width == 0 or cell.height == 0) return null;
     const virtual = self.virtualPlacementAt(run.virtual_placement_index) orelse return null;
+    std.debug.assert(virtual.ref_id != 0);
     const image_idx = self.findImage(virtual.image_id) orelse return null;
     const image = self.imageAt(image_idx) orelse return null;
     const geometry = generatedPlacementGeometry(image, virtual, run, cell) orelse return null;
@@ -3071,6 +3077,7 @@ fn generatedPlacementFrom(self: *const State, run: ResolvedPlaceholderRun, cell_
         .effective_columns = geometry.effective_columns,
         .effective_rows = geometry.effective_rows,
         .flags = placement_generated_placeholder_flag,
+        .render_order_key = (@as(u64, virtual.ref_id) << 32) | @as(u64, run.run_order),
     };
 }
 

@@ -17,8 +17,9 @@ comptime {
     std.debug.assert(@sizeOf(input.Scratch) == 64);
     std.debug.assert(@sizeOf(FfiRgb8) == 3);
     std.debug.assert(@sizeOf(FfiRenderColorState) == 777);
-    std.debug.assert(@sizeOf(FfiGraphicsPlacement) == 92);
+    std.debug.assert(@sizeOf(FfiGraphicsPlacement) == 104);
     std.debug.assert(@offsetOf(FfiGraphicsPlacement, "flags") == 88);
+    std.debug.assert(@offsetOf(FfiGraphicsPlacement, "render_order_key") == 96);
 }
 
 pub const HowlVtCallStatus = enum(c_int) {
@@ -272,6 +273,7 @@ pub const FfiGraphicsPlacement = extern struct {
     effective_columns: u32 = 0,
     effective_rows: u32 = 0,
     flags: u32 = 0,
+    render_order_key: u64 = 0,
 };
 
 pub const FfiGraphicsPlacementResult = extern struct {
@@ -602,6 +604,7 @@ fn graphicsPlacementResult(placement: kitty_types.Graphics.Placement) FfiGraphic
 
 fn graphicsPlacementResultWithCell(placement: kitty_types.Graphics.Placement, cell_pixel_size: ?screen.Screen.CellPixelSize) FfiGraphicsPlacementResult {
     const dest = placement.resolveDestGeometry(cell_pixel_size);
+    std.debug.assert(placement.render_order_key != 0);
     return .{
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .placement = .{
@@ -627,6 +630,7 @@ fn graphicsPlacementResultWithCell(placement: kitty_types.Graphics.Placement, ce
             .effective_columns = placement.effective_columns,
             .effective_rows = placement.effective_rows,
             .flags = placement.flags,
+            .render_order_key = placement.render_order_key,
         },
     };
 }

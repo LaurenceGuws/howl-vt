@@ -299,6 +299,7 @@ typedef struct {
   uint32_t effective_columns;
   uint32_t effective_rows;
   uint32_t flags;
+  uint64_t render_order_key;
 } HowlVtGraphicsPlacement;
 
 typedef struct {
