@@ -106,17 +106,48 @@ fn retainedPayload(allocator: std.mem.Allocator, len: usize, byte: u8) ![]u8 {
 }
 
 fn appendTestImage(state: *Graphics.State, allocator: std.mem.Allocator, image_id: u32, payload_len: usize) !void {
+    try appendTestImageWithPayloads(state, allocator, image_id, payload_len, 3);
+}
+
+fn appendTestImageWithPayloads(state: *Graphics.State, allocator: std.mem.Allocator, image_id: u32, legacy_len: usize, decoded_len: usize) !void {
+    try std.testing.expect(decoded_len % 4 == 0 or decoded_len == 3);
+    const format: u16 = if (decoded_len == 3) 24 else 32;
+    const width: u32 = if (decoded_len == 3) 1 else @intCast(decoded_len / 4);
     try state.images.append(allocator, .{
         .image_id = image_id,
         .image_number = 0,
-        .format = 24,
-        .width = 1,
+        .format = format,
+        .width = width,
         .height = 1,
-        .legacy_payload = try retainedPayload(allocator, payload_len, 'A'),
-        .decoded_format = 24,
-        .decoded_width = 1,
+        .legacy_payload = try retainedPayload(allocator, legacy_len, 'A'),
+        .decoded_format = format,
+        .decoded_width = width,
         .decoded_height = 1,
-        .decoded_payload = try retainedPayload(allocator, 3, 0),
+        .decoded_payload = try retainedPayload(allocator, decoded_len, 0),
+    });
+}
+
+fn appendTestDecodedFrame(state: *Graphics.State, allocator: std.mem.Allocator, image_id: u32, frame_number: u32, decoded_len: usize) !void {
+    try std.testing.expect(decoded_len % 4 == 0);
+    try state.frames.append(allocator, .{
+        .frame_id = frame_number - 1,
+        .image_id = image_id,
+        .frame_number = frame_number,
+        .format = 32,
+        .width = @intCast(decoded_len / 4),
+        .height = 1,
+        .x = 0,
+        .y = 0,
+        .uses_root_base = false,
+        .base_frame_id = 0,
+        .compose_mode = 0,
+        .background_rgba = 0,
+        .gap = 0,
+        .legacy_payload = try retainedPayload(allocator, 4, 'F'),
+        .decoded_format = 32,
+        .decoded_width = @intCast(decoded_len / 4),
+        .decoded_height = 1,
+        .decoded_payload = try retainedPayload(allocator, decoded_len, 'f'),
     });
 }
 
@@ -5295,6 +5326,245 @@ test "kitty graphics runtime skips stored gapless negative-z frame" {
     try std.testing.expectEqualStrings("REVG", KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectEqual(@as(u32, 3), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
     try std.testing.expectEqualStrings("R0hJ", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
+}
+
+test "kitty graphics decoded quota evicts unplaced image" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    try appendTestImageWithPayloads(&state, allocator, 1, 4, Graphics.decoded_payload_max_bytes);
+
+    _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 't',
+        .image_id = 2,
+        .image_number = 0,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 1,
+        .delete_target = 0,
+        .payload = "BBBB",
+    });
+
+    try std.testing.expect(imageIndexById(&state, 1) == null);
+    try std.testing.expect(imageIndexById(&state, 2) != null);
+}
+
+test "kitty graphics decoded quota preserves physical placement" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    try appendTestImageWithPayloads(&state, allocator, 1, 4, Graphics.decoded_payload_max_bytes);
+    try appendTestPlacement(&state, allocator, 1);
+
+    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 't',
+        .image_id = 2,
+        .image_number = 0,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 1,
+        .delete_target = 0,
+        .payload = "BBBB",
+    }));
+
+    try std.testing.expect(imageIndexById(&state, 1) != null);
+    try std.testing.expectEqual(@as(u32, 1), state.placementCount());
+    try std.testing.expectEqual(@as(u32, 1), state.imageCount());
+}
+
+test "kitty graphics decoded quota preserves virtual placement" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    try appendTestImageWithPayloads(&state, allocator, 1, 4, Graphics.decoded_payload_max_bytes);
+    try appendTestVirtualPlacement(&state, allocator, 1);
+
+    try std.testing.expectError(error.ConsequenceLimit, state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 't',
+        .image_id = 2,
+        .image_number = 0,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 1,
+        .delete_target = 0,
+        .payload = "BBBB",
+    }));
+
+    try std.testing.expect(imageIndexById(&state, 1) != null);
+    try std.testing.expectEqual(@as(u32, 1), state.virtualPlacementCount());
+    try std.testing.expectEqual(@as(u32, 1), state.imageCount());
+}
+
+test "kitty graphics decoded quota replacement counts freed bytes" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    try appendTestImageWithPayloads(&state, allocator, 7, 4, Graphics.decoded_payload_max_bytes - 8);
+    state.images.items[0].current_frame_number = 2;
+    state.images.items[0].current_override_legacy_payload = try retainedPayload(allocator, 4, 'O');
+    state.images.items[0].current_override_decoded_payload = try retainedPayload(allocator, 4, 'o');
+    state.images.items[0].current_override_format = 32;
+    state.images.items[0].current_override_width = 1;
+    state.images.items[0].current_override_height = 1;
+    try appendTestDecodedFrame(&state, allocator, 7, 2, 4);
+
+    _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 't',
+        .image_id = 7,
+        .image_number = 0,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 1,
+        .delete_target = 0,
+        .payload = "BBBB",
+    });
+
+    try std.testing.expectEqual(@as(u32, 1), state.imageCount());
+    try std.testing.expectEqual(@as(u32, 7), state.imageAt(0).?.image_id);
+    try std.testing.expectEqual(@as(usize, 3), state.imageAt(0).?.decoded_payload.len);
+    try std.testing.expectEqual(@as(?[]u8, null), state.imageAt(0).?.current_override_decoded_payload);
+    try std.testing.expectEqual(@as(u32, 0), state.frameCount());
+}
+
+test "kitty graphics decoded quota compose root preserves protected shifted image" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    try appendTestImageWithPayloads(&state, allocator, 1, 4, Graphics.decoded_payload_max_bytes);
+    try appendTestImageWithPayloads(&state, allocator, 7, 4, 4);
+    try appendTestDecodedFrame(&state, allocator, 7, 2, 4);
+
+    _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 'c',
+        .image_id = 7,
+        .image_number = 0,
+        .placement_id = 0,
+        .format = 0,
+        .width = 0,
+        .height = 0,
+        .columns = 0,
+        .rows = 0,
+        .current_frame_number = 1,
+        .edit_frame_number = 2,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 0,
+        .more_chunks = false,
+        .quiet = 1,
+        .delete_target = 0,
+        .payload = "",
+    });
+
+    try std.testing.expect(imageIndexById(&state, 1) == null);
+    try std.testing.expectEqual(@as(u32, 1), state.imageCount());
+    try std.testing.expectEqual(@as(u32, 7), state.imageAt(0).?.image_id);
+    try std.testing.expectEqual(@as(usize, 4), state.imageAt(0).?.decoded_payload.len);
+    try std.testing.expectEqual(@as(u32, 1), state.frameCount());
+}
+
+test "kitty graphics decoded quota eviction removes frames and current override" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    try appendTestImageWithPayloads(&state, allocator, 1, 4, Graphics.decoded_payload_max_bytes - 8);
+    state.images.items[0].current_frame_number = 2;
+    state.images.items[0].current_override_legacy_payload = try retainedPayload(allocator, 4, 'O');
+    state.images.items[0].current_override_decoded_payload = try retainedPayload(allocator, 4, 'o');
+    state.images.items[0].current_override_format = 32;
+    state.images.items[0].current_override_width = 1;
+    state.images.items[0].current_override_height = 1;
+    try appendTestDecodedFrame(&state, allocator, 1, 2, 4);
+
+    _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 't',
+        .image_id = 2,
+        .image_number = 0,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 1,
+        .delete_target = 0,
+        .payload = "BBBB",
+    });
+
+    try std.testing.expect(imageIndexById(&state, 1) == null);
+    try std.testing.expect(imageIndexById(&state, 2) != null);
+    try std.testing.expectEqual(@as(u32, 0), state.frameCount());
 }
 
 test "kitty graphics quota evicts unplaced image before failing or touching placed image" {

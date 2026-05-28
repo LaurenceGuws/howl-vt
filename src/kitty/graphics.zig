@@ -1059,13 +1059,18 @@ pub const State = struct {
         errdefer if (encoded_owned) allocator.free(encoded);
         _ = std.base64.standard.Encoder.encode(encoded, dest);
 
-        const current_image_idx = self.findImage(image_id) orelse return .{ .changed = false, .move = null };
-        var current_image = &self.images.items[@intCast(current_image_idx)];
-        try self.ensureDecodedPayloadStore(count32(dest), if (dest_frame_number == 1) decodedPayloadBytesFreedByPublishedRoot(self, image_id) else decodedPayloadBytesFreedByFrame(self, image_id, dest_frame_number));
+        try self.ensureDecodedPayloadStore(
+            allocator,
+            count32(dest),
+            if (dest_frame_number == 1) decodedPayloadBytesFreedByPublishedRoot(self, image_id) else decodedPayloadBytesFreedByFrame(self, image_id, dest_frame_number),
+            image_id,
+        );
         const decoded = try allocator.dupe(u8, dest);
         var decoded_owned = true;
         errdefer if (decoded_owned) allocator.free(decoded);
         if (dest_frame_number == 1) {
+            const current_image_idx = self.findImage(image_id) orelse return .{ .changed = false, .move = null };
+            var current_image = &self.images.items[@intCast(current_image_idx)];
             allocator.free(current_image.legacy_payload);
             allocator.free(current_image.decoded_payload);
             current_image.legacy_payload = encoded;
@@ -1105,9 +1110,10 @@ pub const State = struct {
             assertFramePayloadsCoherent(self.frames.items[@intCast(frame_idx)]);
         }
 
-        current_image = &self.images.items[@intCast(self.findImage(image_id) orelse return .{ .changed = true, .move = null })];
-        if (current_image.current_frame_number == dest_frame_number) {
-            try self.refreshCurrentFramePublication(allocator, @intCast(self.findImage(image_id).?));
+        const refreshed_image_idx = self.findImage(image_id) orelse return .{ .changed = true, .move = null };
+        const refreshed_image = &self.images.items[@intCast(refreshed_image_idx)];
+        if (refreshed_image.current_frame_number == dest_frame_number) {
+            try self.refreshCurrentFramePublication(allocator, @intCast(refreshed_image_idx));
         }
         if (shouldReplySuccess(cmd.quiet) and (cmd.image_id != 0 or cmd.image_number != 0)) {
             try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "OK");
@@ -1728,7 +1734,12 @@ pub const State = struct {
             error.ConsequenceLimit => return error.ConsequenceLimit,
         };
         const decoded_len = try decodedPublicationByteLen(format, image_size.width, image_size.height);
-        try self.ensureDecodedPayloadStore(std.math.cast(u32, decoded_len) orelse return error.ConsequenceLimit, decodedPayloadBytesFreedByImage(self, image_id));
+        try self.ensureDecodedPayloadStore(
+            allocator,
+            std.math.cast(u32, decoded_len) orelse return error.ConsequenceLimit,
+            decodedPayloadBytesFreedByImage(self, image_id),
+            if (image_id == 0) null else image_id,
+        );
         const decoded = try decodedPublicationOwned(allocator, format, image_size.width, image_size.height, owned);
         errdefer allocator.free(decoded.payload);
         const image = Image{
@@ -1747,6 +1758,7 @@ pub const State = struct {
         assertImagePayloadsCoherent(image);
         if (image_id != 0) self.deleteImage(allocator, image_id);
         try self.images.append(allocator, image);
+        std.debug.assert(decodedPayloadBytes(self) <= decoded_payload_max_bytes);
     }
 
     fn storeFrameOwned(self: *State, allocator: std.mem.Allocator, image_id: u32, frame_number: u32, format: u16, width: u32, height: u32, x: u32, y: u32, base_frame_number: u32, compose_mode: u32, background_rgba: u32, gap: i32, owned: []u8) host_state.ApplyError!void {
@@ -1797,7 +1809,12 @@ pub const State = struct {
         if (!png_backed and format != image.format) return;
 
         const decoded_len = try decodedPublicationByteLen(format, frame_size.width, frame_size.height);
-        try self.ensureDecodedPayloadStore(std.math.cast(u32, decoded_len) orelse return error.ConsequenceLimit, decodedPayloadBytesFreedByFrame(self, image_id, target_frame_number));
+        try self.ensureDecodedPayloadStore(
+            allocator,
+            std.math.cast(u32, decoded_len) orelse return error.ConsequenceLimit,
+            decodedPayloadBytesFreedByFrame(self, image_id, target_frame_number),
+            image_id,
+        );
         const decoded = try decodedPublicationOwned(allocator, format, frame_size.width, frame_size.height, owned);
         defer if (!decoded_ownership_transferred) allocator.free(decoded.payload);
 
@@ -1909,7 +1926,7 @@ pub const State = struct {
         var encoded_owned = true;
         errdefer if (encoded_owned) allocator.free(encoded);
         _ = std.base64.standard.Encoder.encode(encoded, root);
-        try self.ensureDecodedPayloadStore(count32(root), decodedPayloadBytesFreedByPublishedRoot(self, image_id));
+        try self.ensureDecodedPayloadStore(allocator, count32(root), decodedPayloadBytesFreedByPublishedRoot(self, image_id), image_id);
         const decoded = try allocator.dupe(u8, root);
         var decoded_owned = true;
         errdefer if (decoded_owned) allocator.free(decoded);
@@ -1970,7 +1987,7 @@ pub const State = struct {
         var encoded_owned = true;
         errdefer if (encoded_owned) allocator.free(encoded);
         _ = std.base64.standard.Encoder.encode(encoded, raw);
-        try self.ensureDecodedPayloadStore(count32(raw), 0);
+        try self.ensureDecodedPayloadStore(allocator, count32(raw), 0, image_id);
         const decoded = try allocator.dupe(u8, raw);
         var decoded_owned = true;
         errdefer if (decoded_owned) allocator.free(decoded);
@@ -2274,6 +2291,18 @@ pub const State = struct {
         }
     }
 
+    fn evictUnplacedImagesForDecodedPayload(self: *State, allocator: std.mem.Allocator, next_len: u32, freed_len: u32, protected_image_id: ?u32) void {
+        var idx: Index = 0;
+        while (idx < self.imageCount() and !self.decodedPayloadFits(next_len, freed_len)) {
+            const image_id = self.images.items[@intCast(idx)].image_id;
+            if ((protected_image_id != null and image_id == protected_image_id.?) or image_id == 0 or self.imageHasPlacement(image_id)) {
+                idx += 1;
+                continue;
+            }
+            self.deleteImageDataAtPreserveOrder(allocator, idx);
+        }
+    }
+
     fn ensureRetainedPayloadStore(self: *State, allocator: std.mem.Allocator, next_len: u32, freed_len: u32, protected_image_id: ?u32) host_state.ApplyError!void {
         if (next_len > retained_payload_max_bytes) return error.ConsequenceLimit;
         if (self.retainedPayloadFits(next_len, freed_len)) return;
@@ -2281,9 +2310,13 @@ pub const State = struct {
         if (!self.retainedPayloadFits(next_len, freed_len)) return error.ConsequenceLimit;
     }
 
-    fn ensureDecodedPayloadStore(self: *State, next_len: u32, freed_len: u32) host_state.ApplyError!void {
+    fn ensureDecodedPayloadStore(self: *State, allocator: std.mem.Allocator, next_len: u32, freed_len: u32, protected_image_id: ?u32) host_state.ApplyError!void {
         if (next_len > decoded_payload_max_bytes) return error.ConsequenceLimit;
+        if (!self.decodedPayloadFits(next_len, freed_len)) {
+            self.evictUnplacedImagesForDecodedPayload(allocator, next_len, freed_len, protected_image_id);
+        }
         if (!self.decodedPayloadFits(next_len, freed_len)) return error.ConsequenceLimit;
+        std.debug.assert(self.decodedPayloadFits(next_len, freed_len));
     }
 
     fn ensureRetainedPayloadTotal(self: *State, allocator: std.mem.Allocator) host_state.ApplyError!void {
