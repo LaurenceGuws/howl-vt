@@ -112,11 +112,11 @@ fn appendTestImage(state: *Graphics.State, allocator: std.mem.Allocator, image_i
         .format = 24,
         .width = 1,
         .height = 1,
-        .base64_payload = try retainedPayload(allocator, payload_len, 'A'),
+        .legacy_payload = try retainedPayload(allocator, payload_len, 'A'),
         .decoded_format = 24,
         .decoded_width = 1,
         .decoded_height = 1,
-        .decoded_payload = try retainedPayload(allocator, payload_len, 0),
+        .decoded_payload = try retainedPayload(allocator, 3, 0),
     });
 }
 
@@ -321,7 +321,7 @@ test "kitty graphics direct upload stores single base64 payload" {
     try std.testing.expectEqual(@as(u16, 24), image.format);
     try std.testing.expectEqual(@as(u32, 1), image.width);
     try std.testing.expectEqual(@as(u32, 1), image.height);
-    try std.testing.expectEqualStrings("QUJD", image.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", image.legacy_payload);
 }
 
 test "kitty graphics decoded ABI returns direct raw bytes without changing base64" {
@@ -333,8 +333,27 @@ test "kitty graphics decoded ABI returns direct raw bytes without changing base6
 
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
 
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try expectDecodedImage(&terminal, 24, 1, 1, "ABC");
+}
+
+test "kitty graphics old and decoded image APIs reject stale publication and invalid index" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    const stale = try terminal.graphicsMeta();
+
+    try std.testing.expectEqual(null, try terminal.graphicsImage(stale.publication_seq, 1));
+    try std.testing.expectEqual(null, try terminal.graphicsDecodedImage(stale.publication_seq, 1));
+
+    try stream.nextSlice("\x1b[?1049h");
+
+    try std.testing.expectError(error.InvalidArgument, terminal.graphicsImage(stale.publication_seq, 0));
+    try std.testing.expectError(error.InvalidArgument, terminal.graphicsDecodedImage(stale.publication_seq, 0));
 }
 
 test "kitty graphics decoded ABI returns direct raw RGBA bytes" {
@@ -359,7 +378,7 @@ test "kitty graphics direct raw RGB validates decoded length" {
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics direct raw RGBA validates decoded length" {
@@ -372,7 +391,7 @@ test "kitty graphics direct raw RGBA validates decoded length" {
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=32;AAAAAA==\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("AAAAAA==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("AAAAAA==", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics direct raw RGB truncates accepted oversize slack" {
@@ -393,7 +412,7 @@ test "kitty graphics direct raw RGB truncates accepted oversize slack" {
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics direct raw RGBA truncates accepted oversize slack" {
@@ -410,7 +429,7 @@ test "kitty graphics direct raw RGBA truncates accepted oversize slack" {
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJDRA==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJDRA==", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics direct raw rejects payload larger than oversize slack" {
@@ -858,7 +877,7 @@ test "kitty graphics file upload with m=1 loads immediately" {
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
 
@@ -910,7 +929,7 @@ test "kitty graphics file upload truncates oversize explicit raw data" {
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
 
@@ -942,7 +961,7 @@ test "kitty graphics temp file upload with m=1 loads immediately and deletes saf
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectError(error.FileNotFound, std.Io.Dir.openFileAbsolute(io, path, .{}));
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
@@ -975,7 +994,7 @@ test "kitty graphics temp file upload truncates oversize explicit raw data and d
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectError(error.FileNotFound, std.Io.Dir.openFileAbsolute(io, path, .{}));
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
@@ -1034,7 +1053,7 @@ test "kitty graphics shared memory upload with m=1 loads immediately and unlinks
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectError(error.FileNotFound, cShmOpenReadOnly(shm_name_z));
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
@@ -1086,7 +1105,7 @@ test "kitty graphics shared memory upload truncates oversize explicit raw data a
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectError(error.FileNotFound, cShmOpenReadOnly(shm_name_z));
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
@@ -1120,7 +1139,7 @@ test "kitty graphics direct upload decompresses raw zlib payload" {
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,o=z,f=24;eJxzdHIGAAGNAMc=\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try expectDecodedImage(&terminal, 24, 1, 1, "ABC");
 }
 
@@ -1135,7 +1154,7 @@ test "kitty graphics direct chunked upload decompresses raw zlib payload" {
     try stream.nextSlice("\x1b_Gm=0;dHIGAAGNAMc=\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try expectDecodedImage(&terminal, 24, 1, 1, "ABC");
 }
 
@@ -1149,7 +1168,7 @@ test "kitty graphics decoded ABI returns concatenated direct chunks" {
     try stream.nextSlice("\x1b_Gi=9,s=1,v=1,t=d,f=32,m=1;QUI=\x1b\\");
     try stream.nextSlice("\x1b_Gm=0;Q0Q=\x1b\\");
 
-    try std.testing.expectEqualStrings("QUJDRA==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJDRA==", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try expectDecodedImage(&terminal, 32, 1, 1, "ABCD");
 }
 
@@ -1175,7 +1194,7 @@ test "kitty graphics file upload decompresses raw zlib payload" {
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics temp file upload decompresses raw zlib payload and deletes safe temp file" {
@@ -1206,7 +1225,7 @@ test "kitty graphics temp file upload decompresses raw zlib payload and deletes 
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJDRA==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJDRA==", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectError(error.FileNotFound, std.Io.Dir.openFileAbsolute(io, path, .{}));
 }
 
@@ -1231,7 +1250,7 @@ test "kitty graphics shared memory upload decompresses raw zlib payload" {
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectError(error.FileNotFound, cShmOpenReadOnly(shm_name_z));
 }
 
@@ -1318,7 +1337,7 @@ test "kitty graphics decoded ABI returns PNG RGBA bytes" {
 
     try stream.nextSlice("\x1b_Gi=7,t=d,f=100;" ++ kitty_png_rgba_00ffff7f ++ "\x1b\\");
 
-    try std.testing.expectEqualStrings(kitty_png_rgba_00ffff7f, KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings(kitty_png_rgba_00ffff7f, KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try expectDecodedImage(&terminal, 32, 1, 1, &.{ 0x00, 0xff, 0xff, 0x7f });
 }
 
@@ -1509,7 +1528,7 @@ test "kitty graphics direct upload assembles chunked decoded payload on valid AP
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 9), image.image_id);
     try std.testing.expectEqual(@as(u16, 24), image.format);
-    try std.testing.expectEqualStrings("QUJDREVG", image.base64_payload);
+    try std.testing.expectEqualStrings("QUJDREVG", image.legacy_payload);
 }
 
 test "kitty graphics direct upload does not concatenate chunk base64 text" {
@@ -1548,7 +1567,7 @@ test "kitty graphics direct chunked raw RGB truncates accepted oversize slack" {
 
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics direct chunked raw rejects payload larger than oversize slack" {
@@ -1634,7 +1653,7 @@ test "kitty graphics chunk upload retains first placement metadata until complet
 
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings(payload, KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings(payload, KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics transmit and display chunk completion uses first placement metadata" {
@@ -1735,7 +1754,7 @@ test "kitty graphics chunked yazi-like unicode no-move contract publishes one co
     const image = (try terminal.graphicsImage(meta.publication_seq, 0)).?;
     try std.testing.expectEqual(@as(u32, 1), image.image_id);
     try std.testing.expectEqual(@as(u32, 13), image.image_number);
-    try std.testing.expectEqualStrings(payload, image.base64_payload);
+    try std.testing.expectEqualStrings(payload, image.legacy_payload);
 
     const placement = (try terminal.graphicsVirtualPlacement(meta.publication_seq, 0)).?;
     try std.testing.expectEqual(@as(u32, 1), placement.image_id);
@@ -2576,7 +2595,7 @@ test "kitty graphics upload with same image id replaces image and placements" {
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;BBBB\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("BBBB", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("BBBB", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
 }
 
@@ -3818,7 +3837,7 @@ test "kitty graphics d=A preserves image data with only off-screen retained plac
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqual(@as(u32, 7), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
-    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics d=A frees only images unplaced by matched visible placements" {
@@ -3840,7 +3859,7 @@ test "kitty graphics d=A frees only images unplaced by matched visible placement
     try expectScrollbackAboveRowAnchor(terminal.kitty.main.graphics.placementAt(0).?.anchor_row, 1);
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqual(@as(u32, 8), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
-    try std.testing.expectEqualStrings("BBBB", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("BBBB", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics d=a removes visible parent placement and relative descendants" {
@@ -3875,7 +3894,7 @@ test "kitty graphics lowercase delete by image id removes placements and keeps i
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
     try std.testing.expectEqual(@as(u32, 7), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
-    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics uppercase delete by image id frees only targeted unplaced image" {
@@ -3985,7 +4004,7 @@ test "kitty graphics image number upload avoids existing explicit image id" {
 
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
-    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageAt(&terminal, 1).?.image_id);
     try std.testing.expectEqual(@as(u32, 13), KittyState.graphicsImageAt(&terminal, 1).?.image_number);
     try std.testing.expectEqualStrings("\x1b_Gi=2,I=13;OK\x1b\\", pendingOutput(&terminal));
@@ -4027,7 +4046,7 @@ test "kitty graphics frame upload by image number targets newest image" {
     const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 2), frame.image_id);
     try std.testing.expectEqual(@as(u32, 2), frame.frame_number);
-    try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+    try std.testing.expectEqualStrings("CCCC", frame.legacy_payload);
 }
 
 test "kitty graphics chunked frame upload by image number captures newest image" {
@@ -4046,7 +4065,7 @@ test "kitty graphics chunked frame upload by image number captures newest image"
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
     const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 2), frame.image_id);
-    try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+    try std.testing.expectEqualStrings("CCCC", frame.legacy_payload);
 }
 
 test "kitty graphics frame upload by missing image number replies not found without allocation" {
@@ -4144,7 +4163,7 @@ test "kitty graphics animation frame upload stores frame metadata" {
     const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 7), frame.image_id);
     try std.testing.expectEqual(@as(u32, 2), frame.frame_number);
-    try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+    try std.testing.expectEqualStrings("CCCC", frame.legacy_payload);
 }
 
 test "kitty graphics omitted r animation frame uploads append in order" {
@@ -4161,11 +4180,11 @@ test "kitty graphics omitted r animation frame uploads append in order" {
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameCount(&terminal));
     const first = KittyState.graphicsFrameAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 2), first.frame_number);
-    try std.testing.expectEqualStrings("CCCC", first.base64_payload);
+    try std.testing.expectEqualStrings("CCCC", first.legacy_payload);
 
     const second = KittyState.graphicsFrameAt(&terminal, 1).?;
     try std.testing.expectEqual(@as(u32, 3), second.frame_number);
-    try std.testing.expectEqualStrings("DDDD", second.base64_payload);
+    try std.testing.expectEqualStrings("DDDD", second.legacy_payload);
 }
 
 test "kitty graphics chunked omitted r frame upload appends once" {
@@ -4182,7 +4201,7 @@ test "kitty graphics chunked omitted r frame upload appends once" {
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
     const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 2), frame.frame_number);
-    try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+    try std.testing.expectEqualStrings("CCCC", frame.legacy_payload);
 }
 
 test "kitty graphics animation frame upload with both id forms rejects without storing frame" {
@@ -4267,7 +4286,7 @@ test "kitty graphics oversized animation frame edit preserves existing frame" {
     try std.testing.expectEqual(@as(u32, 1), frame.width);
     try std.testing.expectEqual(@as(u32, 1), frame.height);
     try std.testing.expectEqual(@as(i32, 9), frame.gap);
-    try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+    try std.testing.expectEqualStrings("CCCC", frame.legacy_payload);
 }
 
 test "kitty graphics quiet one emits oversized animation frame failure" {
@@ -4396,11 +4415,11 @@ test "kitty graphics deleting root frame promotes first extra frame" {
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 1), image.current_frame_number);
     try std.testing.expectEqual(@as(i32, 43), image.root_frame_gap);
-    try std.testing.expectEqualStrings("REVG", image.base64_payload);
+    try std.testing.expectEqualStrings("REVG", image.legacy_payload);
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
     const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 2), frame.frame_number);
-    try std.testing.expectEqualStrings("R0hJ", frame.base64_payload);
+    try std.testing.expectEqualStrings("R0hJ", frame.legacy_payload);
 }
 
 test "kitty graphics deleting middle extra frame preserves order and current publication" {
@@ -4420,12 +4439,12 @@ test "kitty graphics deleting middle extra frame preserves order and current pub
 
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 3), image.current_frame_number);
-    try std.testing.expectEqualStrings("SktM", image.base64_payload);
+    try std.testing.expectEqualStrings("SktM", image.legacy_payload);
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameCount(&terminal));
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameAt(&terminal, 0).?.frame_number);
-    try std.testing.expectEqualStrings("REVG", KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("REVG", KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectEqual(@as(u32, 3), KittyState.graphicsFrameAt(&terminal, 1).?.frame_number);
-    try std.testing.expectEqualStrings("SktM", KittyState.graphicsFrameAt(&terminal, 1).?.base64_payload);
+    try std.testing.expectEqualStrings("SktM", KittyState.graphicsFrameAt(&terminal, 1).?.legacy_payload);
 }
 
 test "kitty graphics lowercase frame delete without r promotes until root remains" {
@@ -4445,7 +4464,7 @@ test "kitty graphics lowercase frame delete without r promotes until root remain
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
-    try std.testing.expectEqualStrings("R0hJ", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("R0hJ", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics uppercase frame delete without extra frames deletes image data" {
@@ -4478,8 +4497,8 @@ test "kitty graphics too-large frame delete normalizes to last frame" {
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameAt(&terminal, 0).?.frame_number);
-    try std.testing.expectEqualStrings("REVG", KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("REVG", KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics root frame edit composes sub-rectangle and preserves dimensions" {
@@ -4515,7 +4534,7 @@ test "kitty graphics root frame edit composes sub-rectangle and preserves dimens
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 3), image.width);
     try std.testing.expectEqual(@as(u32, 3), image.height);
-    try std.testing.expectEqualStrings(expected_payload, image.base64_payload);
+    try std.testing.expectEqualStrings(expected_payload, image.legacy_payload);
 }
 
 test "kitty graphics root frame edit full-size replaces pixels and preserves dimensions" {
@@ -4531,7 +4550,7 @@ test "kitty graphics root frame edit full-size replaces pixels and preserves dim
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 2), image.width);
     try std.testing.expectEqual(@as(u32, 2), image.height);
-    try std.testing.expectEqualStrings("MTExMjIyMzMzNDQ0", image.base64_payload);
+    try std.testing.expectEqualStrings("MTExMjIyMzMzNDQ0", image.legacy_payload);
 }
 
 test "kitty graphics root frame edit ignores missing compose base frame" {
@@ -4547,7 +4566,7 @@ test "kitty graphics root frame edit ignores missing compose base frame" {
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 2), image.width);
     try std.testing.expectEqual(@as(u32, 2), image.height);
-    try std.testing.expectEqualStrings("MTExMjIyMzMzNDQ0", image.base64_payload);
+    try std.testing.expectEqualStrings("MTExMjIyMzMzNDQ0", image.legacy_payload);
 }
 
 test "kitty graphics root frame edit without z preserves root gap" {
@@ -4606,7 +4625,7 @@ test "kitty graphics too-large explicit animation frame r appends next frame" {
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameCount(&terminal));
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameAt(&terminal, 0).?.frame_number);
     try std.testing.expectEqual(@as(u32, 3), KittyState.graphicsFrameAt(&terminal, 1).?.frame_number);
-    try std.testing.expectEqualStrings("DDDD", KittyState.graphicsFrameAt(&terminal, 1).?.base64_payload);
+    try std.testing.expectEqualStrings("DDDD", KittyState.graphicsFrameAt(&terminal, 1).?.legacy_payload);
 }
 
 test "kitty graphics compose root frame into destination frame stores composed payload" {
@@ -4625,7 +4644,7 @@ test "kitty graphics compose root frame into destination frame stores composed p
     try std.testing.expectEqual(@as(u16, 32), frame.format);
     try std.testing.expectEqual(@as(u32, 2), frame.width);
     try std.testing.expectEqual(@as(u32, 2), frame.height);
-    try std.testing.expectEqualStrings("CgAA/xQAAP8eAAD/KAAA/w==", frame.base64_payload);
+    try std.testing.expectEqualStrings("CgAA/xQAAP8eAAD/KAAA/w==", frame.legacy_payload);
 }
 
 test "kitty graphics compose sub-rectangle uses X Y source and x y destination offsets" {
@@ -4640,7 +4659,7 @@ test "kitty graphics compose sub-rectangle uses X Y source and x y destination o
     try stream.nextSlice("\x1b_Ga=c,i=7,r=1,c=2,X=1,Y=1,x=1,y=1,w=2,h=2,C=1\x1b\\");
 
     const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
-    try std.testing.expectEqualStrings("CgAA/woAAP8KAAD/CgAA/wUAAP8GAAD/CgAA/wgAAP8JAAD/", frame.base64_payload);
+    try std.testing.expectEqualStrings("CgAA/woAAP8KAAD/CgAA/wUAAP8GAAD/CgAA/wgAAP8JAAD/", frame.legacy_payload);
 }
 
 test "kitty graphics compose replacement differs from default alpha blending" {
@@ -4655,11 +4674,11 @@ test "kitty graphics compose replacement differs from default alpha blending" {
     try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,t=d,f=32;AAD//w==\x1b\\");
 
     try stream.nextSlice("\x1b_Ga=c,i=7,r=2,c=3\x1b\\");
-    try std.testing.expectEqualStrings("gAB//w==", KittyState.graphicsFrameAt(&terminal, 1).?.base64_payload);
+    try std.testing.expectEqualStrings("gAB//w==", KittyState.graphicsFrameAt(&terminal, 1).?.legacy_payload);
 
     try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,t=d,f=32;AAD//w==\x1b\\");
     try stream.nextSlice("\x1b_Ga=c,i=7,r=2,c=3,C=1\x1b\\");
-    try std.testing.expectEqualStrings("/wAAgA==", KittyState.graphicsFrameAt(&terminal, 1).?.base64_payload);
+    try std.testing.expectEqualStrings("/wAAgA==", KittyState.graphicsFrameAt(&terminal, 1).?.legacy_payload);
 }
 
 test "kitty graphics compose missing image source and destination fail without mutation" {
@@ -4674,11 +4693,11 @@ test "kitty graphics compose missing image source and destination fail without m
 
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=32;AAD//w==\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=32;/wAAgA==\x1b\\");
-    const original = KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload;
+    const original = KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload;
     try stream.nextSlice("\x1b_Ga=c,i=7,r=3,c=2\x1b\\");
-    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload);
     try stream.nextSlice("\x1b_Ga=c,i=7,r=1,c=3\x1b\\");
-    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload);
 
     try std.testing.expectEqualStrings("\x1b_Gi=404;ENOENT:image not found\x1b\\\x1b_Gi=7;ENOENT:source frame not found\x1b\\\x1b_Gi=7;ENOENT:destination frame not found\x1b\\", pendingOutput(&terminal));
 }
@@ -4692,14 +4711,14 @@ test "kitty graphics compose out-of-bounds and same-frame overlap fail without m
 
     try stream.nextSlice("\x1b_Gi=7,s=3,v=3,t=d,f=32;AQAA/wIAAP8DAAD/BAAA/wUAAP8GAAD/BwAA/wgAAP8JAAD/\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=3,v=3,t=d,f=32;CgAA/woAAP8KAAD/CgAA/woAAP8KAAD/CgAA/woAAP8KAAD/\x1b\\");
-    const original = KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload;
+    const original = KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload;
 
     try stream.nextSlice("\x1b_Ga=c,i=7,r=1,c=2,X=2,Y=0,w=2,h=1\x1b\\");
-    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload);
     try stream.nextSlice("\x1b_Ga=c,i=7,r=1,c=2,x=2,y=0,w=2,h=1\x1b\\");
-    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload);
     try stream.nextSlice("\x1b_Ga=c,i=7,r=2,c=2,X=0,Y=0,x=1,y=1,w=2,h=2\x1b\\");
-    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload);
 
     try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:compose rectangle out of bounds\x1b\\\x1b_Gi=7;EINVAL:compose rectangle out of bounds\x1b\\\x1b_Gi=7;EINVAL:compose rectangles overlap\x1b\\", pendingOutput(&terminal));
 }
@@ -4715,13 +4734,13 @@ test "kitty graphics compose into current destination frame refreshes publicatio
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=32;AAD//w==\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,t=d,f=32;/wAAgA==\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
-    try std.testing.expectEqualStrings("AAD//w==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("AAD//w==", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 
     try stream.nextSlice("\x1b_Ga=c,i=7,r=3,c=2,C=1\x1b\\");
 
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 2), image.current_frame_number);
-    try std.testing.expectEqualStrings("/wAAgA==", image.base64_payload);
+    try std.testing.expectEqualStrings("/wAAgA==", image.legacy_payload);
 }
 
 test "kitty graphics client-driven current frame republishes selected raw frame" {
@@ -4734,13 +4753,35 @@ test "kitty graphics client-driven current frame republishes selected raw frame"
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;REVG\x1b\\");
 
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 
     try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
 
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 2), image.current_frame_number);
-    try std.testing.expectEqualStrings("REVG", image.base64_payload);
+    try std.testing.expectEqualStrings("REVG", image.legacy_payload);
+}
+
+test "kitty graphics current frame publication coalesces from decoded bytes" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;REVG\x1b\\");
+
+    const frame = &terminal.kitty.main.graphics.frames.items[0];
+    @memcpy(frame.legacy_payload, "QUJD");
+
+    try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
+
+    const meta = try terminal.graphicsMeta();
+    const old = (try terminal.graphicsImage(meta.publication_seq, 0)).?;
+    const decoded = (try terminal.graphicsDecodedImage(meta.publication_seq, 0)).?;
+    try std.testing.expectEqualStrings("REVG", old.legacy_payload);
+    try std.testing.expectEqualStrings("DEF", decoded.payload);
 }
 
 test "kitty graphics selecting current frame twice stays publication-noop" {
@@ -4778,7 +4819,7 @@ test "kitty graphics client-driven current png frame republishes normalized rgba
     try std.testing.expectEqual(@as(u16, 32), image.format);
     try std.testing.expectEqual(@as(u32, 1), image.width);
     try std.testing.expectEqual(@as(u32, 1), image.height);
-    try std.testing.expectEqualStrings("ESIzRA==", image.base64_payload);
+    try std.testing.expectEqualStrings("ESIzRA==", image.legacy_payload);
 }
 
 test "kitty graphics client-driven current kitty png frame republishes exact rgba" {
@@ -4798,7 +4839,7 @@ test "kitty graphics client-driven current kitty png frame republishes exact rgb
     try std.testing.expectEqual(@as(u16, 32), image.format);
     try std.testing.expectEqual(@as(u32, 1), image.width);
     try std.testing.expectEqual(@as(u32, 1), image.height);
-    try std.testing.expectEqualStrings("AP//fw==", image.base64_payload);
+    try std.testing.expectEqualStrings("AP//fw==", image.legacy_payload);
 }
 
 test "kitty graphics client-driven current png frame normalizes non-palette modes" {
@@ -4835,7 +4876,7 @@ test "kitty graphics client-driven current png frame normalizes non-palette mode
         try std.testing.expectEqual(@as(u16, 32), image.format);
         try std.testing.expectEqual(@as(u32, 5), image.width);
         try std.testing.expectEqual(@as(u32, 3), image.height);
-        try std.testing.expectEqualStrings(fixture.expected, image.base64_payload);
+        try std.testing.expectEqualStrings(fixture.expected, image.legacy_payload);
     }
 }
 
@@ -4902,7 +4943,7 @@ test "kitty graphics client-driven current png frame normalizes palette modes" {
         try std.testing.expectEqual(@as(u16, 32), image.format);
         try std.testing.expectEqual(fixture.width, image.width);
         try std.testing.expectEqual(fixture.height, image.height);
-        try std.testing.expectEqualStrings(fixture.expected, image.base64_payload);
+        try std.testing.expectEqualStrings(fixture.expected, image.legacy_payload);
     }
 }
 
@@ -4921,7 +4962,7 @@ test "kitty graphics selected raw frame over png root republishes normalized rgb
 
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u16, 32), image.format);
-    try std.testing.expectEqualStrings("zQcLog==", image.base64_payload);
+    try std.testing.expectEqualStrings("zQcLog==", image.legacy_payload);
 }
 
 test "kitty graphics runtime obligation starts due and arms first frame deadline" {
@@ -4961,18 +5002,18 @@ test "kitty graphics runtime progress advances timed animation frames autonomous
     try noteFirstGraphicsImageDrawn(&terminal);
 
     _ = try terminal.progressRuntime(100);
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 
     const second = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
     try std.testing.expect(second.state_changed);
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
-    try std.testing.expectEqualStrings("REVG", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("REVG", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectEqual(@as(u64, 100 + 12 * std.time.ns_per_ms), second.obligation.deadline_ns);
 
     const third = try terminal.progressRuntime(100 + 12 * std.time.ns_per_ms);
     try std.testing.expect(third.state_changed);
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 fn expectAnimationUndrawnRuntimeIdle(terminal: *Terminal) !void {
@@ -4990,7 +5031,7 @@ fn expectAnimationUndrawnRuntimeIdle(terminal: *Terminal) !void {
     try std.testing.expect(!second.obligation.pending_now);
     try std.testing.expectEqual(@as(u64, 0), second.obligation.deadline_ns);
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageAt(terminal, 0).?.current_frame_number);
-    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics undrawn unplaced animation has no runtime obligation" {
@@ -5157,7 +5198,7 @@ test "kitty graphics loading animation advances immediately when future frame ar
     );
     try std.testing.expectEqualStrings(
         "R0hJ",
-        KittyState.graphicsImageAt(&terminal, 0).?.base64_payload,
+        KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload,
     );
 }
 
@@ -5251,9 +5292,9 @@ test "kitty graphics runtime skips stored gapless negative-z frame" {
     try std.testing.expect(advanced.state_changed);
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameCount(&terminal));
     try std.testing.expectEqual(@as(i32, 0), KittyState.graphicsFrameAt(&terminal, 0).?.gap);
-    try std.testing.expectEqualStrings("REVG", KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("REVG", KittyState.graphicsFrameAt(&terminal, 0).?.legacy_payload);
     try std.testing.expectEqual(@as(u32, 3), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
-    try std.testing.expectEqualStrings("R0hJ", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("R0hJ", KittyState.graphicsImageAt(&terminal, 0).?.legacy_payload);
 }
 
 test "kitty graphics quota evicts unplaced image before failing or touching placed image" {
@@ -5380,7 +5421,7 @@ test "kitty graphics quota replacement counts bytes freed by same image id" {
     var encode_buf: [128]u8 = undefined;
 
     try appendTestImage(&state, allocator, 7, Graphics.retained_payload_max_bytes);
-    const replacement = state.images.items[0].base64_payload;
+    const replacement = state.images.items[0].legacy_payload;
 
     _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
         .action = 't',
@@ -5404,7 +5445,7 @@ test "kitty graphics quota replacement counts bytes freed by same image id" {
 
     try std.testing.expectEqual(@as(u32, 1), state.imageCount());
     try std.testing.expectEqual(@as(u32, 7), state.imageAt(0).?.image_id);
-    try std.testing.expectEqual(@as(usize, Graphics.retained_payload_max_bytes), state.imageAt(0).?.base64_payload.len);
+    try std.testing.expectEqual(@as(usize, Graphics.retained_payload_max_bytes), state.imageAt(0).?.legacy_payload.len);
 }
 
 test "kitty graphics quota replacement clears frames and current override" {
@@ -5418,7 +5459,7 @@ test "kitty graphics quota replacement clears frames and current override" {
 
     try appendTestImage(&state, allocator, 7, Graphics.retained_payload_max_bytes - 8);
     state.images.items[0].current_frame_number = 2;
-    state.images.items[0].current_override_payload = try retainedPayload(allocator, 4, 'O');
+    state.images.items[0].current_override_legacy_payload = try retainedPayload(allocator, 4, 'O');
     state.images.items[0].current_override_decoded_payload = try retainedPayload(allocator, 4, 'o');
     try state.frames.append(allocator, .{
         .frame_id = 1,
@@ -5434,7 +5475,7 @@ test "kitty graphics quota replacement clears frames and current override" {
         .compose_mode = 0,
         .background_rgba = 0,
         .gap = 0,
-        .base64_payload = try retainedPayload(allocator, 4, 'F'),
+        .legacy_payload = try retainedPayload(allocator, 4, 'F'),
         .decoded_format = 24,
         .decoded_width = 2,
         .decoded_height = 1,
@@ -5463,8 +5504,8 @@ test "kitty graphics quota replacement clears frames and current override" {
 
     try std.testing.expectEqual(@as(u32, 1), state.imageCount());
     try std.testing.expectEqual(@as(u32, 7), state.imageAt(0).?.image_id);
-    try std.testing.expectEqualStrings("BBBBBBBB", state.imageAt(0).?.base64_payload);
-    try std.testing.expectEqual(@as(?[]u8, null), state.imageAt(0).?.current_override_payload);
+    try std.testing.expectEqualStrings("BBBBBBBB", state.imageAt(0).?.legacy_payload);
+    try std.testing.expectEqual(@as(?[]u8, null), state.imageAt(0).?.current_override_legacy_payload);
     try std.testing.expectEqual(@as(u32, 0), state.frameCount());
 }
 
@@ -5481,7 +5522,7 @@ test "kitty graphics quota eviction removes unplaced image frames and current ov
     try appendTestPlacement(&state, allocator, 1);
     try appendTestImage(&state, allocator, 2, 4);
     state.images.items[1].current_frame_number = 2;
-    state.images.items[1].current_override_payload = try retainedPayload(allocator, 4, 'O');
+    state.images.items[1].current_override_legacy_payload = try retainedPayload(allocator, 4, 'O');
     state.images.items[1].current_override_decoded_payload = try retainedPayload(allocator, 4, 'o');
     try state.frames.append(allocator, .{
         .frame_id = 1,
@@ -5497,7 +5538,7 @@ test "kitty graphics quota eviction removes unplaced image frames and current ov
         .compose_mode = 0,
         .background_rgba = 0,
         .gap = 0,
-        .base64_payload = try retainedPayload(allocator, 4, 'F'),
+        .legacy_payload = try retainedPayload(allocator, 4, 'F'),
         .decoded_format = 24,
         .decoded_width = 1,
         .decoded_height = 1,

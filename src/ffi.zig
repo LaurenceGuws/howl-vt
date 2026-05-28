@@ -611,7 +611,7 @@ fn graphicsImageResult(image: kitty_types.Graphics.Image) FfiGraphicsImageResult
             .format = image.format,
             .width = image.width,
             .height = image.height,
-            .payload_len = @intCast(image.base64_payload.len),
+            .payload_len = @intCast(image.legacy_payload.len),
         },
     };
 }
@@ -927,7 +927,7 @@ pub fn terminalCopyGraphicsPayload(handle: VtHandle, publication_seq: u64, image
     const image = owned.graphicsImage(publication_seq, image_index) catch {
         return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    return copyBytes(out, image.base64_payload);
+    return copyBytes(out, image.legacy_payload);
 }
 
 pub fn terminalCopyGraphicsDecodedPayload(handle: VtHandle, publication_seq: u64, image_index: u32, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
