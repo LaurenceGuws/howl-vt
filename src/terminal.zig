@@ -253,6 +253,11 @@ pub const Terminal = struct {
         return state.imageAt(idx);
     }
 
+    pub fn graphicsDecodedImage(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.DecodedImage {
+        const state = try self.graphicsStateForPublication(publication_seq);
+        return state.decodedImageAt(idx);
+    }
+
     pub fn graphicsPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) (error{InvalidArgument} || host_state.ApplyError)!?kitty_types.Graphics.Placement {
         const state = try self.graphicsStateForPublication(publication_seq);
         return try state.resolvedPlacementAt(self.allocator, idx, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize());

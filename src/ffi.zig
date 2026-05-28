@@ -250,6 +250,22 @@ pub const FfiGraphicsImageResult = extern struct {
     image: FfiGraphicsImage = .{},
 };
 
+pub const FfiGraphicsDecodedImage = extern struct {
+    image_id: u32 = 0,
+    image_ref_id: u32 = 0,
+    image_number: u32 = 0,
+    format: u16 = 0,
+    reserved0: u16 = 0,
+    width: u32 = 0,
+    height: u32 = 0,
+    payload_len: u64 = 0,
+};
+
+pub const FfiGraphicsDecodedImageResult = extern struct {
+    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
+    image: FfiGraphicsDecodedImage = .{},
+};
+
 pub const FfiGraphicsPlacement = extern struct {
     image_id: u32 = 0,
     placement_id: u32 = 0,
@@ -600,6 +616,21 @@ fn graphicsImageResult(image: kitty_types.Graphics.Image) FfiGraphicsImageResult
     };
 }
 
+fn graphicsDecodedImageResult(image: kitty_types.Graphics.DecodedImage) FfiGraphicsDecodedImageResult {
+    return .{
+        .status = @intFromEnum(HowlVtCallStatus.ok),
+        .image = .{
+            .image_id = image.image_id,
+            .image_ref_id = image.image_ref_id,
+            .image_number = image.image_number,
+            .format = image.format,
+            .width = image.width,
+            .height = image.height,
+            .payload_len = image.payload.len,
+        },
+    };
+}
+
 fn graphicsPlacementResult(placement: kitty_types.Graphics.Placement) FfiGraphicsPlacementResult {
     return graphicsPlacementResultWithCell(placement, null);
 }
@@ -852,6 +883,14 @@ pub fn terminalQueryGraphicsImage(handle: VtHandle, publication_seq: u64, image_
     return graphicsImageResult(image);
 }
 
+pub fn terminalQueryGraphicsDecodedImage(handle: VtHandle, publication_seq: u64, image_index: u32) callconv(.c) FfiGraphicsDecodedImageResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const image = owned.graphicsDecodedImage(publication_seq, image_index) catch {
+        return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    return graphicsDecodedImageResult(image);
+}
+
 pub fn terminalQueryGraphicsPlacement(handle: VtHandle, publication_seq: u64, placement_index: u32) callconv(.c) FfiGraphicsPlacementResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const placement = owned.graphicsPlacement(publication_seq, placement_index) catch |err| {
@@ -889,6 +928,15 @@ pub fn terminalCopyGraphicsPayload(handle: VtHandle, publication_seq: u64, image
         return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     return copyBytes(out, image.base64_payload);
+}
+
+pub fn terminalCopyGraphicsDecodedPayload(handle: VtHandle, publication_seq: u64, image_index: u32, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
+    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
+    const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    const image = owned.graphicsDecodedImage(publication_seq, image_index) catch {
+        return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
+    return copyBytes(out, image.payload);
 }
 
 pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiSurfaceResult {
@@ -1468,6 +1516,37 @@ test "vt ffi graphics publication token rejects stale queries" {
 
     var payload: [8]u8 = undefined;
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalCopyGraphicsPayload(handle, meta.meta.publication_seq, 0, payload[0..].ptr, payload.len).status);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalQueryGraphicsDecodedImage(handle, meta.meta.publication_seq, 0).status);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalCopyGraphicsDecodedPayload(handle, meta.meta.publication_seq, 0, payload[0..].ptr, payload.len).status);
+}
+
+test "vt ffi copies decoded graphics payload without changing base64 payload" {
+    const handle = terminalInit(3, 16, 4);
+    defer terminalDeinit(handle);
+    try std.testing.expect(handle != null);
+
+    const upload = "\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\";
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
+    const meta = terminalQueryGraphicsMeta(handle);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
+
+    const decoded = terminalQueryGraphicsDecodedImage(handle, meta.meta.publication_seq, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), decoded.status);
+    try std.testing.expectEqual(@as(u16, 24), decoded.image.format);
+    try std.testing.expectEqual(@as(u64, 3), decoded.image.payload_len);
+
+    var decoded_buf: [3]u8 = undefined;
+    const decoded_copy = terminalCopyGraphicsDecodedPayload(handle, meta.meta.publication_seq, 0, decoded_buf[0..].ptr, decoded_buf.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), decoded_copy.status);
+    try std.testing.expectEqualStrings("ABC", decoded_buf[0..@intCast(decoded_copy.written)]);
+
+    var base64_buf: [4]u8 = undefined;
+    const base64_copy = terminalCopyGraphicsPayload(handle, meta.meta.publication_seq, 0, base64_buf[0..].ptr, base64_buf.len);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), base64_copy.status);
+    try std.testing.expectEqualStrings("QUJD", base64_buf[0..@intCast(base64_copy.written)]);
+
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalQueryGraphicsDecodedImage(handle, meta.meta.publication_seq, 1).status);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalCopyGraphicsDecodedPayload(handle, meta.meta.publication_seq, 1, decoded_buf[0..].ptr, decoded_buf.len).status);
 }
 
 test "vt ffi graphics publication token rejects stale placeholder runs" {

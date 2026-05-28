@@ -113,6 +113,10 @@ fn appendTestImage(state: *Graphics.State, allocator: std.mem.Allocator, image_i
         .width = 1,
         .height = 1,
         .base64_payload = try retainedPayload(allocator, payload_len, 'A'),
+        .decoded_format = 24,
+        .decoded_width = 1,
+        .decoded_height = 1,
+        .decoded_payload = try retainedPayload(allocator, payload_len, 0),
     });
 }
 
@@ -155,6 +159,21 @@ fn imageIndexById(state: *const Graphics.State, image_id: u32) ?u32 {
         if (state.imageAt(idx).?.image_id == image_id) return idx;
     }
     return null;
+}
+
+fn expectDecodedImage(
+    terminal: *Terminal,
+    format: u16,
+    width: u32,
+    height: u32,
+    expected: []const u8,
+) !void {
+    const meta = try terminal.graphicsMeta();
+    const image = (try terminal.graphicsDecodedImage(meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(format, image.format);
+    try std.testing.expectEqual(width, image.width);
+    try std.testing.expectEqual(height, image.height);
+    try std.testing.expectEqualStrings(expected, image.payload);
 }
 
 fn setPlaceholderCell(
@@ -303,6 +322,31 @@ test "kitty graphics direct upload stores single base64 payload" {
     try std.testing.expectEqual(@as(u32, 1), image.width);
     try std.testing.expectEqual(@as(u32, 1), image.height);
     try std.testing.expectEqualStrings("QUJD", image.base64_payload);
+}
+
+test "kitty graphics decoded ABI returns direct raw bytes without changing base64" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try expectDecodedImage(&terminal, 24, 1, 1, "ABC");
+}
+
+test "kitty graphics decoded ABI returns direct raw RGBA bytes" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=32;QUJDRA==\x1b\\");
+
+    try expectDecodedImage(&terminal, 32, 1, 1, "ABCD");
 }
 
 test "kitty graphics direct raw RGB validates decoded length" {
@@ -1077,6 +1121,7 @@ test "kitty graphics direct upload decompresses raw zlib payload" {
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try expectDecodedImage(&terminal, 24, 1, 1, "ABC");
 }
 
 test "kitty graphics direct chunked upload decompresses raw zlib payload" {
@@ -1091,6 +1136,21 @@ test "kitty graphics direct chunked upload decompresses raw zlib payload" {
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try expectDecodedImage(&terminal, 24, 1, 1, "ABC");
+}
+
+test "kitty graphics decoded ABI returns concatenated direct chunks" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=9,s=1,v=1,t=d,f=32,m=1;QUI=\x1b\\");
+    try stream.nextSlice("\x1b_Gm=0;Q0Q=\x1b\\");
+
+    try std.testing.expectEqualStrings("QUJDRA==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try expectDecodedImage(&terminal, 32, 1, 1, "ABCD");
 }
 
 test "kitty graphics file upload decompresses raw zlib payload" {
@@ -1247,6 +1307,19 @@ test "kitty graphics valid png query returns OK without storing state" {
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+}
+
+test "kitty graphics decoded ABI returns PNG RGBA bytes" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,t=d,f=100;" ++ kitty_png_rgba_00ffff7f ++ "\x1b\\");
+
+    try std.testing.expectEqualStrings(kitty_png_rgba_00ffff7f, KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try expectDecodedImage(&terminal, 32, 1, 1, &.{ 0x00, 0xff, 0xff, 0x7f });
 }
 
 test "kitty graphics truncated png header returns EBADPNG without storing" {
@@ -5346,6 +5419,7 @@ test "kitty graphics quota replacement clears frames and current override" {
     try appendTestImage(&state, allocator, 7, Graphics.retained_payload_max_bytes - 8);
     state.images.items[0].current_frame_number = 2;
     state.images.items[0].current_override_payload = try retainedPayload(allocator, 4, 'O');
+    state.images.items[0].current_override_decoded_payload = try retainedPayload(allocator, 4, 'o');
     try state.frames.append(allocator, .{
         .frame_id = 1,
         .image_id = 7,
@@ -5361,6 +5435,10 @@ test "kitty graphics quota replacement clears frames and current override" {
         .background_rgba = 0,
         .gap = 0,
         .base64_payload = try retainedPayload(allocator, 4, 'F'),
+        .decoded_format = 24,
+        .decoded_width = 2,
+        .decoded_height = 1,
+        .decoded_payload = try retainedPayload(allocator, 6, 'f'),
     });
 
     _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
@@ -5404,6 +5482,7 @@ test "kitty graphics quota eviction removes unplaced image frames and current ov
     try appendTestImage(&state, allocator, 2, 4);
     state.images.items[1].current_frame_number = 2;
     state.images.items[1].current_override_payload = try retainedPayload(allocator, 4, 'O');
+    state.images.items[1].current_override_decoded_payload = try retainedPayload(allocator, 4, 'o');
     try state.frames.append(allocator, .{
         .frame_id = 1,
         .image_id = 2,
@@ -5419,6 +5498,10 @@ test "kitty graphics quota eviction removes unplaced image frames and current ov
         .background_rgba = 0,
         .gap = 0,
         .base64_payload = try retainedPayload(allocator, 4, 'F'),
+        .decoded_format = 24,
+        .decoded_width = 1,
+        .decoded_height = 1,
+        .decoded_payload = try retainedPayload(allocator, 3, 'f'),
     });
 
     _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
