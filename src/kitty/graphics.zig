@@ -1094,8 +1094,7 @@ pub const State = struct {
         self.abortUpload(allocator);
         switch (cmd.delete_target) {
             0, 'a', 'A' => {
-                self.placements.clearRetainingCapacity();
-                if (cmd.delete_target == 'A') self.deleteUnplacedImages(allocator);
+                self.deleteVisiblePlacements(allocator, screen, cmd.delete_target == 'A');
             },
             'i', 'I' => if (self.resolveImageId(cmd)) |image_id| {
                 if (cmd.placement_id != 0) {
@@ -1888,6 +1887,50 @@ pub const State = struct {
             }
             idx += 1;
         }
+    }
+
+    fn deletePlacementRefAndFreeUnplaced(self: *State, allocator: std.mem.Allocator, ref_id: u32) void {
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            const placement = self.placements.items[@intCast(idx)];
+            if (placement.ref_id == ref_id or placement.parent_ref_id == ref_id) {
+                const removed_ref_id = placement.ref_id;
+                const image_id = placement.image_id;
+                _ = self.placements.swapRemove(@intCast(idx));
+                self.deletePlacementRefAndFreeUnplaced(allocator, removed_ref_id);
+                self.deleteImageDataIfUnplaced(allocator, image_id);
+                continue;
+            }
+            idx += 1;
+        }
+    }
+
+    fn deleteVisiblePlacements(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, free_unplaced_matched: bool) void {
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            const placement = self.placements.items[@intCast(idx)];
+            if (self.placementVisibleInScreen(placement, screen)) {
+                const ref_id = placement.ref_id;
+                if (free_unplaced_matched) {
+                    self.deletePlacementRefAndFreeUnplaced(allocator, ref_id);
+                } else {
+                    self.deletePlacementRef(ref_id);
+                }
+                continue;
+            }
+            idx += 1;
+        }
+    }
+
+    fn placementVisibleInScreen(self: *const State, placement: Placement, screen: *const screen_mod.Screen) bool {
+        const resolved = self.resolvePlacementAnchor(placement, screen) orelse return false;
+        if (!rowAnchorVisible(resolved.row, placement.effective_rows)) return false;
+        if (resolved.col < 0) {
+            const off_left = std.math.cast(u32, -@as(i64, resolved.col)) orelse return false;
+            return off_left < placement.effective_columns;
+        }
+        const anchor_col: u32 = @intCast(resolved.col);
+        return anchor_col < screen.cols;
     }
 
     fn deleteVirtualPlacement(self: *State, image_id: u32, placement_id: u32) void {
