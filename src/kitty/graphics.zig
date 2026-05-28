@@ -857,6 +857,7 @@ pub const State = struct {
 
     pub fn handle(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!HandleResult {
         if (cmd.action == 'q') {
+            if (cmd.image_id == 0) return .{ .changed = false, .move = null };
             try self.queryImageSupport(allocator, cmd, output, encode_buf);
             return .{ .changed = false, .move = null };
         }

@@ -210,6 +210,32 @@ test "kitty graphics query returns OK without storing image" {
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 
+test "kitty graphics query without image id produces no reply or storage" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gs=1,v=1,a=q,t=d,f=24;AAAA\x1b\\");
+
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+}
+
+test "kitty graphics query with image number but no image id produces no reply or storage" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_GI=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\");
+
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+}
+
 test "kitty graphics direct upload stores single base64 payload" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -900,6 +926,19 @@ test "kitty graphics invalid png query returns EBADPNG without storing" {
 
     try std.testing.expectEqualStrings("\x1b_Gi=7;EBADPNG:invalid PNG data\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+}
+
+test "kitty graphics invalid png query without image id produces no EBADPNG" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Ga=q,t=d,f=100;QUJD\x1b\\");
+
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 
 test "kitty graphics valid png query returns OK without storing state" {
