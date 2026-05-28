@@ -664,6 +664,22 @@ test "kitty graphics invalid png query returns EBADPNG without storing" {
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
 }
 
+test "kitty graphics valid png query returns OK without storing state" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=31,a=q,t=d,f=100;" ++ kitty_png_rgba_00ffff7f ++ "\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=31;OK\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+}
+
 test "kitty graphics truncated png header returns EBADPNG without storing" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
