@@ -1004,39 +1004,35 @@ pub const State = struct {
                 if (cmd.placement_id != 0) {
                     self.deletePlacement(allocator, image_id, cmd.placement_id);
                     self.deleteVirtualPlacement(image_id, cmd.placement_id);
-                } else self.deleteImage(allocator, image_id);
+                } else self.deleteImagePlacements(allocator, image_id);
+                if (cmd.delete_target == 'I') self.deleteImageDataIfUnplaced(allocator, image_id);
             },
             'n', 'N' => if (self.findNewestImageByNumber(cmd.image_number)) |idx| {
                 const image_id = self.images.items[@intCast(idx)].image_id;
                 if (cmd.placement_id != 0) {
                     self.deletePlacement(allocator, image_id, cmd.placement_id);
                     self.deleteVirtualPlacement(image_id, cmd.placement_id);
-                } else self.deleteImage(allocator, image_id);
+                } else self.deleteImagePlacements(allocator, image_id);
+                if (cmd.delete_target == 'N') self.deleteImageDataIfUnplaced(allocator, image_id);
             },
             'c', 'C' => {
-                self.deletePlacementsAt(allocator, screen, render_view.col + 1, render_view.row + 1, null);
-                if (cmd.delete_target == 'C') self.deleteUnplacedImages(allocator);
+                self.deletePlacementsAt(allocator, screen, render_view.col + 1, render_view.row + 1, null, cmd.delete_target == 'C');
             },
             'p', 'P' => {
-                self.deletePlacementsAt(allocator, screen, cmd.x, cmd.y, null);
-                if (cmd.delete_target == 'P') self.deleteUnplacedImages(allocator);
+                self.deletePlacementsAt(allocator, screen, cmd.x, cmd.y, null, cmd.delete_target == 'P');
             },
             'q', 'Q' => {
-                self.deletePlacementsAt(allocator, screen, cmd.x, cmd.y, cmd.z);
-                if (cmd.delete_target == 'Q') self.deleteUnplacedImages(allocator);
+                self.deletePlacementsAt(allocator, screen, cmd.x, cmd.y, cmd.z, cmd.delete_target == 'Q');
             },
-            'r', 'R' => self.deleteImagesInRange(allocator, cmd.x, cmd.y),
+            'r', 'R' => self.deleteImagesInRange(allocator, cmd.x, cmd.y, cmd.delete_target == 'R'),
             'x', 'X' => {
-                self.deletePlacementsInColumn(allocator, screen, cmd.x);
-                if (cmd.delete_target == 'X') self.deleteUnplacedImages(allocator);
+                self.deletePlacementsInColumn(allocator, screen, cmd.x, cmd.delete_target == 'X');
             },
             'y', 'Y' => {
-                self.deletePlacementsInRow(allocator, screen, cmd.y);
-                if (cmd.delete_target == 'Y') self.deleteUnplacedImages(allocator);
+                self.deletePlacementsInRow(allocator, screen, cmd.y, cmd.delete_target == 'Y');
             },
             'z', 'Z' => {
-                self.deletePlacementsByZ(allocator, cmd.z);
-                if (cmd.delete_target == 'Z') self.deleteUnplacedImages(allocator);
+                self.deletePlacementsByZ(allocator, cmd.z, cmd.delete_target == 'Z');
             },
             'f', 'F' => self.deleteFrames(allocator, cmd),
             else => {},
@@ -1630,12 +1626,20 @@ pub const State = struct {
     }
 
     fn deleteImage(self: *State, allocator: std.mem.Allocator, image_id: u32) void {
+        self.deleteImagePlacements(allocator, image_id);
+        self.deleteImageData(allocator, image_id);
+    }
+
+    fn deleteImagePlacements(self: *State, allocator: std.mem.Allocator, image_id: u32) void {
         while (self.findPlacementIndexForImage(image_id)) |idx| {
             const placement = self.placements.items[@intCast(idx)];
             self.deletePlacement(allocator, placement.image_id, placement.placement_id);
         }
         self.deleteVirtualPlacementsForImage(image_id);
-        self.deleteImageData(allocator, image_id);
+    }
+
+    fn deleteImageDataIfUnplaced(self: *State, allocator: std.mem.Allocator, image_id: u32) void {
+        if (!self.imageHasPlacement(image_id)) self.deleteImageData(allocator, image_id);
     }
 
     fn deleteImageData(self: *State, allocator: std.mem.Allocator, image_id: u32) void {
@@ -1766,7 +1770,7 @@ pub const State = struct {
         }
     }
 
-    fn deletePlacementsAt(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, x: u32, y: u32, z: ?i32) void {
+    fn deletePlacementsAt(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, x: u32, y: u32, z: ?i32, free_unplaced_matched: bool) void {
         if (x == 0 or y == 0) return;
         const col = x - 1;
         const row = y - 1;
@@ -1787,11 +1791,15 @@ pub const State = struct {
             }
             const anchor_col: u32 = @intCast(resolved.col);
             const intersects = col >= anchor_col and col < anchor_col + p.effective_columns and row >= anchor_row and row < anchor_row + p.effective_rows and (z == null or p.z_index == z.?);
-            if (intersects) self.deletePlacement(allocator, p.image_id, p.placement_id) else idx += 1;
+            if (intersects) {
+                const image_id = p.image_id;
+                self.deletePlacement(allocator, image_id, p.placement_id);
+                if (free_unplaced_matched) self.deleteImageDataIfUnplaced(allocator, image_id);
+            } else idx += 1;
         }
     }
 
-    fn deletePlacementsInColumn(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, x: u32) void {
+    fn deletePlacementsInColumn(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, x: u32, free_unplaced_matched: bool) void {
         if (x == 0) return;
         const col = x - 1;
         var idx: Index = 0;
@@ -1806,11 +1814,15 @@ pub const State = struct {
                 continue;
             }
             const anchor_col: u32 = @intCast(resolved.col);
-            if (col >= anchor_col and col < anchor_col + p.effective_columns) self.deletePlacement(allocator, p.image_id, p.placement_id) else idx += 1;
+            if (col >= anchor_col and col < anchor_col + p.effective_columns) {
+                const image_id = p.image_id;
+                self.deletePlacement(allocator, image_id, p.placement_id);
+                if (free_unplaced_matched) self.deleteImageDataIfUnplaced(allocator, image_id);
+            } else idx += 1;
         }
     }
 
-    fn deletePlacementsInRow(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, y: u32) void {
+    fn deletePlacementsInRow(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, y: u32, free_unplaced_matched: bool) void {
         if (y == 0) return;
         const row = y - 1;
         var idx: Index = 0;
@@ -1824,25 +1836,38 @@ pub const State = struct {
                 idx += 1;
                 continue;
             };
-            if (row >= anchor_row and row < anchor_row + p.effective_rows) self.deletePlacement(allocator, p.image_id, p.placement_id) else idx += 1;
+            if (row >= anchor_row and row < anchor_row + p.effective_rows) {
+                const image_id = p.image_id;
+                self.deletePlacement(allocator, image_id, p.placement_id);
+                if (free_unplaced_matched) self.deleteImageDataIfUnplaced(allocator, image_id);
+            } else idx += 1;
         }
     }
 
-    fn deletePlacementsByZ(self: *State, allocator: std.mem.Allocator, z: i32) void {
+    fn deletePlacementsByZ(self: *State, allocator: std.mem.Allocator, z: i32, free_unplaced_matched: bool) void {
         var idx: Index = 0;
         while (idx < self.placementCount()) {
             const placement = self.placements.items[@intCast(idx)];
-            if (placement.z_index == z) self.deletePlacement(allocator, placement.image_id, placement.placement_id) else idx += 1;
+            if (placement.z_index == z) {
+                const image_id = placement.image_id;
+                self.deletePlacement(allocator, image_id, placement.placement_id);
+                if (free_unplaced_matched) self.deleteImageDataIfUnplaced(allocator, image_id);
+            } else idx += 1;
         }
     }
 
-    fn deleteImagesInRange(self: *State, allocator: std.mem.Allocator, first: u32, last: u32) void {
+    fn deleteImagesInRange(self: *State, allocator: std.mem.Allocator, first: u32, last: u32, free_unplaced_matched: bool) void {
         const lo = @min(first, last);
         const hi = @max(first, last);
         var idx: Index = 0;
         while (idx < self.imageCount()) {
             const image_id = self.images.items[@intCast(idx)].image_id;
-            if (image_id >= lo and image_id <= hi) self.deleteImage(allocator, image_id) else idx += 1;
+            if (image_id >= lo and image_id <= hi) {
+                self.deleteImagePlacements(allocator, image_id);
+                if (free_unplaced_matched) {
+                    self.deleteImageDataIfUnplaced(allocator, image_id);
+                } else idx += 1;
+            } else idx += 1;
         }
     }
 

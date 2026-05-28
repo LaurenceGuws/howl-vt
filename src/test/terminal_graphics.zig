@@ -1992,7 +1992,7 @@ test "kitty graphics relative placement lifetime removes descendant placements w
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
 }
 
-test "kitty graphics delete by image id removes image and placements" {
+test "kitty graphics lowercase delete by image id removes placements and keeps image data" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
@@ -2003,7 +2003,88 @@ test "kitty graphics delete by image id removes image and placements" {
     try stream.nextSlice("\x1b_Ga=p,i=7,p=3\x1b\\");
     try stream.nextSlice("\x1b_Ga=d,d=i,i=7\x1b\\");
 
-    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 7), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
+    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics uppercase delete by image id frees only targeted unplaced image" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3\x1b\\");
+    try stream.nextSlice("\x1b_Ga=d,d=I,i=7\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 8), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+}
+
+test "kitty graphics uppercase delete by image number targets newest only" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,I=13,p=2\x1b\\");
+    try stream.nextSlice("\x1b_Ga=d,d=N,I=13\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,I=13,p=4\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementAt(&terminal, 0).?.image_id);
+    try std.testing.expectEqual(@as(u32, 4), KittyState.graphicsPlacementAt(&terminal, 0).?.placement_id);
+}
+
+test "kitty graphics uppercase geometry delete does not sweep unrelated unplaced image" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=1,c=2,r=2\x1b\\");
+    try stream.nextSlice("\x1b_Ga=d,d=P,x=3,y=2\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 8), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+}
+
+test "kitty graphics range delete preserves lowercase data and frees uppercase targets" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Gi=9,s=1,v=1,t=d,f=24;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=d,d=r,x=7,y=8\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 3), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=d,d=R,x=7,y=8\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 9), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
 }
 
