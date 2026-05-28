@@ -32,6 +32,12 @@ const zlib_rgb_abc = [_]u8{ 0x78, 0x9c, 0x73, 0x74, 0x72, 0x06, 0x00, 0x01, 0x8d
 const zlib_rgba_abcd = [_]u8{ 0x78, 0x9c, 0x73, 0x74, 0x72, 0x76, 0x01, 0x00, 0x02, 0x98, 0x01, 0x0b };
 const png_rgba_11223344 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMQVDJ2AQABWQCrEyolqwAAAABJRU5ErkJggg==";
 const kitty_png_rgba_00ffff7f = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+P+/HgAFhAJ/wlseKgAAAABJRU5ErkJggg==";
+const png_matrix_rgba_5x3 = "iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAYAAABbNsX4AAAAFklEQVR4nGNkYGRiZkEHIiIiIkQJAgArIAFwAovK5AAAAABJRU5ErkJggg==";
+const png_matrix_rgb_5x3 = "iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAIAAADUVFKvAAAAE0lEQVR4nGNkYGRiQQYiIiL4+AAYoAEVmtqnZQAAAABJRU5ErkJggg==";
+const png_matrix_l_5x3 = "iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAAAAAB+XZokAAAAEUlEQVR4nGNkZGFhYWERQZAAA1UAY1JyeaYAAAAASUVORK5CYII=";
+const png_matrix_rgba_expected_5x3 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7";
+const png_matrix_rgb_expected_5x3 = "AAEC/wQFBv8ICQr/DA0O/xAREv8UFRb/GBka/xwdHv8gISL/JCUm/ygpKv8sLS7/MDEy/zQ1Nv84OTr/";
+const png_matrix_l_expected_5x3 = "AQEB/wUFBf8JCQn/DQ0N/xEREf8VFRX/GRkZ/x0dHf8hISH/JSUl/ykpKf8tLS3/MTEx/zU1Nf85OTn/";
 const howl_app_icon_rel_path = "../howl-linux-host/assets/icon/howl_window_icon.png";
 
 fn writeSharedMemory(name: [:0]const u8, bytes: []const u8) !void {
@@ -3400,6 +3406,44 @@ test "kitty graphics client-driven current kitty png frame republishes exact rgb
     try std.testing.expectEqual(@as(u32, 1), image.width);
     try std.testing.expectEqual(@as(u32, 1), image.height);
     try std.testing.expectEqualStrings("AP//fw==", image.base64_payload);
+}
+
+test "kitty graphics client-driven current png frame normalizes non-palette modes" {
+    const allocator = std.testing.allocator;
+    const fixtures = [_]struct {
+        image_id: u32,
+        png: []const u8,
+        expected: []const u8,
+    }{
+        .{ .image_id = 71, .png = png_matrix_rgba_5x3, .expected = png_matrix_rgba_expected_5x3 },
+        .{ .image_id = 72, .png = png_matrix_rgb_5x3, .expected = png_matrix_rgb_expected_5x3 },
+        .{ .image_id = 73, .png = png_matrix_l_5x3, .expected = png_matrix_l_expected_5x3 },
+    };
+
+    for (fixtures) |fixture| {
+        var terminal = try Terminal.initWithCells(allocator, 3, 16);
+        defer terminal.deinit();
+        var stream = try StreamHarness.init(&terminal);
+        defer stream.deinit();
+
+        const root_upload = try std.fmt.allocPrint(allocator, "\x1b_Gi={d},s=5,v=3,t=d,f=32;{s}\x1b\\", .{ fixture.image_id, png_matrix_rgba_expected_5x3 });
+        defer allocator.free(root_upload);
+        try stream.nextSlice(root_upload);
+
+        const frame_upload = try std.fmt.allocPrint(allocator, "\x1b_Ga=f,i={d},r=2,s=5,v=3,t=d,f=100;{s}\x1b\\", .{ fixture.image_id, fixture.png });
+        defer allocator.free(frame_upload);
+        try stream.nextSlice(frame_upload);
+
+        const select_frame = try std.fmt.allocPrint(allocator, "\x1b_Ga=a,i={d},c=2\x1b\\", .{fixture.image_id});
+        defer allocator.free(select_frame);
+        try stream.nextSlice(select_frame);
+
+        const image = KittyState.graphicsImageAt(&terminal, 0).?;
+        try std.testing.expectEqual(@as(u16, 32), image.format);
+        try std.testing.expectEqual(@as(u32, 5), image.width);
+        try std.testing.expectEqual(@as(u32, 3), image.height);
+        try std.testing.expectEqualStrings(fixture.expected, image.base64_payload);
+    }
 }
 
 test "kitty graphics selected raw frame over png root republishes normalized rgba" {
