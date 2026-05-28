@@ -4297,6 +4297,81 @@ test "kitty graphics runtime progress advances timed animation frames autonomous
     try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
 }
 
+test "kitty graphics icat style retained animation controls run without EINVAL" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,r=1,z=7\x1b\\");
+
+    try std.testing.expectEqualStrings(
+        "\x1b_Gi=7,I=0;OK\x1b\\" ** 3,
+        pendingOutput(&terminal),
+    );
+    try std.testing.expectEqual(
+        @as(i32, 7),
+        KittyState.graphicsImageAt(&terminal, 0).?.root_frame_gap,
+    );
+    try std.testing.expectEqual(
+        .running,
+        KittyState.graphicsImageAt(&terminal, 0).?.animation_state,
+    );
+
+    _ = try terminal.progressRuntime(100);
+    const advanced = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
+    try std.testing.expect(advanced.state_changed);
+    try std.testing.expectEqual(
+        @as(u32, 2),
+        KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number,
+    );
+}
+
+test "kitty graphics choose files style retained animation controls preserve v1 runtime" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7,v=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7,v=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,r=1,z=7,v=1\x1b\\");
+
+    try std.testing.expectEqual(
+        @as(i32, 7),
+        KittyState.graphicsImageAt(&terminal, 0).?.root_frame_gap,
+    );
+    try std.testing.expectEqual(
+        @as(u32, 0),
+        KittyState.graphicsImageAt(&terminal, 0).?.max_loops,
+    );
+    try std.testing.expectEqual(
+        .running,
+        KittyState.graphicsImageAt(&terminal, 0).?.animation_state,
+    );
+
+    _ = try terminal.progressRuntime(100);
+    _ = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
+    const wrapped = try terminal.progressRuntime(100 + 12 * std.time.ns_per_ms);
+    try std.testing.expect(wrapped.state_changed);
+    try std.testing.expectEqual(
+        @as(u32, 1),
+        KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number,
+    );
+    try std.testing.expectEqual(
+        .running,
+        KittyState.graphicsImageAt(&terminal, 0).?.animation_state,
+    );
+}
+
 test "kitty graphics loading animation advances immediately when future frame arrives after waiting" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -4311,7 +4386,10 @@ test "kitty graphics loading animation advances immediately when future frame ar
 
     _ = try terminal.progressRuntime(100);
     _ = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
-    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
+    try std.testing.expectEqual(
+        @as(u32, 2),
+        KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number,
+    );
 
     const waiting = try terminal.progressRuntime(100 + 12 * std.time.ns_per_ms);
     try std.testing.expect(!waiting.state_changed);
@@ -4324,8 +4402,49 @@ test "kitty graphics loading animation advances immediately when future frame ar
 
     const advanced = try terminal.progressRuntime(200 + 12 * std.time.ns_per_ms);
     try std.testing.expect(advanced.state_changed);
-    try std.testing.expectEqual(@as(u32, 3), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
-    try std.testing.expectEqualStrings("R0hJ", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqual(
+        @as(u32, 3),
+        KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number,
+    );
+    try std.testing.expectEqualStrings(
+        "R0hJ",
+        KittyState.graphicsImageAt(&terminal, 0).?.base64_payload,
+    );
+}
+
+test "kitty graphics loading replay with retained controls advances after future frame upload" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7,v=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7,v=1\x1b\\");
+
+    _ = try terminal.progressRuntime(100);
+    _ = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
+    try std.testing.expectEqual(
+        @as(u32, 2),
+        KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number,
+    );
+
+    const waiting = try terminal.progressRuntime(100 + 12 * std.time.ns_per_ms);
+    try std.testing.expect(!waiting.state_changed);
+    try std.testing.expectEqual(@as(u64, 0), waiting.obligation.deadline_ns);
+
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,z=9,t=d,f=24;R0hJ\x1b\\");
+    const due = terminal.runtimeObligation(200 + 12 * std.time.ns_per_ms);
+    try std.testing.expect(due.pending_now);
+
+    const advanced = try terminal.progressRuntime(200 + 12 * std.time.ns_per_ms);
+    try std.testing.expect(advanced.state_changed);
+    try std.testing.expectEqual(
+        @as(u32, 3),
+        KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number,
+    );
 }
 
 test "kitty graphics finite v2 two-frame animation completes one wrap before stopping" {

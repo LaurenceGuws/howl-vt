@@ -911,10 +911,11 @@ pub const State = struct {
     }
 
     fn controlAnimation(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!HandleResult {
-        const controls = @intFromBool(cmd.current_frame_number != 0) +
-            @intFromBool(cmd.edit_frame_number != 0 or cmd.z != 0) +
-            @intFromBool(cmd.animation_state != 0 or cmd.loop_count != 0);
-        if (controls == 0 or controls > 1) {
+        const has_frame_gap = cmd.edit_frame_number != 0 or cmd.z != 0;
+        const has_current_frame = cmd.current_frame_number != 0;
+        const has_animation_state = cmd.animation_state != 0;
+        const has_loop_count = cmd.loop_count != 0;
+        if (!has_frame_gap and !has_current_frame and !has_animation_state and !has_loop_count) {
             if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
             return .{ .changed = false, .move = null };
         }
@@ -923,12 +924,16 @@ pub const State = struct {
             return .{ .changed = false, .move = null };
         };
         const image_idx = self.findImage(image_id) orelse unreachable;
-        const changed = if (cmd.current_frame_number != 0)
-            try self.selectCurrentFrame(allocator, @intCast(image_idx), cmd.current_frame_number)
-        else if (cmd.edit_frame_number != 0 or cmd.z != 0)
-            try self.setFrameGap(allocator, @intCast(image_idx), cmd.edit_frame_number, cmd.z)
-        else
-            self.setAnimationControl(@intCast(image_idx), cmd.animation_state, cmd.loop_count);
+        var changed = false;
+        if (cmd.edit_frame_number != 0 and cmd.z != 0) {
+            changed = try self.setFrameGap(allocator, @intCast(image_idx), cmd.edit_frame_number, cmd.z);
+        }
+        if (has_current_frame) {
+            changed = try self.selectCurrentFrame(allocator, @intCast(image_idx), cmd.current_frame_number) or changed;
+        }
+        if (has_animation_state or has_loop_count) {
+            changed = self.setAnimationControl(@intCast(image_idx), cmd.animation_state, cmd.loop_count) or changed;
+        }
         if (shouldReplySuccess(cmd.quiet) and (cmd.image_id != 0 or cmd.image_number != 0)) {
             try appendNumberReply(allocator, output, encode_buf, image_id, cmd.image_number, "OK");
         }
