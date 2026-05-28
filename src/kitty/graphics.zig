@@ -19,7 +19,17 @@ const MediaLoadError = error{
     InvalidGraphicsMedium,
     InvalidGraphicsCompression,
     InvalidGraphicsData,
+    InvalidPngData,
     GraphicsIo,
+};
+const DirectPayloadError = error{
+    InvalidGraphicsCompression,
+    InvalidGraphicsData,
+    InvalidPngData,
+};
+const PngDecodeError = error{
+    InvalidGraphicsData,
+    InvalidPngData,
 };
 
 fn shouldReplySuccess(quiet: u32) bool {
@@ -1000,6 +1010,10 @@ pub const State = struct {
                             if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
                             return;
                         },
+                        error.InvalidPngData => {
+                            if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADPNG:invalid PNG data");
+                            return;
+                        },
                         error.OutOfMemory => return error.OutOfMemory,
                         error.ConsequenceLimit => return error.ConsequenceLimit,
                     }
@@ -1024,6 +1038,10 @@ pub const State = struct {
                     },
                     error.InvalidGraphicsData => {
                         if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
+                        return;
+                    },
+                    error.InvalidPngData => {
+                        if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADPNG:invalid PNG data");
                         return;
                     },
                     error.GraphicsIo => {
@@ -1241,6 +1259,10 @@ pub const State = struct {
                         if (shouldReplyFailure(quiet)) try appendReply(allocator, output, encode_buf, image_id, "ENODATA:insufficient kitty graphics data");
                         return null;
                     },
+                    error.InvalidPngData => {
+                        if (shouldReplyFailure(quiet)) try appendReply(allocator, output, encode_buf, image_id, "EBADPNG:invalid PNG data");
+                        return null;
+                    },
                     error.OutOfMemory => return error.OutOfMemory,
                     error.ConsequenceLimit => return error.ConsequenceLimit,
                 }
@@ -1288,6 +1310,10 @@ pub const State = struct {
                     if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
                     return null;
                 },
+                error.InvalidPngData => {
+                    if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADPNG:invalid PNG data");
+                    return null;
+                },
                 error.OutOfMemory => return error.OutOfMemory,
                 error.ConsequenceLimit => return error.ConsequenceLimit,
             }
@@ -1319,6 +1345,10 @@ pub const State = struct {
             },
             error.InvalidGraphicsData => {
                 if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
+                return null;
+            },
+            error.InvalidPngData => {
+                if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADPNG:invalid PNG data");
                 return null;
             },
             error.GraphicsIo => {
@@ -1473,7 +1503,12 @@ pub const State = struct {
             try ensureCountBound(self.images.items.len, image_max_count);
         }
         try self.ensureRetainedPayloadStore(allocator, count32(owned), retainedPayloadBytesFreedByImage(self, image_id), if (image_id == 0) null else image_id);
-        const image_size = try intrinsicImageSize(format, width, height, owned);
+        const image_size = intrinsicImageSize(format, width, height, owned) catch |err| switch (err) {
+            error.InvalidPngData => return error.ConsequenceLimit,
+            error.InvalidGraphicsData => return error.ConsequenceLimit,
+            error.OutOfMemory => return error.OutOfMemory,
+            error.ConsequenceLimit => return error.ConsequenceLimit,
+        };
         const image = Image{ .image_id = image_id, .image_number = image_number, .format = format, .width = image_size.width, .height = image_size.height, .base64_payload = owned };
         if (image_id != 0) self.deleteImage(allocator, image_id);
         try self.images.append(allocator, image);
@@ -1488,7 +1523,12 @@ pub const State = struct {
         const target_frame_number = if (frame_number == 0) self.nextFrameNumber(image_id) else frame_number;
         const uses_root_base = base_frame_number == 1;
         const base_frame_id = if (base_frame_number <= 1) 0 else self.frameIdForNumber(image_id, base_frame_number) orelse return;
-        const frame_size = try intrinsicImageSize(format, width, height, owned);
+        const frame_size = intrinsicImageSize(format, width, height, owned) catch |err| switch (err) {
+            error.InvalidPngData => return error.ConsequenceLimit,
+            error.InvalidGraphicsData => return error.ConsequenceLimit,
+            error.OutOfMemory => return error.OutOfMemory,
+            error.ConsequenceLimit => return error.ConsequenceLimit,
+        };
         if (!currentFramePublicationFormatSupported(image.format)) return;
         if (!currentFramePublicationFormatSupported(format)) return;
         const png_backed = image.format == 100 or format == 100 or self.frameChainIncludesPng(image.*, base_frame_id);
@@ -2617,7 +2657,12 @@ fn decodeBase64RgbaOwned(allocator: std.mem.Allocator, format: u16, width: u32, 
     return switch (format) {
         24 => try decodeBase64RgbExpandedOwned(allocator, width, height, payload),
         32 => try decodeBase64RawOwned(allocator, format, width, height, payload),
-        100 => try decodeBase64PngRgbaOwned(allocator, width, height, payload),
+        100 => decodeBase64PngRgbaOwned(allocator, width, height, payload) catch |err| switch (err) {
+            error.InvalidPngData => return error.ConsequenceLimit,
+            error.InvalidGraphicsData => return error.ConsequenceLimit,
+            error.OutOfMemory => return error.OutOfMemory,
+            error.ConsequenceLimit => return error.ConsequenceLimit,
+        },
         else => unreachable,
     };
 }
@@ -2647,14 +2692,14 @@ fn decodeBase64RgbExpandedOwned(allocator: std.mem.Allocator, width: u32, height
     return rgba;
 }
 
-fn decodeBase64PngRgbaOwned(allocator: std.mem.Allocator, width: u32, height: u32, payload: []const u8) host_state.ApplyError![]u8 {
-    const png_len = std.base64.standard.Decoder.calcSizeForSlice(payload) catch unreachable;
+fn decodeBase64PngRgbaOwned(allocator: std.mem.Allocator, width: u32, height: u32, payload: []const u8) (PngDecodeError || host_state.ApplyError)![]u8 {
+    const png_len = std.base64.standard.Decoder.calcSizeForSlice(payload) catch return error.InvalidGraphicsData;
     const png_bytes = try allocator.alloc(u8, png_len);
     defer allocator.free(png_bytes);
-    std.base64.standard.Decoder.decode(png_bytes, payload) catch unreachable;
+    std.base64.standard.Decoder.decode(png_bytes, payload) catch return error.InvalidGraphicsData;
 
-    var image_size = decodePngSize(png_bytes);
-    const ptr = c.stbi_load_from_memory(png_bytes.ptr, @intCast(png_bytes.len), &image_size.width, &image_size.height, &image_size.comp, 4) orelse unreachable;
+    var image_size = try decodePngSize(png_bytes);
+    const ptr = c.stbi_load_from_memory(png_bytes.ptr, @intCast(png_bytes.len), &image_size.width, &image_size.height, &image_size.comp, 4) orelse return error.InvalidPngData;
     defer c.stbi_image_free(ptr);
 
     const decoded_width_u32: u32 = @intCast(image_size.width);
@@ -2675,29 +2720,43 @@ const PngImageSize = struct {
     comp: c_int,
 };
 
-fn intrinsicImageSize(format: u16, width: u32, height: u32, payload: []const u8) host_state.ApplyError!struct { width: u32, height: u32 } {
+fn intrinsicImageSize(format: u16, width: u32, height: u32, payload: []const u8) (PngDecodeError || host_state.ApplyError)!struct { width: u32, height: u32 } {
     if (format != 100) return .{ .width = width, .height = height };
     const image_size = try decodeBase64PngSize(payload);
     return .{ .width = image_size.width, .height = image_size.height };
 }
 
-fn decodeBase64PngSize(payload: []const u8) host_state.ApplyError!struct { width: u32, height: u32 } {
-    const png_len = std.base64.standard.Decoder.calcSizeForSlice(payload) catch unreachable;
+fn decodeBase64PngSize(payload: []const u8) (PngDecodeError || host_state.ApplyError)!struct { width: u32, height: u32 } {
+    const png_len = std.base64.standard.Decoder.calcSizeForSlice(payload) catch return error.InvalidGraphicsData;
     const png_bytes = try std.heap.c_allocator.alloc(u8, png_len);
     defer std.heap.c_allocator.free(png_bytes);
-    std.base64.standard.Decoder.decode(png_bytes, payload) catch unreachable;
-    const image_size = decodePngSize(png_bytes);
+    std.base64.standard.Decoder.decode(png_bytes, payload) catch return error.InvalidGraphicsData;
+    const image_size = try decodePngSize(png_bytes);
     return .{ .width = @intCast(image_size.width), .height = @intCast(image_size.height) };
 }
 
-fn decodePngSize(png_bytes: []const u8) PngImageSize {
+fn validateBase64PngPayload(payload: []const u8) (PngDecodeError || host_state.ApplyError)!void {
+    const png_len = std.base64.standard.Decoder.calcSizeForSlice(payload) catch return error.InvalidGraphicsData;
+    const png_bytes = try std.heap.c_allocator.alloc(u8, png_len);
+    defer std.heap.c_allocator.free(png_bytes);
+    std.base64.standard.Decoder.decode(png_bytes, payload) catch return error.InvalidGraphicsData;
+    try validatePngBytes(png_bytes);
+}
+
+fn validatePngBytes(png_bytes: []const u8) PngDecodeError!void {
+    var image_size = try decodePngSize(png_bytes);
+    const ptr = c.stbi_load_from_memory(png_bytes.ptr, @intCast(png_bytes.len), &image_size.width, &image_size.height, &image_size.comp, 4) orelse return error.InvalidPngData;
+    c.stbi_image_free(ptr);
+}
+
+fn decodePngSize(png_bytes: []const u8) PngDecodeError!PngImageSize {
     var width: c_int = 0;
     var height: c_int = 0;
     var comp: c_int = 0;
     const ok = c.stbi_info_from_memory(png_bytes.ptr, @intCast(png_bytes.len), &width, &height, &comp);
-    std.debug.assert(ok != 0);
-    std.debug.assert(width > 0);
-    std.debug.assert(height > 0);
+    if (ok == 0) return error.InvalidPngData;
+    if (width <= 0) return error.InvalidPngData;
+    if (height <= 0) return error.InvalidPngData;
     return .{ .width = width, .height = height, .comp = comp };
 }
 
@@ -2831,6 +2890,8 @@ fn loadIndirectPayloadNormalized(allocator: std.mem.Allocator, cmd: KittyGraphic
     defer allocator.free(transport);
 
     if (cmd.compression == 0) {
+        if (cmd.format == 100) try validatePngBytes(transport);
+
         const encoded_len = std.base64.standard.Encoder.calcSize(transport.len);
         try ensureRetainedPayloadStoreForLen(encoded_len);
 
@@ -2964,8 +3025,11 @@ fn ensureRetainedPayloadStoreForLen(len: usize) host_state.ApplyError!void {
     if (len32 > retained_payload_max_bytes) return error.ConsequenceLimit;
 }
 
-fn normalizeDirectPayloadOwned(allocator: std.mem.Allocator, compression: u8, format: u16, width: u32, height: u32, payload: []const u8) (error{ InvalidGraphicsCompression, InvalidGraphicsData } || host_state.ApplyError)![]u8 {
-    if (compression == 0) return try allocator.dupe(u8, payload);
+fn normalizeDirectPayloadOwned(allocator: std.mem.Allocator, compression: u8, format: u16, width: u32, height: u32, payload: []const u8) (DirectPayloadError || host_state.ApplyError)![]u8 {
+    if (compression == 0) {
+        if (format == 100) try validateBase64PngPayload(payload);
+        return try allocator.dupe(u8, payload);
+    }
     if (compression != 'z') return error.InvalidGraphicsCompression;
 
     const compressed_len = std.base64.standard.Decoder.calcSizeForSlice(payload) catch return error.InvalidGraphicsData;

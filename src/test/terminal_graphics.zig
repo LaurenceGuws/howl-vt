@@ -631,6 +631,55 @@ test "kitty graphics png zlib compression is rejected explicitly" {
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 
+test "kitty graphics invalid direct png upload returns EBADPNG without storing" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=3,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+
+    try stream.nextSlice("\x1b_Gi=7,t=d,f=100;QUJD\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EBADPNG:invalid PNG data\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+}
+
+test "kitty graphics invalid png query returns EBADPNG without storing" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=3,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+
+    try stream.nextSlice("\x1b_Gi=7,a=q,t=d,f=100;QUJD\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EBADPNG:invalid PNG data\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+}
+
+test "kitty graphics truncated png header returns EBADPNG without storing" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    const truncated_ihdr_only = png_rgba_11223344[0..44];
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,t=d,f=100;{s}\x1b\\", .{truncated_ihdr_only});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EBADPNG:invalid PNG data\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+}
+
 test "kitty graphics place stores virtual placement prototype for U=1" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
