@@ -168,6 +168,22 @@ fn setPlaceholderCell(
     terminal.screen_state.active().cells.?[@as(usize, row) * terminal.screen_state.activeConst().cols + col] = cell;
 }
 
+fn expectGeneratedPlacementAt(
+    terminal: *Terminal,
+    publication_seq: u64,
+    idx: u32,
+    row: u16,
+    col: u16,
+    columns: u32,
+) !Graphics.Placement {
+    const placement = (try terminal.graphicsPlacement(publication_seq, idx)).?;
+    try std.testing.expect(placement.flags & Graphics.placement_generated_placeholder_flag != 0);
+    try expectOnScreenRowAnchor(placement.anchor_row, row);
+    try std.testing.expectEqual(col, placement.anchor_col);
+    try std.testing.expectEqual(columns, placement.columns);
+    return placement;
+}
+
 test "kitty graphics query returns OK without storing image" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -1052,6 +1068,152 @@ test "kitty graphics generated placements clear and update from VT truth" {
     const cleared_meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 0), cleared_meta.placement_count);
     try std.testing.expectEqual(@as(u32, 0), try terminal.graphicsPlaceholderRunProofCount(cleared_meta.publication_seq));
+}
+
+test "kitty graphics generated placements follow inserted placeholder rows" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\");
+    setPlaceholderCell(&terminal, 1, 1, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 2, 2, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 3, 3, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    terminal.postApply(true);
+
+    terminal.screen_state.active().cursor_row = 1;
+    terminal.screen_state.active().cursor_col = 0;
+    _ = try terminal.feed("\x1b[L");
+
+    const meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 2), meta.placement_count);
+    _ = try expectGeneratedPlacementAt(&terminal, meta.publication_seq, 0, 2, 1, 1);
+    _ = try expectGeneratedPlacementAt(&terminal, meta.publication_seq, 1, 3, 2, 1);
+}
+
+test "kitty graphics generated placements follow deleted placeholder rows" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\");
+    setPlaceholderCell(&terminal, 1, 1, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 2, 2, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 3, 3, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    terminal.postApply(true);
+
+    terminal.screen_state.active().cursor_row = 1;
+    terminal.screen_state.active().cursor_col = 0;
+    _ = try terminal.feed("\x1b[M");
+
+    const meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 2), meta.placement_count);
+    _ = try expectGeneratedPlacementAt(&terminal, meta.publication_seq, 0, 1, 2, 1);
+    _ = try expectGeneratedPlacementAt(&terminal, meta.publication_seq, 1, 2, 3, 1);
+}
+
+test "kitty graphics generated placements follow inserted and deleted placeholder cells" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=4,v=1,t=d,f=24;AAAAAAAAAAAAAAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=4,r=1\x1b\\");
+    setPlaceholderCell(&terminal, 1, 1, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 1, 2, Screen.Color.indexed(7), 9, null, null, null);
+    setPlaceholderCell(&terminal, 1, 3, Screen.Color.indexed(7), 9, null, null, null);
+    terminal.postApply(true);
+
+    terminal.screen_state.active().cursor_row = 1;
+    terminal.screen_state.active().cursor_col = 2;
+    _ = try terminal.feed("\x1b[@");
+
+    var meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 2), meta.placement_count);
+    _ = try expectGeneratedPlacementAt(&terminal, meta.publication_seq, 0, 1, 1, 1);
+    _ = try expectGeneratedPlacementAt(&terminal, meta.publication_seq, 1, 1, 3, 2);
+
+    _ = try terminal.feed("\x1b[P");
+
+    meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), meta.placement_count);
+    _ = try expectGeneratedPlacementAt(&terminal, meta.publication_seq, 0, 1, 1, 3);
+}
+
+test "kitty graphics generated placements are removed by clearing placeholder range" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=2,r=1\x1b\\");
+    setPlaceholderCell(&terminal, 1, 1, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    setPlaceholderCell(&terminal, 1, 2, Screen.Color.indexed(7), 9, null, null, null);
+    terminal.postApply(true);
+
+    terminal.screen_state.active().cursor_row = 1;
+    terminal.screen_state.active().cursor_col = 0;
+    _ = try terminal.feed("\x1b[2K");
+
+    const meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 0), meta.placement_count);
+    try std.testing.expectEqual(@as(u32, 0), try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq));
+}
+
+test "kitty graphics generated placement publication rejects stale row mutation sequence" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\");
+    setPlaceholderCell(&terminal, 1, 1, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    terminal.postApply(true);
+
+    const stale_meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), stale_meta.placement_count);
+    _ = try terminal.graphicsPlacement(stale_meta.publication_seq, 0);
+
+    terminal.screen_state.active().cursor_row = 1;
+    terminal.screen_state.active().cursor_col = 0;
+    _ = try terminal.feed("\x1b[L");
+
+    try std.testing.expectError(error.InvalidArgument, terminal.graphicsPlacement(stale_meta.publication_seq, 0));
+}
+
+test "kitty graphics generated placement order keys survive non graphics meta query" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\");
+    setPlaceholderCell(&terminal, 1, 1, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    terminal.postApply(true);
+
+    const first_meta = try terminal.graphicsMeta();
+    const first = (try terminal.graphicsPlacement(first_meta.publication_seq, 0)).?;
+    const visible_meta = terminal.visibleMeta(0);
+    try std.testing.expectEqual(@as(u16, 4), visible_meta.rows);
+
+    const second_meta = try terminal.graphicsMeta();
+    const second = (try terminal.graphicsPlacement(second_meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(first_meta.publication_seq, second_meta.publication_seq);
+    try std.testing.expectEqual(first.render_order_key, second.render_order_key);
 }
 
 test "kitty graphics physical placements sort before generated placeholder placements" {
