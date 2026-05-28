@@ -116,6 +116,7 @@ pub const Image = struct {
     };
 
     image_id: u32,
+    image_ref_id: u32 = 0,
     image_number: u32,
     format: u16,
     width: u32,
@@ -132,6 +133,7 @@ pub const Image = struct {
     max_loops: u32 = 0,
     current_loop: u32 = 0,
     current_frame_shown_at_ns: u64 = 0,
+    drawn: bool = false,
 };
 
 pub const RowAnchor = union(enum) {
@@ -429,6 +431,7 @@ pub const State = struct {
     frames: std.ArrayList(Frame) = .empty,
     upload: ?Upload = null,
     next_ref_id: u32 = 1,
+    next_image_ref_id: u32 = 1,
 
     fn count32(items: anytype) u32 {
         std.debug.assert(items.len <= std.math.maxInt(u32));
@@ -632,6 +635,7 @@ pub const State = struct {
         self.placements.clearRetainingCapacity();
         self.virtual_placements.clearRetainingCapacity();
         self.next_ref_id = 1;
+        self.next_image_ref_id = 1;
         for (self.frames.items) |frame| allocator.free(frame.base64_payload);
         self.frames.clearRetainingCapacity();
         self.abortUpload(allocator);
@@ -653,6 +657,18 @@ pub const State = struct {
             return published;
         }
         return image;
+    }
+
+    pub fn noteDrawnImageRefs(self: *State, image_ref_ids: []const u32) error{ InvalidArgument, ConsequenceLimit }!void {
+        if (image_ref_ids.len > image_max_count) return error.ConsequenceLimit;
+        for (image_ref_ids) |image_ref_id| {
+            if (image_ref_id == 0) return error.InvalidArgument;
+            _ = self.imageByRefId(image_ref_id) orelse return error.InvalidArgument;
+        }
+        for (self.images.items) |*image| image.drawn = false;
+        for (image_ref_ids) |image_ref_id| {
+            self.imageByRefId(image_ref_id).?.drawn = true;
+        }
     }
 
     pub fn placementCount(self: *const State) Count {
@@ -1615,7 +1631,7 @@ pub const State = struct {
             error.OutOfMemory => return error.OutOfMemory,
             error.ConsequenceLimit => return error.ConsequenceLimit,
         };
-        const image = Image{ .image_id = image_id, .image_number = image_number, .format = format, .width = image_size.width, .height = image_size.height, .base64_payload = owned };
+        const image = Image{ .image_id = image_id, .image_ref_id = self.allocImageRefId(), .image_number = image_number, .format = format, .width = image_size.width, .height = image_size.height, .base64_payload = owned };
         if (image_id != 0) self.deleteImage(allocator, image_id);
         try self.images.append(allocator, image);
     }
@@ -1983,6 +1999,22 @@ pub const State = struct {
             if (self.next_ref_id == 0) self.next_ref_id = 1;
             if (ref_id != 0 and self.parentPlacementByRef(ref_id) == null) return ref_id;
         }
+    }
+
+    fn allocImageRefId(self: *State) u32 {
+        while (true) {
+            const ref_id = self.next_image_ref_id;
+            self.next_image_ref_id +%= 1;
+            if (self.next_image_ref_id == 0) self.next_image_ref_id = 1;
+            if (ref_id != 0 and self.imageByRefId(ref_id) == null) return ref_id;
+        }
+    }
+
+    fn imageByRefId(self: *State, image_ref_id: u32) ?*Image {
+        for (self.images.items) |*image| {
+            if (image.image_ref_id == image_ref_id) return image;
+        }
+        return null;
     }
 
     fn deleteImage(self: *State, allocator: std.mem.Allocator, image_id: u32) void {
@@ -2782,6 +2814,7 @@ fn retainedPayloadBytes(self: *const State) u32 {
 }
 
 fn imageNeedsRuntime(self: *const State, image: Image) bool {
+    if (!image.drawn) return false;
     return image.animation_state != .stopped and self.frameCountForImage(image.image_id) > 1;
 }
 

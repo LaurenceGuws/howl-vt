@@ -22,6 +22,17 @@ fn pendingOutput(terminal: *const Terminal) []const u8 {
     return HostState.pendingOutput(terminal);
 }
 
+fn noteFirstGraphicsImageDrawn(terminal: *Terminal) !void {
+    const meta = try terminal.graphicsMeta();
+    const image = (try terminal.graphicsImage(meta.publication_seq, 0)).?;
+    try terminal.noteDrawnGraphics(meta.publication_seq, &.{image.image_ref_id});
+}
+
+fn noteNoGraphicsImagesDrawn(terminal: *Terminal) !void {
+    const meta = try terminal.graphicsMeta();
+    try terminal.noteDrawnGraphics(meta.publication_seq, &.{});
+}
+
 fn base64Owned(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
     const encoded = try allocator.alloc(u8, std.base64.standard.Encoder.calcSize(bytes.len));
     _ = std.base64.standard.Encoder.encode(encoded, bytes);
@@ -4837,6 +4848,7 @@ test "kitty graphics runtime obligation starts due and arms first frame deadline
     try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
+    try noteFirstGraphicsImageDrawn(&terminal);
 
     const due = terminal.runtimeObligation(100);
     try std.testing.expect(due.pending_now);
@@ -4859,6 +4871,7 @@ test "kitty graphics runtime progress advances timed animation frames autonomous
     try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
+    try noteFirstGraphicsImageDrawn(&terminal);
 
     _ = try terminal.progressRuntime(100);
     try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
@@ -4875,6 +4888,74 @@ test "kitty graphics runtime progress advances timed animation frames autonomous
     try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
 }
 
+fn expectAnimationUndrawnRuntimeIdle(terminal: *Terminal) !void {
+    const due = terminal.runtimeObligation(100);
+    try std.testing.expect(!due.pending_now);
+    try std.testing.expectEqual(@as(u64, 0), due.deadline_ns);
+
+    const first = try terminal.progressRuntime(100);
+    try std.testing.expect(!first.state_changed);
+    try std.testing.expect(!first.obligation.pending_now);
+    try std.testing.expectEqual(@as(u64, 0), first.obligation.deadline_ns);
+
+    const second = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
+    try std.testing.expect(!second.state_changed);
+    try std.testing.expect(!second.obligation.pending_now);
+    try std.testing.expectEqual(@as(u64, 0), second.obligation.deadline_ns);
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageAt(terminal, 0).?.current_frame_number);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics undrawn unplaced animation has no runtime obligation" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try expectAnimationUndrawnRuntimeIdle(&terminal);
+}
+
+test "kitty graphics undrawn deleted-placement animation has no runtime obligation" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,z=7\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=d,d=i,i=7\x1b\\");
+    try noteNoGraphicsImagesDrawn(&terminal);
+
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try expectAnimationUndrawnRuntimeIdle(&terminal);
+}
+
+test "kitty graphics virtual-only animation has no runtime obligation without placeholders" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,U=1,z=7\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
+    try expectAnimationUndrawnRuntimeIdle(&terminal);
+}
+
 test "kitty graphics icat style retained animation controls run without EINVAL" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -4887,6 +4968,7 @@ test "kitty graphics icat style retained animation controls run without EINVAL" 
     try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=3,r=1,z=7\x1b\\");
+    try noteFirstGraphicsImageDrawn(&terminal);
 
     try std.testing.expectEqualStrings(
         "\x1b_Gi=7,I=0;OK\x1b\\" ** 3,
@@ -4922,6 +5004,7 @@ test "kitty graphics choose files style retained animation controls preserve v1 
     try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7,v=1\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=3,r=1,z=7,v=1\x1b\\");
+    try noteFirstGraphicsImageDrawn(&terminal);
 
     try std.testing.expectEqual(
         @as(i32, 7),
@@ -4961,6 +5044,7 @@ test "kitty graphics loading animation advances immediately when future frame ar
     try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=2,v=1\x1b\\");
+    try noteFirstGraphicsImageDrawn(&terminal);
 
     _ = try terminal.progressRuntime(100);
     _ = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
@@ -5001,6 +5085,7 @@ test "kitty graphics loading replay with retained controls advances after future
     try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7,v=1\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7,v=1\x1b\\");
+    try noteFirstGraphicsImageDrawn(&terminal);
 
     _ = try terminal.progressRuntime(100);
     _ = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
@@ -5036,6 +5121,7 @@ test "kitty graphics finite v2 two-frame animation completes one wrap before sto
     try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=2\x1b\\");
+    try noteFirstGraphicsImageDrawn(&terminal);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
     _ = try terminal.progressRuntime(100);
@@ -5070,6 +5156,7 @@ test "kitty graphics runtime skips stored gapless negative-z frame" {
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=-1,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,z=5,t=d,f=24;R0hJ\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
+    try noteFirstGraphicsImageDrawn(&terminal);
 
     _ = try terminal.progressRuntime(100);
     const advanced = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);

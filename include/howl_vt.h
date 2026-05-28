@@ -259,6 +259,7 @@ typedef struct {
 
 typedef struct {
   uint32_t image_id;
+  uint32_t image_ref_id;
   uint32_t image_number;
   uint16_t format;
   uint16_t reserved0;
@@ -438,6 +439,7 @@ HowlVtBytesResult howl_vt_terminal_drain_pending_clipboard(HowlVtHandle handle, 
 
 HowlVtRuntimeObligationResult howl_vt_terminal_query_runtime_obligation(HowlVtHandle handle, uint64_t now_ns);
 HowlVtRuntimeProgressResult howl_vt_terminal_progress_runtime(HowlVtHandle handle, uint64_t now_ns);
+int32_t howl_vt_terminal_note_drawn_graphics(HowlVtHandle handle, uint64_t publication_seq, const uint32_t *image_ref_ids, size_t count);
 
 /* -------------------------------------------------------------------------- */
 /* 4. Shell Input                                                              */

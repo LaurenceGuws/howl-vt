@@ -27,6 +27,7 @@ comptime {
     @export(&ffi.terminalCopyPendingOutput, .{ .name = "howl_vt_terminal_copy_pending_output" });
     @export(&ffi.terminalClearPendingOutput, .{ .name = "howl_vt_terminal_clear_pending_output" });
     @export(&ffi.terminalDrainPendingClipboard, .{ .name = "howl_vt_terminal_drain_pending_clipboard" });
+    @export(&ffi.terminalNoteDrawnGraphics, .{ .name = "howl_vt_terminal_note_drawn_graphics" });
     @export(&ffi.terminalQueryRuntimeObligation, .{ .name = "howl_vt_terminal_query_runtime_obligation" });
     @export(&ffi.terminalProgressRuntime, .{ .name = "howl_vt_terminal_progress_runtime" });
     @export(&ffi.terminalEncodeKey, .{ .name = "howl_vt_terminal_encode_key" });

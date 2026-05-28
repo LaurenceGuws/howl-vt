@@ -236,6 +236,7 @@ pub const FfiGraphicsRowAnchor = extern struct {
 
 pub const FfiGraphicsImage = extern struct {
     image_id: u32 = 0,
+    image_ref_id: u32 = 0,
     image_number: u32 = 0,
     format: u16 = 0,
     reserved0: u16 = 0,
@@ -589,6 +590,7 @@ fn graphicsImageResult(image: kitty_types.Graphics.Image) FfiGraphicsImageResult
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .image = .{
             .image_id = image.image_id,
+            .image_ref_id = image.image_ref_id,
             .image_number = image.image_number,
             .format = image.format,
             .width = image.width,
@@ -1027,6 +1029,19 @@ pub fn terminalProgressRuntime(handle: VtHandle, now_ns: u64) callconv(.c) FfiRu
         }) };
     };
     return runtimeProgressResult(progress);
+}
+
+pub fn terminalNoteDrawnGraphics(handle: VtHandle, publication_seq: u64, ptr: ?[*]const u32, len: usize) callconv(.c) c_int {
+    const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
+    if (len > 0 and ptr == null) return @intFromEnum(HowlVtCallStatus.invalid_argument);
+    const image_ref_ids = if (len == 0) &[_]u32{} else ptr.?[0..len];
+    owned.noteDrawnGraphics(publication_seq, image_ref_ids) catch |err| {
+        return @intFromEnum(switch (err) {
+            error.InvalidArgument => HowlVtCallStatus.invalid_argument,
+            error.OutOfMemory, error.ConsequenceLimit => HowlVtCallStatus.failed,
+        });
+    };
+    return @intFromEnum(HowlVtCallStatus.ok);
 }
 
 pub fn terminalEncodeKey(handle: VtHandle, key: u32, mods: u8, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
