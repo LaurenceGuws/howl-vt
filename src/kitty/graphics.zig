@@ -2086,6 +2086,19 @@ pub const State = struct {
                 }
                 return .{ .cols = placement.effective_columns, .rows = placement.effective_rows };
             }
+            if (self.findVirtualPlacementIndex(placement.image_id, placement.placement_id)) |idx| {
+                try ensureCountBound(self.placements.items.len, placement_max_count);
+                try self.placements.append(allocator, placement);
+                validatePlacement(self.placements.items[self.placements.items.len - 1]);
+                _ = self.virtual_placements.swapRemove(@intCast(idx));
+                self.updateDirectChildParentKind(placement.image_id, placement.placement_id, false);
+                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
+                if (placement.hasParent() or no_move_cursor) {
+                    _ = self.resolvePlacementAnchor(placement, screen) orelse return null;
+                    return null;
+                }
+                return .{ .cols = placement.effective_columns, .rows = placement.effective_rows };
+            }
         }
         try ensureCountBound(self.placements.items.len, placement_max_count);
         try self.placements.append(allocator, placement);
@@ -2106,11 +2119,27 @@ pub const State = struct {
                 if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
                 return null;
             }
+            if (self.findPlacementIndex(placement.image_id, placement.placement_id)) |idx| {
+                try ensureCountBound(self.virtual_placements.items.len, placement_max_count);
+                try self.virtual_placements.append(allocator, placement);
+                _ = self.placements.swapRemove(@intCast(idx));
+                self.updateDirectChildParentKind(placement.image_id, placement.placement_id, true);
+                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
+                return null;
+            }
         }
         try ensureCountBound(self.virtual_placements.items.len, placement_max_count);
         try self.virtual_placements.append(allocator, placement);
         if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
         return null;
+    }
+
+    fn updateDirectChildParentKind(self: *State, image_id: u32, placement_id: u32, parent_is_virtual: bool) void {
+        for (self.placements.items) |*child| {
+            if (child.parent_image_id == image_id and child.parent_placement_id == placement_id) {
+                child.parent_is_virtual = parent_is_virtual;
+            }
+        }
     }
 
     fn validatePlacementAncestry(self: *const State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: Placement, image_number: u32, quiet: bool) host_state.ApplyError!bool {

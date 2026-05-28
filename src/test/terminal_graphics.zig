@@ -1256,6 +1256,126 @@ test "kitty graphics same image and placement id replaces placement" {
     try std.testing.expectEqual(@as(u32, 2), placement.effective_rows);
 }
 
+test "kitty graphics physical placement converts to virtual for same nonzero placement id" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,c=2,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,U=1,c=4,r=2\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
+    const placement = terminal.kitty.main.graphics.virtualPlacementAt(0).?;
+    try std.testing.expectEqual(@as(u32, 7), placement.image_id);
+    try std.testing.expectEqual(@as(u32, 3), placement.placement_id);
+    try std.testing.expectEqual(@as(u32, 4), placement.columns);
+    try std.testing.expectEqual(@as(u32, 2), placement.rows);
+}
+
+test "kitty graphics virtual placement converts to physical for same nonzero placement id" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,U=1,c=4,r=2\x1b\\");
+    try stream.nextSlice("\x1b[3;5H\x1b_Ga=p,i=7,p=3,c=2,r=1\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.virtualPlacementCount());
+    const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 7), placement.image_id);
+    try std.testing.expectEqual(@as(u32, 3), placement.placement_id);
+    try expectOnScreenRowAnchor(placement.anchor_row, 2);
+    try std.testing.expectEqual(@as(u16, 4), placement.anchor_col);
+    try std.testing.expectEqual(@as(u32, 2), placement.columns);
+    try std.testing.expectEqual(@as(u32, 1), placement.rows);
+}
+
+test "kitty graphics repeated physical virtual conversions keep one placement and one reply per command" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=5,c=1,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=5,U=1,c=1,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=5,c=1,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=5,U=1,c=1,r=1\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
+    try std.testing.expectEqualStrings(
+        "\x1b_Gi=7,p=5;OK\x1b\\" ++
+            "\x1b_Gi=7,p=5;OK\x1b\\" ++
+            "\x1b_Gi=7,p=5;OK\x1b\\" ++
+            "\x1b_Gi=7,p=5;OK\x1b\\",
+        pendingOutput(&terminal),
+    );
+}
+
+test "kitty graphics anonymous physical and virtual placements do not replace each other" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,c=2,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,U=1,c=4,r=2\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementAt(&terminal, 0).?.placement_id);
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.virtualPlacementAt(0).?.placement_id);
+}
+
+test "kitty graphics child parent kind follows converted nonzero placement" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Ga=p,i=7,p=9,c=1,r=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=3,P=7,Q=9,H=2,V=1,c=1,r=1\x1b\\");
+    try std.testing.expect(!terminal.kitty.main.graphics.placementAt(1).?.parent_is_virtual);
+
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\");
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.placementCount());
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
+    try std.testing.expect(terminal.kitty.main.graphics.placementAt(0).?.parent_is_virtual);
+    setPlaceholderCell(&terminal, 3, 4, Screen.Color.indexed(7), 9, null, null, null);
+    terminal.postApply(true);
+    var meta = try terminal.graphicsMeta();
+    var child = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    try expectOnScreenRowAnchor(child.anchor_row, 4);
+    try std.testing.expectEqual(@as(u16, 6), child.anchor_col);
+
+    try stream.nextSlice("\x1b[5;6H\x1b_Ga=p,i=7,p=9,c=1,r=1\x1b\\");
+    try std.testing.expectEqual(@as(u32, 2), terminal.kitty.main.graphics.placementCount());
+    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.virtualPlacementCount());
+    const first = terminal.kitty.main.graphics.placementAt(0).?;
+    const second = terminal.kitty.main.graphics.placementAt(1).?;
+    child = if (first.image_id == 8) first else second;
+    try std.testing.expect(!child.parent_is_virtual);
+    meta = try terminal.graphicsMeta();
+    const resolved = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    try expectOnScreenRowAnchor(resolved.anchor_row, 5);
+    try std.testing.expectEqual(@as(u16, 7), resolved.anchor_col);
+}
+
 test "kitty graphics place retains physical placement truth" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 16);
