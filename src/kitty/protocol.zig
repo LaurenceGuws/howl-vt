@@ -46,77 +46,77 @@ pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
         .payload = payload,
     };
 
-    var fields = std.mem.splitScalar(u8, control, ',');
-    while (fields.next()) |field| {
-        if (field.len < 3 or field[1] != '=') continue;
-        const key = field[0];
-        const value = field[2..];
-        switch (key) {
-            'a' => {
-                if (value.len > 0) cmd.action = value[0];
-            },
-            'i' => cmd.image_id = parseU32(value),
-            'I' => cmd.image_number = parseU32(value),
-            'p' => cmd.placement_id = parseU32(value),
-            'P' => cmd.parent_image_id = parseU32(value),
-            'Q' => cmd.parent_placement_id = parseU32(value),
-            'f' => cmd.format = parseU16(value),
-            's' => {
-                const parsed = parseU32(value);
-                cmd.width = parsed;
-                cmd.animation_state = parsed;
-            },
-            'v' => {
-                const parsed = parseU32(value);
-                cmd.height = parsed;
-                cmd.loop_count = parsed;
-            },
-            'S' => cmd.data_size = parseU32(value),
-            'w' => cmd.source_width = parseU32(value),
-            'h' => cmd.source_height = parseU32(value),
-            'c' => {
-                const parsed = parseU32(value);
-                cmd.columns = parsed;
-                cmd.current_frame_number = parsed;
-                cmd.base_frame_number = parsed;
-            },
-            'r' => {
-                const parsed = parseU32(value);
-                cmd.rows = parsed;
-                cmd.edit_frame_number = parsed;
-            },
-            'O' => cmd.data_offset = parseU32(value),
-            'H' => cmd.parent_offset_cols = parseI32(value),
-            'V' => cmd.parent_offset_rows = parseI32(value),
-            'x' => cmd.x = parseU32(value),
-            'y' => cmd.y = parseU32(value),
-            'X' => {
-                const parsed = parseU32(value);
-                cmd.cell_x_offset = parsed;
-                cmd.compose_mode = parsed;
-            },
-            'Y' => {
-                const parsed = parseU32(value);
-                cmd.cell_y_offset = parsed;
-                cmd.background_rgba = parsed;
-            },
-            'C' => cmd.no_move_cursor = parseU32(value) != 0,
-            'z' => cmd.z = parseI32(value),
-            'o' => {
-                if (value.len > 0) cmd.compression = value[0];
-            },
-            't' => {
-                if (value.len > 0) cmd.medium = value[0];
-            },
-            'U' => cmd.unicode_placement = parseU32(value) != 0,
-            'm' => cmd.more_chunks = parseU32(value) != 0,
-            'q' => cmd.quiet = parseU32(value) != 0,
-            'd' => {
-                if (value.len > 0) cmd.delete_target = value[0];
-            },
-            else => {
-                if (cmd.unsupported_key == 0) cmd.unsupported_key = key;
-            },
+    if (control.len != 0) {
+        var fields = std.mem.splitScalar(u8, control, ',');
+        while (fields.next()) |field| {
+            if (field.len == 0 or field.len < 3 or field[1] != '=') return null;
+            const key = field[0];
+            const value = field[2..];
+            switch (key) {
+                'a' => {
+                    cmd.action = parseFlag(value, "Tacdfpqt") orelse return null;
+                },
+                'i' => cmd.image_id = parseU32(value) orelse return null,
+                'I' => cmd.image_number = parseU32(value) orelse return null,
+                'p' => cmd.placement_id = parseU32(value) orelse return null,
+                'P' => cmd.parent_image_id = parseU32(value) orelse return null,
+                'Q' => cmd.parent_placement_id = parseU32(value) orelse return null,
+                'f' => cmd.format = parseU16(value) orelse return null,
+                's' => {
+                    const parsed = parseU32(value) orelse return null;
+                    cmd.width = parsed;
+                    cmd.animation_state = parsed;
+                },
+                'v' => {
+                    const parsed = parseU32(value) orelse return null;
+                    cmd.height = parsed;
+                    cmd.loop_count = parsed;
+                },
+                'S' => cmd.data_size = parseU32(value) orelse return null,
+                'w' => cmd.source_width = parseU32(value) orelse return null,
+                'h' => cmd.source_height = parseU32(value) orelse return null,
+                'c' => {
+                    const parsed = parseU32(value) orelse return null;
+                    cmd.columns = parsed;
+                    cmd.current_frame_number = parsed;
+                    cmd.base_frame_number = parsed;
+                },
+                'r' => {
+                    const parsed = parseU32(value) orelse return null;
+                    cmd.rows = parsed;
+                    cmd.edit_frame_number = parsed;
+                },
+                'O' => cmd.data_offset = parseU32(value) orelse return null,
+                'H' => cmd.parent_offset_cols = parseI32(value) orelse return null,
+                'V' => cmd.parent_offset_rows = parseI32(value) orelse return null,
+                'x' => cmd.x = parseU32(value) orelse return null,
+                'y' => cmd.y = parseU32(value) orelse return null,
+                'X' => {
+                    const parsed = parseU32(value) orelse return null;
+                    cmd.cell_x_offset = parsed;
+                    cmd.compose_mode = parsed;
+                },
+                'Y' => {
+                    const parsed = parseU32(value) orelse return null;
+                    cmd.cell_y_offset = parsed;
+                    cmd.background_rgba = parsed;
+                },
+                'C' => cmd.no_move_cursor = (parseU32(value) orelse return null) != 0,
+                'z' => cmd.z = parseI32(value) orelse return null,
+                'o' => {
+                    cmd.compression = parseFlag(value, "z") orelse return null;
+                },
+                't' => {
+                    cmd.medium = parseFlag(value, "dfst") orelse return null;
+                },
+                'U' => cmd.unicode_placement = (parseU32(value) orelse return null) != 0,
+                'm' => cmd.more_chunks = (parseU32(value) orelse return null) != 0,
+                'q' => cmd.quiet = (parseU32(value) orelse return null) != 0,
+                'd' => {
+                    cmd.delete_target = parseFlag(value, "ACFINPQRXYZacfinpqryz") orelse return null;
+                },
+                else => return null,
+            }
         }
     }
     return cmd;
@@ -152,14 +152,34 @@ pub fn parsePointerShape(payload: []const u8) vocabulary.KittyPointerShapeComman
     return .{ .action = action, .names = names };
 }
 
-fn parseU32(value: []const u8) u32 {
-    return std.fmt.parseUnsigned(u32, value, 10) catch 0;
+fn parseFlag(value: []const u8, allowed: []const u8) ?u8 {
+    if (value.len != 1) return null;
+    if (std.mem.indexOfScalar(u8, allowed, value[0]) == null) return null;
+    return value[0];
 }
 
-fn parseU16(value: []const u8) u16 {
-    return std.fmt.parseUnsigned(u16, value, 10) catch 0;
+fn parseU32(value: []const u8) ?u32 {
+    if (value.len == 0) return null;
+    for (value) |byte| {
+        if (byte < '0' or byte > '9') return null;
+    }
+    return std.fmt.parseUnsigned(u32, value, 10) catch null;
 }
 
-fn parseI32(value: []const u8) i32 {
-    return std.fmt.parseInt(i32, value, 10) catch 0;
+fn parseU16(value: []const u8) ?u16 {
+    if (value.len == 0) return null;
+    for (value) |byte| {
+        if (byte < '0' or byte > '9') return null;
+    }
+    return std.fmt.parseUnsigned(u16, value, 10) catch null;
+}
+
+fn parseI32(value: []const u8) ?i32 {
+    if (value.len == 0) return null;
+    const digits = if (value[0] == '-') value[1..] else value;
+    if (digits.len == 0) return null;
+    for (digits) |byte| {
+        if (byte < '0' or byte > '9') return null;
+    }
+    return std.fmt.parseInt(i32, value, 10) catch null;
 }

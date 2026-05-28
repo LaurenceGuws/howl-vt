@@ -40,7 +40,6 @@ pub const KittyGraphicsCommand = struct {
     more_chunks: bool,
     quiet: bool,
     delete_target: u8,
-    unsupported_key: u8 = 0,
     payload: []const u8,
 };
 

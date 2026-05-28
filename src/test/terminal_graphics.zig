@@ -141,6 +141,44 @@ test "kitty graphics direct upload stores single base64 payload" {
     try std.testing.expectEqualStrings("QUJD", image.base64_payload);
 }
 
+test "kitty graphics invalid integer parser input emits no reply and does not mutate" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+
+    try stream.nextSlice("\x1b_Gi=abc,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 7), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
+}
+
+test "kitty graphics invalid flag and unknown key parser input emits no reply and does not mutate" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+
+    try stream.nextSlice("\x1b_Gi=8,a=Z,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=9,N=1,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 7), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
+}
+
 test "kitty graphics transmit and display stores image placement and moves cursor" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 16);
@@ -262,7 +300,7 @@ fn cShmOpenReadOnly(name: [:0]const u8) !void {
     _ = c.close(fd);
 }
 
-test "kitty graphics unsupported medium is rejected explicitly" {
+test "kitty graphics invalid transmission flag is rejected by parser" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
@@ -271,7 +309,7 @@ test "kitty graphics unsupported medium is rejected explicitly" {
 
     try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=x,f=24;AAAA\x1b\\");
 
-    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:unsupported kitty graphics medium\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 

@@ -1375,6 +1375,44 @@ test "actions: kitty graphics APC parses relative placement controls" {
     try std.testing.expectEqual(@as(i32, 4), cmd.parent_offset_rows);
 }
 
+test "actions: kitty graphics APC accepts empty control block with payload" {
+    const sem = process(Event{ .apc = "G;AAAA" }) orelse return error.NoEvent;
+    const cmd = sem.kitty_graphics;
+    try std.testing.expectEqual(@as(u8, 't'), cmd.action);
+    try std.testing.expectEqualStrings("AAAA", cmd.payload);
+}
+
+test "actions: kitty graphics APC parses integer bool fields as nonzero" {
+    const sem = process(Event{ .apc = "GC=2,U=3,m=4,q=5;AAAA" }) orelse return error.NoEvent;
+    const cmd = sem.kitty_graphics;
+    try std.testing.expect(cmd.no_move_cursor);
+    try std.testing.expect(cmd.unicode_placement);
+    try std.testing.expect(cmd.more_chunks);
+    try std.testing.expect(cmd.quiet);
+}
+
+test "actions: kitty graphics APC rejects malformed control fields" {
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=1," }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=1,,p=2" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=1,p" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "GN=1" }));
+}
+
+test "actions: kitty graphics APC rejects invalid integer and flag domains" {
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=abc" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=-1" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gz=+1" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gz=-" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=4294967296" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Ga=Z" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gd=B" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gt=x" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Go=g" }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Ga=tt" }));
+}
+
 test "actions: kitty shell integration OSC 133 parses mark and status" {
     const sem = process(makeOsc(.{ .shell_mark = .{ .payload = "D;7", .term = .bel } })) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u8, 'D'), sem.kitty_shell_mark.kind);
