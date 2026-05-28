@@ -166,6 +166,7 @@ pub const RowAnchor = union(enum) {
 };
 
 pub const Placement = struct {
+    ref_id: u32 = 0,
     parent_is_virtual: bool = false,
     image_id: u32,
     placement_id: u32,
@@ -174,6 +175,7 @@ pub const Placement = struct {
     anchor_col: u16,
     parent_image_id: u32 = 0,
     parent_placement_id: u32 = 0,
+    parent_ref_id: u32 = 0,
     parent_offset_cols: i32 = 0,
     parent_offset_rows: i32 = 0,
     source_x: u32,
@@ -246,6 +248,7 @@ pub const Placement = struct {
 };
 
 pub const VirtualPlacement = struct {
+    ref_id: u32 = 0,
     image_id: u32,
     placement_id: u32,
     source_x: u32,
@@ -319,11 +322,13 @@ const PlaceholderRun = struct {
 };
 
 const ParentPlacementRef = struct {
+    ref_id: u32,
     image_id: u32,
     placement_id: u32,
     is_virtual: bool,
     parent_image_id: u32 = 0,
     parent_placement_id: u32 = 0,
+    parent_ref_id: u32 = 0,
 };
 
 pub const Frame = struct {
@@ -388,6 +393,7 @@ pub const State = struct {
     virtual_placements: std.ArrayList(VirtualPlacement) = .empty,
     frames: std.ArrayList(Frame) = .empty,
     upload: ?Upload = null,
+    next_ref_id: u32 = 1,
 
     fn count32(items: anytype) u32 {
         std.debug.assert(items.len <= std.math.maxInt(u32));
@@ -587,6 +593,7 @@ pub const State = struct {
         self.images.clearRetainingCapacity();
         self.placements.clearRetainingCapacity();
         self.virtual_placements.clearRetainingCapacity();
+        self.next_ref_id = 1;
         for (self.frames.items) |frame| allocator.free(frame.base64_payload);
         self.frames.clearRetainingCapacity();
         self.abortUpload(allocator);
@@ -1055,6 +1062,7 @@ pub const State = struct {
             .anchor_col = render_view.col,
             .parent_image_id = parent.image_id,
             .parent_placement_id = parent.placement_id,
+            .parent_ref_id = parent.ref_id,
             .parent_offset_cols = cmd.parent_offset_cols,
             .parent_offset_rows = cmd.parent_offset_rows,
             .source_x = cmd.x,
@@ -1405,6 +1413,7 @@ pub const State = struct {
             .anchor_col = request.anchor_col,
             .parent_image_id = parent.image_id,
             .parent_placement_id = parent.placement_id,
+            .parent_ref_id = parent.ref_id,
             .parent_offset_cols = request.parent_offset_cols,
             .parent_offset_rows = request.parent_offset_rows,
             .source_x = request.source_x,
@@ -1738,6 +1747,15 @@ pub const State = struct {
         self.upload = null;
     }
 
+    fn allocRefId(self: *State) u32 {
+        while (true) {
+            const ref_id = self.next_ref_id;
+            self.next_ref_id +%= 1;
+            if (self.next_ref_id == 0) self.next_ref_id = 1;
+            if (ref_id != 0 and self.parentPlacementByRef(ref_id) == null) return ref_id;
+        }
+    }
+
     fn deleteImage(self: *State, allocator: std.mem.Allocator, image_id: u32) void {
         self.deleteImagePlacements(allocator, image_id);
         self.deleteImageData(allocator, image_id);
@@ -1837,11 +1855,21 @@ pub const State = struct {
         while (idx < self.placementCount()) {
             const placement = self.placements.items[@intCast(idx)];
             if (placement.image_id == image_id and placement.placement_id == placement_id) {
-                _ = self.placements.swapRemove(@intCast(idx));
+                self.deletePlacementRef(placement.ref_id);
                 continue;
             }
-            if (self.placementDescendsFrom(placement, image_id, placement_id)) {
+            idx += 1;
+        }
+    }
+
+    fn deletePlacementRef(self: *State, ref_id: u32) void {
+        var idx: Index = 0;
+        while (idx < self.placementCount()) {
+            const placement = self.placements.items[@intCast(idx)];
+            if (placement.ref_id == ref_id or placement.parent_ref_id == ref_id) {
+                const removed_ref_id = placement.ref_id;
                 _ = self.placements.swapRemove(@intCast(idx));
+                self.deletePlacementRef(removed_ref_id);
                 continue;
             }
             idx += 1;
@@ -1849,24 +1877,11 @@ pub const State = struct {
     }
 
     fn deleteVirtualPlacement(self: *State, image_id: u32, placement_id: u32) void {
-        var child_idx: Index = 0;
-        while (child_idx < self.placementCount()) {
-            const child = self.placements.items[@intCast(child_idx)];
-            if (!child.parent_is_virtual) {
-                child_idx += 1;
-                continue;
-            }
-            if (child.parent_image_id != image_id or child.parent_placement_id != placement_id) {
-                child_idx += 1;
-                continue;
-            }
-            self.deletePlacement(undefined, child.image_id, child.placement_id);
-            child_idx = 0;
-        }
         var idx: Index = 0;
         while (idx < self.virtualPlacementCount()) {
             const placement = self.virtual_placements.items[@intCast(idx)];
             if (placement.image_id == image_id and placement.placement_id == placement_id) {
+                self.deletePlacementRef(placement.ref_id);
                 _ = self.virtual_placements.swapRemove(@intCast(idx));
                 continue;
             }
@@ -1878,6 +1893,7 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.virtualPlacementCount()) {
             if (self.virtual_placements.items[@intCast(idx)].image_id == image_id) {
+                self.deletePlacementRef(self.virtual_placements.items[@intCast(idx)].ref_id);
                 _ = self.virtual_placements.swapRemove(@intCast(idx));
             } else idx += 1;
         }
@@ -1906,7 +1922,7 @@ pub const State = struct {
             const intersects = col >= anchor_col and col < anchor_col + p.effective_columns and row >= anchor_row and row < anchor_row + p.effective_rows and (z == null or p.z_index == z.?);
             if (intersects) {
                 const image_id = p.image_id;
-                self.deletePlacement(allocator, image_id, p.placement_id);
+                self.deletePlacementRef(p.ref_id);
                 if (free_unplaced_matched) self.deleteImageDataIfUnplaced(allocator, image_id);
             } else idx += 1;
         }
@@ -1929,7 +1945,7 @@ pub const State = struct {
             const anchor_col: u32 = @intCast(resolved.col);
             if (col >= anchor_col and col < anchor_col + p.effective_columns) {
                 const image_id = p.image_id;
-                self.deletePlacement(allocator, image_id, p.placement_id);
+                self.deletePlacementRef(p.ref_id);
                 if (free_unplaced_matched) self.deleteImageDataIfUnplaced(allocator, image_id);
             } else idx += 1;
         }
@@ -1951,7 +1967,7 @@ pub const State = struct {
             };
             if (row >= anchor_row and row < anchor_row + p.effective_rows) {
                 const image_id = p.image_id;
-                self.deletePlacement(allocator, image_id, p.placement_id);
+                self.deletePlacementRef(p.ref_id);
                 if (free_unplaced_matched) self.deleteImageDataIfUnplaced(allocator, image_id);
             } else idx += 1;
         }
@@ -1963,7 +1979,7 @@ pub const State = struct {
             const placement = self.placements.items[@intCast(idx)];
             if (placement.z_index == z) {
                 const image_id = placement.image_id;
-                self.deletePlacement(allocator, image_id, placement.placement_id);
+                self.deletePlacementRef(placement.ref_id);
                 if (free_unplaced_matched) self.deleteImageDataIfUnplaced(allocator, image_id);
             } else idx += 1;
         }
@@ -2006,13 +2022,6 @@ pub const State = struct {
         return null;
     }
 
-    fn firstVirtualPlacementIndexForImage(self: *const State, image_id: u32) ?Index {
-        for (self.virtual_placements.items, 0..) |placement, idx| {
-            if (placement.image_id == image_id) return @intCast(idx);
-        }
-        return null;
-    }
-
     fn findPlacementIndex(self: *const State, image_id: u32, placement_id: u32) ?Index {
         for (self.placements.items, 0..) |placement, idx| {
             if (placement.image_id != image_id) continue;
@@ -2028,29 +2037,24 @@ pub const State = struct {
         return null;
     }
 
-    fn firstPlacementIndexForImage(self: *const State, image_id: u32) ?Index {
+    fn findPlacementIndexByRef(self: *const State, ref_id: u32) ?Index {
+        if (ref_id == 0) return null;
         for (self.placements.items, 0..) |placement, idx| {
-            if (placement.image_id == image_id) return @intCast(idx);
+            if (placement.ref_id == ref_id) return @intCast(idx);
         }
         return null;
     }
 
-    fn placementDescendsFrom(self: *const State, placement: Placement, image_id: u32, placement_id: u32) bool {
-        var current = placement;
-        var depth: u32 = 0;
-        while (current.parent_image_id != 0) {
-            if (depth >= parent_depth_limit) return false;
-            if (current.parent_image_id == image_id and current.parent_placement_id == placement_id) return true;
-            if (current.parent_is_virtual) return false;
-            const parent_idx = self.findPlacementIndex(current.parent_image_id, current.parent_placement_id) orelse return false;
-            current = self.placements.items[@intCast(parent_idx)];
-            depth += 1;
+    fn findVirtualPlacementIndexByRef(self: *const State, ref_id: u32) ?Index {
+        if (ref_id == 0) return null;
+        for (self.virtual_placements.items, 0..) |placement, idx| {
+            if (placement.ref_id == ref_id) return @intCast(idx);
         }
-        return false;
+        return null;
     }
 
     fn resolveParentPlacement(self: *const State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, placement_id: u32, parent_image_id: u32, parent_placement_id: u32, quiet: bool) host_state.ApplyError!?ParentPlacementRef {
-        if (parent_image_id == 0) return .{ .image_id = 0, .placement_id = 0, .is_virtual = false };
+        if (parent_image_id == 0) return .{ .ref_id = 0, .image_id = 0, .placement_id = 0, .is_virtual = false };
         if (self.findImage(parent_image_id) == null) {
             if (!quiet) try appendPlacementReply(allocator, output, encode_buf, image_id, image_number, placement_id, "ENOPARENT:parent image not found");
             return null;
@@ -2071,72 +2075,93 @@ pub const State = struct {
     }
 
     fn upsertPlacement(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: Placement, screen: *const screen_mod.Screen, image_number: u32, quiet: bool, no_move_cursor: bool) host_state.ApplyError!?CursorMove {
-        if (placement.hasParent()) {
-            const ok = try self.validatePlacementAncestry(allocator, output, encode_buf, placement, image_number, quiet);
+        var next = placement;
+        if (next.placement_id != 0) {
+            if (self.findPlacementIndex(next.image_id, next.placement_id)) |idx| {
+                next.ref_id = self.placements.items[@intCast(idx)].ref_id;
+            } else if (self.findVirtualPlacementIndex(next.image_id, next.placement_id)) |idx| {
+                next.ref_id = self.virtual_placements.items[@intCast(idx)].ref_id;
+            }
+        }
+        if (next.ref_id == 0) {
+            next.ref_id = self.allocRefId();
+        }
+        std.debug.assert(next.ref_id != 0);
+        if (next.hasParent()) {
+            const ok = try self.validatePlacementAncestry(allocator, output, encode_buf, next, image_number, quiet);
             if (!ok) return null;
         }
-        if (placement.placement_id != 0) {
-            if (self.findPlacementIndex(placement.image_id, placement.placement_id)) |idx| {
-                self.placements.items[@intCast(idx)] = placement;
+        if (next.placement_id != 0) {
+            if (self.findPlacementIndex(next.image_id, next.placement_id)) |idx| {
+                self.placements.items[@intCast(idx)] = next;
                 validatePlacement(self.placements.items[@intCast(idx)]);
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
-                if (placement.hasParent() or no_move_cursor) {
-                    _ = self.resolvePlacementAnchor(placement, screen) orelse return null;
+                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
+                if (next.hasParent() or no_move_cursor) {
+                    _ = self.resolvePlacementAnchor(next, screen) orelse return null;
                     return null;
                 }
-                return .{ .cols = placement.effective_columns, .rows = placement.effective_rows };
+                return .{ .cols = next.effective_columns, .rows = next.effective_rows };
             }
-            if (self.findVirtualPlacementIndex(placement.image_id, placement.placement_id)) |idx| {
+            if (self.findVirtualPlacementIndex(next.image_id, next.placement_id)) |idx| {
                 try ensureCountBound(self.placements.items.len, placement_max_count);
-                try self.placements.append(allocator, placement);
+                try self.placements.append(allocator, next);
                 validatePlacement(self.placements.items[self.placements.items.len - 1]);
                 _ = self.virtual_placements.swapRemove(@intCast(idx));
-                self.updateDirectChildParentKind(placement.image_id, placement.placement_id, false);
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
-                if (placement.hasParent() or no_move_cursor) {
-                    _ = self.resolvePlacementAnchor(placement, screen) orelse return null;
+                self.updateDirectChildParentKind(next.ref_id, false);
+                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
+                if (next.hasParent() or no_move_cursor) {
+                    _ = self.resolvePlacementAnchor(next, screen) orelse return null;
                     return null;
                 }
-                return .{ .cols = placement.effective_columns, .rows = placement.effective_rows };
+                return .{ .cols = next.effective_columns, .rows = next.effective_rows };
             }
         }
         try ensureCountBound(self.placements.items.len, placement_max_count);
-        try self.placements.append(allocator, placement);
+        try self.placements.append(allocator, next);
         validatePlacement(self.placements.items[self.placements.items.len - 1]);
-        if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
-        if (placement.hasParent() or no_move_cursor) {
-            _ = self.resolvePlacementAnchor(placement, screen) orelse return null;
+        if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
+        if (next.hasParent() or no_move_cursor) {
+            _ = self.resolvePlacementAnchor(next, screen) orelse return null;
             return null;
         }
-        return .{ .cols = placement.effective_columns, .rows = placement.effective_rows };
+        return .{ .cols = next.effective_columns, .rows = next.effective_rows };
     }
 
     fn upsertVirtualPlacement(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: VirtualPlacement, image_number: u32, quiet: bool) host_state.ApplyError!?CursorMove {
-        placement.validate();
-        if (placement.placement_id != 0) {
-            if (self.findVirtualPlacementIndex(placement.image_id, placement.placement_id)) |idx| {
-                self.virtual_placements.items[@intCast(idx)] = placement;
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
+        var next = placement;
+        if (next.placement_id != 0) {
+            if (self.findVirtualPlacementIndex(next.image_id, next.placement_id)) |idx| {
+                next.ref_id = self.virtual_placements.items[@intCast(idx)].ref_id;
+            } else if (self.findPlacementIndex(next.image_id, next.placement_id)) |idx| {
+                next.ref_id = self.placements.items[@intCast(idx)].ref_id;
+            }
+        }
+        if (next.ref_id == 0) next.ref_id = self.allocRefId();
+        next.validate();
+        if (next.placement_id != 0) {
+            if (self.findVirtualPlacementIndex(next.image_id, next.placement_id)) |idx| {
+                self.virtual_placements.items[@intCast(idx)] = next;
+                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
                 return null;
             }
-            if (self.findPlacementIndex(placement.image_id, placement.placement_id)) |idx| {
+            if (self.findPlacementIndex(next.image_id, next.placement_id)) |idx| {
                 try ensureCountBound(self.virtual_placements.items.len, placement_max_count);
-                try self.virtual_placements.append(allocator, placement);
+                try self.virtual_placements.append(allocator, next);
                 _ = self.placements.swapRemove(@intCast(idx));
-                self.updateDirectChildParentKind(placement.image_id, placement.placement_id, true);
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
+                self.updateDirectChildParentKind(next.ref_id, true);
+                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
                 return null;
             }
         }
         try ensureCountBound(self.virtual_placements.items.len, placement_max_count);
-        try self.virtual_placements.append(allocator, placement);
-        if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "OK");
+        try self.virtual_placements.append(allocator, next);
+        if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
         return null;
     }
 
-    fn updateDirectChildParentKind(self: *State, image_id: u32, placement_id: u32, parent_is_virtual: bool) void {
+    fn updateDirectChildParentKind(self: *State, parent_ref_id: u32, parent_is_virtual: bool) void {
         for (self.placements.items) |*child| {
-            if (child.parent_image_id == image_id and child.parent_placement_id == placement_id) {
+            if (child.parent_ref_id == parent_ref_id) {
                 child.parent_is_virtual = parent_is_virtual;
             }
         }
@@ -2146,8 +2171,9 @@ pub const State = struct {
         var depth: u32 = 0;
         var current_image_id = placement.parent_image_id;
         var current_placement_id = placement.parent_placement_id;
+        var current_ref_id = placement.parent_ref_id;
         while (current_image_id != 0) {
-            if (current_image_id == placement.image_id and current_placement_id == placement.placement_id) {
+            if (current_ref_id != 0 and current_ref_id == placement.ref_id) {
                 if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ECYCLE:relative placement cycle");
                 return false;
             }
@@ -2155,13 +2181,14 @@ pub const State = struct {
                 if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ETOODEEP:relative placement depth exceeded");
                 return false;
             }
-            const parent = self.parentPlacementById(current_image_id, current_placement_id) orelse {
+            const parent = self.parentPlacementByRef(current_ref_id) orelse self.parentPlacementById(current_image_id, current_placement_id) orelse {
                 if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ENOPARENT:ancestor placement not found");
                 return false;
             };
             if (parent.is_virtual) return true;
             current_image_id = parent.parent_image_id;
             current_placement_id = parent.parent_placement_id;
+            current_ref_id = parent.parent_ref_id;
             depth += 1;
         }
         return true;
@@ -2177,12 +2204,12 @@ pub const State = struct {
             offset_rows = std.math.add(i64, offset_rows, current.parent_offset_rows) catch return null;
             offset_cols = std.math.add(i64, offset_cols, current.parent_offset_cols) catch return null;
             if (current.parent_is_virtual) {
-                const parent = self.resolveVirtualParentAnchor(screen, current.parent_image_id, current.parent_placement_id) orelse return null;
+                const parent = self.resolveVirtualParentAnchor(screen, current.parent_ref_id, current.parent_image_id, current.parent_placement_id) orelse return null;
                 const row = offsetRowAnchor(parent.row, offset_rows, screen.rows) orelse return null;
                 const col = std.math.add(i64, parent.col, offset_cols) catch return null;
                 return .{ .row = row, .col = std.math.cast(i32, col) orelse return null };
             }
-            const parent_idx = self.findPlacementIndex(current.parent_image_id, current.parent_placement_id) orelse return null;
+            const parent_idx = self.findPlacementIndexByRef(current.parent_ref_id) orelse self.findPlacementIndex(current.parent_image_id, current.parent_placement_id) orelse return null;
             current = self.placements.items[@intCast(parent_idx)];
             depth += 1;
         }
@@ -2192,31 +2219,62 @@ pub const State = struct {
     }
 
     fn firstParentPlacementForImage(self: *const State, image_id: u32) ?ParentPlacementRef {
-        if (self.firstPlacementIndexForImage(image_id)) |idx| {
-            const placement = self.placements.items[@intCast(idx)];
-            return .{ .image_id = placement.image_id, .placement_id = placement.placement_id, .is_virtual = false, .parent_image_id = placement.parent_image_id, .parent_placement_id = placement.parent_placement_id };
+        var best: ?ParentPlacementRef = null;
+        for (self.placements.items) |placement| {
+            if (placement.image_id != image_id) continue;
+            if (best == null or placement.ref_id < best.?.ref_id) {
+                best = .{ .ref_id = placement.ref_id, .image_id = placement.image_id, .placement_id = placement.placement_id, .is_virtual = false, .parent_image_id = placement.parent_image_id, .parent_placement_id = placement.parent_placement_id, .parent_ref_id = placement.parent_ref_id };
+            }
         }
-        if (self.firstVirtualPlacementIndexForImage(image_id)) |idx| {
-            const placement = self.virtual_placements.items[@intCast(idx)];
-            return .{ .image_id = placement.image_id, .placement_id = placement.placement_id, .is_virtual = true };
+        for (self.virtual_placements.items) |placement| {
+            if (placement.image_id != image_id) continue;
+            if (best == null or placement.ref_id < best.?.ref_id) {
+                best = .{ .ref_id = placement.ref_id, .image_id = placement.image_id, .placement_id = placement.placement_id, .is_virtual = true };
+            }
         }
-        return null;
+        return best;
     }
 
     fn parentPlacementById(self: *const State, image_id: u32, placement_id: u32) ?ParentPlacementRef {
         if (self.findPlacementIndex(image_id, placement_id)) |idx| {
             const placement = self.placements.items[@intCast(idx)];
-            return .{ .image_id = placement.image_id, .placement_id = placement.placement_id, .is_virtual = false, .parent_image_id = placement.parent_image_id, .parent_placement_id = placement.parent_placement_id };
+            return .{ .ref_id = placement.ref_id, .image_id = placement.image_id, .placement_id = placement.placement_id, .is_virtual = false, .parent_image_id = placement.parent_image_id, .parent_placement_id = placement.parent_placement_id, .parent_ref_id = placement.parent_ref_id };
         }
         if (self.findVirtualPlacementIndex(image_id, placement_id)) |idx| {
             const placement = self.virtual_placements.items[@intCast(idx)];
-            return .{ .image_id = placement.image_id, .placement_id = placement.placement_id, .is_virtual = true };
+            return .{ .ref_id = placement.ref_id, .image_id = placement.image_id, .placement_id = placement.placement_id, .is_virtual = true };
         }
         return null;
     }
 
-    fn resolveVirtualParentAnchor(self: *const State, screen: *const screen_mod.Screen, image_id: u32, placement_id: u32) ?PlaceholderParentMatch {
-        _ = self;
+    fn parentPlacementByRef(self: *const State, ref_id: u32) ?ParentPlacementRef {
+        if (self.findPlacementIndexByRef(ref_id)) |idx| {
+            const placement = self.placements.items[@intCast(idx)];
+            return .{ .ref_id = placement.ref_id, .image_id = placement.image_id, .placement_id = placement.placement_id, .is_virtual = false, .parent_image_id = placement.parent_image_id, .parent_placement_id = placement.parent_placement_id, .parent_ref_id = placement.parent_ref_id };
+        }
+        if (self.findVirtualPlacementIndexByRef(ref_id)) |idx| {
+            const placement = self.virtual_placements.items[@intCast(idx)];
+            return .{ .ref_id = placement.ref_id, .image_id = placement.image_id, .placement_id = placement.placement_id, .is_virtual = true };
+        }
+        return null;
+    }
+
+    fn resolveVirtualParentAnchor(self: *const State, screen: *const screen_mod.Screen, ref_id: u32, fallback_image_id: u32, fallback_placement_id: u32) ?PlaceholderParentMatch {
+        const virtual = if (self.findVirtualPlacementIndexByRef(ref_id)) |idx|
+            self.virtual_placements.items[@intCast(idx)]
+        else blk: {
+            if (ref_id != 0) return null;
+            break :blk VirtualPlacement{
+                .image_id = fallback_image_id,
+                .placement_id = fallback_placement_id,
+                .source_x = 0,
+                .source_y = 0,
+                .source_width = 1,
+                .source_height = 1,
+                .columns = 1,
+                .rows = 1,
+            };
+        };
         var best_row: ?RowAnchor = null;
         var best_row_pos: i32 = 0;
         var best_col: ?u16 = null;
@@ -2224,13 +2282,13 @@ pub const State = struct {
         var history_idx: u32 = 0;
         while (history_idx < screen.historyCount()) : (history_idx += 1) {
             const row = RowAnchor{ .scrollback_above = history_idx + 1 };
-            scanPlaceholderParentRow(screen, .{ .history = history_idx }, row, image_id, placement_id, &best_row, &best_row_pos, &best_col);
+            scanPlaceholderParentRow(screen, .{ .history = history_idx }, row, virtual.image_id, virtual.placement_id, &best_row, &best_row_pos, &best_col);
         }
 
         var row_idx: u16 = 0;
         while (row_idx < screen.rows) : (row_idx += 1) {
             const row = RowAnchor.initOnScreen(row_idx);
-            scanPlaceholderParentRow(screen, .{ .screen = row_idx }, row, image_id, placement_id, &best_row, &best_row_pos, &best_col);
+            scanPlaceholderParentRow(screen, .{ .screen = row_idx }, row, virtual.image_id, virtual.placement_id, &best_row, &best_row_pos, &best_col);
         }
 
         return .{ .row = best_row orelse return null, .col = best_col orelse return null };
