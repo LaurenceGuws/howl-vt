@@ -1377,9 +1377,9 @@ test "vt ffi graphics queries expose chunked unicode no-move virtual contract" {
 
     const payload = try testRawRgbBase64Owned(std.testing.allocator, 11, 13);
     defer std.testing.allocator.free(payload);
-    const first = try std.fmt.allocPrint(std.testing.allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;{s}\x1b\\", .{payload[0..1]});
+    const first = try std.fmt.allocPrint(std.testing.allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;{s}\x1b\\", .{payload[0..4]});
     defer std.testing.allocator.free(first);
-    const second = try std.fmt.allocPrint(std.testing.allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;{s}\x1b\\", .{payload[1..]});
+    const second = try std.fmt.allocPrint(std.testing.allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;{s}\x1b\\", .{payload[4..]});
     defer std.testing.allocator.free(second);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, first.ptr, first.len).status);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, second.ptr, second.len).status);

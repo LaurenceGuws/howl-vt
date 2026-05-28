@@ -1266,7 +1266,23 @@ pub const State = struct {
             };
         }
         if (self.upload) |*upload| {
-            upload.data.appendSlice(allocator, cmd.payload) catch |err| switch (err) {
+            const decoded_chunk = decodeKittyDirectChunkOwned(allocator, cmd.payload) catch |err| switch (err) {
+                error.InvalidGraphicsData => {
+                    if (shouldReplyFailure(upload.quiet)) try appendReply(allocator, output, encode_buf, upload.image_id, "EINVAL:invalid kitty graphics data");
+                    self.abortUpload(allocator);
+                    return null;
+                },
+                error.OutOfMemory => {
+                    self.abortUpload(allocator);
+                    return error.OutOfMemory;
+                },
+                error.ConsequenceLimit => {
+                    self.abortUpload(allocator);
+                    return error.ConsequenceLimit;
+                },
+            };
+            defer allocator.free(decoded_chunk);
+            upload.data.appendSlice(allocator, decoded_chunk) catch |err| switch (err) {
                 error.OutOfMemory => {
                     self.abortUpload(allocator);
                     return error.OutOfMemory;
@@ -1303,9 +1319,11 @@ pub const State = struct {
             const z_index = upload.z_index;
             const anchor_row = upload.anchor_row;
             const anchor_col = upload.anchor_col;
-            const transport = try upload.data.toOwnedSlice(allocator);
-            defer allocator.free(transport);
+            const decoded_transport = try upload.data.toOwnedSlice(allocator);
+            defer allocator.free(decoded_transport);
             self.upload = null;
+            const transport = try encodeBase64Owned(allocator, decoded_transport);
+            defer allocator.free(transport);
             const owned = normalizeDirectPayloadOwned(allocator, compression, format, width, height, transport) catch |err| {
                 switch (err) {
                     error.InvalidGraphicsCompression => {
@@ -2809,7 +2827,7 @@ fn retainedPayloadBytes(self: *const State) u32 {
         if (image.current_override_payload) |payload| total = addPayloadBytes(total, payload.len);
     }
     for (self.frames.items) |frame| total = addPayloadBytes(total, frame.base64_payload.len);
-    if (self.upload) |upload| total = addPayloadBytes(total, upload.data.items.len);
+    if (self.upload) |upload| total = addPayloadBytes(total, base64EncodedLen(upload.data.items.len));
     return total;
 }
 
@@ -3069,6 +3087,10 @@ fn addPayloadBytes(total: u32, len: usize) u32 {
     return std.math.add(u32, total, payload_len) catch retained_payload_max_bytes + 1;
 }
 
+fn base64EncodedLen(decoded_len: usize) usize {
+    return std.base64.standard.Encoder.calcSize(decoded_len);
+}
+
 fn count32Len(len: usize) u32 {
     std.debug.assert(len <= std.math.maxInt(u32));
     return @intCast(len);
@@ -3235,6 +3257,121 @@ fn graphicsReadLength(file_size: u64, cmd: KittyGraphicsCommand, offset: u64) (M
 fn ensureRetainedPayloadStoreForLen(len: usize) host_state.ApplyError!void {
     const len32 = std.math.cast(u32, len) orelse return error.ConsequenceLimit;
     if (len32 > retained_payload_max_bytes) return error.ConsequenceLimit;
+}
+
+fn encodeBase64Owned(allocator: std.mem.Allocator, bytes: []const u8) host_state.ApplyError![]u8 {
+    const encoded_len = std.base64.standard.Encoder.calcSize(bytes.len);
+    try ensureRetainedPayloadStoreForLen(encoded_len);
+    const encoded = try allocator.alloc(u8, encoded_len);
+    _ = std.base64.standard.Encoder.encode(encoded, bytes);
+    return encoded;
+}
+
+fn decodeKittyDirectChunkOwned(allocator: std.mem.Allocator, payload: []const u8) (error{InvalidGraphicsData} || host_state.ApplyError)![]u8 {
+    const decoded_bound = std.math.add(usize, std.math.mul(usize, payload.len / 4, 3) catch return error.ConsequenceLimit, 2) catch return error.ConsequenceLimit;
+    try ensureRetainedPayloadStoreForLen(decoded_bound);
+    const decoded_len = try lenientBase64DecodedLen(payload);
+    const decoded = try allocator.alloc(u8, decoded_len);
+    errdefer allocator.free(decoded);
+    decodeLenientBase64Into(decoded, payload) catch unreachable;
+    return decoded;
+}
+
+fn lenientBase64DecodedLen(payload: []const u8) error{InvalidGraphicsData}!usize {
+    var decoded_len: usize = 0;
+    var quartet_len: usize = 0;
+    var quartet_padding: usize = 0;
+    var padding_final = false;
+
+    for (payload) |byte| {
+        if (byte == '=') {
+            if (quartet_len < 2) return error.InvalidGraphicsData;
+            quartet_padding += 1;
+            quartet_len += 1;
+        } else {
+            if (padding_final) return error.InvalidGraphicsData;
+            _ = base64Value(byte) orelse return error.InvalidGraphicsData;
+            if (quartet_padding != 0) return error.InvalidGraphicsData;
+            quartet_len += 1;
+        }
+        if (quartet_len == 4) {
+            decoded_len += 3 - quartet_padding;
+            padding_final = quartet_padding != 0;
+            quartet_len = 0;
+            quartet_padding = 0;
+        }
+    }
+
+    if (quartet_padding != 0) return error.InvalidGraphicsData;
+    if (quartet_len == 2) decoded_len += 1;
+    if (quartet_len == 3) decoded_len += 2;
+    return decoded_len;
+}
+
+fn decodeLenientBase64Into(decoded: []u8, payload: []const u8) error{InvalidGraphicsData}!void {
+    var decoded_len: usize = 0;
+    var quartet: [4]u8 = undefined;
+    var quartet_len: usize = 0;
+    var quartet_padding: usize = 0;
+    var padding_final = false;
+
+    for (payload) |byte| {
+        if (byte == '=') {
+            if (quartet_len < 2) return error.InvalidGraphicsData;
+            quartet_padding += 1;
+            quartet[quartet_len] = 0;
+            quartet_len += 1;
+            if (quartet_len == 4) {
+                decoded_len += decodeBase64Quartet(decoded[decoded_len..], quartet, quartet_padding);
+                padding_final = quartet_padding != 0;
+                quartet_len = 0;
+                quartet_padding = 0;
+            }
+            continue;
+        }
+        if (padding_final) return error.InvalidGraphicsData;
+        if (quartet_padding != 0) return error.InvalidGraphicsData;
+        const value = base64Value(byte) orelse return error.InvalidGraphicsData;
+        quartet[quartet_len] = value;
+        quartet_len += 1;
+        if (quartet_len == 4) {
+            decoded_len += decodeBase64Quartet(decoded[decoded_len..], quartet, 0);
+            quartet_len = 0;
+        }
+    }
+
+    if (quartet_len == 1) {
+        // Kitty ignores libbase64's incomplete-padding return status; a
+        // single dangling sextet such as "Q" contributes no decoded bytes.
+    } else if (quartet_len == 2) {
+        decoded[decoded_len] = (quartet[0] << 2) | (quartet[1] >> 4);
+        decoded_len += 1;
+    } else if (quartet_len == 3) {
+        decoded[decoded_len] = (quartet[0] << 2) | (quartet[1] >> 4);
+        decoded[decoded_len + 1] = (quartet[1] << 4) | (quartet[2] >> 2);
+        decoded_len += 2;
+    }
+    std.debug.assert(decoded_len == decoded.len);
+}
+
+fn decodeBase64Quartet(dest: []u8, quartet: [4]u8, padding: usize) usize {
+    std.debug.assert(padding <= 2);
+    std.debug.assert(dest.len >= 3 - padding);
+    dest[0] = (quartet[0] << 2) | (quartet[1] >> 4);
+    if (padding == 2) return 1;
+    dest[1] = (quartet[1] << 4) | (quartet[2] >> 2);
+    if (padding == 1) return 2;
+    dest[2] = (quartet[2] << 6) | quartet[3];
+    return 3;
+}
+
+fn base64Value(byte: u8) ?u8 {
+    if (byte >= 'A' and byte <= 'Z') return byte - 'A';
+    if (byte >= 'a' and byte <= 'z') return byte - 'a' + 26;
+    if (byte >= '0' and byte <= '9') return byte - '0' + 52;
+    if (byte == '+') return 62;
+    if (byte == '/') return 63;
+    return null;
 }
 
 fn normalizeDirectPayloadOwned(allocator: std.mem.Allocator, compression: u8, format: u16, width: u32, height: u32, payload: []const u8) (DirectPayloadError || host_state.ApplyError)![]u8 {

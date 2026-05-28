@@ -1422,21 +1422,35 @@ test "kitty graphics RIS aborts partial upload" {
     try std.testing.expectEqual(@as(u32, 9), terminal.kitty.main.graphics.imageAt(0).?.image_id);
 }
 
-test "kitty graphics direct upload assembles chunked base64 payload" {
+test "kitty graphics direct upload assembles chunked decoded payload on valid APC boundaries" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=9,s=1,v=1,t=d,f=24,m=1;QU\x1b\\");
-    try stream.nextSlice("\x1b_Gm=0;JD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=9,s=2,v=1,t=d,f=24,m=1;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gm=0;REVG\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 9), image.image_id);
     try std.testing.expectEqual(@as(u16, 24), image.format);
-    try std.testing.expectEqualStrings("QUJD", image.base64_payload);
+    try std.testing.expectEqualStrings("QUJDREVG", image.base64_payload);
+}
+
+test "kitty graphics direct upload does not concatenate chunk base64 text" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=9,s=1,v=1,t=d,f=24,m=1;Q\x1b\\");
+    try stream.nextSlice("\x1b_Gm=0;UJD\x1b\\");
+
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 
 test "kitty graphics direct chunked raw RGB truncates accepted oversize slack" {
@@ -1451,10 +1465,10 @@ test "kitty graphics direct chunked raw RGB truncates accepted oversize slack" {
     const first = try std.fmt.allocPrint(
         allocator,
         "\x1b_Gi=9,s=1,v=1,t=d,f=24,m=1;{s}\x1b\\",
-        .{payload[0..5]},
+        .{payload[0..8]},
     );
     defer allocator.free(first);
-    const second = try std.fmt.allocPrint(allocator, "\x1b_Gm=0;{s}\x1b\\", .{payload[5..]});
+    const second = try std.fmt.allocPrint(allocator, "\x1b_Gm=0;{s}\x1b\\", .{payload[8..]});
     defer allocator.free(second);
     try stream.nextSlice(first);
     try stream.nextSlice(second);
@@ -1476,10 +1490,10 @@ test "kitty graphics direct chunked raw rejects payload larger than oversize sla
     const first = try std.fmt.allocPrint(
         allocator,
         "\x1b_Gi=9,s=1,v=1,t=d,f=24,m=1;{s}\x1b\\",
-        .{payload[0..5]},
+        .{payload[0..8]},
     );
     defer allocator.free(first);
-    const second = try std.fmt.allocPrint(allocator, "\x1b_Gm=0;{s}\x1b\\", .{payload[5..]});
+    const second = try std.fmt.allocPrint(allocator, "\x1b_Gm=0;{s}\x1b\\", .{payload[8..]});
     defer allocator.free(second);
     try stream.nextSlice(first);
     try stream.nextSlice(second);
@@ -1501,7 +1515,7 @@ test "kitty graphics chunk upload retains first placement metadata until complet
 
     const payload = try rawRgbBase64Owned(allocator, 11, 13);
     defer allocator.free(payload);
-    const first = try std.fmt.allocPrint(allocator, "\x1b_Gi=9,s=11,v=13,t=d,f=24,p=5,x=2,y=4,w=6,h=8,X=3,Y=5,c=10,r=12,z=-7,m=1;{s}\x1b\\", .{payload[0..1]});
+    const first = try std.fmt.allocPrint(allocator, "\x1b_Gi=9,s=11,v=13,t=d,f=24,p=5,x=2,y=4,w=6,h=8,X=3,Y=5,c=10,r=12,z=-7,m=1;{s}\x1b\\", .{payload[0..4]});
     defer allocator.free(first);
 
     try stream.nextSlice(first);
@@ -1522,7 +1536,7 @@ test "kitty graphics chunk upload retains first placement metadata until complet
     }
 
     try stream.nextSlice("\x1b[3;4H");
-    const second = try std.fmt.allocPrint(allocator, "\x1b_Gp=99,x=1,y=1,w=1,h=1,X=1,Y=1,c=1,r=1,z=9,m=1;{s}\x1b\\", .{payload[1..2]});
+    const second = try std.fmt.allocPrint(allocator, "\x1b_Gp=99,x=1,y=1,w=1,h=1,X=1,Y=1,c=1,r=1,z=9,m=1;{s}\x1b\\", .{payload[4..8]});
     defer allocator.free(second);
     try stream.nextSlice(second);
     {
@@ -1541,7 +1555,7 @@ test "kitty graphics chunk upload retains first placement metadata until complet
         try std.testing.expectEqual(@as(u16, 0), upload.anchor_col);
     }
 
-    const last = try std.fmt.allocPrint(allocator, "\x1b_Gm=0;{s}\x1b\\", .{payload[2..]});
+    const last = try std.fmt.allocPrint(allocator, "\x1b_Gm=0;{s}\x1b\\", .{payload[8..]});
     defer allocator.free(last);
     try stream.nextSlice(last);
 
@@ -1559,9 +1573,9 @@ test "kitty graphics transmit and display chunk completion uses first placement 
 
     const payload = try rawRgbBase64Owned(allocator, 11, 13);
     defer allocator.free(payload);
-    const first = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,X=3,Y=5,c=4,r=2,z=-7,m=1;{s}\x1b\\", .{payload[0..1]});
+    const first = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,X=3,Y=5,c=4,r=2,z=-7,m=1;{s}\x1b\\", .{payload[0..4]});
     defer allocator.free(first);
-    const second = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,X=1,Y=1,c=1,r=1,z=9,m=0;{s}\x1b\\", .{payload[1..]});
+    const second = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,X=1,Y=1,c=1,r=1,z=9,m=0;{s}\x1b\\", .{payload[4..]});
     defer allocator.free(second);
 
     try stream.nextSlice(first);
@@ -1597,9 +1611,9 @@ test "kitty graphics transmit and display chunk completion keeps first unicode p
 
     const payload = try rawRgbBase64Owned(allocator, 11, 13);
     defer allocator.free(payload);
-    const first = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,X=3,Y=5,m=1;{s}\x1b\\", .{payload[0..1]});
+    const first = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,X=3,Y=5,m=1;{s}\x1b\\", .{payload[0..4]});
     defer allocator.free(first);
-    const second = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=7,r=3,m=0;{s}\x1b\\", .{payload[1..]});
+    const second = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=7,r=3,m=0;{s}\x1b\\", .{payload[4..]});
     defer allocator.free(second);
 
     try stream.nextSlice(first);
@@ -1631,9 +1645,9 @@ test "kitty graphics chunked yazi-like unicode no-move contract publishes one co
 
     const payload = try rawRgbBase64Owned(allocator, 11, 13);
     defer allocator.free(payload);
-    const first = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;{s}\x1b\\", .{payload[0..1]});
+    const first = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;{s}\x1b\\", .{payload[0..4]});
     defer allocator.free(first);
-    const second = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;{s}\x1b\\", .{payload[1..]});
+    const second = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;{s}\x1b\\", .{payload[4..]});
     defer allocator.free(second);
 
     try stream.nextSlice(first);
@@ -2438,9 +2452,9 @@ test "kitty graphics placeholder-run export covers yazi-like alt-screen path coh
     defer stream.deinit();
     const payload = try rawRgbBase64Owned(allocator, 11, 13);
     defer allocator.free(payload);
-    const first_chunk = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;{s}\x1b\\", .{payload[0..1]});
+    const first_chunk = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;{s}\x1b\\", .{payload[0..4]});
     defer allocator.free(first_chunk);
-    const last_chunk = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;{s}\x1b\\", .{payload[1..]});
+    const last_chunk = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;{s}\x1b\\", .{payload[4..]});
     defer allocator.free(last_chunk);
 
     try stream.nextSlice("\x1b[?1049h");
@@ -3952,8 +3966,8 @@ test "kitty graphics chunked frame upload by image number captures newest image"
 
     try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;AAAA\x1b\\");
     try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24;BBBB\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,I=13,r=2,s=1,v=1,t=d,f=24,m=1;CC\x1b\\");
-    try stream.nextSlice("\x1b_GI=99,m=0;CC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,I=13,r=2,s=1,v=1,t=d,f=24,m=1;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_GI=99,m=0;\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
@@ -4089,8 +4103,8 @@ test "kitty graphics chunked omitted r frame upload appends once" {
     defer stream.deinit();
 
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,t=d,f=24,m=1;CC\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,t=d,f=24;CC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,t=d,f=24,m=1;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,t=d,f=24;\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
     const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
@@ -5514,7 +5528,8 @@ test "kitty graphics upload byte cap propagates and aborts upload" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    const chunk_len = (Graphics.upload_max_bytes / 2) + 1;
+    const chunk_decoded_len = (Graphics.upload_max_bytes / 2) + 1;
+    const chunk_len = std.base64.standard.Encoder.calcSize(chunk_decoded_len);
     var first = std.ArrayList(u8).empty;
     defer first.deinit(allocator);
     try first.appendSlice(allocator, "\x1b_Gi=7,s=1,v=1,t=d,f=24,m=1;");
