@@ -2899,6 +2899,10 @@ fn loadIndirectPayloadNormalized(allocator: std.mem.Allocator, cmd: KittyGraphic
 
     if (cmd.compression == 0) {
         if (cmd.format == 100) try validatePngBytes(transport);
+        if (cmd.format == 24 or cmd.format == 32) {
+            const raw_len = try expectedRawPayloadLen(cmd.format, cmd.width, cmd.height);
+            if (transport.len < raw_len) return error.InvalidGraphicsData;
+        }
 
         const encoded_len = std.base64.standard.Encoder.calcSize(transport.len);
         try ensureRetainedPayloadStoreForLen(encoded_len);
