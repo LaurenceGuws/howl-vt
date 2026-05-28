@@ -3043,7 +3043,7 @@ fn ensureRetainedPayloadStoreForLen(len: usize) host_state.ApplyError!void {
 fn normalizeDirectPayloadOwned(allocator: std.mem.Allocator, compression: u8, format: u16, width: u32, height: u32, payload: []const u8) (DirectPayloadError || host_state.ApplyError)![]u8 {
     if (compression == 0) {
         if (format == 100) try validateBase64PngPayload(payload);
-        if (format == 24 or format == 32) try validateBase64RawPayload(allocator, format, width, height, payload);
+        if (format == 24 or format == 32) return try normalizeBase64RawPayloadOwned(allocator, format, width, height, payload);
         return try allocator.dupe(u8, payload);
     }
     if (compression != 'z') return error.InvalidGraphicsCompression;
@@ -3066,7 +3066,7 @@ fn normalizeDirectPayloadOwned(allocator: std.mem.Allocator, compression: u8, fo
     return encoded;
 }
 
-fn validateBase64RawPayload(allocator: std.mem.Allocator, format: u16, width: u32, height: u32, payload: []const u8) (error{InvalidRawGraphicsData} || host_state.ApplyError)!void {
+fn normalizeBase64RawPayloadOwned(allocator: std.mem.Allocator, format: u16, width: u32, height: u32, payload: []const u8) (error{InvalidRawGraphicsData} || host_state.ApplyError)![]u8 {
     const raw_len = expectedRawPayloadLen(format, width, height) catch |err| switch (err) {
         error.InvalidGraphicsCompression => unreachable,
         error.InvalidGraphicsData => return error.InvalidRawGraphicsData,
@@ -3074,11 +3074,20 @@ fn validateBase64RawPayload(allocator: std.mem.Allocator, format: u16, width: u3
         error.ConsequenceLimit => return error.ConsequenceLimit,
     };
     const decoded_len = std.base64.standard.Decoder.calcSizeForSlice(payload) catch return error.InvalidRawGraphicsData;
-    if (decoded_len != raw_len) return error.InvalidRawGraphicsData;
+    if (decoded_len < raw_len or decoded_len - raw_len > 10) return error.InvalidRawGraphicsData;
 
-    const raw = try allocator.alloc(u8, raw_len);
+    const raw = try allocator.alloc(u8, decoded_len);
     defer allocator.free(raw);
     std.base64.standard.Decoder.decode(raw, payload) catch return error.InvalidRawGraphicsData;
+
+    if (decoded_len == raw_len) return try allocator.dupe(u8, payload);
+
+    const encoded_len = std.base64.standard.Encoder.calcSize(raw_len);
+    try ensureRetainedPayloadStoreForLen(encoded_len);
+
+    const encoded = try allocator.alloc(u8, encoded_len);
+    _ = std.base64.standard.Encoder.encode(encoded, raw[0..raw_len]);
+    return encoded;
 }
 
 fn decompressRawPayloadOwned(allocator: std.mem.Allocator, format: u16, width: u32, height: u32, compressed: []const u8) (error{ InvalidGraphicsCompression, InvalidGraphicsData } || host_state.ApplyError)![]u8 {

@@ -280,6 +280,57 @@ test "kitty graphics direct raw RGBA validates decoded length" {
     try std.testing.expectEqualStrings("AAAAAA==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
 }
 
+test "kitty graphics direct raw RGB truncates accepted oversize slack" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const payload = try base64Owned(allocator, "ABC" ++ "XXXXXXXXXX");
+    defer allocator.free(payload);
+
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(seq);
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics direct raw RGBA truncates accepted oversize slack" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const payload = try base64Owned(allocator, "ABCD" ++ "XXXXXXXXXX");
+    defer allocator.free(payload);
+
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=d,f=32;{s}\x1b\\", .{payload});
+    defer allocator.free(seq);
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJDRA==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics direct raw rejects payload larger than oversize slack" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const payload = try base64Owned(allocator, "ABC" ++ "XXXXXXXXXXX");
+    defer allocator.free(payload);
+
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(seq);
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:invalid kitty graphics data\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+}
+
 test "kitty graphics invalid base64 direct raw payload returns EINVAL without storing" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -1145,6 +1196,48 @@ test "kitty graphics direct upload assembles chunked base64 payload" {
     try std.testing.expectEqual(@as(u32, 9), image.image_id);
     try std.testing.expectEqual(@as(u16, 24), image.format);
     try std.testing.expectEqualStrings("QUJD", image.base64_payload);
+}
+
+test "kitty graphics direct chunked raw RGB truncates accepted oversize slack" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const payload = try base64Owned(allocator, "ABC" ++ "XXXXXXXXXX");
+    defer allocator.free(payload);
+
+    const first = try std.fmt.allocPrint(allocator, "\x1b_Gi=9,s=1,v=1,t=d,f=24,m=1;{s}\x1b\\", .{payload[0..5]});
+    defer allocator.free(first);
+    const second = try std.fmt.allocPrint(allocator, "\x1b_Gm=0;{s}\x1b\\", .{payload[5..]});
+    defer allocator.free(second);
+    try stream.nextSlice(first);
+    try stream.nextSlice(second);
+
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics direct chunked raw rejects payload larger than oversize slack" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const payload = try base64Owned(allocator, "ABC" ++ "XXXXXXXXXXX");
+    defer allocator.free(payload);
+
+    const first = try std.fmt.allocPrint(allocator, "\x1b_Gi=9,s=1,v=1,t=d,f=24,m=1;{s}\x1b\\", .{payload[0..5]});
+    defer allocator.free(first);
+    const second = try std.fmt.allocPrint(allocator, "\x1b_Gm=0;{s}\x1b\\", .{payload[5..]});
+    defer allocator.free(second);
+    try stream.nextSlice(first);
+    try stream.nextSlice(second);
+
+    try std.testing.expectEqualStrings("\x1b_Gi=9;EINVAL:invalid kitty graphics data\x1b\\", pendingOutput(&terminal));
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 
 test "kitty graphics chunk upload retains first placement metadata until completion" {
