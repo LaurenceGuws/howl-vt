@@ -118,6 +118,7 @@ pub const Image = struct {
 
     image_id: u32,
     image_ref_id: u32 = 0,
+    access_order: u64 = 0,
     image_number: u32,
     format: u16,
     width: u32,
@@ -452,6 +453,7 @@ pub const State = struct {
     upload: ?Upload = null,
     next_ref_id: u32 = 1,
     next_image_ref_id: u32 = 1,
+    next_access_order: u64 = 1,
 
     fn count32(items: anytype) u32 {
         std.debug.assert(items.len <= std.math.maxInt(u32));
@@ -1745,6 +1747,7 @@ pub const State = struct {
         const image = Image{
             .image_id = image_id,
             .image_ref_id = self.allocImageRefId(),
+            .access_order = self.allocAccessOrder(),
             .image_number = image_number,
             .format = format,
             .width = image_size.width,
@@ -2191,6 +2194,20 @@ pub const State = struct {
         }
     }
 
+    fn allocAccessOrder(self: *State) u64 {
+        const access_order = self.next_access_order;
+        self.next_access_order +%= 1;
+        if (self.next_access_order == 0) self.next_access_order = 1;
+        std.debug.assert(access_order != 0);
+        return access_order;
+    }
+
+    fn markImageAccess(self: *State, image_id: u32) void {
+        const image_idx = self.findImage(image_id) orelse return;
+        self.images.items[@intCast(image_idx)].access_order = self.allocAccessOrder();
+        std.debug.assert(self.images.items[@intCast(image_idx)].access_order != 0);
+    }
+
     fn imageByRefId(self: *State, image_ref_id: u32) ?*Image {
         for (self.images.items) |*image| {
             if (image.image_ref_id == image_ref_id) return image;
@@ -2279,26 +2296,34 @@ pub const State = struct {
         return total_len <= decoded_payload_max_bytes;
     }
 
-    fn evictUnplacedImagesForRetainedPayload(self: *State, allocator: std.mem.Allocator, next_len: u32, freed_len: u32, protected_image_id: ?u32) void {
+    fn oldestUnplacedImageEvictionIndex(self: *const State, protected_image_id: ?u32) ?Index {
+        var candidate_idx: ?Index = null;
+        var candidate_access_order: u64 = 0;
         var idx: Index = 0;
-        while (idx < self.imageCount() and !self.retainedPayloadFits(next_len, freed_len)) {
-            const image_id = self.images.items[@intCast(idx)].image_id;
-            if ((protected_image_id != null and image_id == protected_image_id.?) or image_id == 0 or self.imageHasPlacement(image_id)) {
-                idx += 1;
-                continue;
+        while (idx < self.imageCount()) : (idx += 1) {
+            const image = self.images.items[@intCast(idx)];
+            if (protected_image_id != null and image.image_id == protected_image_id.?) continue;
+            if (image.image_id == 0) continue;
+            std.debug.assert(image.access_order != 0);
+            if (self.imageHasPlacement(image.image_id)) continue;
+            if (candidate_idx == null or image.access_order < candidate_access_order) {
+                candidate_idx = idx;
+                candidate_access_order = image.access_order;
             }
+        }
+        return candidate_idx;
+    }
+
+    fn evictUnplacedImagesForRetainedPayload(self: *State, allocator: std.mem.Allocator, next_len: u32, freed_len: u32, protected_image_id: ?u32) void {
+        while (!self.retainedPayloadFits(next_len, freed_len)) {
+            const idx = self.oldestUnplacedImageEvictionIndex(protected_image_id) orelse return;
             self.deleteImageDataAtPreserveOrder(allocator, idx);
         }
     }
 
     fn evictUnplacedImagesForDecodedPayload(self: *State, allocator: std.mem.Allocator, next_len: u32, freed_len: u32, protected_image_id: ?u32) void {
-        var idx: Index = 0;
-        while (idx < self.imageCount() and !self.decodedPayloadFits(next_len, freed_len)) {
-            const image_id = self.images.items[@intCast(idx)].image_id;
-            if ((protected_image_id != null and image_id == protected_image_id.?) or image_id == 0 or self.imageHasPlacement(image_id)) {
-                idx += 1;
-                continue;
-            }
+        while (!self.decodedPayloadFits(next_len, freed_len)) {
+            const idx = self.oldestUnplacedImageEvictionIndex(protected_image_id) orelse return;
             self.deleteImageDataAtPreserveOrder(allocator, idx);
         }
     }
@@ -2616,6 +2641,7 @@ pub const State = struct {
             if (self.findPlacementIndex(next.image_id, next.placement_id)) |idx| {
                 self.placements.items[@intCast(idx)] = next;
                 validatePlacement(self.placements.items[@intCast(idx)]);
+                self.markImageAccess(next.image_id);
                 if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
                 if (next.hasParent() or no_move_cursor) {
                     _ = self.resolvePlacementAnchor(next, screen) orelse return null;
@@ -2629,6 +2655,7 @@ pub const State = struct {
                 validatePlacement(self.placements.items[self.placements.items.len - 1]);
                 _ = self.virtual_placements.swapRemove(@intCast(idx));
                 self.updateDirectChildParentKind(next.ref_id, false);
+                self.markImageAccess(next.image_id);
                 if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
                 if (next.hasParent() or no_move_cursor) {
                     _ = self.resolvePlacementAnchor(next, screen) orelse return null;
@@ -2640,6 +2667,7 @@ pub const State = struct {
         try ensureCountBound(self.placements.items.len, placement_max_count);
         try self.placements.append(allocator, next);
         validatePlacement(self.placements.items[self.placements.items.len - 1]);
+        self.markImageAccess(next.image_id);
         if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
         if (next.hasParent() or no_move_cursor) {
             _ = self.resolvePlacementAnchor(next, screen) orelse return null;
@@ -2663,6 +2691,7 @@ pub const State = struct {
         if (next.placement_id != 0) {
             if (self.findVirtualPlacementIndex(next.image_id, next.placement_id)) |idx| {
                 self.virtual_placements.items[@intCast(idx)] = next;
+                self.markImageAccess(next.image_id);
                 if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
                 return null;
             }
@@ -2671,12 +2700,14 @@ pub const State = struct {
                 try self.virtual_placements.append(allocator, next);
                 _ = self.placements.swapRemove(@intCast(idx));
                 self.updateDirectChildParentKind(next.ref_id, true);
+                self.markImageAccess(next.image_id);
                 if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
                 return null;
             }
         }
         try ensureCountBound(self.virtual_placements.items.len, placement_max_count);
         try self.virtual_placements.append(allocator, next);
+        self.markImageAccess(next.image_id);
         if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
         return null;
     }

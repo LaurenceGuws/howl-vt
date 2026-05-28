@@ -113,8 +113,12 @@ fn appendTestImageWithPayloads(state: *Graphics.State, allocator: std.mem.Alloca
     try std.testing.expect(decoded_len % 4 == 0 or decoded_len == 3);
     const format: u16 = if (decoded_len == 3) 24 else 32;
     const width: u32 = if (decoded_len == 3) 1 else @intCast(decoded_len / 4);
+    const access_order = state.next_access_order;
+    state.next_access_order +%= 1;
+    if (state.next_access_order == 0) state.next_access_order = 1;
     try state.images.append(allocator, .{
         .image_id = image_id,
+        .access_order = access_order,
         .image_number = 0,
         .format = format,
         .width = width,
@@ -149,6 +153,49 @@ fn appendTestDecodedFrame(state: *Graphics.State, allocator: std.mem.Allocator, 
         .decoded_height = 1,
         .decoded_payload = try retainedPayload(allocator, decoded_len, 'f'),
     });
+}
+
+fn placeImageThenDeletePlacement(state: *Graphics.State, allocator: std.mem.Allocator, screen: *const Screen, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32) !void {
+    _ = try state.handle(allocator, screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, output, encode_buf, .{
+        .action = 'p',
+        .image_id = image_id,
+        .image_number = 0,
+        .placement_id = 1,
+        .format = 0,
+        .width = 0,
+        .height = 0,
+        .columns = 1,
+        .rows = 1,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 1,
+        .delete_target = 0,
+        .payload = "",
+    });
+    try std.testing.expectEqual(@as(u32, 1), state.placementCount());
+    _ = try state.handle(allocator, screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, output, encode_buf, .{
+        .action = 'd',
+        .image_id = image_id,
+        .image_number = 0,
+        .placement_id = 1,
+        .format = 0,
+        .width = 0,
+        .height = 0,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 1,
+        .delete_target = 'i',
+        .payload = "",
+    });
+    try std.testing.expectEqual(@as(u32, 0), state.placementCount());
 }
 
 fn appendTestPlacement(state: *Graphics.State, allocator: std.mem.Allocator, image_id: u32) !void {
@@ -5363,6 +5410,45 @@ test "kitty graphics decoded quota evicts unplaced image" {
     try std.testing.expect(imageIndexById(&state, 2) != null);
 }
 
+test "kitty graphics decoded quota evicts least recently accessed unplaced image" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    try appendTestImageWithPayloads(&state, allocator, 1, 4, Graphics.decoded_payload_max_bytes - 4);
+    try appendTestImageWithPayloads(&state, allocator, 2, 4, 4);
+    try placeImageThenDeletePlacement(&state, allocator, &screen, &output, encode_buf[0..], 1);
+    try std.testing.expectEqual(@as(u32, 0), state.placementCount());
+
+    _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 't',
+        .image_id = 3,
+        .image_number = 0,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 1,
+        .delete_target = 0,
+        .payload = "BBBB",
+    });
+
+    try std.testing.expect(imageIndexById(&state, 1) != null);
+    try std.testing.expect(imageIndexById(&state, 2) == null);
+    try std.testing.expect(imageIndexById(&state, 3) != null);
+}
+
 test "kitty graphics decoded quota preserves physical placement" {
     const allocator = std.testing.allocator;
     var state: Graphics.State = .{};
@@ -5605,6 +5691,45 @@ test "kitty graphics quota evicts unplaced image before failing or touching plac
     try std.testing.expect(imageIndexById(&state, 3) != null);
     try std.testing.expectEqual(@as(u32, 1), state.placementCount());
     try std.testing.expectEqual(@as(u32, 1), state.placementAt(0).?.image_id);
+}
+
+test "kitty graphics retained quota evicts least recently accessed unplaced image" {
+    const allocator = std.testing.allocator;
+    var state: Graphics.State = .{};
+    defer state.deinit(allocator);
+    const screen = Screen.init(24, 80);
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(allocator);
+    var encode_buf: [128]u8 = undefined;
+
+    try appendTestImageWithPayloads(&state, allocator, 1, Graphics.retained_payload_max_bytes - 4, 4);
+    try appendTestImageWithPayloads(&state, allocator, 2, 4, 4);
+    try placeImageThenDeletePlacement(&state, allocator, &screen, &output, encode_buf[0..], 1);
+    try std.testing.expectEqual(@as(u32, 0), state.placementCount());
+
+    _ = try state.handle(allocator, &screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, &output, encode_buf[0..], .{
+        .action = 't',
+        .image_id = 3,
+        .image_number = 0,
+        .placement_id = 0,
+        .format = 24,
+        .width = 1,
+        .height = 1,
+        .columns = 0,
+        .rows = 0,
+        .x = 0,
+        .y = 0,
+        .z = 0,
+        .medium = 'd',
+        .more_chunks = false,
+        .quiet = 1,
+        .delete_target = 0,
+        .payload = "BBBB",
+    });
+
+    try std.testing.expect(imageIndexById(&state, 1) != null);
+    try std.testing.expect(imageIndexById(&state, 2) == null);
+    try std.testing.expect(imageIndexById(&state, 3) != null);
 }
 
 test "kitty graphics quota preserves placed images and fails when only placed images fit" {
