@@ -506,6 +506,71 @@ test "kitty graphics invalid flag and unknown key parser input emits no reply an
     try std.testing.expectEqual(@as(u32, 7), KittyState.graphicsImageAt(&terminal, 0).?.image_id);
 }
 
+test "kitty graphics malformed parser input cannot mutate retained graphics state" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24,q=1;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,c=1,r=1,q=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=4,U=1,c=1,r=1,q=1\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24,q=1;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Gi=9,s=2,v=2,t=d,f=24,m=1,q=1;QUJD\x1b\\");
+
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
+    try std.testing.expect(terminal.kitty.main.graphics.upload != null);
+
+    const invalid_inputs = [_][]const u8{
+        "\x1b_Gi=10,a=Z,s=1,v=1,t=d,f=24;QUJD\x1b\\",
+        "\x1b_Ga=d,d=B\x1b\\",
+        "\x1b_Gi=10,s=1,v=1,t=x,f=24;QUJD\x1b\\",
+        "\x1b_Gi=10,s=1,v=1,t=d,o=g,f=24;QUJD\x1b\\",
+        "\x1b_Gi=,s=1,v=1,t=d,f=24;QUJD\x1b\\",
+        "\x1b_Gi=12x,s=1,v=1,t=d,f=24;QUJD\x1b\\",
+        "\x1b_Gi=4294967296,s=1,v=1,t=d,f=24;QUJD\x1b\\",
+        "\x1b_Gi=10,z=2147483648,s=1,v=1,t=d,f=24;QUJD\x1b\\",
+        "\x1b_Gi=10,z=-2147483649,s=1,v=1,t=d,f=24;QUJD\x1b\\",
+        "\x1b_Gi=10,N=1,s=1,v=1,t=d,f=24;QUJD\x1b\\",
+        "\x1b_Gi\x1b\\",
+        "\x1b_Gi=10:p=1,s=1,v=1,t=d,f=24;QUJD\x1b\\",
+        "\x1b_Gi=10,\x1b\\",
+    };
+    for (invalid_inputs) |input| {
+        try stream.nextSlice(input);
+        try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+        try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+        try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
+        try std.testing.expectEqual(
+            @as(u32, 1),
+            terminal.kitty.main.graphics.virtualPlacementCount(),
+        );
+        try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
+        try std.testing.expect(terminal.kitty.main.graphics.upload != null);
+        try std.testing.expectEqual(
+            @as(u32, 7),
+            KittyState.graphicsImageAt(&terminal, 0).?.image_id,
+        );
+        try std.testing.expectEqual(
+            @as(u32, 3),
+            KittyState.graphicsPlacementAt(&terminal, 0).?.placement_id,
+        );
+        try std.testing.expectEqual(
+            @as(u32, 4),
+            terminal.kitty.main.graphics.virtualPlacementAt(0).?.placement_id,
+        );
+        try std.testing.expectEqual(
+            @as(u32, 2),
+            KittyState.graphicsFrameAt(&terminal, 0).?.frame_number,
+        );
+    }
+}
+
 test "kitty graphics transmit and display stores image placement and moves cursor" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 16);

@@ -47,8 +47,13 @@ pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
     };
 
     if (control.len != 0) {
-        var fields = std.mem.splitScalar(u8, control, ',');
-        while (fields.next()) |field| {
+        var field_start: usize = 0;
+        while (field_start < control.len) {
+            const field_end = if (std.mem.indexOfScalar(u8, control[field_start..], ',')) |offset|
+                field_start + offset
+            else
+                control.len;
+            const field = control[field_start..field_end];
             if (field.len == 0 or field.len < 3 or field[1] != '=') return null;
             const key = field[0];
             const value = field[2..];
@@ -117,6 +122,10 @@ pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
                 },
                 else => return null,
             }
+
+            if (field_end == control.len) break;
+            if (field_end + 1 == control.len) return null;
+            field_start = field_end + 1;
         }
     }
     return cmd;
