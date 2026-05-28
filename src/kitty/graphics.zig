@@ -1100,7 +1100,7 @@ pub const State = struct {
                 },
             };
             errdefer self.abortUpload(allocator);
-            try ensureRetainedPayloadTotal(self);
+            try self.ensureRetainedPayloadTotal(allocator);
             try ensureUploadBound(count32(upload.data.items));
             if (more) return null;
             const image_id = upload.image_id;
@@ -1241,7 +1241,6 @@ pub const State = struct {
                 return null;
             }
         }
-        try ensureRetainedPayloadStore(self, count32(payload), 0);
         const owned = try allocator.dupe(u8, payload);
         const image_id = self.imageIdForUpload(cmd);
         if (cmd.action == 'f') {
@@ -1373,7 +1372,7 @@ pub const State = struct {
         if (image_id == 0 or self.findImage(image_id) == null) {
             try ensureCountBound(self.images.items.len, image_max_count);
         }
-        try ensureRetainedPayloadStore(self, count32(owned), retainedPayloadBytesFreedByImage(self, image_id));
+        try self.ensureRetainedPayloadStore(allocator, count32(owned), retainedPayloadBytesFreedByImage(self, image_id), if (image_id == 0) null else image_id);
         const image_size = try intrinsicImageSize(format, width, height, owned);
         const image = Image{ .image_id = image_id, .image_number = image_number, .format = format, .width = image_size.width, .height = image_size.height, .base64_payload = owned };
         if (image_id != 0) self.deleteImage(allocator, image_id);
@@ -1383,8 +1382,8 @@ pub const State = struct {
     fn storeFrameOwned(self: *State, allocator: std.mem.Allocator, image_id: u32, frame_number: u32, format: u16, width: u32, height: u32, x: u32, y: u32, base_frame_number: u32, compose_mode: u32, background_rgba: u32, gap: i32, owned: []u8) host_state.ApplyError!void {
         var ownership_transferred = false;
         errdefer if (!ownership_transferred) allocator.free(owned);
-        const image_idx = self.findImage(image_id) orelse return;
-        const image = &self.images.items[@intCast(image_idx)];
+        var image_idx = self.findImage(image_id) orelse return;
+        var image = &self.images.items[@intCast(image_idx)];
 
         const target_frame_number = if (frame_number == 0) self.nextFrameNumber(image_id) else frame_number;
         const uses_root_base = base_frame_number == 1;
@@ -1396,7 +1395,9 @@ pub const State = struct {
         if (!png_backed and format != image.format) return;
         if (target_frame_number == 1) {
             if (x != 0 or y != 0 or base_frame_number != 0 or compose_mode != 0 or background_rgba != 0) return;
-            try ensureRetainedPayloadStore(self, count32(owned), retainedPayloadBytesFreedByPublishedRoot(self, image_id));
+            try self.ensureRetainedPayloadStore(allocator, count32(owned), retainedPayloadBytesFreedByPublishedRoot(self, image_id), image_id);
+            image_idx = self.findImage(image_id) orelse return;
+            image = &self.images.items[@intCast(image_idx)];
             allocator.free(image.base64_payload);
             image.base64_payload = owned;
             ownership_transferred = true;
@@ -1410,7 +1411,9 @@ pub const State = struct {
         if (self.findFrameIndex(image_id, target_frame_number) == null) {
             try ensureCountBound(self.frames.items.len, frame_max_count);
         }
-        try ensureRetainedPayloadStore(self, count32(owned), retainedPayloadBytesFreedByFrame(self, image_id, target_frame_number));
+        try self.ensureRetainedPayloadStore(allocator, count32(owned), retainedPayloadBytesFreedByFrame(self, image_id, target_frame_number), if (image_id == 0) null else image_id);
+        image_idx = self.findImage(image_id) orelse return;
+        image = &self.images.items[@intCast(image_idx)];
 
         if (self.findFrameIndex(image_id, target_frame_number)) |existing_idx| {
             const frame = &self.frames.items[@intCast(existing_idx)];
@@ -1481,13 +1484,15 @@ pub const State = struct {
             try self.coalesceFrameRawOwned(allocator, image.*, frame);
         defer allocator.free(raw);
         const encoded_len = std.base64.standard.Encoder.calcSize(raw.len);
-        try ensureRetainedPayloadStore(self, @intCast(encoded_len), 0);
+        const image_id = image.image_id;
+        try self.ensureRetainedPayloadStore(allocator, @intCast(encoded_len), 0, image_id);
         const encoded = try allocator.alloc(u8, encoded_len);
         _ = std.base64.standard.Encoder.encode(encoded, raw);
-        image.current_override_format = publish_format;
-        image.current_override_width = image.width;
-        image.current_override_height = image.height;
-        image.current_override_payload = encoded;
+        const refreshed_image = &self.images.items[@intCast(self.findImage(image_id) orelse return)];
+        refreshed_image.current_override_format = publish_format;
+        refreshed_image.current_override_width = refreshed_image.width;
+        refreshed_image.current_override_height = refreshed_image.height;
+        refreshed_image.current_override_payload = encoded;
     }
 
     fn frameGraphPublishesRgba(self: *const State, image: Image, frame: Frame) bool {
@@ -1659,6 +1664,54 @@ pub const State = struct {
                 _ = self.frames.swapRemove(@intCast(idx));
             } else idx += 1;
         }
+    }
+
+    fn deleteImageDataAtPreserveOrder(self: *State, allocator: std.mem.Allocator, image_idx: Index) void {
+        const image = self.images.items[@intCast(image_idx)];
+        const image_id = image.image_id;
+        if (image.current_override_payload) |payload| allocator.free(payload);
+        allocator.free(image.base64_payload);
+        _ = self.images.orderedRemove(@intCast(image_idx));
+
+        var frame_idx: Index = 0;
+        while (frame_idx < self.frameCount()) {
+            if (self.frames.items[@intCast(frame_idx)].image_id == image_id) {
+                allocator.free(self.frames.items[@intCast(frame_idx)].base64_payload);
+                _ = self.frames.orderedRemove(@intCast(frame_idx));
+            } else frame_idx += 1;
+        }
+    }
+
+    fn retainedPayloadFits(self: *const State, next_len: u32, freed_len: u32) bool {
+        const retained_len = retainedPayloadBytes(self);
+        const kept_len = retained_len -| freed_len;
+        const total_len = std.math.add(u32, kept_len, next_len) catch return false;
+        return total_len <= retained_payload_max_bytes;
+    }
+
+    fn evictUnplacedImagesForRetainedPayload(self: *State, allocator: std.mem.Allocator, next_len: u32, freed_len: u32, protected_image_id: ?u32) void {
+        var idx: Index = 0;
+        while (idx < self.imageCount() and !self.retainedPayloadFits(next_len, freed_len)) {
+            const image_id = self.images.items[@intCast(idx)].image_id;
+            if ((protected_image_id != null and image_id == protected_image_id.?) or image_id == 0 or self.imageHasPlacement(image_id)) {
+                idx += 1;
+                continue;
+            }
+            self.deleteImageDataAtPreserveOrder(allocator, idx);
+        }
+    }
+
+    fn ensureRetainedPayloadStore(self: *State, allocator: std.mem.Allocator, next_len: u32, freed_len: u32, protected_image_id: ?u32) host_state.ApplyError!void {
+        if (next_len > retained_payload_max_bytes) return error.ConsequenceLimit;
+        if (self.retainedPayloadFits(next_len, freed_len)) return;
+        self.evictUnplacedImagesForRetainedPayload(allocator, next_len, freed_len, protected_image_id);
+        if (!self.retainedPayloadFits(next_len, freed_len)) return error.ConsequenceLimit;
+    }
+
+    fn ensureRetainedPayloadTotal(self: *State, allocator: std.mem.Allocator) host_state.ApplyError!void {
+        if (retainedPayloadBytes(self) <= retained_payload_max_bytes) return;
+        self.evictUnplacedImagesForRetainedPayload(allocator, 0, 0, null);
+        if (retainedPayloadBytes(self) > retained_payload_max_bytes) return error.ConsequenceLimit;
     }
 
     fn deletePlacement(self: *State, allocator: std.mem.Allocator, image_id: u32, placement_id: u32) void {
@@ -2985,18 +3038,6 @@ fn rowAnchorPosition(row: RowAnchor) i32 {
 
 fn ensureUploadBound(len: u32) host_state.ApplyError!void {
     if (len > upload_max_bytes) return error.ConsequenceLimit;
-}
-
-fn ensureRetainedPayloadStore(self: *const State, next_len: u32, freed_len: u32) host_state.ApplyError!void {
-    if (next_len > retained_payload_max_bytes) return error.ConsequenceLimit;
-    const retained_len = retainedPayloadBytes(self);
-    const kept_len = retained_len -| freed_len;
-    const total_len = std.math.add(u32, kept_len, next_len) catch return error.ConsequenceLimit;
-    if (total_len > retained_payload_max_bytes) return error.ConsequenceLimit;
-}
-
-fn ensureRetainedPayloadTotal(self: *const State) host_state.ApplyError!void {
-    if (retainedPayloadBytes(self) > retained_payload_max_bytes) return error.ConsequenceLimit;
 }
 
 fn validatePlacement(placement: Placement) void {
