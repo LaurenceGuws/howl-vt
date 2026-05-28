@@ -416,7 +416,7 @@ test "kitty graphics q1 suppresses successful animation control OK" {
     try std.testing.expectEqual(.running, KittyState.graphicsImageAt(&terminal, 0).?.animation_state);
 }
 
-test "kitty graphics file upload loads and normalizes base64 payload" {
+test "kitty graphics file upload with m=1 loads immediately" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
@@ -432,16 +432,17 @@ test "kitty graphics file upload loads and normalizes base64 payload" {
     const encoded_path = try base64Owned(allocator, path);
     defer allocator.free(encoded_path);
 
-    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,S=3,O=1,t=f,f=24;{s}\x1b\\", .{encoded_path});
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,S=3,O=1,t=f,m=1,f=24;{s}\x1b\\", .{encoded_path});
     defer allocator.free(seq);
 
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
 
-test "kitty graphics temp file upload deletes safe temp file" {
+test "kitty graphics temp file upload with m=1 loads immediately and deletes safe temp file" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
@@ -463,16 +464,18 @@ test "kitty graphics temp file upload deletes safe temp file" {
     const encoded_path = try base64Owned(allocator, path);
     defer allocator.free(encoded_path);
 
-    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=t,f=24;{s}\x1b\\", .{encoded_path});
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=t,m=1,f=24;{s}\x1b\\", .{encoded_path});
     defer allocator.free(seq);
 
     try stream.nextSlice(seq);
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
     try std.testing.expectError(error.FileNotFound, std.Io.Dir.openFileAbsolute(io, path, .{}));
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
 
-test "kitty graphics shared memory upload loads and unlinks object" {
+test "kitty graphics shared memory upload with m=1 loads immediately and unlinks object" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
@@ -487,7 +490,7 @@ test "kitty graphics shared memory upload loads and unlinks object" {
 
     const encoded_name = try base64Owned(allocator, shm_name);
     defer allocator.free(encoded_name);
-    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=s,f=24;{s}\x1b\\", .{encoded_name});
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=s,m=1,f=24;{s}\x1b\\", .{encoded_name});
     defer allocator.free(seq);
 
     try stream.nextSlice(seq);
@@ -495,6 +498,7 @@ test "kitty graphics shared memory upload loads and unlinks object" {
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
     try std.testing.expectError(error.FileNotFound, cShmOpenReadOnly(shm_name_z));
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
 
 fn cShmOpenReadOnly(name: [:0]const u8) !void {

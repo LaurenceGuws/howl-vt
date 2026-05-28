@@ -1323,11 +1323,6 @@ pub const State = struct {
     }
 
     fn storeIndirectPayload(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
-        if (cmd.more_chunks) {
-            if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:chunked kitty graphics upload requires direct medium");
-            return null;
-        }
-
         const normalized = loadIndirectPayloadNormalized(allocator, cmd) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             error.ConsequenceLimit => return error.ConsequenceLimit,
