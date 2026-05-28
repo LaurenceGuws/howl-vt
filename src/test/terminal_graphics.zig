@@ -2607,6 +2607,87 @@ test "kitty graphics animation frame upload stores frame metadata" {
     try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
 }
 
+test "kitty graphics new animation frame without z gets default gap" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;CCCC\x1b\\");
+
+    try std.testing.expectEqual(@as(i32, 40), KittyState.graphicsFrameAt(&terminal, 0).?.gap);
+}
+
+test "kitty graphics new animation frame with z zero gets default gap" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24,z=0;CCCC\x1b\\");
+
+    try std.testing.expectEqual(@as(i32, 40), KittyState.graphicsFrameAt(&terminal, 0).?.gap);
+}
+
+test "kitty graphics new animation frame with negative z gets gapless frame" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24,z=-1;CCCC\x1b\\");
+
+    try std.testing.expectEqual(@as(i32, 0), KittyState.graphicsFrameAt(&terminal, 0).?.gap);
+}
+
+test "kitty graphics editing animation frame without z preserves old gap" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24,z=9;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;DDDD\x1b\\");
+
+    try std.testing.expectEqual(@as(i32, 9), KittyState.graphicsFrameAt(&terminal, 0).?.gap);
+}
+
+test "kitty graphics editing animation frame with z zero preserves old gap" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24,z=9;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24,z=0;DDDD\x1b\\");
+
+    try std.testing.expectEqual(@as(i32, 9), KittyState.graphicsFrameAt(&terminal, 0).?.gap);
+}
+
+test "kitty graphics editing animation frame with negative z becomes gapless" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24,z=9;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24,z=-1;DDDD\x1b\\");
+
+    try std.testing.expectEqual(@as(i32, 0), KittyState.graphicsFrameAt(&terminal, 0).?.gap);
+}
+
 test "kitty graphics deleting root frame promotes first extra frame" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

@@ -53,6 +53,7 @@ pub const frame_max_count: Count = parser.max_metadata_control_bytes;
 pub const retained_payload_max_bytes: u32 = 65 * 1024 * 1024;
 pub const upload_max_bytes: u32 = retained_payload_max_bytes;
 pub const parent_depth_limit: u32 = 8;
+const default_animation_frame_gap: i32 = 40;
 const kitty_placeholder_codepoint: u21 = 0x10EEEE;
 const kitty_placeholder_diacritics = [_]u21{
     0x0305,  0x030D,  0x030E,  0x0310,  0x0312,  0x033D,  0x033E,  0x033F,  0x0346,  0x034A,
@@ -1497,7 +1498,8 @@ pub const State = struct {
             return;
         }
 
-        if (self.findFrameIndex(image_id, target_frame_number) == null) {
+        const frame_exists = self.findFrameIndex(image_id, target_frame_number) != null;
+        if (!frame_exists) {
             try ensureCountBound(self.frames.items.len, frame_max_count);
         }
         try self.ensureRetainedPayloadStore(allocator, count32(owned), retainedPayloadBytesFreedByFrame(self, image_id, target_frame_number), if (image_id == 0) null else image_id);
@@ -1516,10 +1518,11 @@ pub const State = struct {
             frame.base_frame_id = base_frame_id;
             frame.compose_mode = compose_mode;
             frame.background_rgba = background_rgba;
-            frame.gap = gap;
+            if (gap != 0) frame.gap = @max(gap, 0);
             frame.base64_payload = owned;
             ownership_transferred = true;
         } else {
+            const frame_gap = if (gap > 0) gap else if (gap < 0) 0 else default_animation_frame_gap;
             const frame = Frame{
                 .frame_id = image.next_frame_id,
                 .image_id = image_id,
@@ -1533,7 +1536,7 @@ pub const State = struct {
                 .base_frame_id = base_frame_id,
                 .compose_mode = compose_mode,
                 .background_rgba = background_rgba,
-                .gap = gap,
+                .gap = frame_gap,
                 .base64_payload = owned,
             };
             image.next_frame_id +%= 1;
