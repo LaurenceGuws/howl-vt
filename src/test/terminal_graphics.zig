@@ -41,9 +41,18 @@ const kitty_png_rgba_00ffff7f = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
 const png_matrix_rgba_5x3 = "iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAYAAABbNsX4AAAAFklEQVR4nGNkYGRiZkEHIiIiIkQJAgArIAFwAovK5AAAAABJRU5ErkJggg==";
 const png_matrix_rgb_5x3 = "iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAIAAADUVFKvAAAAE0lEQVR4nGNkYGRiQQYiIiL4+AAYoAEVmtqnZQAAAABJRU5ErkJggg==";
 const png_matrix_l_5x3 = "iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAAAAAB+XZokAAAAEUlEQVR4nGNkZGFhYWERQZAAA1UAY1JyeaYAAAAASUVORK5CYII=";
+const png_matrix_palette_5x3 = "iVBORw0KGgoAAAANSUhEUgAAAAUAAAADCAMAAABs6DXK" ++
+    "AAAADFBMVEUGBwgWFxgmJyg0NTaU1p7sAAAAGElEQVR42mNgAAJGBkZGRiYmBiYmZmZmAAB/" ++
+    "ABbpACO5AAAAAElFTkSuQmCC";
+const png_palette_trns_2x1 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAMAAADD/I+4" ++
+    "AAAABlBMVEX/AAAA/wDSh+9xAAAAAnRSTlMAgJsrThgAAAALSURBVHjaY2BgBAAABAACLN5I" ++
+    "rQAAAABJRU5ErkJggg==";
 const png_matrix_rgba_expected_5x3 = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7";
 const png_matrix_rgb_expected_5x3 = "AAEC/wQFBv8ICQr/DA0O/xAREv8UFRb/GBka/xwdHv8gISL/JCUm/ygpKv8sLS7/MDEy/zQ1Nv84OTr/";
 const png_matrix_l_expected_5x3 = "AQEB/wUFBf8JCQn/DQ0N/xEREf8VFRX/GRkZ/x0dHf8hISH/JSUl/ykpKf8tLS3/MTEx/zU1Nf85OTn/";
+const png_matrix_palette_expected_5x3 = "BgcI/wYHCP8GBwj/BgcI/xYXGP8WFxj/FhcY/" ++
+    "xYXGP8mJyj/Jico/yYnKP8mJyj/NDU2/zQ1Nv80NTb/";
+const png_palette_trns_expected_2x1 = "/wAAAAD/AIA=";
 const howl_app_icon_rel_path = "../howl-linux-host/assets/icon/howl_window_icon.png";
 
 fn writeSharedMemory(name: [:0]const u8, bytes: []const u8) !void {
@@ -4479,6 +4488,73 @@ test "kitty graphics client-driven current png frame normalizes non-palette mode
         try std.testing.expectEqual(@as(u16, 32), image.format);
         try std.testing.expectEqual(@as(u32, 5), image.width);
         try std.testing.expectEqual(@as(u32, 3), image.height);
+        try std.testing.expectEqualStrings(fixture.expected, image.base64_payload);
+    }
+}
+
+test "kitty graphics client-driven current png frame normalizes palette modes" {
+    const allocator = std.testing.allocator;
+    const fixtures = [_]struct {
+        image_id: u32,
+        width: u32,
+        height: u32,
+        png: []const u8,
+        expected: []const u8,
+    }{
+        .{
+            .image_id = 81,
+            .width = 5,
+            .height = 3,
+            .png = png_matrix_palette_5x3,
+            .expected = png_matrix_palette_expected_5x3,
+        },
+        .{
+            .image_id = 82,
+            .width = 2,
+            .height = 1,
+            .png = png_palette_trns_2x1,
+            .expected = png_palette_trns_expected_2x1,
+        },
+    };
+
+    for (fixtures) |fixture| {
+        var terminal = try Terminal.initWithCells(allocator, 3, 16);
+        defer terminal.deinit();
+        var stream = try StreamHarness.init(&terminal);
+        defer stream.deinit();
+
+        const root_raw = try retainedPayload(allocator, fixture.width * fixture.height * 4, 0);
+        defer allocator.free(root_raw);
+        const root_payload = try base64Owned(allocator, root_raw);
+        defer allocator.free(root_payload);
+        const root_upload = try std.fmt.allocPrint(
+            allocator,
+            "\x1b_Gi={d},s={d},v={d},t=d,f=32;{s}\x1b\\",
+            .{ fixture.image_id, fixture.width, fixture.height, root_payload },
+        );
+        defer allocator.free(root_upload);
+        try stream.nextSlice(root_upload);
+
+        const frame_upload = try std.fmt.allocPrint(
+            allocator,
+            "\x1b_Ga=f,i={d},r=2,t=d,f=100;{s}\x1b\\",
+            .{ fixture.image_id, fixture.png },
+        );
+        defer allocator.free(frame_upload);
+        try stream.nextSlice(frame_upload);
+
+        const select_frame = try std.fmt.allocPrint(
+            allocator,
+            "\x1b_Ga=a,i={d},c=2\x1b\\",
+            .{fixture.image_id},
+        );
+        defer allocator.free(select_frame);
+        try stream.nextSlice(select_frame);
+
+        const image = KittyState.graphicsImageAt(&terminal, 0).?;
+        try std.testing.expectEqual(@as(u16, 32), image.format);
+        try std.testing.expectEqual(fixture.width, image.width);
+        try std.testing.expectEqual(fixture.height, image.height);
         try std.testing.expectEqualStrings(fixture.expected, image.base64_payload);
     }
 }
