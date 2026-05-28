@@ -208,6 +208,8 @@ pub const Placement = struct {
     rows: u32,
     effective_columns: u32,
     effective_rows: u32,
+    dest_width_px: u32 = 0,
+    dest_height_px: u32 = 0,
     flags: u32 = 0,
     render_order_key: u64 = 0,
 
@@ -221,6 +223,17 @@ pub const Placement = struct {
     pub fn resolveDestGeometry(self: Placement, cell_pixel_size: ?CellPixelSize) ?ResolvedDestGeometry {
         const left_px = self.cell_x_offset;
         const top_px = self.cell_y_offset;
+
+        if (self.flags & placement_generated_placeholder_flag != 0 and self.dest_width_px != 0 and self.dest_height_px != 0) {
+            const right_px = std.math.add(u32, left_px, self.dest_width_px) catch return null;
+            const bottom_px = std.math.add(u32, top_px, self.dest_height_px) catch return null;
+            return .{
+                .left_px = left_px,
+                .top_px = top_px,
+                .right_px = right_px,
+                .bottom_px = bottom_px,
+            };
+        }
 
         if (cell_pixel_size == null) {
             const right_px = std.math.add(u32, left_px, self.effective_columns) catch return null;
@@ -3279,6 +3292,8 @@ fn generatedPlacementFrom(self: *const State, run: ResolvedPlaceholderRun, cell_
         .rows = geometry.rows,
         .effective_columns = geometry.effective_columns,
         .effective_rows = geometry.effective_rows,
+        .dest_width_px = geometry.dest_width_px,
+        .dest_height_px = geometry.dest_height_px,
         .flags = placement_generated_placeholder_flag,
         .render_order_key = (@as(u64, virtual.ref_id) << 32) | @as(u64, run.run_order),
     };
@@ -3297,6 +3312,8 @@ const GeneratedPlacementGeometry = struct {
     rows: u32,
     effective_columns: u32,
     effective_rows: u32,
+    dest_width_px: u32,
+    dest_height_px: u32,
 };
 
 const GeneratedPlacementScale = struct {
@@ -3389,6 +3406,8 @@ fn generatedPlacementGeometry(image: Image, virtual: VirtualPlacement, run: Reso
         .rows = extent.rows,
         .effective_columns = extent.effective_columns,
         .effective_rows = extent.effective_rows,
+        .dest_width_px = rounded_dest_width,
+        .dest_height_px = rounded_dest_height,
     };
 }
 

@@ -1535,6 +1535,46 @@ test "kitty graphics placeholder cells publish generated placements and suppress
     try std.testing.expectEqual(@as(u32, 20), dest.bottom_px);
 }
 
+test "kitty graphics generated placements publish exact partial-row destination height" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 12);
+    defer terminal.deinit();
+    terminal.setCellPixelSize(5, 20);
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    const payload = try rawRgbBase64Owned(allocator, 44, 100);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=44,v=100,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
+    try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,w=44,h=100,c=9,r=6\x1b\\");
+
+    setPlaceholderCell(&terminal, 2, 1, Screen.Color.indexed(7), 9, 0x0305, 0x0305, null);
+    var col: u16 = 2;
+    while (col < 10) : (col += 1) {
+        setPlaceholderCell(&terminal, 2, col, Screen.Color.indexed(7), 9, null, null, null);
+    }
+    terminal.postApply(true);
+
+    const meta = try terminal.graphicsMeta();
+    try std.testing.expectEqual(@as(u32, 1), meta.placement_count);
+
+    const placement = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
+    try std.testing.expect(placement.flags & Graphics.placement_generated_placeholder_flag != 0);
+    try std.testing.expectEqual(@as(u32, 9), placement.columns);
+    try std.testing.expectEqual(@as(u32, 0), placement.rows);
+    try std.testing.expectEqual(@as(u32, 45), placement.dest_width_px);
+    try std.testing.expectEqual(@as(u32, 11), placement.dest_height_px);
+
+    const dest = placement.resolveDestGeometry(terminal.screen_state.activeConst().cellPixelSize()).?;
+    try std.testing.expectEqual(@as(u32, 0), dest.left_px);
+    try std.testing.expectEqual(@as(u32, 9), dest.top_px);
+    try std.testing.expectEqual(@as(u32, 45), dest.right_px);
+    try std.testing.expectEqual(@as(u32, 20), dest.bottom_px);
+}
+
 test "kitty graphics generated placements publish stable synthetic render order keys" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
