@@ -1589,9 +1589,11 @@ pub const State = struct {
         var image_idx = self.findImage(image_id) orelse return;
         var image = &self.images.items[@intCast(image_idx)];
 
-        const target_frame_number = if (frame_number == 0) self.nextFrameNumber(image_id) else frame_number;
-        const uses_root_base = base_frame_number == 1;
-        const base_frame_id = if (base_frame_number <= 1) 0 else self.frameIdForNumber(image_id, base_frame_number) orelse return;
+        const append_frame_number = self.nextFrameNumber(image_id);
+        const target_frame_number = if (frame_number == 0 or frame_number > append_frame_number)
+            append_frame_number
+        else
+            frame_number;
         const frame_size = intrinsicImageSize(format, width, height, owned) catch |err| switch (err) {
             error.InvalidPngData => return error.ConsequenceLimit,
             error.InvalidGraphicsData => return error.ConsequenceLimit,
@@ -1600,22 +1602,32 @@ pub const State = struct {
         };
         if (!currentFramePublicationFormatSupported(image.format)) return;
         if (!currentFramePublicationFormatSupported(format)) return;
-        const png_backed = image.format == 100 or format == 100 or self.frameChainIncludesPng(image.*, base_frame_id);
-        if (!png_backed and format != image.format) return;
         if (target_frame_number == 1) {
-            if (x != 0 or y != 0 or base_frame_number != 0 or compose_mode != 0 or background_rgba != 0) return;
-            try self.ensureRetainedPayloadStore(allocator, count32(owned), retainedPayloadBytesFreedByPublishedRoot(self, image_id), image_id);
-            image_idx = self.findImage(image_id) orelse return;
-            image = &self.images.items[@intCast(image_idx)];
-            allocator.free(image.base64_payload);
-            image.base64_payload = owned;
             ownership_transferred = true;
-            image.width = frame_size.width;
-            image.height = frame_size.height;
-            image.format = format;
-            if (image.current_frame_number != 1) try self.refreshCurrentFramePublication(allocator, @intCast(image_idx));
+            try self.editRootFrameOwned(
+                allocator,
+                @intCast(image_idx),
+                format,
+                frame_size.width,
+                frame_size.height,
+                x,
+                y,
+                compose_mode,
+                gap,
+                owned,
+            );
             return;
         }
+
+        const uses_root_base = base_frame_number == 1;
+        const base_frame_id = if (base_frame_number <= 1)
+            0
+        else
+            self.frameIdForNumber(image_id, base_frame_number) orelse return;
+        const png_backed = image.format == 100 or
+            format == 100 or
+            self.frameChainIncludesPng(image.*, base_frame_id);
+        if (!png_backed and format != image.format) return;
 
         const frame_exists = self.findFrameIndex(image_id, target_frame_number) != null;
         if (!frame_exists) {
@@ -1666,6 +1678,61 @@ pub const State = struct {
 
         if (image.current_frame_number == target_frame_number) {
             try self.refreshCurrentFramePublication(allocator, @intCast(image_idx));
+        }
+    }
+
+    fn editRootFrameOwned(
+        self: *State,
+        allocator: std.mem.Allocator,
+        image_idx: Index,
+        format: u16,
+        width: u32,
+        height: u32,
+        x: u32,
+        y: u32,
+        compose_mode: u32,
+        gap: i32,
+        owned: []u8,
+    ) host_state.ApplyError!void {
+        defer allocator.free(owned);
+        var image = &self.images.items[@intCast(image_idx)];
+        const target_format: u16 = if (image.format == 100 or format == 100) 32 else image.format;
+        if (!currentFramePublicationFormatSupported(image.format)) return;
+        if (!currentFramePublicationFormatSupported(format)) return;
+        if (target_format != 32 and format != image.format) return;
+
+        const root = try self.coalesceFrameNumberOwned(allocator, image.*, 1, target_format);
+        defer allocator.free(root);
+        const over = if (target_format == 32)
+            try decodeBase64RgbaOwned(allocator, format, width, height, owned)
+        else
+            try decodeBase64RawOwned(allocator, format, width, height, owned);
+        defer allocator.free(over);
+
+        composeRaw(target_format, root, image.width, image.height, over, width, height, x, y, compose_mode != 1);
+        const encoded_len = std.base64.standard.Encoder.calcSize(root.len);
+        const image_id = image.image_id;
+        try self.ensureRetainedPayloadStore(
+            allocator,
+            @intCast(encoded_len),
+            retainedPayloadBytesFreedByPublishedRoot(self, image_id),
+            image_id,
+        );
+        const encoded = try allocator.alloc(u8, encoded_len);
+        var encoded_owned = true;
+        errdefer if (encoded_owned) allocator.free(encoded);
+        _ = std.base64.standard.Encoder.encode(encoded, root);
+
+        const refreshed_idx = self.findImage(image_id) orelse return;
+        image = &self.images.items[@intCast(refreshed_idx)];
+        allocator.free(image.base64_payload);
+        image.base64_payload = encoded;
+        encoded_owned = false;
+        image.format = target_format;
+        if (gap != 0) image.root_frame_gap = @max(gap, 0);
+        if (image.current_frame_number == 1) image.current_frame_shown_at_ns = 0;
+        if (image.current_frame_number != 1) {
+            try self.refreshCurrentFramePublication(allocator, @intCast(refreshed_idx));
         }
     }
 

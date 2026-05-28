@@ -4038,6 +4038,133 @@ test "kitty graphics too-large frame delete normalizes to last frame" {
     try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
 }
 
+test "kitty graphics root frame edit composes sub-rectangle and preserves dimensions" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    const root_payload = try base64Owned(allocator, "aaabbbcccdddeeefffggghhhiii");
+    defer allocator.free(root_payload);
+    const edit_payload = try base64Owned(allocator, "111222333444");
+    defer allocator.free(edit_payload);
+    const expected_payload = try base64Owned(allocator, "aaabbbcccddd111222ggg333444");
+    defer allocator.free(expected_payload);
+
+    const root = try std.fmt.allocPrint(
+        allocator,
+        "\x1b_Gi=7,s=3,v=3,t=d,f=24;{s}\x1b\\",
+        .{root_payload},
+    );
+    defer allocator.free(root);
+    const edit = try std.fmt.allocPrint(
+        allocator,
+        "\x1b_Ga=f,i=7,r=1,x=1,y=1,s=2,v=2,t=d,f=24;{s}\x1b\\",
+        .{edit_payload},
+    );
+    defer allocator.free(edit);
+
+    try stream.nextSlice(root);
+    try stream.nextSlice(edit);
+
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 3), image.width);
+    try std.testing.expectEqual(@as(u32, 3), image.height);
+    try std.testing.expectEqualStrings(expected_payload, image.base64_payload);
+}
+
+test "kitty graphics root frame edit full-size replaces pixels and preserves dimensions" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=2,t=d,f=24;QUJDREVGR0hJSktM\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=1,s=2,v=2,t=d,f=24;MTExMjIyMzMzNDQ0\x1b\\");
+
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), image.width);
+    try std.testing.expectEqual(@as(u32, 2), image.height);
+    try std.testing.expectEqualStrings("MTExMjIyMzMzNDQ0", image.base64_payload);
+}
+
+test "kitty graphics root frame edit ignores missing compose base frame" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=2,t=d,f=24;QUJDREVGR0hJSktM\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=1,c=99,s=2,v=2,t=d,f=24;MTExMjIyMzMzNDQ0\x1b\\");
+
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), image.width);
+    try std.testing.expectEqual(@as(u32, 2), image.height);
+    try std.testing.expectEqualStrings("MTExMjIyMzMzNDQ0", image.base64_payload);
+}
+
+test "kitty graphics root frame edit without z preserves root gap" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=13\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=1,s=1,v=1,t=d,f=24;REVG\x1b\\");
+
+    try std.testing.expectEqual(@as(i32, 13), KittyState.graphicsImageAt(&terminal, 0).?.root_frame_gap);
+}
+
+test "kitty graphics root frame edit z zero preserves root gap" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=13\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=1,s=1,v=1,t=d,f=24,z=0;REVG\x1b\\");
+
+    try std.testing.expectEqual(@as(i32, 13), KittyState.graphicsImageAt(&terminal, 0).?.root_frame_gap);
+}
+
+test "kitty graphics root frame edit negative z clamps root gap to zero" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=13\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=1,s=1,v=1,t=d,f=24,z=-1;REVG\x1b\\");
+
+    try std.testing.expectEqual(@as(i32, 0), KittyState.graphicsImageAt(&terminal, 0).?.root_frame_gap);
+}
+
+test "kitty graphics too-large explicit animation frame r appends next frame" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=99,s=1,v=1,t=d,f=24;DDDD\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameAt(&terminal, 0).?.frame_number);
+    try std.testing.expectEqual(@as(u32, 3), KittyState.graphicsFrameAt(&terminal, 1).?.frame_number);
+    try std.testing.expectEqualStrings("DDDD", KittyState.graphicsFrameAt(&terminal, 1).?.base64_payload);
+}
+
 test "kitty graphics compose root frame into destination frame stores composed payload" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
