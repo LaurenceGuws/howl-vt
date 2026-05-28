@@ -454,7 +454,7 @@ pub const State = struct {
 
     fn imageRuntimeObligation(self: *const State, image: Image, now_ns: u64) RuntimeObligation {
         if (!imageNeedsRuntime(self, image)) return .{};
-        if (image.animation_state == .loading and image.current_frame_shown_at_ns == 0 and image.current_frame_number == self.frameCountForImage(image.image_id)) {
+        if (image.animation_state == .loading and image.current_frame_number == self.frameCountForImage(image.image_id)) {
             return .{};
         }
         if (image.current_frame_shown_at_ns == 0) return .{ .pending_now = true, .deadline_ns = 0 };
@@ -500,19 +500,22 @@ pub const State = struct {
     fn advanceRuntimeFrame(self: *State, allocator: std.mem.Allocator, image_idx: Index, now_ns: u64) host_state.ApplyError!bool {
         const image = &self.images.items[@intCast(image_idx)];
         const original_frame = image.current_frame_number;
-        while (true) {
+        const total_frames = self.frameCountForImage(image.image_id);
+        var attempts: u32 = 0;
+        while (attempts < total_frames) : (attempts += 1) {
             const next = self.nextRuntimeFrameNumber(image.*) orelse {
-                image.current_frame_shown_at_ns = 0;
                 return false;
             };
             image.current_frame_number = next;
-            try self.refreshCurrentFramePublication(allocator, image_idx);
             const gap = self.currentFrameGap(image.*);
             if (gap > 0) {
+                try self.refreshCurrentFramePublication(allocator, image_idx);
                 image.current_frame_shown_at_ns = now_ns;
                 return image.current_frame_number != original_frame;
             }
         }
+        image.current_frame_shown_at_ns = 0;
+        return false;
     }
 
     fn nextRuntimeFrameNumber(self: *State, image: Image) ?u32 {
@@ -524,7 +527,7 @@ pub const State = struct {
             .loading => null,
             .running => blk: {
                 const owned = &self.images.items[@intCast(self.findImage(image.image_id).?)];
-                if (image.max_loops != 0 and image.current_loop + 1 >= image.max_loops) {
+                if (image.max_loops != 0 and image.current_loop + 1 > image.max_loops) {
                     owned.animation_state = .stopped;
                     owned.current_loop = 0;
                     break :blk null;
