@@ -2527,6 +2527,109 @@ test "kitty graphics animation frame upload stores frame metadata" {
     try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
 }
 
+test "kitty graphics deleting root frame promotes first extra frame" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24,z=43;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,t=d,f=24,z=40;R0hJ\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
+
+    try stream.nextSlice("\x1b_Ga=d,d=f,i=7,r=1\x1b\\");
+
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 1), image.current_frame_number);
+    try std.testing.expectEqual(@as(i32, 43), image.root_frame_gap);
+    try std.testing.expectEqualStrings("REVG", image.base64_payload);
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
+    const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), frame.frame_number);
+    try std.testing.expectEqualStrings("R0hJ", frame.base64_payload);
+}
+
+test "kitty graphics deleting middle extra frame preserves order and current publication" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,t=d,f=24;R0hJ\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=4,s=1,v=1,t=d,f=24;SktM\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,c=4\x1b\\");
+
+    try stream.nextSlice("\x1b_Ga=d,d=f,i=7,r=3\x1b\\");
+
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 3), image.current_frame_number);
+    try std.testing.expectEqualStrings("SktM", image.base64_payload);
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameAt(&terminal, 0).?.frame_number);
+    try std.testing.expectEqualStrings("REVG", KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqual(@as(u32, 3), KittyState.graphicsFrameAt(&terminal, 1).?.frame_number);
+    try std.testing.expectEqualStrings("SktM", KittyState.graphicsFrameAt(&terminal, 1).?.base64_payload);
+}
+
+test "kitty graphics lowercase frame delete without r promotes until root remains" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,t=d,f=24;R0hJ\x1b\\");
+
+    try stream.nextSlice("\x1b_Ga=d,d=f,i=7\x1b\\");
+    try stream.nextSlice("\x1b_Ga=d,d=f,i=7\x1b\\");
+    try stream.nextSlice("\x1b_Ga=d,d=f,i=7\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+    try std.testing.expectEqualStrings("R0hJ", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics uppercase frame delete without extra frames deletes image data" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+
+    try stream.nextSlice("\x1b_Ga=d,d=F,i=7\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+}
+
+test "kitty graphics too-large frame delete normalizes to last frame" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,t=d,f=24;R0hJ\x1b\\");
+
+    try stream.nextSlice("\x1b_Ga=d,d=f,i=7,r=99\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameAt(&terminal, 0).?.frame_number);
+    try std.testing.expectEqualStrings("REVG", KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
 test "kitty graphics compose root frame into destination frame stores composed payload" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

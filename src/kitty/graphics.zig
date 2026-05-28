@@ -2384,34 +2384,78 @@ pub const State = struct {
     }
 
     fn deleteFrames(self: *State, allocator: std.mem.Allocator, cmd: KittyGraphicsCommand) void {
-        const image_id = self.resolveImageId(cmd) orelse cmd.image_id;
-        const deleted_frame_number = cmd.edit_frame_number;
-        var idx: Index = 0;
-        while (idx < self.frameCount()) {
-            const frame = self.frames.items[@intCast(idx)];
-            if ((image_id == 0 or frame.image_id == image_id) and (deleted_frame_number == 0 or frame.frame_number == deleted_frame_number)) {
-                allocator.free(self.frames.items[@intCast(idx)].base64_payload);
-                _ = self.frames.swapRemove(@intCast(idx));
-            } else idx += 1;
+        const image_id = self.resolveImageId(cmd) orelse return;
+        const image_idx = self.findImage(image_id) orelse return;
+        const extra_frame_count = self.extraFrameCountForImage(image_id);
+        if (extra_frame_count == 0) {
+            if (cmd.delete_target == 'F') self.deleteImageData(allocator, image_id);
+            return;
         }
-        if (image_id != 0) self.repairImageAfterFrameDelete(allocator, image_id, deleted_frame_number);
+
+        var deleted_frame_number = @min(extra_frame_count + 1, cmd.edit_frame_number);
+        if (deleted_frame_number == 0) deleted_frame_number = 1;
+        self.deleteFrameNumber(allocator, @intCast(image_idx), deleted_frame_number);
     }
 
-    fn repairImageAfterFrameDelete(self: *State, allocator: std.mem.Allocator, image_id: u32, deleted_frame_number: u32) void {
-        const image_idx = self.findImage(image_id) orelse return;
+    fn deleteFrameNumber(self: *State, allocator: std.mem.Allocator, image_idx: Index, deleted_frame_number: u32) void {
         const image = &self.images.items[@intCast(image_idx)];
-        if (deleted_frame_number != 0 and image.current_frame_number == deleted_frame_number) {
-            image.current_frame_number = 1;
-        } else if (deleted_frame_number != 0 and image.current_frame_number > deleted_frame_number) {
+        const image_id = image.image_id;
+        const old_current_frame_number = image.current_frame_number;
+
+        if (deleted_frame_number == 1) {
+            const promoted_idx = self.findFrameIndex(image_id, 2) orelse return;
+            const promoted = self.frames.items[@intCast(promoted_idx)];
+            if (image.current_override_payload) |payload| {
+                allocator.free(payload);
+                image.current_override_payload = null;
+            }
+            allocator.free(image.base64_payload);
+            image.base64_payload = promoted.base64_payload;
+            image.format = promoted.format;
+            image.width = promoted.width;
+            image.height = promoted.height;
+            image.root_frame_gap = promoted.gap;
+            _ = self.frames.orderedRemove(@intCast(promoted_idx));
+            self.rebaseFrameReferencesToRoot(image_id, promoted.frame_id);
+        } else {
+            const frame_idx = self.findFrameIndex(image_id, deleted_frame_number) orelse return;
+            allocator.free(self.frames.items[@intCast(frame_idx)].base64_payload);
+            _ = self.frames.orderedRemove(@intCast(frame_idx));
+        }
+
+        if (old_current_frame_number > self.extraFrameCountForImage(image_id) + 1) {
+            image.current_frame_number = self.extraFrameCountForImage(image_id) + 1;
+        } else if (old_current_frame_number > deleted_frame_number) {
             image.current_frame_number -= 1;
         }
+
         var frame_idx: Index = 0;
         while (frame_idx < self.frameCount()) : (frame_idx += 1) {
             var frame = &self.frames.items[@intCast(frame_idx)];
             if (frame.image_id != image_id) continue;
-            if (deleted_frame_number != 0 and frame.frame_number > deleted_frame_number) frame.frame_number -= 1;
+            if (frame.frame_number > deleted_frame_number) frame.frame_number -= 1;
         }
-        self.refreshCurrentFramePublication(allocator, image_idx) catch {};
+        if (old_current_frame_number >= deleted_frame_number) {
+            image.current_frame_shown_at_ns = 0;
+            self.refreshCurrentFramePublication(allocator, image_idx) catch {};
+        }
+    }
+
+    fn extraFrameCountForImage(self: *const State, image_id: u32) u32 {
+        var count: u32 = 0;
+        for (self.frames.items) |frame| {
+            if (frame.image_id == image_id) count += 1;
+        }
+        return count;
+    }
+
+    fn rebaseFrameReferencesToRoot(self: *State, image_id: u32, frame_id: u32) void {
+        for (self.frames.items) |*frame| {
+            if (frame.image_id != image_id) continue;
+            if (frame.base_frame_id != frame_id) continue;
+            frame.uses_root_base = true;
+            frame.base_frame_id = 0;
+        }
     }
 
     fn findFrameIndex(self: *const State, image_id: u32, frame_number: u32) ?Index {
