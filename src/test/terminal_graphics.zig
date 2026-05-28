@@ -3703,6 +3703,44 @@ test "kitty graphics animation frame upload stores frame metadata" {
     try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
 }
 
+test "kitty graphics omitted r animation frame uploads append in order" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,t=d,f=24;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,t=d,f=24;DDDD\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsFrameCount(&terminal));
+    const first = KittyState.graphicsFrameAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), first.frame_number);
+    try std.testing.expectEqualStrings("CCCC", first.base64_payload);
+
+    const second = KittyState.graphicsFrameAt(&terminal, 1).?;
+    try std.testing.expectEqual(@as(u32, 3), second.frame_number);
+    try std.testing.expectEqualStrings("DDDD", second.base64_payload);
+}
+
+test "kitty graphics chunked omitted r frame upload appends once" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,t=d,f=24,m=1;CC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,t=d,f=24;CC\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
+    const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), frame.frame_number);
+    try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+}
+
 test "kitty graphics animation frame upload with both id forms rejects without storing frame" {
     const allocator = std.testing.allocator;
     var state: Graphics.State = .{};
@@ -4306,7 +4344,7 @@ test "kitty graphics icat style retained animation controls run without EINVAL" 
 
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=3,r=1,z=7\x1b\\");
 
@@ -4341,7 +4379,7 @@ test "kitty graphics choose files style retained animation controls preserve v1 
 
     try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7,v=1\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7,v=1\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,s=3,r=1,z=7,v=1\x1b\\");
 
