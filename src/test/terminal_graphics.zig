@@ -28,6 +28,12 @@ fn base64Owned(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
     return encoded;
 }
 
+fn rawRgbBase64Owned(allocator: std.mem.Allocator, width: usize, height: usize) ![]u8 {
+    const raw = try retainedPayload(allocator, width * height * 3, 0);
+    defer allocator.free(raw);
+    return try base64Owned(allocator, raw);
+}
+
 const zlib_rgb_abc = [_]u8{ 0x78, 0x9c, 0x73, 0x74, 0x72, 0x06, 0x00, 0x01, 0x8d, 0x00, 0xc7 };
 const zlib_rgba_abcd = [_]u8{ 0x78, 0x9c, 0x73, 0x74, 0x72, 0x76, 0x01, 0x00, 0x02, 0x98, 0x01, 0x0b };
 const png_rgba_11223344 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMQVDJ2AQABWQCrEyolqwAAAABJRU5ErkJggg==";
@@ -211,15 +217,67 @@ test "kitty graphics direct upload stores single base64 payload" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     const image = KittyState.graphicsImageAt(&terminal, 0).?;
     try std.testing.expectEqual(@as(u32, 7), image.image_id);
     try std.testing.expectEqual(@as(u16, 24), image.format);
-    try std.testing.expectEqual(@as(u32, 2), image.width);
+    try std.testing.expectEqual(@as(u32, 1), image.width);
     try std.testing.expectEqual(@as(u32, 1), image.height);
     try std.testing.expectEqualStrings("QUJD", image.base64_payload);
+}
+
+test "kitty graphics direct raw RGB validates decoded length" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("AAAA", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics direct raw RGBA validates decoded length" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=32;AAAAAA==\x1b\\");
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("AAAAAA==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+}
+
+test "kitty graphics invalid base64 direct raw payload returns EINVAL without storing" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;!!!!\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:invalid kitty graphics data\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+}
+
+test "kitty graphics mismatched direct raw payload length returns EINVAL without storing" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:invalid kitty graphics data\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 
 test "kitty graphics quiet modes split direct upload failures" {
@@ -292,11 +350,11 @@ test "kitty graphics invalid integer parser input emits no reply and does not mu
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqualStrings("", pendingOutput(&terminal));
 
-    try stream.nextSlice("\x1b_Gi=abc,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=abc,s=1,v=1,t=d,f=24;QUJD\x1b\\");
 
     try std.testing.expectEqualStrings("", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
@@ -311,11 +369,11 @@ test "kitty graphics invalid flag and unknown key parser input emits no reply an
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
 
-    try stream.nextSlice("\x1b_Gi=8,a=Z,s=2,v=1,t=d,f=24;QUJD\x1b\\");
-    try stream.nextSlice("\x1b_Gi=9,N=1,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,a=Z,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=9,N=1,s=1,v=1,t=d,f=24;QUJD\x1b\\");
 
     try std.testing.expectEqualStrings("", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
@@ -330,7 +388,7 @@ test "kitty graphics transmit and display stores image placement and moves curso
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b[2;3H\x1b_Gi=7,p=4,s=2,v=1,a=T,t=d,f=24,c=4,r=2;QUJD\x1b\\");
+    try stream.nextSlice("\x1b[2;3H\x1b_Gi=7,p=4,s=1,v=1,a=T,t=d,f=24,c=4,r=2;QUJD\x1b\\");
 
     try std.testing.expectEqualStrings("\x1b_Gi=7,p=4;OK\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
@@ -714,7 +772,12 @@ test "kitty graphics place stores virtual placement prototype for U=1" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=11,v=13,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 11, 13);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=11,v=13,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b_Gi=7,a=p,U=1,c=2,r=1\x1b\\");
 
     try std.testing.expectEqualStrings("\x1b_Gi=7;OK\x1b\\", pendingOutput(&terminal));
@@ -737,7 +800,12 @@ test "kitty graphics virtual placement derives omitted grid extent" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=20,v=40,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 20, 40);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=20,v=40,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b_Gi=7,a=p,U=1,w=20,h=40\x1b\\");
 
     const placement = terminal.kitty.main.graphics.virtualPlacementAt(0).?;
@@ -752,7 +820,7 @@ test "kitty graphics alt screen starts with separate empty state" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
 
     try stream.nextSlice("\x1b[?1049h");
@@ -840,7 +908,7 @@ test "kitty graphics RIS aborts partial upload" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=2,v=1,t=d,f=24,m=1;QU\x1b\\");
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24,m=1;QU\x1b\\");
     try std.testing.expect(terminal.kitty.main.graphics.upload != null);
 
     try stream.nextSlice("\x1bc");
@@ -848,7 +916,7 @@ test "kitty graphics RIS aborts partial upload" {
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
     try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.imageCount());
 
-    try stream.nextSlice("\x1b_Gi=9,s=2,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=9,s=1,v=1,t=d,f=24;QUJD\x1b\\");
     try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.imageCount());
     try std.testing.expectEqual(@as(u32, 9), terminal.kitty.main.graphics.imageAt(0).?.image_id);
 }
@@ -860,7 +928,7 @@ test "kitty graphics direct upload assembles chunked base64 payload" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=9,s=2,v=1,t=d,f=24,m=1;QU\x1b\\");
+    try stream.nextSlice("\x1b_Gi=9,s=1,v=1,t=d,f=24,m=1;QU\x1b\\");
     try stream.nextSlice("\x1b_Gm=0;JD\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
@@ -877,7 +945,12 @@ test "kitty graphics chunk upload retains first placement metadata until complet
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=9,s=11,v=13,t=d,f=24,p=5,x=2,y=4,w=6,h=8,X=3,Y=5,c=10,r=12,z=-7,m=1;Q\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 11, 13);
+    defer allocator.free(payload);
+    const first = try std.fmt.allocPrint(allocator, "\x1b_Gi=9,s=11,v=13,t=d,f=24,p=5,x=2,y=4,w=6,h=8,X=3,Y=5,c=10,r=12,z=-7,m=1;{s}\x1b\\", .{payload[0..1]});
+    defer allocator.free(first);
+
+    try stream.nextSlice(first);
     {
         const upload = terminal.kitty.main.graphics.upload.?;
         try std.testing.expectEqual(@as(u32, 5), upload.placement_id);
@@ -895,7 +968,9 @@ test "kitty graphics chunk upload retains first placement metadata until complet
     }
 
     try stream.nextSlice("\x1b[3;4H");
-    try stream.nextSlice("\x1b_Gp=99,x=1,y=1,w=1,h=1,X=1,Y=1,c=1,r=1,z=9,m=1;U\x1b\\");
+    const second = try std.fmt.allocPrint(allocator, "\x1b_Gp=99,x=1,y=1,w=1,h=1,X=1,Y=1,c=1,r=1,z=9,m=1;{s}\x1b\\", .{payload[1..2]});
+    defer allocator.free(second);
+    try stream.nextSlice(second);
     {
         const upload = terminal.kitty.main.graphics.upload.?;
         try std.testing.expectEqual(@as(u32, 5), upload.placement_id);
@@ -912,11 +987,13 @@ test "kitty graphics chunk upload retains first placement metadata until complet
         try std.testing.expectEqual(@as(u16, 0), upload.anchor_col);
     }
 
-    try stream.nextSlice("\x1b_Gm=0;J\x1b\\");
+    const last = try std.fmt.allocPrint(allocator, "\x1b_Gm=0;{s}\x1b\\", .{payload[2..]});
+    defer allocator.free(last);
+    try stream.nextSlice(last);
 
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqualStrings("QUJ", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectEqualStrings(payload, KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
 }
 
 test "kitty graphics transmit and display chunk completion uses first placement metadata" {
@@ -926,8 +1003,15 @@ test "kitty graphics transmit and display chunk completion uses first placement 
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b[2;3H\x1b_GI=13,p=5,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,X=3,Y=5,c=4,r=2,z=-7,m=1;Q\x1b\\");
-    try stream.nextSlice("\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,X=1,Y=1,c=1,r=1,z=9,m=0;U\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 11, 13);
+    defer allocator.free(payload);
+    const first = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,X=3,Y=5,c=4,r=2,z=-7,m=1;{s}\x1b\\", .{payload[0..1]});
+    defer allocator.free(first);
+    const second = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,X=1,Y=1,c=1,r=1,z=9,m=0;{s}\x1b\\", .{payload[1..]});
+    defer allocator.free(second);
+
+    try stream.nextSlice(first);
+    try stream.nextSlice(second);
 
     try std.testing.expectEqualStrings("\x1b_Gi=1,I=13,p=5;OK\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
@@ -957,8 +1041,15 @@ test "kitty graphics transmit and display chunk completion keeps first unicode p
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,X=3,Y=5,m=1;Q\x1b\\");
-    try stream.nextSlice("\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=7,r=3,m=0;U\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 11, 13);
+    defer allocator.free(payload);
+    const first = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,X=3,Y=5,m=1;{s}\x1b\\", .{payload[0..1]});
+    defer allocator.free(first);
+    const second = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=7,r=3,m=0;{s}\x1b\\", .{payload[1..]});
+    defer allocator.free(second);
+
+    try stream.nextSlice(first);
+    try stream.nextSlice(second);
 
     try std.testing.expectEqualStrings("\x1b_Gi=1,I=13,p=5;OK\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
@@ -984,8 +1075,15 @@ test "kitty graphics chunked yazi-like unicode no-move contract publishes one co
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;Q\x1b\\");
-    try stream.nextSlice("\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;UJD\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 11, 13);
+    defer allocator.free(payload);
+    const first = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;{s}\x1b\\", .{payload[0..1]});
+    defer allocator.free(first);
+    const second = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;{s}\x1b\\", .{payload[1..]});
+    defer allocator.free(second);
+
+    try stream.nextSlice(first);
+    try stream.nextSlice(second);
 
     const meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 1), meta.image_count);
@@ -996,7 +1094,7 @@ test "kitty graphics chunked yazi-like unicode no-move contract publishes one co
     const image = (try terminal.graphicsImage(meta.publication_seq, 0)).?;
     try std.testing.expectEqual(@as(u32, 1), image.image_id);
     try std.testing.expectEqual(@as(u32, 13), image.image_number);
-    try std.testing.expectEqualStrings("QUJD", image.base64_payload);
+    try std.testing.expectEqualStrings(payload, image.base64_payload);
 
     const placement = (try terminal.graphicsVirtualPlacement(meta.publication_seq, 0)).?;
     try std.testing.expectEqual(@as(u32, 1), placement.image_id);
@@ -1050,7 +1148,12 @@ test "kitty graphics placeholder cells publish generated placements and suppress
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=100,v=40,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 100, 40);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=100,v=40,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,x=10,y=4,w=80,h=20,c=4,r=2\x1b\\");
 
     setPlaceholderCell(&terminal, 1, 2, Screen.Color.indexed(7), 9, 0x0305, 0x030E, null);
@@ -1090,7 +1193,12 @@ test "kitty graphics generated placements publish stable synthetic render order 
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=100,v=40,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 100, 40);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=100,v=40,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,x=0,y=0,w=80,h=20,c=4,r=2\x1b\\");
     const virtual = terminal.kitty.main.graphics.virtualPlacementAt(0).?;
     try std.testing.expect(virtual.ref_id != 0);
@@ -1125,7 +1233,12 @@ test "kitty graphics generated placements clear and update from VT truth" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=100,v=40,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 100, 40);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=100,v=40,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b_Ga=p,i=7,p=9,U=1,x=10,y=4,w=80,h=20,c=4,r=2\x1b\\");
     setPlaceholderCell(&terminal, 1, 2, Screen.Color.indexed(7), 9, 0x0305, 0x030D, null);
     terminal.postApply(true);
@@ -1511,10 +1624,16 @@ test "kitty graphics placeholder-run export covers yazi-like alt-screen path coh
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
+    const payload = try rawRgbBase64Owned(allocator, 11, 13);
+    defer allocator.free(payload);
+    const first_chunk = try std.fmt.allocPrint(allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;{s}\x1b\\", .{payload[0..1]});
+    defer allocator.free(first_chunk);
+    const last_chunk = try std.fmt.allocPrint(allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;{s}\x1b\\", .{payload[1..]});
+    defer allocator.free(last_chunk);
 
     try stream.nextSlice("\x1b[?1049h");
-    try stream.nextSlice("\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;Q\x1b\\");
-    try stream.nextSlice("\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;UJD\x1b\\");
+    try stream.nextSlice(first_chunk);
+    try stream.nextSlice(last_chunk);
 
     setPlaceholderCell(&terminal, 1, 8, Screen.Color.indexed(1), 5, 0x0305, 0x030D, null);
     setPlaceholderCell(&terminal, 1, 9, Screen.Color.indexed(1), 5, null, null, null);
@@ -1778,7 +1897,12 @@ test "kitty graphics place retains physical placement truth" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=11,v=13,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 11, 13);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=11,v=13,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b[3;5H");
     try stream.nextSlice("\x1b_Ga=p,i=7,p=9,x=2,y=4,w=6,h=8,X=3,Y=5,c=10,r=12,z=-7\x1b\\");
 
@@ -1919,7 +2043,12 @@ test "kitty graphics margin line feed clips top for fully enclosed placement" {
     defer stream.deinit();
 
     terminal.setCellPixelSize(10, 10);
-    try stream.nextSlice("\x1b_Gi=7,s=10,v=30,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 10, 30);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=10,v=30,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b[2;4r\x1b[2;3H\x1b_Ga=p,i=7,p=3,r=2\x1b\\");
     try stream.nextSlice("\x1b[4;1H\n");
 
@@ -1938,7 +2067,12 @@ test "kitty graphics margin line feed clips top from resolved implicit destinati
     defer stream.deinit();
 
     terminal.setCellPixelSize(10, 10);
-    try stream.nextSlice("\x1b_Gi=7,s=40,v=30,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 40, 30);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=40,v=30,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b[2;4r\x1b[2;3H\x1b_Ga=p,i=7,p=3,c=3,Y=5\x1b\\");
     try stream.nextSlice("\x1b[4;1H\n");
 
@@ -1958,7 +2092,12 @@ test "kitty graphics margin reverse index clips bottom for fully enclosed placem
     defer stream.deinit();
 
     terminal.setCellPixelSize(10, 10);
-    try stream.nextSlice("\x1b_Gi=7,s=10,v=30,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 10, 30);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=10,v=30,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b[2;4r\x1b[3;3H\x1b_Ga=p,i=7,p=3,r=2\x1b\\");
     try stream.nextSlice("\x1b[2;1H\x1bM");
 
@@ -1977,7 +2116,12 @@ test "kitty graphics scroll up lines skips placement not fully inside margins" {
     defer stream.deinit();
 
     terminal.setCellPixelSize(10, 10);
-    try stream.nextSlice("\x1b_Gi=7,s=10,v=30,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 10, 30);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=10,v=30,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b[2;4r\x1b[1;3H\x1b_Ga=p,i=7,p=3,r=2\x1b\\");
     try stream.nextSlice("\x1b[1S");
 
@@ -1996,7 +2140,12 @@ test "kitty graphics scroll down lines clips bottom for fully enclosed placement
     defer stream.deinit();
 
     terminal.setCellPixelSize(10, 10);
-    try stream.nextSlice("\x1b_Gi=7,s=10,v=30,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 10, 30);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=10,v=30,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b[2;4r\x1b[3;3H\x1b_Ga=p,i=7,p=3,r=2\x1b\\");
     try stream.nextSlice("\x1b[1T");
 
@@ -2015,7 +2164,12 @@ test "kitty graphics scroll down lines clips bottom from resolved implicit desti
     defer stream.deinit();
 
     terminal.setCellPixelSize(10, 10);
-    try stream.nextSlice("\x1b_Gi=7,s=40,v=30,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 40, 30);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=40,v=30,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b[2;4r\x1b[2;3H\x1b_Ga=p,i=7,p=3,c=3,Y=5\x1b\\");
     try stream.nextSlice("\x1b[1T");
 
@@ -2096,7 +2250,12 @@ test "kitty graphics placement resolves deterministic dest geometry when cell si
     defer stream.deinit();
 
     terminal.setCellPixelSize(10, 20);
-    try stream.nextSlice("\x1b_Gi=7,s=40,v=20,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 40, 20);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=40,v=20,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b_Ga=p,i=7,p=3,X=2,Y=5,c=2\x1b\\");
 
     const placement = terminal.kitty.main.graphics.placementAt(0).?;
@@ -2115,7 +2274,12 @@ test "kitty graphics place resolves implicit grid extent for all c/r cases when 
     defer stream.deinit();
 
     terminal.setCellPixelSize(10, 20);
-    try stream.nextSlice("\x1b_Gi=7,s=40,v=20,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 40, 20);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=40,v=20,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
 
     try stream.nextSlice("\x1b_Ga=p,i=7,p=1,X=2,Y=5\x1b\\");
     var placement = terminal.kitty.main.graphics.placementAt(0).?;
@@ -2148,7 +2312,12 @@ test "kitty graphics implicit extent rescales when cell size becomes known later
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=40,v=20,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 40, 20);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=40,v=20,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b_Ga=p,i=7,p=3,X=2,Y=5\x1b\\");
 
     var placement = terminal.kitty.main.graphics.placementAt(0).?;
@@ -2185,7 +2354,12 @@ test "kitty graphics placement geometry falls back to positive grid-local pixels
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=40,v=20,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 40, 20);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=40,v=20,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b_Ga=p,i=7,p=3,X=2,Y=5,c=2\x1b\\");
 
     const placement = terminal.kitty.main.graphics.placementAt(0).?;
@@ -2203,7 +2377,12 @@ test "kitty graphics place defaults crop truth from uploaded image" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b_Gi=7,s=11,v=13,t=d,f=24;AAAA\x1b\\");
+    const payload = try rawRgbBase64Owned(allocator, 11, 13);
+    defer allocator.free(payload);
+    const upload = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=11,v=13,t=d,f=24;{s}\x1b\\", .{payload});
+    defer allocator.free(upload);
+
+    try stream.nextSlice(upload);
     try stream.nextSlice("\x1b_Ga=p,i=7,p=2\x1b\\");
 
     const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
@@ -3674,7 +3853,7 @@ test "kitty graphics quota preserves placed images and fails when only placed im
         .more_chunks = false,
         .quiet = 1,
         .delete_target = 0,
-        .payload = "B",
+        .payload = "AAAA",
     }));
 
     try std.testing.expect(imageIndexById(&state, 1) != null);
@@ -3711,7 +3890,7 @@ test "kitty graphics quota preserves virtual placement images" {
         .more_chunks = false,
         .quiet = 1,
         .delete_target = 0,
-        .payload = "B",
+        .payload = "AAAA",
     }));
 
     try std.testing.expect(imageIndexById(&state, 1) != null);
@@ -3737,7 +3916,7 @@ test "kitty graphics quota replacement counts bytes freed by same image id" {
         .image_number = 0,
         .placement_id = 0,
         .format = 24,
-        .width = 1,
+        .width = 17039360,
         .height = 1,
         .columns = 0,
         .rows = 0,
@@ -3773,7 +3952,7 @@ test "kitty graphics quota replacement clears frames and current override" {
         .image_id = 7,
         .frame_number = 2,
         .format = 24,
-        .width = 1,
+        .width = 2,
         .height = 1,
         .x = 0,
         .y = 0,
@@ -3791,7 +3970,7 @@ test "kitty graphics quota replacement clears frames and current override" {
         .image_number = 0,
         .placement_id = 0,
         .format = 24,
-        .width = 1,
+        .width = 2,
         .height = 1,
         .columns = 0,
         .rows = 0,
@@ -3849,7 +4028,7 @@ test "kitty graphics quota eviction removes unplaced image frames and current ov
         .image_number = 0,
         .placement_id = 0,
         .format = 24,
-        .width = 1,
+        .width = 3,
         .height = 1,
         .columns = 0,
         .rows = 0,
@@ -3897,7 +4076,7 @@ test "kitty graphics image count cap is explicit" {
             .more_chunks = false,
             .quiet = 1,
             .delete_target = 0,
-            .payload = "A",
+            .payload = "AAAA",
         });
     }
 
@@ -3919,7 +4098,7 @@ test "kitty graphics image count cap is explicit" {
         .more_chunks = false,
         .quiet = 1,
         .delete_target = 0,
-        .payload = "A",
+        .payload = "AAAA",
     }));
     try std.testing.expectEqual(Graphics.image_max_count, state.imageCount());
 }
@@ -4147,7 +4326,7 @@ test "kitty graphics frame count cap is explicit" {
         .more_chunks = false,
         .quiet = 1,
         .delete_target = 0,
-        .payload = "A",
+        .payload = "AAAA",
     });
 
     var frame_number: u32 = 2;
@@ -4170,7 +4349,7 @@ test "kitty graphics frame count cap is explicit" {
             .more_chunks = false,
             .quiet = 1,
             .delete_target = 0,
-            .payload = "A",
+            .payload = "AAAA",
         });
     }
 
@@ -4193,7 +4372,7 @@ test "kitty graphics frame count cap is explicit" {
         .more_chunks = false,
         .quiet = 1,
         .delete_target = 0,
-        .payload = "A",
+        .payload = "AAAA",
     }));
     try std.testing.expectEqual(Graphics.frame_max_count, state.frameCount());
 }

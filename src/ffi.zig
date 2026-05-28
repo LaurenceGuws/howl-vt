@@ -1219,6 +1219,15 @@ test "vt ffi query visible meta reports explicit surface metadata" {
     try std.testing.expect(meta.meta.dirty_generation != 0);
 }
 
+fn testRawRgbBase64Owned(allocator: std.mem.Allocator, width: usize, height: usize) ![]u8 {
+    const raw = try allocator.alloc(u8, width * height * 3);
+    defer allocator.free(raw);
+    @memset(raw, 0);
+    const encoded = try allocator.alloc(u8, std.base64.standard.Encoder.calcSize(raw.len));
+    _ = std.base64.standard.Encoder.encode(encoded, raw);
+    return encoded;
+}
+
 test "vt ffi graphics queries expose active-screen retained truth" {
     const handle = terminalInit(4, 16, 4);
     defer terminalDeinit(handle);
@@ -1226,7 +1235,10 @@ test "vt ffi graphics queries expose active-screen retained truth" {
 
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalSetCellPixelSize(handle, 10, 20));
 
-    const upload = "\x1b_Gi=7,s=11,v=13,t=d,f=24;QUJD\x1b\\";
+    const payload = try testRawRgbBase64Owned(std.testing.allocator, 11, 13);
+    defer std.testing.allocator.free(payload);
+    const upload = try std.fmt.allocPrint(std.testing.allocator, "\x1b_Gi=7,s=11,v=13,t=d,f=24;{s}\x1b\\", .{payload});
+    defer std.testing.allocator.free(upload);
     const place = "\x1b[3;5H\x1b_Ga=p,i=7,p=9,x=2,y=4,w=6,h=8,X=3,Y=5,c=10,r=12,z=-7\x1b\\";
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, place.ptr, place.len).status);
@@ -1246,7 +1258,7 @@ test "vt ffi graphics queries expose active-screen retained truth" {
     try std.testing.expectEqual(@as(u16, 24), image.image.format);
     try std.testing.expectEqual(@as(u32, 11), image.image.width);
     try std.testing.expectEqual(@as(u32, 13), image.image.height);
-    try std.testing.expectEqual(@as(u64, 4), image.image.payload_len);
+    try std.testing.expectEqual(@as(u64, payload.len), image.image.payload_len);
 
     const placement = terminalQueryGraphicsPlacement(handle, meta.meta.publication_seq, 0);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), placement.status);
@@ -1273,10 +1285,11 @@ test "vt ffi graphics queries expose active-screen retained truth" {
     try std.testing.expectEqual(@as(u32, 10), placement.placement.effective_columns);
     try std.testing.expectEqual(@as(u32, 12), placement.placement.effective_rows);
 
-    var payload: [8]u8 = undefined;
-    const copied = terminalCopyGraphicsPayload(handle, meta.meta.publication_seq, 0, payload[0..].ptr, payload.len);
+    const copied_payload = try std.testing.allocator.alloc(u8, payload.len);
+    defer std.testing.allocator.free(copied_payload);
+    const copied = terminalCopyGraphicsPayload(handle, meta.meta.publication_seq, 0, copied_payload.ptr, copied_payload.len);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), copied.status);
-    try std.testing.expectEqualStrings("QUJD", payload[0..@intCast(copied.written)]);
+    try std.testing.expectEqualStrings(payload, copied_payload[0..@intCast(copied.written)]);
 }
 
 test "vt ffi graphics placement query exposes resolved omitted-size destination truth" {
@@ -1286,7 +1299,10 @@ test "vt ffi graphics placement query exposes resolved omitted-size destination 
 
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalSetCellPixelSize(handle, 10, 20));
 
-    const upload = "\x1b_Gi=7,s=40,v=20,t=d,f=24;QUJD\x1b\\";
+    const payload = try testRawRgbBase64Owned(std.testing.allocator, 40, 20);
+    defer std.testing.allocator.free(payload);
+    const upload = try std.fmt.allocPrint(std.testing.allocator, "\x1b_Gi=7,s=40,v=20,t=d,f=24;{s}\x1b\\", .{payload});
+    defer std.testing.allocator.free(upload);
     const place = "\x1b_Ga=p,i=7,p=3,X=2,Y=5,c=2\x1b\\";
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, place.ptr, place.len).status);
@@ -1313,7 +1329,10 @@ test "vt ffi graphics queries expose virtual placement prototypes separately" {
     defer terminalDeinit(handle);
     try std.testing.expect(handle != null);
 
-    const upload = "\x1b_Gi=7,s=11,v=13,t=d,f=24;QUJD\x1b\\";
+    const payload = try testRawRgbBase64Owned(std.testing.allocator, 11, 13);
+    defer std.testing.allocator.free(payload);
+    const upload = try std.fmt.allocPrint(std.testing.allocator, "\x1b_Gi=7,s=11,v=13,t=d,f=24;{s}\x1b\\", .{payload});
+    defer std.testing.allocator.free(upload);
     const place = "\x1b_Ga=p,i=7,p=9,U=1,x=2,y=4,w=6,h=8,c=10,r=12\x1b\\";
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, place.ptr, place.len).status);
@@ -1341,8 +1360,12 @@ test "vt ffi graphics queries expose chunked unicode no-move virtual contract" {
     defer terminalDeinit(handle);
     try std.testing.expect(handle != null);
 
-    const first = "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;Q\x1b\\";
-    const second = "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;UJD\x1b\\";
+    const payload = try testRawRgbBase64Owned(std.testing.allocator, 11, 13);
+    defer std.testing.allocator.free(payload);
+    const first = try std.fmt.allocPrint(std.testing.allocator, "\x1b[2;3H\x1b_GI=13,p=5,U=1,C=1,s=11,v=13,a=T,t=d,f=24,x=2,y=4,w=6,h=8,c=7,r=3,m=1;{s}\x1b\\", .{payload[0..1]});
+    defer std.testing.allocator.free(first);
+    const second = try std.fmt.allocPrint(std.testing.allocator, "\x1b[5;9H\x1b_Gp=99,x=1,y=1,w=1,h=1,c=1,r=1,m=0;{s}\x1b\\", .{payload[1..]});
+    defer std.testing.allocator.free(second);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, first.ptr, first.len).status);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, second.ptr, second.len).status);
 
@@ -1356,12 +1379,13 @@ test "vt ffi graphics queries expose chunked unicode no-move virtual contract" {
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), image.status);
     try std.testing.expectEqual(@as(u32, 1), image.image.image_id);
     try std.testing.expectEqual(@as(u32, 13), image.image.image_number);
-    try std.testing.expectEqual(@as(u64, 4), image.image.payload_len);
+    try std.testing.expectEqual(@as(u64, payload.len), image.image.payload_len);
 
-    var payload: [8]u8 = undefined;
-    const copied = terminalCopyGraphicsPayload(handle, meta.meta.publication_seq, 0, payload[0..].ptr, payload.len);
+    const copied_payload = try std.testing.allocator.alloc(u8, payload.len);
+    defer std.testing.allocator.free(copied_payload);
+    const copied = terminalCopyGraphicsPayload(handle, meta.meta.publication_seq, 0, copied_payload.ptr, copied_payload.len);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), copied.status);
-    try std.testing.expectEqualStrings("QUJD", payload[0..@intCast(copied.written)]);
+    try std.testing.expectEqualStrings(payload, copied_payload[0..@intCast(copied.written)]);
 
     const placement = terminalQueryGraphicsVirtualPlacement(handle, meta.meta.publication_seq, 0);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), placement.status);
