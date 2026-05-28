@@ -199,6 +199,69 @@ test "kitty graphics direct upload stores single base64 payload" {
     try std.testing.expectEqualStrings("QUJD", image.base64_payload);
 }
 
+test "kitty graphics quiet modes split direct upload failures" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=10,v=10,t=d,f=24,o=z,q=1;QUJD\x1b\\");
+    try std.testing.expectEqualStrings("\x1b_Gi=7;ENODATA:insufficient kitty graphics data\x1b\\", pendingOutput(&terminal));
+
+    var terminal_q2 = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal_q2.deinit();
+    var stream_q2 = try StreamHarness.init(&terminal_q2);
+    defer stream_q2.deinit();
+
+    try stream_q2.nextSlice("\x1b_Gi=7,s=10,v=10,t=d,f=24,o=z,q=2;QUJD\x1b\\");
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal_q2));
+}
+
+test "kitty graphics quiet modes split successful upload query and placement replies" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24,q=1;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24,q=1;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=1,p=4,q=1\x1b\\");
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+
+    var terminal_q2 = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal_q2.deinit();
+    var stream_q2 = try StreamHarness.init(&terminal_q2);
+    defer stream_q2.deinit();
+
+    try stream_q2.nextSlice("\x1b_GI=13,s=1,v=1,t=d,f=24,q=2;QUJD\x1b\\");
+    try stream_q2.nextSlice("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24,q=2;AAAA\x1b\\");
+    try stream_q2.nextSlice("\x1b_Ga=p,i=1,p=4,q=2\x1b\\");
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal_q2));
+}
+
+test "kitty graphics quiet modes persist through failed chunked upload" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=2,t=d,f=24,o=z,m=1,q=1;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Gm=0\x1b\\");
+    try std.testing.expectEqualStrings("\x1b_Gi=7;ENODATA:insufficient kitty graphics data\x1b\\", pendingOutput(&terminal));
+
+    var terminal_q2 = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal_q2.deinit();
+    var stream_q2 = try StreamHarness.init(&terminal_q2);
+    defer stream_q2.deinit();
+
+    try stream_q2.nextSlice("\x1b_Gi=7,s=2,v=2,t=d,f=24,o=z,m=1,q=2;QUJD\x1b\\");
+    try stream_q2.nextSlice("\x1b_Gm=0\x1b\\");
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal_q2));
+}
+
 test "kitty graphics invalid integer parser input emits no reply and does not mutate" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -314,6 +377,20 @@ test "kitty graphics animation control for missing image is rejected explicitly"
 
     try std.testing.expectEqualStrings("\x1b_Gi=7;ENOENT:image not found\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+}
+
+test "kitty graphics q1 suppresses successful animation control OK" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1,q=1\x1b\\");
+
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    try std.testing.expectEqual(.running, KittyState.graphicsImageAt(&terminal, 0).?.animation_state);
 }
 
 test "kitty graphics file upload loads and normalizes base64 payload" {
@@ -2030,6 +2107,22 @@ test "kitty graphics relative placement rejects missing parent placement explici
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
 }
 
+test "kitty graphics q2 suppresses missing image frame and parent errors" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 8, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Ga=p,i=404,q=2\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=404,c=1,q=2\x1b\\");
+    try stream.nextSlice("\x1b_Gi=8,s=1,v=1,t=d,f=24;BBBB\x1b\\");
+    try stream.nextSlice("\x1b_Ga=p,i=8,p=3,P=7,Q=9,H=2,V=1,c=1,r=1,q=2\x1b\\");
+
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
+}
+
 test "kitty graphics relative placement rejects self-parent explicitly" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 8, 16);
@@ -3058,7 +3151,7 @@ test "kitty graphics quota evicts unplaced image before failing or touching plac
         .z = 0,
         .medium = 'd',
         .more_chunks = false,
-        .quiet = true,
+        .quiet = 1,
         .delete_target = 0,
         .payload = "BBBB",
     });
@@ -3097,7 +3190,7 @@ test "kitty graphics quota preserves placed images and fails when only placed im
         .z = 0,
         .medium = 'd',
         .more_chunks = false,
-        .quiet = true,
+        .quiet = 1,
         .delete_target = 0,
         .payload = "B",
     }));
@@ -3134,7 +3227,7 @@ test "kitty graphics quota preserves virtual placement images" {
         .z = 0,
         .medium = 'd',
         .more_chunks = false,
-        .quiet = true,
+        .quiet = 1,
         .delete_target = 0,
         .payload = "B",
     }));
@@ -3171,7 +3264,7 @@ test "kitty graphics quota replacement counts bytes freed by same image id" {
         .z = 0,
         .medium = 'd',
         .more_chunks = false,
-        .quiet = true,
+        .quiet = 1,
         .delete_target = 0,
         .payload = replacement,
     });
@@ -3225,7 +3318,7 @@ test "kitty graphics quota replacement clears frames and current override" {
         .z = 0,
         .medium = 'd',
         .more_chunks = false,
-        .quiet = true,
+        .quiet = 1,
         .delete_target = 0,
         .payload = "BBBBBBBB",
     });
@@ -3283,7 +3376,7 @@ test "kitty graphics quota eviction removes unplaced image frames and current ov
         .z = 0,
         .medium = 'd',
         .more_chunks = false,
-        .quiet = true,
+        .quiet = 1,
         .delete_target = 0,
         .payload = "BBBBBBBBBBBB",
     });
@@ -3320,7 +3413,7 @@ test "kitty graphics image count cap is explicit" {
             .z = 0,
             .medium = 'd',
             .more_chunks = false,
-            .quiet = true,
+            .quiet = 1,
             .delete_target = 0,
             .payload = "A",
         });
@@ -3342,7 +3435,7 @@ test "kitty graphics image count cap is explicit" {
         .z = 0,
         .medium = 'd',
         .more_chunks = false,
-        .quiet = true,
+        .quiet = 1,
         .delete_target = 0,
         .payload = "A",
     }));
@@ -3570,7 +3663,7 @@ test "kitty graphics frame count cap is explicit" {
         .z = 0,
         .medium = 'd',
         .more_chunks = false,
-        .quiet = true,
+        .quiet = 1,
         .delete_target = 0,
         .payload = "A",
     });
@@ -3593,7 +3686,7 @@ test "kitty graphics frame count cap is explicit" {
             .z = 0,
             .medium = 'd',
             .more_chunks = false,
-            .quiet = true,
+            .quiet = 1,
             .delete_target = 0,
             .payload = "A",
         });
@@ -3616,7 +3709,7 @@ test "kitty graphics frame count cap is explicit" {
         .z = 0,
         .medium = 'd',
         .more_chunks = false,
-        .quiet = true,
+        .quiet = 1,
         .delete_target = 0,
         .payload = "A",
     }));

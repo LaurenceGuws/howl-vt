@@ -1383,12 +1383,24 @@ test "actions: kitty graphics APC accepts empty control block with payload" {
 }
 
 test "actions: kitty graphics APC parses integer bool fields as nonzero" {
-    const sem = process(Event{ .apc = "GC=2,U=3,m=4,q=5;AAAA" }) orelse return error.NoEvent;
+    const sem = process(Event{ .apc = "GC=2,U=3,m=4,q=2;AAAA" }) orelse return error.NoEvent;
     const cmd = sem.kitty_graphics;
     try std.testing.expect(cmd.no_move_cursor);
     try std.testing.expect(cmd.unicode_placement);
     try std.testing.expect(cmd.more_chunks);
-    try std.testing.expect(cmd.quiet);
+    try std.testing.expectEqual(@as(u32, 2), cmd.quiet);
+}
+
+test "actions: kitty graphics APC preserves quiet response modes" {
+    const q0 = (process(Event{ .apc = "Gq=0;AAAA" }) orelse return error.NoEvent).kitty_graphics;
+    const q1 = (process(Event{ .apc = "Gq=1;AAAA" }) orelse return error.NoEvent).kitty_graphics;
+    const q2 = (process(Event{ .apc = "Gq=2;AAAA" }) orelse return error.NoEvent).kitty_graphics;
+    const q3 = (process(Event{ .apc = "Gq=3;AAAA" }) orelse return error.NoEvent).kitty_graphics;
+
+    try std.testing.expectEqual(@as(u32, 0), q0.quiet);
+    try std.testing.expectEqual(@as(u32, 1), q1.quiet);
+    try std.testing.expectEqual(@as(u32, 2), q2.quiet);
+    try std.testing.expectEqual(@as(u32, 3), q3.quiet);
 }
 
 test "actions: kitty graphics APC rejects malformed control fields" {

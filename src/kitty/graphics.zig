@@ -22,6 +22,14 @@ const MediaLoadError = error{
     GraphicsIo,
 };
 
+fn shouldReplySuccess(quiet: u32) bool {
+    return quiet == 0;
+}
+
+fn shouldReplyFailure(quiet: u32) bool {
+    return quiet <= 1;
+}
+
 pub const RenderCursorView = struct {
     row: u16,
     col: u16,
@@ -360,7 +368,7 @@ pub const Upload = struct {
     image_number: u32,
     action: u8,
     unicode_placement: bool,
-    quiet: bool,
+    quiet: u32,
     compression: u8,
     format: u16,
     width: u32,
@@ -845,11 +853,11 @@ pub const State = struct {
             return try self.composeFrame(allocator, output, encode_buf, cmd);
         }
         if (!graphicsMediumSupported(cmd.medium)) {
-            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
+            if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
             return .{ .changed = false, .move = null };
         }
         if (!graphicsCompressionSupported(cmd)) {
-            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
+            if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
             return .{ .changed = false, .move = null };
         }
         if (cmd.action == 'p') {
@@ -864,7 +872,7 @@ pub const State = struct {
             return .{ .changed = move != null or cmd.more_chunks or self.upload != null or cmd.payload.len != 0, .move = move };
         }
         if (cmd.action != 't' and cmd.action != 'T') {
-            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
+            if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
             return .{ .changed = false, .move = null };
         }
         return .{ .changed = true, .move = try self.captureUpload(allocator, screen, render_view, cell_pixel_size, output, encode_buf, cmd) };
@@ -875,11 +883,11 @@ pub const State = struct {
             @intFromBool(cmd.edit_frame_number != 0 or cmd.z != 0) +
             @intFromBool(cmd.animation_state != 0 or cmd.loop_count != 0);
         if (controls == 0 or controls > 1) {
-            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
+            if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
             return .{ .changed = false, .move = null };
         }
         const image_id = self.resolveImageId(cmd) orelse {
-            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENOENT:image not found");
+            if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENOENT:image not found");
             return .{ .changed = false, .move = null };
         };
         const image_idx = self.findImage(image_id) orelse unreachable;
@@ -889,7 +897,7 @@ pub const State = struct {
             try self.setFrameGap(allocator, @intCast(image_idx), cmd.edit_frame_number, cmd.z)
         else
             self.setAnimationControl(@intCast(image_idx), cmd.animation_state, cmd.loop_count);
-        if (!cmd.quiet and (cmd.image_id != 0 or cmd.image_number != 0)) {
+        if (shouldReplySuccess(cmd.quiet) and (cmd.image_id != 0 or cmd.image_number != 0)) {
             try appendNumberReply(allocator, output, encode_buf, image_id, cmd.image_number, "OK");
         }
         return .{ .changed = changed, .move = null };
@@ -897,7 +905,7 @@ pub const State = struct {
 
     fn composeFrame(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!HandleResult {
         const image_id = self.resolveImageId(cmd) orelse {
-            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:image not found");
+            if (shouldReplyFailure(cmd.quiet)) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:image not found");
             return .{ .changed = false, .move = null };
         };
         const image_idx = self.findImage(image_id) orelse unreachable;
@@ -905,11 +913,11 @@ pub const State = struct {
         const source_frame_number = cmd.edit_frame_number;
         const dest_frame_number = cmd.current_frame_number;
         if (source_frame_number == 0 or !self.frameNumberExists(image_id, source_frame_number)) {
-            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:source frame not found");
+            if (shouldReplyFailure(cmd.quiet)) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:source frame not found");
             return .{ .changed = false, .move = null };
         }
         if (dest_frame_number == 0 or !self.frameNumberExists(image_id, dest_frame_number)) {
-            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:destination frame not found");
+            if (shouldReplyFailure(cmd.quiet)) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:destination frame not found");
             return .{ .changed = false, .move = null };
         }
 
@@ -918,11 +926,11 @@ pub const State = struct {
         if (!rectWithinImage(cmd.cell_x_offset, cmd.cell_y_offset, width, height, image.width, image.height) or
             !rectWithinImage(cmd.x, cmd.y, width, height, image.width, image.height))
         {
-            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "EINVAL:compose rectangle out of bounds");
+            if (shouldReplyFailure(cmd.quiet)) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "EINVAL:compose rectangle out of bounds");
             return .{ .changed = false, .move = null };
         }
         if (source_frame_number == dest_frame_number and rectanglesOverlap(cmd.cell_x_offset, cmd.cell_y_offset, cmd.x, cmd.y, width, height)) {
-            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "EINVAL:compose rectangles overlap");
+            if (shouldReplyFailure(cmd.quiet)) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "EINVAL:compose rectangles overlap");
             return .{ .changed = false, .move = null };
         }
 
@@ -969,7 +977,7 @@ pub const State = struct {
         if (current_image.current_frame_number == dest_frame_number) {
             try self.refreshCurrentFramePublication(allocator, @intCast(self.findImage(image_id).?));
         }
-        if (!cmd.quiet and (cmd.image_id != 0 or cmd.image_number != 0)) {
+        if (shouldReplySuccess(cmd.quiet) and (cmd.image_id != 0 or cmd.image_number != 0)) {
             try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "OK");
         }
         return .{ .changed = true, .move = null };
@@ -982,11 +990,11 @@ pub const State = struct {
                 const normalized = normalizeDirectPayloadOwned(allocator, cmd.compression, cmd.format, cmd.width, cmd.height, cmd.payload) catch |err| {
                     switch (err) {
                         error.InvalidGraphicsCompression => {
-                            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
+                            if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
                             return;
                         },
                         error.InvalidGraphicsData => {
-                            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
+                            if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
                             return;
                         },
                         error.OutOfMemory => return error.OutOfMemory,
@@ -1000,39 +1008,39 @@ pub const State = struct {
                     error.OutOfMemory => return error.OutOfMemory,
                     error.ConsequenceLimit => return error.ConsequenceLimit,
                     error.InvalidGraphicsLocator => {
-                        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:invalid kitty graphics locator");
+                        if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:invalid kitty graphics locator");
                         return;
                     },
                     error.InvalidGraphicsMedium => {
-                        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
+                        if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
                         return;
                     },
                     error.InvalidGraphicsCompression => {
-                        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
+                        if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
                         return;
                     },
                     error.InvalidGraphicsData => {
-                        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
+                        if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
                         return;
                     },
                     error.GraphicsIo => {
-                        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADF:failed to read kitty graphics medium");
+                        if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADF:failed to read kitty graphics medium");
                         return;
                     },
                 };
                 defer allocator.free(normalized);
             },
             else => {
-                if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
+                if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
                 return;
             },
         }
-        if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "OK");
+        if (shouldReplySuccess(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "OK");
     }
 
     fn placeImage(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
         const image_id = self.resolveImageId(cmd) orelse {
-            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, cmd.placement_id, "ENOENT:image not found");
+            if (shouldReplyFailure(cmd.quiet)) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, cmd.placement_id, "ENOENT:image not found");
             return null;
         };
         const image = self.images.items[@intCast(self.findImage(image_id).?)];
@@ -1040,7 +1048,7 @@ pub const State = struct {
         const source_height = if (cmd.source_height != 0) cmd.source_height else image.height;
         if (cmd.unicode_placement) {
             if (cmd.parent_image_id != 0) {
-                if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, cmd.placement_id, "EINVAL:virtual placement cannot refer to a parent");
+                if (shouldReplyFailure(cmd.quiet)) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, cmd.placement_id, "EINVAL:virtual placement cannot refer to a parent");
                 return null;
             }
             const extent = resolveGridExtent(source_width, source_height, cmd.cell_x_offset, cmd.cell_y_offset, cmd.columns, cmd.rows, cell_pixel_size);
@@ -1146,7 +1154,7 @@ pub const State = struct {
     fn appendUploadChunk(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, more: bool) host_state.ApplyError!?CursorMove {
         if (self.upload == null) {
             const image_id = if (cmd.action == 'f') self.resolveImageId(cmd) orelse {
-                if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:image not found");
+                if (shouldReplyFailure(cmd.quiet)) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:image not found");
                 return null;
             } else self.imageIdForUpload(cmd);
             self.upload = .{
@@ -1224,11 +1232,11 @@ pub const State = struct {
             const owned = normalizeDirectPayloadOwned(allocator, compression, format, width, height, transport) catch |err| {
                 switch (err) {
                     error.InvalidGraphicsCompression => {
-                        if (!quiet) try appendReply(allocator, output, encode_buf, image_id, "EINVAL:unsupported kitty graphics compression");
+                        if (shouldReplyFailure(quiet)) try appendReply(allocator, output, encode_buf, image_id, "EINVAL:unsupported kitty graphics compression");
                         return null;
                     },
                     error.InvalidGraphicsData => {
-                        if (!quiet) try appendReply(allocator, output, encode_buf, image_id, "ENODATA:insufficient kitty graphics data");
+                        if (shouldReplyFailure(quiet)) try appendReply(allocator, output, encode_buf, image_id, "ENODATA:insufficient kitty graphics data");
                         return null;
                     },
                     error.OutOfMemory => return error.OutOfMemory,
@@ -1258,10 +1266,10 @@ pub const State = struct {
                         .no_move_cursor = no_move_cursor,
                         .columns = columns,
                         .rows = rows,
-                    }, quiet or anonymous);
+                    }, if (anonymous) 2 else quiet);
                     return move;
                 }
-                if (image_number != 0 and !quiet) try appendNumberReply(allocator, output, encode_buf, image_id, image_number, "OK");
+                if (image_number != 0 and shouldReplySuccess(quiet)) try appendNumberReply(allocator, output, encode_buf, image_id, image_number, "OK");
             }
         }
         return null;
@@ -1271,11 +1279,11 @@ pub const State = struct {
         const owned = normalizeDirectPayloadOwned(allocator, cmd.compression, cmd.format, cmd.width, cmd.height, payload) catch |err| {
             switch (err) {
                 error.InvalidGraphicsCompression => {
-                    if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
+                    if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
                     return null;
                 },
                 error.InvalidGraphicsData => {
-                    if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
+                    if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
                     return null;
                 },
                 error.OutOfMemory => return error.OutOfMemory,
@@ -1288,7 +1296,7 @@ pub const State = struct {
 
     fn storeIndirectPayload(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!?CursorMove {
         if (cmd.more_chunks) {
-            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:chunked kitty graphics upload requires direct medium");
+            if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:chunked kitty graphics upload requires direct medium");
             return null;
         }
 
@@ -1296,23 +1304,23 @@ pub const State = struct {
             error.OutOfMemory => return error.OutOfMemory,
             error.ConsequenceLimit => return error.ConsequenceLimit,
             error.InvalidGraphicsLocator => {
-                if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:invalid kitty graphics locator");
+                if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:invalid kitty graphics locator");
                 return null;
             },
             error.InvalidGraphicsMedium => {
-                if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
+                if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
                 return null;
             },
             error.InvalidGraphicsCompression => {
-                if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
+                if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics compression");
                 return null;
             },
             error.InvalidGraphicsData => {
-                if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
+                if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "ENODATA:insufficient kitty graphics data");
                 return null;
             },
             error.GraphicsIo => {
-                if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADF:failed to read kitty graphics medium");
+                if (shouldReplyFailure(cmd.quiet)) try appendReply(allocator, output, encode_buf, cmd.image_id, "EBADF:failed to read kitty graphics medium");
                 return null;
             },
         };
@@ -1323,7 +1331,7 @@ pub const State = struct {
 
     fn storePayload(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, render_view: RenderCursorView, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand, payload: []const u8) host_state.ApplyError!?CursorMove {
         const image_id = if (cmd.action == 'f') self.resolveImageId(cmd) orelse {
-            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:image not found");
+            if (shouldReplyFailure(cmd.quiet)) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:image not found");
             return null;
         } else self.imageIdForUpload(cmd);
         const owned = try allocator.dupe(u8, payload);
@@ -1350,9 +1358,9 @@ pub const State = struct {
                     .no_move_cursor = cmd.no_move_cursor,
                     .columns = cmd.columns,
                     .rows = cmd.rows,
-                }, cmd.quiet or anonymous);
+                }, if (anonymous) 2 else cmd.quiet);
             }
-            if (cmd.image_number != 0 and !cmd.quiet) try appendNumberReply(allocator, output, encode_buf, image_id, cmd.image_number, "OK");
+            if (cmd.image_number != 0 and shouldReplySuccess(cmd.quiet)) try appendNumberReply(allocator, output, encode_buf, image_id, cmd.image_number, "OK");
         }
         return null;
     }
@@ -1380,9 +1388,9 @@ pub const State = struct {
         rows: u32,
     };
 
-    fn placeStoredImage(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, request: PlacementRequest, quiet: bool) host_state.ApplyError!?CursorMove {
+    fn placeStoredImage(self: *State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, cell_pixel_size: ?CellPixelSize, output: *std.ArrayList(u8), encode_buf: []u8, request: PlacementRequest, quiet: u32) host_state.ApplyError!?CursorMove {
         if (self.findImage(request.image_id) == null) {
-            if (!quiet) try appendPlacementReply(allocator, output, encode_buf, request.image_id, request.image_number, request.placement_id, "ENOENT:image not found");
+            if (shouldReplyFailure(quiet)) try appendPlacementReply(allocator, output, encode_buf, request.image_id, request.image_number, request.placement_id, "ENOENT:image not found");
             return null;
         }
 
@@ -1391,7 +1399,7 @@ pub const State = struct {
         const source_height = if (request.source_height != 0) request.source_height else image.height;
         if (request.unicode_placement) {
             if (request.parent_image_id != 0) {
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, request.image_id, request.image_number, request.placement_id, "EINVAL:virtual placement cannot refer to a parent");
+                if (shouldReplyFailure(quiet)) try appendPlacementReply(allocator, output, encode_buf, request.image_id, request.image_number, request.placement_id, "EINVAL:virtual placement cannot refer to a parent");
                 return null;
             }
             const extent = resolveGridExtent(source_width, source_height, request.cell_x_offset, request.cell_y_offset, request.columns, request.rows, cell_pixel_size);
@@ -2059,10 +2067,10 @@ pub const State = struct {
         return null;
     }
 
-    fn resolveParentPlacement(self: *const State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, placement_id: u32, parent_image_id: u32, parent_placement_id: u32, quiet: bool) host_state.ApplyError!?ParentPlacementRef {
+    fn resolveParentPlacement(self: *const State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, image_number: u32, placement_id: u32, parent_image_id: u32, parent_placement_id: u32, quiet: u32) host_state.ApplyError!?ParentPlacementRef {
         if (parent_image_id == 0) return .{ .ref_id = 0, .image_id = 0, .placement_id = 0, .is_virtual = false };
         if (self.findImage(parent_image_id) == null) {
-            if (!quiet) try appendPlacementReply(allocator, output, encode_buf, image_id, image_number, placement_id, "ENOPARENT:parent image not found");
+            if (shouldReplyFailure(quiet)) try appendPlacementReply(allocator, output, encode_buf, image_id, image_number, placement_id, "ENOPARENT:parent image not found");
             return null;
         }
         const parent = if (parent_placement_id != 0)
@@ -2070,17 +2078,17 @@ pub const State = struct {
         else
             self.firstParentPlacementForImage(parent_image_id);
         const resolved_parent = parent orelse {
-            if (!quiet) try appendPlacementReply(allocator, output, encode_buf, image_id, image_number, placement_id, "ENOPARENT:parent placement not found");
+            if (shouldReplyFailure(quiet)) try appendPlacementReply(allocator, output, encode_buf, image_id, image_number, placement_id, "ENOPARENT:parent placement not found");
             return null;
         };
         if (placement_id != 0 and image_id == resolved_parent.image_id and placement_id == resolved_parent.placement_id) {
-            if (!quiet) try appendPlacementReply(allocator, output, encode_buf, image_id, image_number, placement_id, "EINVAL:placement cannot parent itself");
+            if (shouldReplyFailure(quiet)) try appendPlacementReply(allocator, output, encode_buf, image_id, image_number, placement_id, "EINVAL:placement cannot parent itself");
             return null;
         }
         return resolved_parent;
     }
 
-    fn upsertPlacement(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: Placement, screen: *const screen_mod.Screen, image_number: u32, quiet: bool, no_move_cursor: bool) host_state.ApplyError!?CursorMove {
+    fn upsertPlacement(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: Placement, screen: *const screen_mod.Screen, image_number: u32, quiet: u32, no_move_cursor: bool) host_state.ApplyError!?CursorMove {
         var next = placement;
         if (next.placement_id != 0) {
             if (self.findPlacementIndex(next.image_id, next.placement_id)) |idx| {
@@ -2102,7 +2110,7 @@ pub const State = struct {
             if (self.findPlacementIndex(next.image_id, next.placement_id)) |idx| {
                 self.placements.items[@intCast(idx)] = next;
                 validatePlacement(self.placements.items[@intCast(idx)]);
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
+                if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
                 if (next.hasParent() or no_move_cursor) {
                     _ = self.resolvePlacementAnchor(next, screen) orelse return null;
                     return null;
@@ -2115,7 +2123,7 @@ pub const State = struct {
                 validatePlacement(self.placements.items[self.placements.items.len - 1]);
                 _ = self.virtual_placements.swapRemove(@intCast(idx));
                 self.updateDirectChildParentKind(next.ref_id, false);
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
+                if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
                 if (next.hasParent() or no_move_cursor) {
                     _ = self.resolvePlacementAnchor(next, screen) orelse return null;
                     return null;
@@ -2126,7 +2134,7 @@ pub const State = struct {
         try ensureCountBound(self.placements.items.len, placement_max_count);
         try self.placements.append(allocator, next);
         validatePlacement(self.placements.items[self.placements.items.len - 1]);
-        if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
+        if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
         if (next.hasParent() or no_move_cursor) {
             _ = self.resolvePlacementAnchor(next, screen) orelse return null;
             return null;
@@ -2134,7 +2142,7 @@ pub const State = struct {
         return .{ .cols = next.effective_columns, .rows = next.effective_rows };
     }
 
-    fn upsertVirtualPlacement(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: VirtualPlacement, image_number: u32, quiet: bool) host_state.ApplyError!?CursorMove {
+    fn upsertVirtualPlacement(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: VirtualPlacement, image_number: u32, quiet: u32) host_state.ApplyError!?CursorMove {
         var next = placement;
         if (next.placement_id != 0) {
             if (self.findVirtualPlacementIndex(next.image_id, next.placement_id)) |idx| {
@@ -2149,7 +2157,7 @@ pub const State = struct {
         if (next.placement_id != 0) {
             if (self.findVirtualPlacementIndex(next.image_id, next.placement_id)) |idx| {
                 self.virtual_placements.items[@intCast(idx)] = next;
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
+                if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
                 return null;
             }
             if (self.findPlacementIndex(next.image_id, next.placement_id)) |idx| {
@@ -2157,13 +2165,13 @@ pub const State = struct {
                 try self.virtual_placements.append(allocator, next);
                 _ = self.placements.swapRemove(@intCast(idx));
                 self.updateDirectChildParentKind(next.ref_id, true);
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
+                if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
                 return null;
             }
         }
         try ensureCountBound(self.virtual_placements.items.len, placement_max_count);
         try self.virtual_placements.append(allocator, next);
-        if (!quiet) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
+        if (shouldReplySuccess(quiet)) try appendPlacementReply(allocator, output, encode_buf, next.image_id, image_number, next.placement_id, "OK");
         return null;
     }
 
@@ -2175,22 +2183,22 @@ pub const State = struct {
         }
     }
 
-    fn validatePlacementAncestry(self: *const State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: Placement, image_number: u32, quiet: bool) host_state.ApplyError!bool {
+    fn validatePlacementAncestry(self: *const State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, placement: Placement, image_number: u32, quiet: u32) host_state.ApplyError!bool {
         var depth: u32 = 0;
         var current_image_id = placement.parent_image_id;
         var current_placement_id = placement.parent_placement_id;
         var current_ref_id = placement.parent_ref_id;
         while (current_image_id != 0) {
             if (current_ref_id != 0 and current_ref_id == placement.ref_id) {
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ECYCLE:relative placement cycle");
+                if (shouldReplyFailure(quiet)) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ECYCLE:relative placement cycle");
                 return false;
             }
             if (depth >= parent_depth_limit) {
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ETOODEEP:relative placement depth exceeded");
+                if (shouldReplyFailure(quiet)) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ETOODEEP:relative placement depth exceeded");
                 return false;
             }
             const parent = self.parentPlacementByRef(current_ref_id) orelse self.parentPlacementById(current_image_id, current_placement_id) orelse {
-                if (!quiet) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ENOPARENT:ancestor placement not found");
+                if (shouldReplyFailure(quiet)) try appendPlacementReply(allocator, output, encode_buf, placement.image_id, image_number, placement.placement_id, "ENOPARENT:ancestor placement not found");
                 return false;
             };
             if (parent.is_virtual) return true;
@@ -3304,7 +3312,7 @@ test "kitty graphics ancestry validation rejects missing ancestor explicitly" {
         .rows = 1,
         .effective_columns = 1,
         .effective_rows = 1,
-    }, 0, false);
+    }, 0, 0);
 
     try std.testing.expect(!ok);
     try std.testing.expectEqualStrings("\x1b_Gi=7,p=1;ENOPARENT:ancestor placement not found\x1b\\", output.items);

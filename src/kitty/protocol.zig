@@ -41,7 +41,7 @@ pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
         .medium = 'd',
         .compression = 0,
         .more_chunks = false,
-        .quiet = false,
+        .quiet = 0,
         .delete_target = 0,
         .payload = payload,
     };
@@ -111,7 +111,7 @@ pub fn parseGraphics(data: []const u8) ?vocabulary.KittyGraphicsCommand {
                 },
                 'U' => cmd.unicode_placement = (parseU32(value) orelse return null) != 0,
                 'm' => cmd.more_chunks = (parseU32(value) orelse return null) != 0,
-                'q' => cmd.quiet = (parseU32(value) orelse return null) != 0,
+                'q' => cmd.quiet = parseU32(value) orelse return null,
                 'd' => {
                     cmd.delete_target = parseFlag(value, "ACFINPQRXYZacfinpqryz") orelse return null;
                 },

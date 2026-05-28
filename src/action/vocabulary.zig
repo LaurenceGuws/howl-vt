@@ -38,7 +38,7 @@ pub const KittyGraphicsCommand = struct {
     medium: u8,
     compression: u8 = 0,
     more_chunks: bool,
-    quiet: bool,
+    quiet: u32,
     delete_target: u8,
     payload: []const u8,
 };
