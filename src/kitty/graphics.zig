@@ -2898,17 +2898,19 @@ fn loadIndirectPayloadNormalized(allocator: std.mem.Allocator, cmd: KittyGraphic
     defer allocator.free(transport);
 
     if (cmd.compression == 0) {
+        var payload = transport;
         if (cmd.format == 100) try validatePngBytes(transport);
         if (cmd.format == 24 or cmd.format == 32) {
             const raw_len = try expectedRawPayloadLen(cmd.format, cmd.width, cmd.height);
             if (transport.len < raw_len) return error.InvalidGraphicsData;
+            payload = transport[0..raw_len];
         }
 
-        const encoded_len = std.base64.standard.Encoder.calcSize(transport.len);
+        const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
         try ensureRetainedPayloadStoreForLen(encoded_len);
 
         const encoded = try allocator.alloc(u8, encoded_len);
-        _ = std.base64.standard.Encoder.encode(encoded, transport);
+        _ = std.base64.standard.Encoder.encode(encoded, payload);
         return encoded;
     }
 

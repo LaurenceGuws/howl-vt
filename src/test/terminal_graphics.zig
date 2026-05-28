@@ -526,6 +526,32 @@ test "kitty graphics file upload rejects undersize explicit raw data" {
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
 
+test "kitty graphics file upload truncates oversize explicit raw data" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const io = std.Io.Threaded.global_single_threaded.io();
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(io, .{ .sub_path = "image.bin", .data = "ABCXY" });
+    const path = try tmp.dir.realPathFileAlloc(io, "image.bin", allocator);
+    defer allocator.free(path);
+    const encoded_path = try base64Owned(allocator, path);
+    defer allocator.free(encoded_path);
+
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,S=5,t=f,m=1,f=24;{s}\x1b\\", .{encoded_path});
+    defer allocator.free(seq);
+
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+}
+
 test "kitty graphics temp file upload with m=1 loads immediately and deletes safe temp file" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -549,6 +575,39 @@ test "kitty graphics temp file upload with m=1 loads immediately and deletes saf
     defer allocator.free(encoded_path);
 
     const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,t=t,m=1,f=24;{s}\x1b\\", .{encoded_path});
+    defer allocator.free(seq);
+
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+    try std.testing.expectError(error.FileNotFound, std.Io.Dir.openFileAbsolute(io, path, .{}));
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+}
+
+test "kitty graphics temp file upload truncates oversize explicit raw data and deletes safe temp file" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const path_text = try std.fmt.allocPrint(allocator, "/tmp/howl-tty-graphics-protocol-{s}.bin", .{tmp.sub_path});
+    defer allocator.free(path_text);
+    const path = try allocator.dupeZ(u8, path_text);
+    defer allocator.free(path);
+    defer _ = c.unlink(path);
+    const fd = c.open(path, c.O_CREAT | c.O_WRONLY | c.O_TRUNC, @as(c_uint, 0o600));
+    if (fd < 0) return error.Unexpected;
+    defer _ = c.close(fd);
+    if (c.write(fd, "ABCXY", 5) != 5) return error.Unexpected;
+    const encoded_path = try base64Owned(allocator, path);
+    defer allocator.free(encoded_path);
+
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,S=5,t=t,m=1,f=24;{s}\x1b\\", .{encoded_path});
     defer allocator.free(seq);
 
     try stream.nextSlice(seq);
@@ -640,6 +699,32 @@ test "kitty graphics shared memory upload rejects undersize explicit raw data an
 
     try std.testing.expectEqualStrings("\x1b_Gi=7;ENODATA:insufficient kitty graphics data\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectError(error.FileNotFound, cShmOpenReadOnly(shm_name_z));
+    try std.testing.expect(terminal.kitty.main.graphics.upload == null);
+}
+
+test "kitty graphics shared memory upload truncates oversize explicit raw data and unlinks object" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    const shm_name = "/howl-kitty-graphics-oversize-test";
+    const shm_name_z = try allocator.dupeZ(u8, shm_name);
+    defer allocator.free(shm_name_z);
+    _ = c.shm_unlink(shm_name_z);
+    try writeSharedMemory(shm_name_z, "ABCXY");
+
+    const encoded_name = try base64Owned(allocator, shm_name);
+    defer allocator.free(encoded_name);
+    const seq = try std.fmt.allocPrint(allocator, "\x1b_Gi=7,s=1,v=1,S=5,t=s,m=1,f=24;{s}\x1b\\", .{encoded_name});
+    defer allocator.free(seq);
+
+    try stream.nextSlice(seq);
+
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
+    try std.testing.expectEqualStrings("QUJD", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
     try std.testing.expectError(error.FileNotFound, cShmOpenReadOnly(shm_name_z));
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
