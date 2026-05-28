@@ -3517,6 +3517,83 @@ test "kitty graphics animation frame upload stores frame metadata" {
     try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
 }
 
+test "kitty graphics oversized animation frame width rejects without storing frame" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=2,v=1,t=d,f=24;QUJDREVG\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:Frame width 2 larger than image width: 1\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+}
+
+test "kitty graphics oversized animation frame height rejects without storing frame" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=2,t=d,f=24;QUJDREVG\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:Frame height 2 larger than image height: 1\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+}
+
+test "kitty graphics oversized animation frame edit preserves existing frame" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24,z=9;CCCC\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=2,v=1,t=d,f=24,z=-1;QUJDREVG\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:Frame width 2 larger than image width: 1\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsFrameCount(&terminal));
+    const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), frame.frame_number);
+    try std.testing.expectEqual(@as(u32, 1), frame.width);
+    try std.testing.expectEqual(@as(u32, 1), frame.height);
+    try std.testing.expectEqual(@as(i32, 9), frame.gap);
+    try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
+}
+
+test "kitty graphics quiet one emits oversized animation frame failure" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=2,v=1,t=d,f=24,q=1;QUJDREVG\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:Frame width 2 larger than image width: 1\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+}
+
+test "kitty graphics quiet two suppresses oversized animation frame failure" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=2,v=1,t=d,f=24,q=2;QUJDREVG\x1b\\");
+
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
+}
+
 test "kitty graphics new animation frame without z gets default gap" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

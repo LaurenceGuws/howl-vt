@@ -1278,6 +1278,13 @@ pub const State = struct {
                 }
             };
             if (action == 'f') {
+                if (self.rejectOversizedFrameUpload(allocator, output, encode_buf, image_id, if (image_number == 0) image_id else 0, image_number, quiet, format, width, height, owned) catch |err| {
+                    allocator.free(owned);
+                    return err;
+                }) {
+                    allocator.free(owned);
+                    return null;
+                }
                 try self.storeFrameOwned(allocator, image_id, frame_number, format, width, height, upload.source_x, upload.source_y, base_frame_number, compose_mode, background_rgba, gap, owned);
             } else {
                 try self.storeImageOwned(allocator, image_id, image_number, format, width, height, owned);
@@ -1377,6 +1384,13 @@ pub const State = struct {
         } else self.imageIdForUpload(cmd);
         const owned = try allocator.dupe(u8, payload);
         if (cmd.action == 'f') {
+            if (self.rejectOversizedFrameUpload(allocator, output, encode_buf, image_id, cmd.image_id, cmd.image_number, cmd.quiet, cmd.format, cmd.width, cmd.height, owned) catch |err| {
+                allocator.free(owned);
+                return err;
+            }) {
+                allocator.free(owned);
+                return null;
+            }
             try self.storeFrameOwned(allocator, image_id, cmd.edit_frame_number, cmd.format, cmd.width, cmd.height, cmd.x, cmd.y, cmd.base_frame_number, cmd.compose_mode, cmd.background_rgba, cmd.z, owned);
         } else {
             try self.storeImageOwned(allocator, image_id, cmd.image_number, cmd.format, cmd.width, cmd.height, owned);
@@ -1404,6 +1418,30 @@ pub const State = struct {
             if (cmd.image_number != 0 and shouldReplySuccess(cmd.quiet)) try appendNumberReply(allocator, output, encode_buf, image_id, cmd.image_number, "OK");
         }
         return null;
+    }
+
+    fn rejectOversizedFrameUpload(self: *const State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32, reply_image_id: u32, reply_image_number: u32, quiet: u32, format: u16, width: u32, height: u32, owned: []const u8) host_state.ApplyError!bool {
+        const image_idx = self.findImage(image_id) orelse return false;
+        const image = self.images.items[@intCast(image_idx)];
+        const frame_size = intrinsicImageSize(format, width, height, owned) catch |err| switch (err) {
+            error.InvalidPngData => return error.ConsequenceLimit,
+            error.InvalidGraphicsData => return error.ConsequenceLimit,
+            error.OutOfMemory => return error.OutOfMemory,
+            error.ConsequenceLimit => return error.ConsequenceLimit,
+        };
+        if (frame_size.width > image.width) {
+            var msg_buf: [96]u8 = undefined;
+            const msg = std.fmt.bufPrint(&msg_buf, "EINVAL:Frame width {d} larger than image width: {d}", .{ frame_size.width, image.width }) catch unreachable;
+            if (shouldReplyFailure(quiet)) try appendPlacementReply(allocator, output, encode_buf, reply_image_id, reply_image_number, 0, msg);
+            return true;
+        }
+        if (frame_size.height > image.height) {
+            var msg_buf: [96]u8 = undefined;
+            const msg = std.fmt.bufPrint(&msg_buf, "EINVAL:Frame height {d} larger than image height: {d}", .{ frame_size.height, image.height }) catch unreachable;
+            if (shouldReplyFailure(quiet)) try appendPlacementReply(allocator, output, encode_buf, reply_image_id, reply_image_number, 0, msg);
+            return true;
+        }
+        return false;
     }
 
     const PlacementRequest = struct {
