@@ -2278,6 +2278,121 @@ test "kitty graphics animation frame upload stores frame metadata" {
     try std.testing.expectEqualStrings("CCCC", frame.base64_payload);
 }
 
+test "kitty graphics compose root frame into destination frame stores composed payload" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=2,v=2,t=d,f=32;CgAA/xQAAP8eAAD/KAAA/w==\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=2,v=2,t=d,f=32;AQEB/wICAv8DAwP/BAQE/w==\x1b\\");
+    try stream.nextSlice("\x1b_Ga=c,i=7,r=1,c=2,C=1\x1b\\");
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;OK\x1b\\", pendingOutput(&terminal));
+    const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u16, 32), frame.format);
+    try std.testing.expectEqual(@as(u32, 2), frame.width);
+    try std.testing.expectEqual(@as(u32, 2), frame.height);
+    try std.testing.expectEqualStrings("CgAA/xQAAP8eAAD/KAAA/w==", frame.base64_payload);
+}
+
+test "kitty graphics compose sub-rectangle uses X Y source and x y destination offsets" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=3,v=3,t=d,f=32;AQAA/wIAAP8DAAD/BAAA/wUAAP8GAAD/BwAA/wgAAP8JAAD/\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=3,v=3,t=d,f=32;CgAA/woAAP8KAAD/CgAA/woAAP8KAAD/CgAA/woAAP8KAAD/\x1b\\");
+    try stream.nextSlice("\x1b_Ga=c,i=7,r=1,c=2,X=1,Y=1,x=1,y=1,w=2,h=2,C=1\x1b\\");
+
+    const frame = KittyState.graphicsFrameAt(&terminal, 0).?;
+    try std.testing.expectEqualStrings("CgAA/woAAP8KAAD/CgAA/wUAAP8GAAD/CgAA/wgAAP8JAAD/", frame.base64_payload);
+}
+
+test "kitty graphics compose replacement differs from default alpha blending" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=32;AAD//w==\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=32;/wAAgA==\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,t=d,f=32;AAD//w==\x1b\\");
+
+    try stream.nextSlice("\x1b_Ga=c,i=7,r=2,c=3\x1b\\");
+    try std.testing.expectEqualStrings("gAB//w==", KittyState.graphicsFrameAt(&terminal, 1).?.base64_payload);
+
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,t=d,f=32;AAD//w==\x1b\\");
+    try stream.nextSlice("\x1b_Ga=c,i=7,r=2,c=3,C=1\x1b\\");
+    try std.testing.expectEqualStrings("/wAAgA==", KittyState.graphicsFrameAt(&terminal, 1).?.base64_payload);
+}
+
+test "kitty graphics compose missing image source and destination fail without mutation" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Ga=c,i=404,r=1,c=2\x1b\\");
+    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=32;AAD//w==\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=32;/wAAgA==\x1b\\");
+    const original = KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload;
+    try stream.nextSlice("\x1b_Ga=c,i=7,r=3,c=2\x1b\\");
+    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try stream.nextSlice("\x1b_Ga=c,i=7,r=1,c=3\x1b\\");
+    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+
+    try std.testing.expectEqualStrings("\x1b_Gi=404;ENOENT:image not found\x1b\\\x1b_Gi=7;ENOENT:source frame not found\x1b\\\x1b_Gi=7;ENOENT:destination frame not found\x1b\\", pendingOutput(&terminal));
+}
+
+test "kitty graphics compose out-of-bounds and same-frame overlap fail without mutation" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=3,v=3,t=d,f=32;AQAA/wIAAP8DAAD/BAAA/wUAAP8GAAD/BwAA/wgAAP8JAAD/\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=3,v=3,t=d,f=32;CgAA/woAAP8KAAD/CgAA/woAAP8KAAD/CgAA/woAAP8KAAD/\x1b\\");
+    const original = KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload;
+
+    try stream.nextSlice("\x1b_Ga=c,i=7,r=1,c=2,X=2,Y=0,w=2,h=1\x1b\\");
+    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try stream.nextSlice("\x1b_Ga=c,i=7,r=1,c=2,x=2,y=0,w=2,h=1\x1b\\");
+    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+    try stream.nextSlice("\x1b_Ga=c,i=7,r=2,c=2,X=0,Y=0,x=1,y=1,w=2,h=2\x1b\\");
+    try std.testing.expectEqualStrings(original, KittyState.graphicsFrameAt(&terminal, 0).?.base64_payload);
+
+    try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:compose rectangle out of bounds\x1b\\\x1b_Gi=7;EINVAL:compose rectangle out of bounds\x1b\\\x1b_Gi=7;EINVAL:compose rectangles overlap\x1b\\", pendingOutput(&terminal));
+}
+
+test "kitty graphics compose into current destination frame refreshes publication" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=32;AAD//w==\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=32;AAD//w==\x1b\\");
+    try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,t=d,f=32;/wAAgA==\x1b\\");
+    try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
+    try std.testing.expectEqualStrings("AAD//w==", KittyState.graphicsImageAt(&terminal, 0).?.base64_payload);
+
+    try stream.nextSlice("\x1b_Ga=c,i=7,r=3,c=2,C=1\x1b\\");
+
+    const image = KittyState.graphicsImageAt(&terminal, 0).?;
+    try std.testing.expectEqual(@as(u32, 2), image.current_frame_number);
+    try std.testing.expectEqualStrings("/wAAgA==", image.base64_payload);
+}
+
 test "kitty graphics client-driven current frame republishes selected raw frame" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);

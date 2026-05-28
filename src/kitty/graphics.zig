@@ -831,8 +831,7 @@ pub const State = struct {
             return try self.controlAnimation(allocator, output, encode_buf, cmd);
         }
         if (cmd.action == 'c') {
-            if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics action");
-            return .{ .changed = false, .move = null };
+            return try self.composeFrame(allocator, output, encode_buf, cmd);
         }
         if (!graphicsMediumSupported(cmd.medium)) {
             if (!cmd.quiet) try appendReply(allocator, output, encode_buf, cmd.image_id, "EINVAL:unsupported kitty graphics medium");
@@ -883,6 +882,86 @@ pub const State = struct {
             try appendNumberReply(allocator, output, encode_buf, image_id, cmd.image_number, "OK");
         }
         return .{ .changed = changed, .move = null };
+    }
+
+    fn composeFrame(self: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, cmd: KittyGraphicsCommand) host_state.ApplyError!HandleResult {
+        const image_id = self.resolveImageId(cmd) orelse {
+            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:image not found");
+            return .{ .changed = false, .move = null };
+        };
+        const image_idx = self.findImage(image_id) orelse unreachable;
+        const image = self.images.items[@intCast(image_idx)];
+        const source_frame_number = cmd.edit_frame_number;
+        const dest_frame_number = cmd.current_frame_number;
+        if (source_frame_number == 0 or !self.frameNumberExists(image_id, source_frame_number)) {
+            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:source frame not found");
+            return .{ .changed = false, .move = null };
+        }
+        if (dest_frame_number == 0 or !self.frameNumberExists(image_id, dest_frame_number)) {
+            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "ENOENT:destination frame not found");
+            return .{ .changed = false, .move = null };
+        }
+
+        const width = if (cmd.source_width != 0) cmd.source_width else image.width;
+        const height = if (cmd.source_height != 0) cmd.source_height else image.height;
+        if (!rectWithinImage(cmd.cell_x_offset, cmd.cell_y_offset, width, height, image.width, image.height) or
+            !rectWithinImage(cmd.x, cmd.y, width, height, image.width, image.height))
+        {
+            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "EINVAL:compose rectangle out of bounds");
+            return .{ .changed = false, .move = null };
+        }
+        if (source_frame_number == dest_frame_number and rectanglesOverlap(cmd.cell_x_offset, cmd.cell_y_offset, cmd.x, cmd.y, width, height)) {
+            if (!cmd.quiet) try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "EINVAL:compose rectangles overlap");
+            return .{ .changed = false, .move = null };
+        }
+
+        const target_format = self.composePublicationFormat(image, source_frame_number, dest_frame_number);
+        const source = try self.coalesceFrameNumberOwned(allocator, image, source_frame_number, target_format);
+        defer allocator.free(source);
+        const dest = try self.coalesceFrameNumberOwned(allocator, image, dest_frame_number, target_format);
+        defer allocator.free(dest);
+        composeRawRect(target_format, dest, image.width, source, cmd.cell_x_offset, cmd.cell_y_offset, cmd.x, cmd.y, width, height, !cmd.no_move_cursor);
+
+        const encoded_len = std.base64.standard.Encoder.calcSize(dest.len);
+        const freed = if (dest_frame_number == 1)
+            retainedPayloadBytesFreedByPublishedRoot(self, image_id)
+        else
+            retainedPayloadBytesFreedByFrame(self, image_id, dest_frame_number);
+        try self.ensureRetainedPayloadStore(allocator, @intCast(encoded_len), freed, image_id);
+        const encoded = try allocator.alloc(u8, encoded_len);
+        errdefer allocator.free(encoded);
+        _ = std.base64.standard.Encoder.encode(encoded, dest);
+
+        const current_image_idx = self.findImage(image_id) orelse return .{ .changed = false, .move = null };
+        var current_image = &self.images.items[@intCast(current_image_idx)];
+        if (dest_frame_number == 1) {
+            allocator.free(current_image.base64_payload);
+            current_image.base64_payload = encoded;
+            current_image.format = target_format;
+        } else {
+            const frame_idx = self.findFrameIndex(image_id, dest_frame_number) orelse unreachable;
+            const frame = &self.frames.items[@intCast(frame_idx)];
+            allocator.free(frame.base64_payload);
+            frame.format = target_format;
+            frame.width = image.width;
+            frame.height = image.height;
+            frame.x = 0;
+            frame.y = 0;
+            frame.uses_root_base = false;
+            frame.base_frame_id = 0;
+            frame.compose_mode = 1;
+            frame.background_rgba = 0;
+            frame.base64_payload = encoded;
+        }
+
+        current_image = &self.images.items[@intCast(self.findImage(image_id) orelse return .{ .changed = true, .move = null })];
+        if (current_image.current_frame_number == dest_frame_number) {
+            try self.refreshCurrentFramePublication(allocator, @intCast(self.findImage(image_id).?));
+        }
+        if (!cmd.quiet and (cmd.image_id != 0 or cmd.image_number != 0)) {
+            try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "OK");
+        }
+        return .{ .changed = true, .move = null };
     }
 
     fn queryImageSupport(self: *State, allocator: std.mem.Allocator, cmd: KittyGraphicsCommand, output: *std.ArrayList(u8), encode_buf: []u8) host_state.ApplyError!void {
@@ -1507,6 +1586,38 @@ pub const State = struct {
         const base = self.frameById(image.image_id, base_frame_id) orelse unreachable;
         if (base.format == 100) return true;
         return self.frameChainIncludesPng(image, base.base_frame_id);
+    }
+
+    fn frameNumberExists(self: *const State, image_id: u32, frame_number: u32) bool {
+        if (frame_number == 1) return self.findImage(image_id) != null;
+        return self.findFrameIndex(image_id, frame_number) != null;
+    }
+
+    fn composePublicationFormat(self: *const State, image: Image, source_frame_number: u32, dest_frame_number: u32) u16 {
+        if (self.frameNumberPublicationFormat(image, source_frame_number) == 32) return 32;
+        if (self.frameNumberPublicationFormat(image, dest_frame_number) == 32) return 32;
+        return 24;
+    }
+
+    fn frameNumberPublicationFormat(self: *const State, image: Image, frame_number: u32) u16 {
+        if (frame_number == 1) return if (image.format == 100) 32 else image.format;
+        const frame = self.frameByNumber(image.image_id, frame_number) orelse unreachable;
+        if (self.frameGraphPublishesRgba(image, frame)) return 32;
+        return frame.format;
+    }
+
+    fn coalesceFrameNumberOwned(self: *const State, allocator: std.mem.Allocator, image: Image, frame_number: u32, target_format: u16) host_state.ApplyError![]u8 {
+        if (frame_number == 1) {
+            return if (target_format == 32)
+                try decodeBase64RgbaOwned(allocator, image.format, image.width, image.height, image.base64_payload)
+            else
+                try decodeBase64RawOwned(allocator, image.format, image.width, image.height, image.base64_payload);
+        }
+        const frame = self.frameByNumber(image.image_id, frame_number) orelse unreachable;
+        return if (target_format == 32)
+            try self.coalesceFrameRgbaOwned(allocator, image, frame)
+        else
+            try self.coalesceFrameRawOwned(allocator, image, frame);
     }
 
     fn coalesceFrameRawOwned(self: *const State, allocator: std.mem.Allocator, image: Image, frame: Frame) host_state.ApplyError![]u8 {
@@ -2439,6 +2550,38 @@ fn composeRaw(format: u16, under: []u8, under_width: u32, under_height: u32, ove
             alphaBlendRgba(under[under_idx .. under_idx + 4], over[over_idx .. over_idx + 4]);
         }
     }
+}
+
+fn composeRawRect(format: u16, under: []u8, stride: u32, over: []const u8, source_x: u32, source_y: u32, dest_x: u32, dest_y: u32, width: u32, height: u32, alpha_blend: bool) void {
+    const bytes_per_pixel: usize = if (format == 24) 3 else 4;
+    var y: u32 = 0;
+    while (y < height) : (y += 1) {
+        var x: u32 = 0;
+        while (x < width) : (x += 1) {
+            const under_idx = (@as(usize, @intCast((dest_y + y) * stride + dest_x + x))) * bytes_per_pixel;
+            const over_idx = (@as(usize, @intCast((source_y + y) * stride + source_x + x))) * bytes_per_pixel;
+            if (format == 24 or !alpha_blend) {
+                @memcpy(under[under_idx .. under_idx + bytes_per_pixel], over[over_idx .. over_idx + bytes_per_pixel]);
+                continue;
+            }
+            alphaBlendRgba(under[under_idx .. under_idx + 4], over[over_idx .. over_idx + 4]);
+        }
+    }
+}
+
+fn rectWithinImage(x: u32, y: u32, width: u32, height: u32, image_width: u32, image_height: u32) bool {
+    if (width == 0 or height == 0) return false;
+    const right = std.math.add(u32, x, width) catch return false;
+    const bottom = std.math.add(u32, y, height) catch return false;
+    return right <= image_width and bottom <= image_height;
+}
+
+fn rectanglesOverlap(source_x: u32, source_y: u32, dest_x: u32, dest_y: u32, width: u32, height: u32) bool {
+    const x_end = std.math.add(u32, @min(source_x, dest_x), width) catch unreachable;
+    const y_end = std.math.add(u32, @min(source_y, dest_y), height) catch unreachable;
+    const x_overlaps = @max(source_x, dest_x) < x_end;
+    const y_overlaps = @max(source_y, dest_y) < y_end;
+    return x_overlaps and y_overlaps;
 }
 
 fn alphaBlendRgba(under: []u8, over: []const u8) void {
