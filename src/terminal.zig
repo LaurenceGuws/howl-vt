@@ -220,7 +220,6 @@ pub const Terminal = struct {
         const meta = GraphicsMeta{
             .image_count = publication.state.imageCount(),
             .placement_count = try publication.state.resolvedPlacementCount(self.allocator, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize()),
-            .virtual_placement_count = publication.state.virtualPlacementCount(),
             .is_alternate_screen = publication.is_alternate_screen,
             .publication_seq = publication.publication_seq,
             .dirty_generation = publication.dirty_generation,
@@ -250,11 +249,6 @@ pub const Terminal = struct {
     pub fn graphicsPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) (error{InvalidArgument} || host_state.ApplyError)!?kitty_types.Graphics.Placement {
         const state = try self.graphicsStateForPublication(publication_seq);
         return try state.resolvedPlacementAt(self.allocator, idx, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize());
-    }
-
-    pub fn graphicsVirtualPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.VirtualPlacement {
-        const state = try self.graphicsStateForPublication(publication_seq);
-        return state.virtualPlacementAt(idx);
     }
 
     pub fn visibleCellHyperlinkUri(self: *Terminal, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
@@ -364,7 +358,6 @@ pub const Terminal = struct {
     pub const GraphicsMeta = struct {
         image_count: u32,
         placement_count: u32,
-        virtual_placement_count: u32,
         is_alternate_screen: bool,
         publication_seq: u64,
         dirty_generation: u64,

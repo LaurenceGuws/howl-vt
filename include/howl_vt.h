@@ -227,7 +227,6 @@ typedef struct {
 typedef struct {
   uint32_t image_count;
   uint32_t placement_count;
-  uint32_t virtual_placement_count;
   uint8_t is_alternate_screen;
   uint8_t reserved0;
   uint64_t publication_seq;
@@ -294,7 +293,6 @@ typedef struct {
   uint32_t dest_grid_rows;
   uint32_t effective_columns;
   uint32_t effective_rows;
-  uint32_t flags;
   uint64_t render_order_key;
 } HowlVtGraphicsPlacement;
 
@@ -302,22 +300,6 @@ typedef struct {
   int32_t status;
   HowlVtGraphicsPlacement placement;
 } HowlVtGraphicsPlacementResult;
-
-typedef struct {
-  uint32_t image_id;
-  uint32_t placement_id;
-  uint32_t source_x;
-  uint32_t source_y;
-  uint32_t source_width;
-  uint32_t source_height;
-  uint32_t columns;
-  uint32_t rows;
-} HowlVtGraphicsVirtualPlacement;
-
-typedef struct {
-  int32_t status;
-  HowlVtGraphicsVirtualPlacement placement;
-} HowlVtGraphicsVirtualPlacementResult;
 
 typedef struct {
   int32_t status;
@@ -335,7 +317,6 @@ HowlVtVisibleMetaResult howl_vt_terminal_query_visible_meta(HowlVtHandle handle,
 HowlVtGraphicsMetaResult howl_vt_terminal_query_graphics_meta(HowlVtHandle handle);
 HowlVtGraphicsDecodedImageResult howl_vt_terminal_query_graphics_decoded_image(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index);
 HowlVtGraphicsPlacementResult howl_vt_terminal_query_graphics_placement(HowlVtHandle handle, uint64_t publication_seq, uint32_t placement_index);
-HowlVtGraphicsVirtualPlacementResult howl_vt_terminal_query_graphics_virtual_placement(HowlVtHandle handle, uint64_t publication_seq, uint32_t placement_index);
 HowlVtSurfaceResult howl_vt_terminal_copy_surface(HowlVtHandle handle, uint64_t scrollback_offset, HowlVtSurfaceCell *cells_ptr, size_t cells_cap, uint8_t *dirty_rows_ptr, size_t dirty_rows_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 HowlVtSelectionResult howl_vt_terminal_query_selection(HowlVtHandle handle);
 int32_t howl_vt_terminal_start_selection(HowlVtHandle handle, int32_t row, uint16_t col);

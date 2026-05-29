@@ -13,7 +13,6 @@ comptime {
     @export(&ffi.terminalQueryGraphicsMeta, .{ .name = "howl_vt_terminal_query_graphics_meta" });
     @export(&ffi.terminalQueryGraphicsDecodedImage, .{ .name = "howl_vt_terminal_query_graphics_decoded_image" });
     @export(&ffi.terminalQueryGraphicsPlacement, .{ .name = "howl_vt_terminal_query_graphics_placement" });
-    @export(&ffi.terminalQueryGraphicsVirtualPlacement, .{ .name = "howl_vt_terminal_query_graphics_virtual_placement" });
     @export(&ffi.terminalCopySurface, .{ .name = "howl_vt_terminal_copy_surface" });
     @export(&ffi.terminalQuerySelection, .{ .name = "howl_vt_terminal_query_selection" });
     @export(&ffi.terminalStartSelection, .{ .name = "howl_vt_terminal_start_selection" });
