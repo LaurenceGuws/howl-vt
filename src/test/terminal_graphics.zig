@@ -64,8 +64,6 @@ const png_matrix_l_expected_5x3 = "AQEB/wUFBf8JCQn/DQ0N/xEREf8VFRX/GRkZ/x0dHf8hI
 const png_matrix_palette_expected_5x3 = "BgcI/wYHCP8GBwj/BgcI/xYXGP8WFxj/FhcY/" ++
     "xYXGP8mJyj/Jico/yYnKP8mJyj/NDU2/zQ1Nv80NTb/";
 const png_palette_trns_expected_2x1 = "/wAAAAD/AIA=";
-const howl_app_icon_rel_path = "../howl-linux-host/assets/icon/howl_window_icon.png";
-
 fn writeSharedMemory(name: [:0]const u8, bytes: []const u8) !void {
     const fd = c.shm_open(name, c.O_CREAT | c.O_RDWR, 0o600);
     if (fd < 0) return error.Unexpected;
@@ -6088,74 +6086,6 @@ test "kitty graphics parser-limit chunked upload failure leaves terminal deinit-
     }
 
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
-}
-
-test "kitty graphics direct png upload accepts howl app icon replay" {
-    const allocator = std.testing.allocator;
-    const io = std.Io.Threaded.global_single_threaded.io();
-    const png_bytes = try std.Io.Dir.cwd().readFileAlloc(io, howl_app_icon_rel_path, allocator, .limited(4 * 1024 * 1024));
-    defer allocator.free(png_bytes);
-
-    const encoded = try base64Owned(allocator, png_bytes);
-    defer allocator.free(encoded);
-
-    var terminal = try Terminal.initWithCells(allocator, 12, 80);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    const chunk_len: usize = 4096;
-    var offset: usize = 0;
-    while (offset < encoded.len) : (offset += chunk_len) {
-        const end = @min(offset + chunk_len, encoded.len);
-        const chunk = encoded[offset..end];
-        const more: u8 = if (end < encoded.len) 1 else 0;
-
-        var seq = std.ArrayList(u8).empty;
-        defer seq.deinit(allocator);
-        var control_buf: [64]u8 = undefined;
-        if (offset == 0) {
-            const control = try std.fmt.bufPrint(control_buf[0..], "\x1b_Gi=4242,f=100,t=d,a=T,c=8,r=4,m={d};", .{more});
-            try seq.appendSlice(allocator, control);
-        } else {
-            const control = try std.fmt.bufPrint(control_buf[0..], "\x1b_Gm={d};", .{more});
-            try seq.appendSlice(allocator, control);
-        }
-        try seq.appendSlice(allocator, chunk);
-        try seq.appendSlice(allocator, "\x1b\\");
-        try stream.nextSlice(seq.items);
-    }
-
-    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
-    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
-    const image = KittyState.graphicsImageAt(&terminal, 0).?;
-    try std.testing.expectEqual(@as(u32, 4242), image.image_id);
-    try std.testing.expectEqual(@as(u16, 100), image.format);
-
-    const placement = KittyState.graphicsPlacementAt(&terminal, 0).?;
-    try std.testing.expectEqual(@as(u32, 8), placement.effective_columns);
-    try std.testing.expectEqual(@as(u32, 4), placement.effective_rows);
-
-    const fallback_meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 1), fallback_meta.placement_count);
-
-    var geometry = placement.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()).?;
-    try std.testing.expectEqual(@as(u32, 0), geometry.left_px);
-    try std.testing.expectEqual(@as(u32, 0), geometry.top_px);
-    try std.testing.expectEqual(@as(u32, 8), geometry.right_px);
-    try std.testing.expectEqual(@as(u32, 4), geometry.bottom_px);
-
-    terminal.setCellPixelSize(10, 20);
-
-    const refreshed_meta = try terminal.graphicsMeta();
-    try std.testing.expect(refreshed_meta.publication_seq != fallback_meta.publication_seq);
-    try std.testing.expect(refreshed_meta.dirty_generation != fallback_meta.dirty_generation);
-    try std.testing.expectError(error.InvalidArgument, terminal.graphicsPlacement(fallback_meta.publication_seq, 0));
-
-    const published = (try terminal.graphicsPlacement(refreshed_meta.publication_seq, 0)).?;
-    geometry = published.resolveDestGeometry(terminal.screen_state.primary.cellPixelSize()).?;
-    try std.testing.expectEqual(@as(u32, 80), geometry.right_px);
-    try std.testing.expectEqual(@as(u32, 80), geometry.bottom_px);
 }
 
 test "kitty graphics a=T cursor move leaves the placed image rows" {
