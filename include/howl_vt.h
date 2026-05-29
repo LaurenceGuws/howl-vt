@@ -261,25 +261,6 @@ typedef struct {
   uint32_t width;
   uint32_t height;
   uint64_t payload_len;
-} HowlVtGraphicsImage;
-
-/* Graphics payload bytes are exposed exactly as VT retains them today.
- * They are protocol payload bytes, not decoded/render-ready image bytes. */
-
-typedef struct {
-  int32_t status;
-  HowlVtGraphicsImage image;
-} HowlVtGraphicsImageResult;
-
-typedef struct {
-  uint32_t image_id;
-  uint32_t image_ref_id;
-  uint32_t image_number;
-  uint16_t format;
-  uint16_t reserved0;
-  uint32_t width;
-  uint32_t height;
-  uint64_t payload_len;
 } HowlVtGraphicsDecodedImage;
 
 /* Decoded graphics payload bytes are VT-owned image bytes copied by callers.
@@ -352,7 +333,6 @@ int32_t howl_vt_terminal_set_cell_pixel_size(HowlVtHandle handle, uint32_t width
 int32_t howl_vt_terminal_ack_surface(HowlVtHandle handle, uint64_t snapshot_seq);
 HowlVtVisibleMetaResult howl_vt_terminal_query_visible_meta(HowlVtHandle handle, uint64_t scrollback_offset);
 HowlVtGraphicsMetaResult howl_vt_terminal_query_graphics_meta(HowlVtHandle handle);
-HowlVtGraphicsImageResult howl_vt_terminal_query_graphics_image(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index);
 HowlVtGraphicsDecodedImageResult howl_vt_terminal_query_graphics_decoded_image(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index);
 HowlVtGraphicsPlacementResult howl_vt_terminal_query_graphics_placement(HowlVtHandle handle, uint64_t publication_seq, uint32_t placement_index);
 HowlVtGraphicsVirtualPlacementResult howl_vt_terminal_query_graphics_virtual_placement(HowlVtHandle handle, uint64_t publication_seq, uint32_t placement_index);
@@ -422,7 +402,6 @@ HowlVtFeedResult howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, 
  *
  * Do not mix item data from different graphics publication sequences. */
 HowlVtBytesResult howl_vt_terminal_copy_surface_hyperlink(HowlVtHandle handle, uint64_t scrollback_offset, uint64_t snapshot_seq, uint16_t row, uint16_t col, uint8_t *ptr, size_t cap);
-HowlVtBytesResult howl_vt_terminal_copy_graphics_payload(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_graphics_decoded_payload(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_selection(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_title(HowlVtHandle handle, uint8_t *ptr, size_t cap);

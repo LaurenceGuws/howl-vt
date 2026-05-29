@@ -247,11 +247,6 @@ pub const Terminal = struct {
         return self.kitty.activeGraphics(self.screen_state.alt_active).noteDrawnImageRefs(image_ref_ids);
     }
 
-    pub fn graphicsImage(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.Image {
-        const state = try self.graphicsStateForPublication(publication_seq);
-        return state.imageAt(idx);
-    }
-
     pub fn graphicsDecodedImage(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.DecodedImage {
         const state = try self.graphicsStateForPublication(publication_seq);
         return state.decodedImageAt(idx);
@@ -485,7 +480,6 @@ test "graphics publication advances on graphics mutation and alt switch" {
 
 test {
     _ = @import("test/pty_feed_record.zig");
-    _ = @import("test/terminal_graphics.zig");
     _ = @import("test/terminal_modes_reports.zig");
     _ = @import("test/terminal_osc_colors.zig");
     _ = @import("test/terminal_surface.zig");
