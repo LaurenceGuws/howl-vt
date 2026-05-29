@@ -215,7 +215,6 @@ pub const FfiGraphicsMeta = extern struct {
     image_count: u32 = 0,
     placement_count: u32 = 0,
     virtual_placement_count: u32 = 0,
-    placeholder_run_count: u32 = 0,
     is_alternate_screen: u8 = 0,
     reserved0: u8 = 0,
     publication_seq: u64 = 0,
@@ -312,24 +311,6 @@ pub const FfiGraphicsVirtualPlacement = extern struct {
 pub const FfiGraphicsVirtualPlacementResult = extern struct {
     status: i32 = @intFromEnum(HowlVtCallStatus.failed),
     placement: FfiGraphicsVirtualPlacement = .{},
-};
-
-pub const FfiGraphicsPlaceholderRun = extern struct {
-    image_id: u32 = 0,
-    placement_id: u32 = 0,
-    virtual_placement_index: u32 = 0,
-    run_order: u32 = 0,
-    cell_row: u16 = 0,
-    cell_col: u16 = 0,
-    reserved0: u32 = 0,
-    image_row: u32 = 0,
-    image_col: u32 = 0,
-    columns: u32 = 0,
-};
-
-pub const FfiGraphicsPlaceholderRunResult = extern struct {
-    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
-    run: FfiGraphicsPlaceholderRun = .{},
 };
 
 pub const FfiSurfaceResult = extern struct {
@@ -585,7 +566,6 @@ fn graphicsMetaResult(meta: terminal.Terminal.GraphicsMeta) FfiGraphicsMetaResul
             .image_count = meta.image_count,
             .placement_count = meta.placement_count,
             .virtual_placement_count = meta.virtual_placement_count,
-            .placeholder_run_count = meta.placeholder_run_count,
             .is_alternate_screen = boolByte(meta.is_alternate_screen),
             .publication_seq = meta.publication_seq,
             .dirty_generation = meta.dirty_generation,
@@ -680,23 +660,6 @@ fn graphicsVirtualPlacementResult(placement: kitty_types.Graphics.VirtualPlaceme
             .source_height = placement.source_height,
             .columns = placement.columns,
             .rows = placement.rows,
-        },
-    };
-}
-
-fn graphicsPlaceholderRunResult(run: kitty_types.Graphics.ResolvedPlaceholderRun) FfiGraphicsPlaceholderRunResult {
-    return .{
-        .status = @intFromEnum(HowlVtCallStatus.ok),
-        .run = .{
-            .image_id = run.image_id,
-            .placement_id = run.placement_id,
-            .virtual_placement_index = run.virtual_placement_index,
-            .run_order = run.run_order,
-            .cell_row = run.cell_row,
-            .cell_col = run.cell_col,
-            .image_row = run.image_row,
-            .image_col = run.image_col,
-            .columns = run.columns,
         },
     };
 }
@@ -908,17 +871,6 @@ pub fn terminalQueryGraphicsVirtualPlacement(handle: VtHandle, publication_seq: 
         return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     return graphicsVirtualPlacementResult(placement);
-}
-
-pub fn terminalQueryGraphicsPlaceholderRun(handle: VtHandle, publication_seq: u64, run_index: u32) callconv(.c) FfiGraphicsPlaceholderRunResult {
-    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const run = owned.graphicsPlaceholderRun(publication_seq, run_index) catch |err| {
-        return .{ .status = @intFromEnum(switch (err) {
-            error.InvalidArgument => HowlVtCallStatus.invalid_argument,
-            error.OutOfMemory, error.ConsequenceLimit => HowlVtCallStatus.failed,
-        }) };
-    } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    return graphicsPlaceholderRunResult(run);
 }
 
 pub fn terminalCopyGraphicsPayload(handle: VtHandle, publication_seq: u64, image_index: u32, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
@@ -1462,44 +1414,6 @@ test "vt ffi graphics queries expose chunked unicode no-move virtual contract" {
     try std.testing.expectEqual(@as(u32, 3), placement.placement.rows);
 }
 
-test "vt ffi graphics publication exposes placeholder runs" {
-    const handle = terminalInit(4, 8, 4);
-    defer terminalDeinit(handle);
-    try std.testing.expect(handle != null);
-
-    const upload = "\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\";
-    const place = "\x1b_Ga=p,i=7,p=9,U=1,c=3,r=1\x1b\\";
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalSetCellPixelSize(handle, 10, 20));
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, place.ptr, place.len).status);
-
-    const owned = vtFromHandle(handle).?;
-    var cell = screen.Screen.default_cell;
-    cell.codepoint = 0x10EEEE;
-    cell.combining_len = 2;
-    cell.combining[0] = 0x0305;
-    cell.combining[1] = 0x0305;
-    cell.attrs.fg = screen.Screen.Color.indexed(7);
-    cell.attrs.underline = true;
-    cell.attrs.underline_style = .straight;
-    cell.attrs.underline_color = screen.Screen.Color.indexed(9);
-    owned.screen_state.active().cells.?[2] = cell;
-    owned.screen_state.active().cells.?[3] = .{ .codepoint = 0x10EEEE, .attrs = cell.attrs };
-    owned.screen_state.active().cells.?[4] = .{ .codepoint = 0x10EEEE, .attrs = cell.attrs };
-    owned.postApply(true);
-
-    const meta = terminalQueryGraphicsMeta(handle);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
-    try std.testing.expectEqual(@as(u32, 0), meta.meta.placement_count);
-    try std.testing.expectEqual(@as(u32, 1), meta.meta.placeholder_run_count);
-
-    const run = terminalQueryGraphicsPlaceholderRun(handle, meta.meta.publication_seq, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), run.status);
-    try std.testing.expectEqual(@as(u32, 7), run.run.image_id);
-    try std.testing.expectEqual(@as(u32, 9), run.run.placement_id);
-    try std.testing.expectEqual(@as(u32, 3), run.run.columns);
-}
-
 test "vt ffi graphics publication token rejects stale queries" {
     const handle = terminalInit(3, 16, 4);
     defer terminalDeinit(handle);
@@ -1548,37 +1462,6 @@ test "vt ffi copies decoded graphics payload without changing base64 payload" {
 
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalQueryGraphicsDecodedImage(handle, meta.meta.publication_seq, 1).status);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalCopyGraphicsDecodedPayload(handle, meta.meta.publication_seq, 1, decoded_buf[0..].ptr, decoded_buf.len).status);
-}
-
-test "vt ffi graphics publication token rejects stale placeholder runs" {
-    const handle = terminalInit(4, 8, 4);
-    defer terminalDeinit(handle);
-    try std.testing.expect(handle != null);
-
-    const upload = "\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\";
-    const place = "\x1b_Ga=p,i=7,p=9,U=1,c=1,r=1\x1b\\";
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, place.ptr, place.len).status);
-
-    const owned = vtFromHandle(handle).?;
-    var cell = screen.Screen.default_cell;
-    cell.codepoint = 0x10EEEE;
-    cell.combining_len = 2;
-    cell.combining[0] = 0x0305;
-    cell.combining[1] = 0x0305;
-    cell.attrs.fg = screen.Screen.Color.indexed(7);
-    cell.attrs.underline = true;
-    cell.attrs.underline_style = .straight;
-    cell.attrs.underline_color = screen.Screen.Color.indexed(9);
-    owned.screen_state.active().cells.?[0] = cell;
-    owned.postApply(true);
-
-    const meta = terminalQueryGraphicsMeta(handle);
-    try std.testing.expectEqual(@as(u32, 1), meta.meta.placeholder_run_count);
-
-    const enter_alt = "\x1b[?1049h";
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, enter_alt.ptr, enter_alt.len).status);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalQueryGraphicsPlaceholderRun(handle, meta.meta.publication_seq, 0).status);
 }
 
 test "vt ffi graphics meta follows active screen only" {

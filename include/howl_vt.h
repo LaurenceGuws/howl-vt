@@ -228,7 +228,6 @@ typedef struct {
   uint32_t image_count;
   uint32_t placement_count;
   uint32_t virtual_placement_count;
-  uint32_t placeholder_run_count;
   uint8_t is_alternate_screen;
   uint8_t reserved0;
   uint64_t publication_seq;
@@ -344,24 +343,6 @@ typedef struct {
 } HowlVtGraphicsVirtualPlacementResult;
 
 typedef struct {
-  uint32_t image_id;
-  uint32_t placement_id;
-  uint32_t virtual_placement_index;
-  uint32_t run_order;
-  uint16_t cell_row;
-  uint16_t cell_col;
-  uint32_t reserved0;
-  uint32_t image_row;
-  uint32_t image_col;
-  uint32_t columns;
-} HowlVtGraphicsPlaceholderRun;
-
-typedef struct {
-  int32_t status;
-  HowlVtGraphicsPlaceholderRun run;
-} HowlVtGraphicsPlaceholderRunResult;
-
-typedef struct {
   int32_t status;
   uint64_t history_count;
   uint64_t scrollback_offset;
@@ -378,7 +359,6 @@ HowlVtGraphicsMetaResult howl_vt_terminal_query_graphics_meta(HowlVtHandle handl
 HowlVtGraphicsImageResult howl_vt_terminal_query_graphics_image(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index);
 HowlVtGraphicsDecodedImageResult howl_vt_terminal_query_graphics_decoded_image(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index);
 HowlVtGraphicsPlacementResult howl_vt_terminal_query_graphics_placement(HowlVtHandle handle, uint64_t publication_seq, uint32_t placement_index);
-HowlVtGraphicsPlaceholderRunResult howl_vt_terminal_query_graphics_placeholder_run(HowlVtHandle handle, uint64_t publication_seq, uint32_t run_index);
 HowlVtGraphicsVirtualPlacementResult howl_vt_terminal_query_graphics_virtual_placement(HowlVtHandle handle, uint64_t publication_seq, uint32_t placement_index);
 HowlVtSurfaceResult howl_vt_terminal_copy_surface(HowlVtHandle handle, uint64_t scrollback_offset, HowlVtSurfaceCell *cells_ptr, size_t cells_cap, uint8_t *dirty_rows_ptr, size_t dirty_rows_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 HowlVtSelectionResult howl_vt_terminal_query_selection(HowlVtHandle handle);

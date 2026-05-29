@@ -320,59 +320,9 @@ pub const VirtualPlacement = struct {
     }
 };
 
-pub const ResolvedPlaceholderRun = struct {
-    image_id: u32,
-    placement_id: u32,
-    virtual_placement_index: u32,
-    run_order: u32,
-    cell_row: u16,
-    cell_col: u16,
-    image_row: u32,
-    image_col: u32,
-    columns: u32,
-};
-
 const PlaceholderParentMatch = struct {
     row: RowAnchor,
     col: u16,
-};
-
-const PlaceholderCell = struct {
-    image_id_low: u32,
-    image_id_high: ?u8,
-    placement_id: u32,
-    row: ?u32,
-    col: ?u32,
-    cell_row: u16,
-    cell_col: u16,
-
-    fn imageId(self: PlaceholderCell) u32 {
-        return self.image_id_low | (@as(u32, self.image_id_high orelse 0) << 24);
-    }
-};
-
-const PlaceholderRun = struct {
-    cell: PlaceholderCell,
-    width: u32 = 1,
-
-    fn canAppend(self: PlaceholderRun, next: PlaceholderCell) bool {
-        const row = self.cell.row orelse return false;
-        const col = self.cell.col orelse return false;
-        const next_row = next.row orelse return false;
-        const next_col = next.col orelse return false;
-
-        if (self.cell.imageId() != next.imageId()) return false;
-        if (self.cell.placement_id != next.placement_id) return false;
-        if (row != next_row) return false;
-        if (next_col != col + self.width) return false;
-        if (next.cell_row != self.cell.cell_row) return false;
-        if (next.cell_col != self.cell.cell_col + self.width) return false;
-        return true;
-    }
-
-    fn append(self: *PlaceholderRun) void {
-        self.width += 1;
-    }
 };
 
 const ParentPlacementRef = struct {
@@ -742,29 +692,6 @@ pub const State = struct {
     pub fn virtualPlacementAt(self: *const State, idx: Index) ?VirtualPlacement {
         if (idx >= self.virtualPlacementCount()) return null;
         return self.virtual_placements.items[@intCast(idx)];
-    }
-
-    pub fn resolvedPlaceholderRunCount(
-        self: *const State,
-        allocator: std.mem.Allocator,
-        screen: *const screen_mod.Screen,
-    ) host_state.ApplyError!Count {
-        var count: Count = 0;
-        var context = PlaceholderRunCountContext{ .count = &count };
-        try self.walkResolvedPlaceholderRuns(allocator, screen, PlaceholderRunCountContext, &context, placeholderRunCountVisit);
-        return count;
-    }
-
-    pub fn resolvedPlaceholderRunAt(
-        self: *const State,
-        allocator: std.mem.Allocator,
-        idx: Index,
-        screen: *const screen_mod.Screen,
-    ) host_state.ApplyError!?ResolvedPlaceholderRun {
-        var found: ?ResolvedPlaceholderRun = null;
-        var context = PlaceholderRunAtContext{ .target = idx, .found = &found };
-        try self.walkResolvedPlaceholderRuns(allocator, screen, PlaceholderRunAtContext, &context, placeholderRunAtVisit);
-        return found;
     }
 
     pub fn placementAtResolved(self: *const State, idx: Index, screen: *const screen_mod.Screen) ?Placement {
@@ -2825,87 +2752,6 @@ pub const State = struct {
         return .{ .row = best_row orelse return null, .col = best_col orelse return null };
     }
 
-    fn walkResolvedPlaceholderRuns(
-        self: *const State,
-        allocator: std.mem.Allocator,
-        screen: *const screen_mod.Screen,
-        comptime Context: type,
-        context: *Context,
-        comptime visit: fn (*Context, ResolvedPlaceholderRun) bool,
-    ) host_state.ApplyError!void {
-        _ = allocator;
-        var run_order: u32 = 0;
-        var row: u16 = 0;
-        while (row < screen.rows) : (row += 1) {
-            var previous: ?PlaceholderCell = null;
-            var pending: ?PlaceholderRun = null;
-            var col: u16 = 0;
-            while (col < screen.cols) : (col += 1) {
-                var next = placeholderCellFromScreenCell(screen.cellInfoAt(row, col), row, col) orelse continue;
-                backfillPlaceholderCell(&next, previous);
-                previous = next;
-                if (pending) |*run| {
-                    if (run.canAppend(next)) {
-                        run.append();
-                        continue;
-                    }
-                    if (self.resolvedPlaceholderRunFrom(run.*, run_order)) |resolved| {
-                        if (!visit(context, resolved)) return;
-                        run_order +%= 1;
-                    }
-                }
-
-                if (next.row == null) {
-                    pending = null;
-                    continue;
-                }
-                pending = .{ .cell = next };
-            }
-
-            if (pending) |run| {
-                if (self.resolvedPlaceholderRunFrom(run, run_order)) |resolved| {
-                    if (!visit(context, resolved)) return;
-                    run_order +%= 1;
-                }
-            }
-        }
-    }
-
-    fn resolvedPlaceholderRunFrom(self: *const State, run: PlaceholderRun, run_order: u32) ?ResolvedPlaceholderRun {
-        const image_row = run.cell.row orelse return null;
-        const image_col = run.cell.col orelse return null;
-        const virtual_placement_index = self.findVirtualPlacementRunIndex(run.cell.imageId(), run.cell.placement_id) orelse return null;
-        const columns = run.width;
-        if (columns == 0) return null;
-        return .{
-            .image_id = run.cell.imageId(),
-            .placement_id = run.cell.placement_id,
-            .virtual_placement_index = virtual_placement_index,
-            .run_order = run_order,
-            .cell_row = run.cell.cell_row,
-            .cell_col = run.cell.cell_col,
-            .image_row = image_row,
-            .image_col = image_col,
-            .columns = columns,
-        };
-    }
-
-    fn findVirtualPlacementRunIndex(self: *const State, image_id: u32, placement_id: u32) ?u32 {
-        if (placement_id != 0) {
-            for (self.virtual_placements.items, 0..) |placement, idx| {
-                if (placement.image_id != image_id) continue;
-                if (placement.placement_id != placement_id) continue;
-                return std.math.cast(u32, idx) orelse unreachable;
-            }
-            return null;
-        }
-        for (self.virtual_placements.items, 0..) |placement, idx| {
-            if (placement.image_id != image_id) continue;
-            return std.math.cast(u32, idx) orelse unreachable;
-        }
-        return null;
-    }
-
     fn deleteFrames(self: *State, allocator: std.mem.Allocator, cmd: KittyGraphicsCommand) void {
         const image_id = self.resolveImageId(cmd) orelse return;
         const image_idx = self.findImage(image_id) orelse return;
@@ -3864,64 +3710,6 @@ fn scanPlaceholderParentRow(
         if (row_pos == best_row_pos.* and (best_col.* == null or col < best_col.*.?)) {
             best_col.* = col;
         }
-    }
-}
-
-const PlaceholderRunCountContext = struct {
-    count: *Count,
-};
-
-fn placeholderRunCountVisit(context: *PlaceholderRunCountContext, run: ResolvedPlaceholderRun) bool {
-    _ = run;
-    context.count.* +%= 1;
-    return true;
-}
-
-const PlaceholderRunAtContext = struct {
-    target: Index,
-    found: *?ResolvedPlaceholderRun,
-};
-
-fn placeholderRunAtVisit(context: *PlaceholderRunAtContext, run: ResolvedPlaceholderRun) bool {
-    if (run.run_order != context.target) return true;
-    context.found.* = run;
-    return false;
-}
-
-fn placeholderCellFromScreenCell(cell: screen_mod.Screen.Cell, row: u16, col: u16) ?PlaceholderCell {
-    if (screen_mod.Screen.isCellContinuation(cell)) return null;
-    if (cell.codepoint != kitty_placeholder_codepoint) return null;
-    return .{
-        .image_id_low = placeholderColorId(cell.attrs.fg),
-        .image_id_high = placeholderHighByte(cell),
-        .placement_id = placeholderColorId(cell.attrs.underline_color),
-        .row = placeholderIndex(cell, 0),
-        .col = placeholderIndex(cell, 1),
-        .cell_row = row,
-        .cell_col = col,
-    };
-}
-
-fn backfillPlaceholderCell(cell: *PlaceholderCell, previous: ?PlaceholderCell) void {
-    const continues = if (previous) |prev|
-        cell.cell_col == prev.cell_col + 1 and
-            cell.image_id_low == prev.image_id_low and
-            cell.placement_id == prev.placement_id and
-            (cell.row == null or cell.row.? == prev.row.?) and
-            (cell.col == null or cell.col.? == prev.col.? + 1) and
-            (cell.image_id_high == null or cell.image_id_high.? == prev.image_id_high.?)
-    else
-        false;
-
-    if (continues) {
-        const prev = previous.?;
-        if (cell.row == null) cell.row = prev.row.?;
-        if (cell.col == null) cell.col = prev.col.? + 1;
-        if (cell.image_id_high == null) cell.image_id_high = prev.image_id_high.?;
-    } else {
-        if (cell.row == null) cell.row = 0;
-        if (cell.col == null) cell.col = 0;
-        if (cell.image_id_high == null) cell.image_id_high = 0;
     }
 }
 
