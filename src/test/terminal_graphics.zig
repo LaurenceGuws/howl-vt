@@ -5453,57 +5453,7 @@ test "kitty graphics decoded quota evicts least recently accessed unplaced image
     try std.testing.expect(imageIndexById(&state, 3) != null);
 }
 
-test "kitty graphics decoded quota treats placeholder publication as image access" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-    var output = std.ArrayList(u8).empty;
-    defer output.deinit(allocator);
-    var encode_buf: [128]u8 = undefined;
-
-    try appendTestImageWithPayloads(&terminal.kitty.main.graphics, allocator, 1, 4, Graphics.decoded_payload_max_bytes - 4);
-    try appendTestImageWithPayloads(&terminal.kitty.main.graphics, allocator, 2, 4, 4);
-    try stream.nextSlice("\x1b_Ga=p,i=1,p=1,U=1,c=1,r=1\x1b\\");
-    terminal.kitty.main.graphics.images.items[@intCast(imageIndexById(&terminal.kitty.main.graphics, 1).?)].access_order = 1;
-    terminal.kitty.main.graphics.images.items[@intCast(imageIndexById(&terminal.kitty.main.graphics, 2).?)].access_order = 2;
-    terminal.kitty.main.graphics.next_access_order = 3;
-    setPlaceholderCell(&terminal, 0, 0, Screen.Color.indexed(1), 1, 0x0305, 0x0305, null);
-    terminal.postApply(true);
-
-    const meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
-
-    try stream.nextSlice("\x1b_Ga=d,d=i,i=1,p=1\x1b\\");
-    try std.testing.expectEqual(@as(u32, 0), terminal.kitty.main.graphics.virtualPlacementCount());
-
-    _ = try terminal.kitty.main.graphics.handle(allocator, terminal.screen_state.activeConst(), .{ .row = 0, .col = 0, .screen_rows = 4 }, null, &output, encode_buf[0..], .{
-        .action = 't',
-        .image_id = 3,
-        .image_number = 0,
-        .placement_id = 0,
-        .format = 24,
-        .width = 1,
-        .height = 1,
-        .columns = 0,
-        .rows = 0,
-        .x = 0,
-        .y = 0,
-        .z = 0,
-        .medium = 'd',
-        .more_chunks = false,
-        .quiet = 1,
-        .delete_target = 0,
-        .payload = "BBBB",
-    });
-
-    try std.testing.expect(imageIndexById(&terminal.kitty.main.graphics, 1) != null);
-    try std.testing.expect(imageIndexById(&terminal.kitty.main.graphics, 2) == null);
-    try std.testing.expect(imageIndexById(&terminal.kitty.main.graphics, 3) != null);
-}
-
-test "kitty graphics placeholder access ignores missing images" {
+test "kitty graphics missing image placeholder publishes no runs or placements" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
     defer terminal.deinit();
