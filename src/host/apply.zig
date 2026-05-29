@@ -3,11 +3,10 @@ const input = @import("../input.zig");
 const locator = @import("../control/locator.zig");
 const osc_color = @import("../control/osc_color.zig");
 const screen = @import("../screen.zig");
-const kitty = @import("../kitty.zig");
+const kitty_color = @import("../kitty/color.zig");
 const vocabulary = @import("../action/vocabulary.zig");
 
 const ScreenNs = screen.Screen;
-const KittyNs = kitty;
 const LocatorNs = locator;
 const OscColorNs = osc_color;
 const DcsPayload = vocabulary.DcsPayload;
@@ -21,7 +20,7 @@ pub fn apply(vt: anytype, action: HostAction) HostState.ApplyError!void {
         .title_set => |title| try setCurrentTitle(vt, title),
         .color_control => |cmd| {
             switch (cmd.command) {
-                21 => try KittyNs.Color.handleKittyControl(allocator, &vt.host.colors, &vt.host.pending_output, cmd.payload),
+                21 => try kitty_color.handleKittyControl(allocator, &vt.host.colors, &vt.host.pending_output, cmd.payload),
                 4 => try OscColorNs.handleXtermPaletteControl(allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], cmd.payload),
                 5 => try OscColorNs.handleXtermSpecialPaletteControl(allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], cmd.payload),
                 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 => try OscColorNs.handleXtermDynamicColor(allocator, &vt.host.colors, &vt.host.pending_output, scratch.buf[0..], cmd.command, cmd.payload),

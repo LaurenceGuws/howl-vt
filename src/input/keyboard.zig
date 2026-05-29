@@ -114,6 +114,54 @@ pub const VTERM_MOD_ALT: Modifier = 2;
 /// Control modifier bit.
 pub const VTERM_MOD_CTRL: Modifier = 4;
 
+pub const mod_none: Modifier = VTERM_MOD_NONE;
+pub const mod_shift: Modifier = VTERM_MOD_SHIFT;
+pub const mod_alt: Modifier = VTERM_MOD_ALT;
+pub const mod_ctrl: Modifier = VTERM_MOD_CTRL;
+
+pub const key_enter: Key = VTERM_KEY_ENTER;
+pub const key_tab: Key = VTERM_KEY_TAB;
+pub const key_backspace: Key = VTERM_KEY_BACKSPACE;
+pub const key_escape: Key = VTERM_KEY_ESCAPE;
+pub const key_up: Key = VTERM_KEY_UP;
+pub const key_down: Key = VTERM_KEY_DOWN;
+pub const key_left: Key = VTERM_KEY_LEFT;
+pub const key_right: Key = VTERM_KEY_RIGHT;
+pub const key_insert: Key = VTERM_KEY_INS;
+pub const key_delete: Key = VTERM_KEY_DEL;
+pub const key_home: Key = VTERM_KEY_HOME;
+pub const key_end: Key = VTERM_KEY_END;
+pub const key_pageup: Key = VTERM_KEY_PAGEUP;
+pub const key_pagedown: Key = VTERM_KEY_PAGEDOWN;
+pub const key_f1: Key = VTERM_KEY_F1;
+pub const key_f2: Key = VTERM_KEY_F2;
+pub const key_f3: Key = VTERM_KEY_F3;
+pub const key_f4: Key = VTERM_KEY_F4;
+pub const key_f5: Key = VTERM_KEY_F5;
+pub const key_f6: Key = VTERM_KEY_F6;
+pub const key_f7: Key = VTERM_KEY_F7;
+pub const key_f8: Key = VTERM_KEY_F8;
+pub const key_f9: Key = VTERM_KEY_F9;
+pub const key_f10: Key = VTERM_KEY_F10;
+pub const key_f11: Key = VTERM_KEY_F11;
+pub const key_f12: Key = VTERM_KEY_F12;
+pub const key_kp_0: Key = VTERM_KEY_KP_0;
+pub const key_kp_1: Key = VTERM_KEY_KP_1;
+pub const key_kp_2: Key = VTERM_KEY_KP_2;
+pub const key_kp_3: Key = VTERM_KEY_KP_3;
+pub const key_kp_4: Key = VTERM_KEY_KP_4;
+pub const key_kp_5: Key = VTERM_KEY_KP_5;
+pub const key_kp_6: Key = VTERM_KEY_KP_6;
+pub const key_kp_7: Key = VTERM_KEY_KP_7;
+pub const key_kp_8: Key = VTERM_KEY_KP_8;
+pub const key_kp_9: Key = VTERM_KEY_KP_9;
+pub const key_kp_decimal: Key = VTERM_KEY_KP_DECIMAL;
+pub const key_kp_add: Key = VTERM_KEY_KP_ADD;
+pub const key_kp_subtract: Key = VTERM_KEY_KP_SUBTRACT;
+pub const key_kp_multiply: Key = VTERM_KEY_KP_MULTIPLY;
+pub const key_kp_divide: Key = VTERM_KEY_KP_DIVIDE;
+pub const key_kp_enter: Key = VTERM_KEY_KP_ENTER;
+
 const max_encoded_len: usize = 32;
 
 /// Encode one host key for the active terminal keyboard modes.

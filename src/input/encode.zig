@@ -1,6 +1,6 @@
 const std = @import("std");
 const locator = @import("../control/locator.zig");
-const input = @import("../input.zig");
+const encoded_owner = @import("encoded.zig");
 const keyboard = @import("keyboard.zig");
 const mouse = @import("mouse.zig");
 
@@ -10,7 +10,7 @@ pub const Scratch = struct {
     buf: [64]u8 = undefined,
 };
 
-pub fn encodeKey(vt: anytype, scratch: *Scratch, key_value: input.Key, mod: input.Modifier) []const u8 {
+pub fn encodeKey(vt: anytype, scratch: *Scratch, key_value: keyboard.Key, mod: keyboard.Modifier) []const u8 {
     if (vt.modes.keyboard_action_mode) {
         return scratch.buf[0..0];
     }
@@ -25,7 +25,7 @@ pub fn encodeKey(vt: anytype, scratch: *Scratch, key_value: input.Key, mod: inpu
         kittyKeyboardFlags(vt),
     );
     std.debug.assert(encoded.len <= scratch.buf.len);
-    if (vt.modes.newline_mode and key_value == input.key_enter and std.mem.eql(u8, encoded, "\r")) {
+    if (vt.modes.newline_mode and key_value == keyboard.key_enter and std.mem.eql(u8, encoded, "\r")) {
         scratch.buf[0] = '\r';
         scratch.buf[1] = '\n';
         return scratch.buf[0..2];
@@ -33,7 +33,7 @@ pub fn encodeKey(vt: anytype, scratch: *Scratch, key_value: input.Key, mod: inpu
     return encoded;
 }
 
-pub fn encodeMouse(vt: anytype, scratch: *Scratch, event: input.MouseEvent) []const u8 {
+pub fn encodeMouse(vt: anytype, scratch: *Scratch, event: mouse.MouseEvent) []const u8 {
     LocatorNs.handleMouseEvent(&vt.host.locator, vt.allocator, &vt.host.pending_output, scratch.buf[0..], event);
     const encoded = mouse.encodeMouse(scratch.buf[0..], event, vt.modes.mouse_tracking, vt.modes.mouse_protocol);
     std.debug.assert(encoded.len <= scratch.buf.len);
@@ -48,7 +48,7 @@ pub fn encodeFocusOut(vt: anytype, scratch: *Scratch) []const u8 {
     return fixed(scratch, if (vt.modes.focus_reporting) "\x1b[O" else "");
 }
 
-pub fn encodePaste(vt: anytype, allocator: std.mem.Allocator, scratch: *Scratch, text: []const u8) !input.Encoded {
+pub fn encodePaste(vt: anytype, allocator: std.mem.Allocator, scratch: *Scratch, text: []const u8) !encoded_owner.Encoded {
     const start = encodePasteStart(vt, scratch);
     const end = encodePasteEnd(vt, scratch);
     if (start.len == 0 and end.len == 0) return .{ .bytes = text };

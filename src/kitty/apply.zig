@@ -1,7 +1,8 @@
 const std = @import("std");
 const input = @import("../input.zig");
 const vocabulary = @import("../action/vocabulary.zig");
-const types = @import("types.zig");
+const kitty_color = @import("color.zig");
+const kitty_state = @import("state.zig");
 const host_state = @import("../host/state.zig");
 
 const KittyNotificationCommand = vocabulary.KittyNotificationCommand;
@@ -49,8 +50,8 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!bool {
         },
         .kitty_color_stack => |cmd| {
             switch (cmd) {
-                .push => types.Color.pushState(&vt.kitty.global.color_stack, &vt.host.colors, &vt.kitty.global.color_stack_depth),
-                .pop => types.Color.popState(&vt.kitty.global.color_stack, &vt.host.colors, &vt.kitty.global.color_stack_depth),
+                .push => kitty_color.pushState(&vt.kitty.global.color_stack, &vt.host.colors, &vt.kitty.global.color_stack_depth),
+                .pop => kitty_color.popState(&vt.kitty.global.color_stack, &vt.host.colors, &vt.kitty.global.color_stack_depth),
             }
             return true;
         },
@@ -74,13 +75,13 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!bool {
     }
 }
 
-pub fn setShellMark(allocator: std.mem.Allocator, current: *types.ShellMark, mark: KittyShellMark) host_state.ApplyError!void {
+pub fn setShellMark(allocator: std.mem.Allocator, current: *kitty_state.ShellMark, mark: KittyShellMark) host_state.ApplyError!void {
     const owned = try replaceOwned(allocator, mark.metadata, host_state.retained_metadata_max_bytes);
     allocator.free(current.metadata);
     current.* = .{ .kind = mark.kind, .status = mark.status, .metadata = owned };
 }
 
-pub fn appendNotification(allocator: std.mem.Allocator, notifications: *std.ArrayList(types.NotificationRequest), notification: KittyNotificationCommand) host_state.ApplyError!void {
+pub fn appendNotification(allocator: std.mem.Allocator, notifications: *std.ArrayList(kitty_state.NotificationRequest), notification: KittyNotificationCommand) host_state.ApplyError!void {
     try ensureRetainedBound(host_state.count32(notification.metadata), host_state.retained_metadata_max_bytes);
     try ensureRetainedBound(host_state.count32(notification.payload), host_state.retained_metadata_max_bytes);
     const metadata = try allocator.dupe(u8, notification.metadata);
