@@ -409,58 +409,6 @@ test "copy surface exports bounded combining truth" {
     try std.testing.expectEqual(@as(u32, 0x0300), cells[0].combining[0]);
 }
 
-test "copy surface blanks kitty placeholder while preserving screen truth" {
-    const handle = ffi.terminalInit(1, 2, 4);
-    defer ffi.terminalDeinit(handle);
-
-    const terminal = terminalFromHandle(handle);
-    var placeholder = Screen.default_cell;
-    placeholder.codepoint = 0x10EEEE;
-    placeholder.combining_len = 3;
-    placeholder.combining = .{ 0x0305, 0x030D, 0x030E };
-    placeholder.attrs.fg = Screen.Color.indexed(7);
-    placeholder.attrs.bg = Screen.Color.indexed(42);
-    placeholder.attrs.underline = true;
-    placeholder.attrs.underline_color = Screen.Color.indexed(9);
-    placeholder.attrs.strikethrough = true;
-    terminal.screen_state.active().cells.?[0] = placeholder;
-
-    const internal_before = terminal.screen_state.activeConst().cellInfoAt(0, 0);
-    try std.testing.expectEqual(@as(u32, 0x10EEEE), internal_before.codepoint);
-    try std.testing.expectEqual(@as(u8, 3), internal_before.combining_len);
-    try std.testing.expectEqualSlices(u32, &.{ 0x0305, 0x030D, 0x030E }, internal_before.combining[0..3]);
-    try std.testing.expectEqual(Screen.Color.indexed(7), internal_before.attrs.fg);
-    try std.testing.expectEqual(Screen.Color.indexed(9), internal_before.attrs.underline_color);
-    try std.testing.expect(internal_before.attrs.underline);
-
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), ffi.terminalStartSelection(handle, 0, 0));
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), ffi.terminalUpdateSelection(handle, 0, 0));
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), ffi.terminalFinishSelection(handle));
-
-    var cells: [2]ffi.FfiSurfaceCell = undefined;
-    var dirty_rows: [1]u8 = undefined;
-    var cols_start: [1]u16 = undefined;
-    var cols_end: [1]u16 = undefined;
-    _ = try copySurfaceOk(handle, 1, 2, &cells, &dirty_rows, &cols_start, &cols_end);
-
-    try std.testing.expectEqual(@as(u32, ' '), cells[0].codepoint);
-    try std.testing.expectEqual(@as(u8, 0), cells[0].combining_len);
-    try std.testing.expectEqualSlices(u32, &.{ 0, 0, 0 }, cells[0].combining[0..3]);
-    try std.testing.expectEqual(@as(u8, 0), cells[0].attrs.underline);
-    try std.testing.expectEqual(@as(u8, 0), cells[0].attrs.underline_color_set);
-    try std.testing.expectEqual(@as(u8, 0), cells[0].underline_color.kind);
-    try std.testing.expectEqual(@as(u32, 0), cells[0].underline_color.value);
-    try std.testing.expectEqual(@as(u8, 0), cells[0].attrs.strikethrough);
-    try std.testing.expectEqual(@as(u8, 1), cells[0].bg_color.kind);
-    try std.testing.expectEqual(@as(u32, 42), cells[0].bg_color.value);
-    try std.testing.expectEqual(@as(u8, 1), cells[0].attrs.selected);
-
-    const internal_after = terminal.screen_state.activeConst().cellInfoAt(0, 0);
-    try std.testing.expectEqual(@as(u32, 0x10EEEE), internal_after.codepoint);
-    try std.testing.expectEqual(@as(u8, 3), internal_after.combining_len);
-    try std.testing.expectEqualSlices(u32, &.{ 0x0305, 0x030D, 0x030E }, internal_after.combining[0..3]);
-}
-
 test "copy surface keeps metadata on invalid output pointers" {
     const handle = ffi.terminalInit(2, 4, 4);
     defer ffi.terminalDeinit(handle);

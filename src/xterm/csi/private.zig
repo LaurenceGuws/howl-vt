@@ -71,7 +71,6 @@ fn basicModeToggle(final: u8, mode: i32) ?SemanticEvent {
         66 => boolEvent(final, .{ .application_keypad = true }, .{ .application_keypad = false }),
         69 => boolEvent(final, .{ .left_right_margin_mode = true }, .{ .left_right_margin_mode = false }),
         45 => boolEvent(final, .{ .reverse_wraparound_mode = true }, .{ .reverse_wraparound_mode = false }),
-        80 => boolEvent(final, .{ .sixel_display_mode = true }, .{ .sixel_display_mode = false }),
         1004 => boolEvent(final, .{ .focus_reporting = true }, .{ .focus_reporting = false }),
         2004 => boolEvent(final, .{ .bracketed_paste = true }, .{ .bracketed_paste = false }),
         2026 => boolEvent(final, .{ .synchronized_output = true }, .{ .synchronized_output = false }),

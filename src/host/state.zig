@@ -213,10 +213,6 @@ pub fn kittyClipboardMode(vt: anytype) bool {
     return vt.modes.kitty_clipboard;
 }
 
-pub fn sixelDisplayMode(vt: anytype) bool {
-    return vt.modes.sixel_display_mode;
-}
-
 pub fn reverseWraparoundMode(vt: anytype) bool {
     return vt.modes.reverse_wraparound_mode;
 }

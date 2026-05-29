@@ -4,11 +4,6 @@
 
 const std = @import("std");
 
-fn addStbImage(module: *std.Build.Module, b: *std.Build) void {
-    module.addIncludePath(b.path("../howl-render/src"));
-    module.addCSourceFile(.{ .file = b.path("../howl-render/src/stb_image.c") });
-}
-
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -25,7 +20,6 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     internal_mod.addOptions("vt_options", module_options);
-    addStbImage(internal_mod, b);
     const scrollback_verifier_mod = b.createModule(.{
         .root_source_file = b.path("src/fuzz/scrollback.zig"),
         .target = target,
@@ -57,7 +51,6 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     abi_ffi_mod.addOptions("vt_options", ffi_options);
-    addStbImage(abi_ffi_mod, b);
     abi_mod.addImport("ffi", abi_ffi_mod);
     const abi_tests = b.addTest(.{
         .name = "test-abi",
@@ -90,7 +83,6 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     ffi_mod.addOptions("vt_options", ffi_options);
-    addStbImage(ffi_mod, b);
     const ffi_lib = b.addLibrary(.{
         .name = "howl_vt",
         .linkage = .dynamic,
@@ -114,7 +106,6 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     snapshot_regression_mod.addOptions("vt_options", module_options);
-    addStbImage(snapshot_regression_mod, b);
 
     const scrollback_regression_tests = b.addTest(.{
         .name = "test-regression-scrollback",
@@ -170,7 +161,6 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseFast,
         .link_libc = true,
     });
-    addStbImage(baseline_mod, b);
     const baseline_exe = b.addExecutable(.{
         .name = "m7_baseline",
         .root_module = baseline_mod,

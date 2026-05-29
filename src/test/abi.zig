@@ -9,7 +9,6 @@ comptime {
     std.debug.assert(@sizeOf(ffi.FfiBytesResult) == @sizeOf(c.HowlVtBytesResult));
     std.debug.assert(@sizeOf(ffi.FfiFeedResult) == @sizeOf(c.HowlVtFeedResult));
     std.debug.assert(@sizeOf(ffi.FfiVisibleMetaResult) == @sizeOf(c.HowlVtVisibleMetaResult));
-    std.debug.assert(@sizeOf(ffi.FfiGraphicsMetaResult) == @sizeOf(c.HowlVtGraphicsMetaResult));
     std.debug.assert(@sizeOf(ffi.FfiRuntimeObligationResult) == @sizeOf(c.HowlVtRuntimeObligationResult));
     std.debug.assert(@sizeOf(ffi.FfiRuntimeProgressResult) == @sizeOf(c.HowlVtRuntimeProgressResult));
     std.debug.assert(@sizeOf(ffi.FfiSelectionResult) == @sizeOf(c.HowlVtSelectionResult));
@@ -34,7 +33,6 @@ test "vt abi null handles report missing-handle contract" {
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalFeed(null, null, 0).status);
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalCopyTitle(null, null, 0).status);
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalQueryVisibleMeta(null, 0).status);
-    try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalQueryGraphicsMeta(null).status);
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalQuerySelection(null).status);
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalQueryRuntimeObligation(null, 0).status);
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalProgressRuntime(null, 0).status);

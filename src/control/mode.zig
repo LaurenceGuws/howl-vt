@@ -21,7 +21,6 @@ pub const State = struct {
     bracketed_paste: bool = false,
     synchronized_output: bool = false,
     kitty_clipboard: bool = false,
-    sixel_display_mode: bool = false,
     reverse_wraparound_mode: bool = false,
     extended_reverse_wraparound_mode: bool = false,
     mouse_tracking: Input.MouseTrackingMode = .off,
@@ -50,7 +49,6 @@ pub fn apply(vt: anytype, mode_action: ModeAction) void {
         },
         .pointer_mode => |value| vt.modes.pointer_mode = value,
         .kitty_clipboard_mode => |enabled| vt.modes.kitty_clipboard = enabled,
-        .sixel_display_mode => |enabled| vt.modes.sixel_display_mode = enabled,
         .reverse_wraparound_mode => |enabled| vt.modes.reverse_wraparound_mode = enabled,
         .extended_reverse_wraparound_mode => |enabled| vt.modes.extended_reverse_wraparound_mode = enabled,
         .focus_reporting => |enabled| vt.modes.focus_reporting = enabled,
@@ -185,7 +183,6 @@ pub fn setAnsiModes(vt: anytype, modes: []const u16, enabled: bool) void {
 }
 
 pub fn enterAltScreen(vt: anytype, clear_alt: bool, save_cursor: bool) void {
-    if (clear_alt) vt.kitty.alt.graphics.reset(vt.allocator);
     vt.screen_state.enterAlt(clear_alt, save_cursor);
 }
 

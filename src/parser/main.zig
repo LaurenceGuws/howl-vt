@@ -41,7 +41,7 @@ const metadata_control_max_bytes = 4096;
 const large_osc_control_max_bytes = 1024 * 1024;
 // APC is the one owned string-control family that legitimately carries large
 // Kitty payload chunks. Ghostty gives Kitty APC a much larger default budget
-// because real direct-upload image traffic can exceed a 1 MiB burst easily.
+// because oversized string controls should fail before unbounded buffering.
 // Keep Howl explicit and bounded, but follow Ghostty's larger remote-upload
 // posture rather than reusing the generic large-OSC ceiling.
 const apc_max_bytes = 65 * 1024 * 1024;

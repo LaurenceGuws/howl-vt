@@ -3,7 +3,6 @@ const host_apply = @import("../host/apply.zig");
 const kitty_apply = @import("../kitty/apply.zig");
 const mode_apply = @import("../control/mode.zig");
 const report_apply = @import("../control/report.zig");
-const apc = @import("../kitty/apc.zig");
 const parsed_events = @import("../parser/events.zig");
 const c0 = @import("../xterm/c0.zig");
 const csi = @import("../xterm/csi.zig");
@@ -41,7 +40,7 @@ pub fn process(event: Event) ?SemanticEvent {
         .control => |c| return c0.process(c),
         .osc => |osc_event| return osc.process(osc_event),
         .esc_dispatch => |esc_dispatch| return esc.process(esc_dispatch.final),
-        .apc => |apc_data| return apc.process(apc_data),
+        .apc => return null,
         .dcs => |dcs_data| return dcs.process(dcs_data),
         .pm, .invalid_sequence => return null,
     }
@@ -90,91 +89,8 @@ fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!bool {
         return true;
     }
     const screen_event = screenAction(event) orelse unreachable;
-    applyGraphicsBeforeScreen(vt, screen_event);
     vt.screen_state.active().applyScreen(screen_event);
     return true;
-}
-
-fn applyGraphicsBeforeScreen(vt: anytype, screen_event: ScreenAction) void {
-    const active = vt.screen_state.activeConst();
-    if (active.rows == 0) return;
-    const margin_active = active.scroll_top != 0 or active.scrollBottom() != active.rows - 1;
-    const full_page = !active.left_right_margin_mode and active.scroll_top == 0 and active.scrollBottom() == active.rows - 1;
-
-    switch (screen_event) {
-        .line_feed, .next_line => {
-            if (active.cursor_row != active.scrollBottom()) return;
-            if (full_page) {
-                applyGraphicsScrollUp(vt, 1);
-                return;
-            }
-            if (!margin_active or active.left_right_margin_mode) return;
-            applyGraphicsScrollUpMargins(vt, 1);
-        },
-        .reverse_index => {
-            if (active.cursor_row != active.scroll_top) return;
-            if (full_page) {
-                applyGraphicsScrollDown(vt, 1);
-                return;
-            }
-            if (!margin_active or active.left_right_margin_mode) return;
-            applyGraphicsScrollDownMargins(vt, 1);
-        },
-        .scroll_up_lines => |count| {
-            if (full_page) {
-                applyGraphicsScrollUp(vt, count);
-                return;
-            }
-            if (!margin_active or active.left_right_margin_mode) return;
-            applyGraphicsScrollUpMargins(vt, count);
-        },
-        .scroll_down_lines => |count| {
-            if (full_page) {
-                applyGraphicsScrollDown(vt, count);
-                return;
-            }
-            if (!margin_active or active.left_right_margin_mode) return;
-            applyGraphicsScrollDownMargins(vt, count);
-        },
-        .erase_display => |mode| {
-            if (mode == 2 or mode == 3) vt.kitty.activeGraphics(vt.screen_state.alt_active).clearVisiblePlacements(vt.screen_state.activeConst());
-        },
-        else => {},
-    }
-}
-
-fn applyGraphicsScrollUp(vt: anytype, count: u16) void {
-    const active = vt.screen_state.activeConst();
-    const projected_history_count = if (vt.screen_state.alt_active)
-        0
-    else blk: {
-        const next = @min(active.historyCount() + count, active.historyCapacity());
-        break :blk next;
-    };
-    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollUpFullPage(active, projected_history_count, count, !vt.screen_state.alt_active);
-}
-
-fn applyGraphicsScrollDown(vt: anytype, count: u16) void {
-    const active = vt.screen_state.activeConst();
-    const amount = @min(count, active.rows);
-    if (amount == 0) return;
-    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollDownFullPage(active, amount);
-}
-
-fn applyGraphicsScrollUpMargins(vt: anytype, count: u16) void {
-    const active = vt.screen_state.activeConst();
-    const cell = active.cellPixelSize() orelse return;
-    const amount = @min(count, active.scrollBottom() - active.scroll_top + 1);
-    if (amount == 0) return;
-    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollUpRegion(active, active.scroll_top, active.scrollBottom(), amount, cell);
-}
-
-fn applyGraphicsScrollDownMargins(vt: anytype, count: u16) void {
-    const active = vt.screen_state.activeConst();
-    const cell = active.cellPixelSize() orelse return;
-    const amount = @min(count, active.scrollBottom() - active.scroll_top + 1);
-    if (amount == 0) return;
-    vt.kitty.activeGraphics(vt.screen_state.alt_active).scrollDownRegion(active, active.scroll_top, active.scrollBottom(), amount, cell);
 }
 
 pub fn screenAction(event: SemanticEvent) ?ScreenAction {
@@ -283,7 +199,6 @@ fn modeAction(event: SemanticEvent) ?ModeAction {
         .key_format_change => |v| ModeAction{ .key_format_change = v },
         .pointer_mode => |v| ModeAction{ .pointer_mode = v },
         .kitty_clipboard_mode => |v| ModeAction{ .kitty_clipboard_mode = v },
-        .sixel_display_mode => |v| ModeAction{ .sixel_display_mode = v },
         .reverse_wraparound_mode => |v| ModeAction{ .reverse_wraparound_mode = v },
         .extended_reverse_wraparound_mode => |v| ModeAction{ .extended_reverse_wraparound_mode = v },
         .focus_reporting => |v| ModeAction{ .focus_reporting = v },
@@ -316,7 +231,6 @@ fn kittyAction(event: SemanticEvent) ?KittyAction {
         .kitty_multiple_cursor => |v| KittyAction{ .kitty_multiple_cursor = v },
         .kitty_file_transfer => |v| KittyAction{ .kitty_file_transfer = v },
         .kitty_text_size => |v| KittyAction{ .kitty_text_size = v },
-        .kitty_graphics => |v| KittyAction{ .kitty_graphics = v },
         else => null,
     };
 }

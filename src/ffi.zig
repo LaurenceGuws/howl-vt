@@ -3,7 +3,6 @@ const screen = @import("screen.zig");
 const input = @import("input.zig");
 const selection = @import("selection.zig");
 const host_state = @import("host/state.zig");
-const kitty_types = @import("kitty/types.zig");
 const screen_set = @import("screen_set.zig");
 const terminal = @import("terminal.zig");
 
@@ -17,8 +16,6 @@ comptime {
     std.debug.assert(@sizeOf(input.Scratch) == 64);
     std.debug.assert(@sizeOf(FfiRgb8) == 3);
     std.debug.assert(@sizeOf(FfiRenderColorState) == 777);
-    std.debug.assert(@sizeOf(FfiGraphicsPlacement) == 96);
-    std.debug.assert(@offsetOf(FfiGraphicsPlacement, "render_order_key") == 88);
 }
 
 pub const HowlVtCallStatus = enum(c_int) {
@@ -29,8 +26,6 @@ pub const HowlVtCallStatus = enum(c_int) {
     short_buffer = -4,
     limit_reached = -5,
 };
-
-const kitty_placeholder_codepoint: u32 = 0x10EEEE;
 
 pub const FfiColor = extern struct {
     kind: u8 = 0,
@@ -208,74 +203,6 @@ pub const FfiVisibleMetaResult = extern struct {
     meta: FfiVisibleMeta = .{},
 };
 
-pub const FfiGraphicsMeta = extern struct {
-    image_count: u32 = 0,
-    placement_count: u32 = 0,
-    is_alternate_screen: u8 = 0,
-    reserved0: u8 = 0,
-    publication_seq: u64 = 0,
-    dirty_generation: u64 = 0,
-};
-
-pub const FfiGraphicsMetaResult = extern struct {
-    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
-    meta: FfiGraphicsMeta = .{},
-};
-
-pub const FfiGraphicsRowAnchor = extern struct {
-    kind: u8 = 0,
-    reserved0: u8 = 0,
-    reserved1: u16 = 0,
-    value: u32 = 0,
-};
-
-pub const FfiGraphicsDecodedImage = extern struct {
-    image_id: u32 = 0,
-    image_ref_id: u32 = 0,
-    image_number: u32 = 0,
-    format: u16 = 0,
-    reserved0: u16 = 0,
-    width: u32 = 0,
-    height: u32 = 0,
-    payload_len: u64 = 0,
-};
-
-pub const FfiGraphicsDecodedImageResult = extern struct {
-    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
-    image: FfiGraphicsDecodedImage = .{},
-};
-
-pub const FfiGraphicsPlacement = extern struct {
-    image_id: u32 = 0,
-    placement_id: u32 = 0,
-    z_index: i32 = 0,
-    anchor: FfiGraphicsRowAnchor = .{},
-    anchor_col: u16 = 0,
-    reserved0: u16 = 0,
-    source_x: u32 = 0,
-    source_y: u32 = 0,
-    source_width: u32 = 0,
-    source_height: u32 = 0,
-    cell_x_offset: u32 = 0,
-    cell_y_offset: u32 = 0,
-    columns: u32 = 0,
-    rows: u32 = 0,
-    dest_left_cell_px: u32 = 0,
-    dest_top_cell_px: u32 = 0,
-    dest_right_cell_px: u32 = 0,
-    dest_bottom_cell_px: u32 = 0,
-    dest_grid_columns: u32 = 0,
-    dest_grid_rows: u32 = 0,
-    effective_columns: u32 = 0,
-    effective_rows: u32 = 0,
-    render_order_key: u64 = 0,
-};
-
-pub const FfiGraphicsPlacementResult = extern struct {
-    status: i32 = @intFromEnum(HowlVtCallStatus.failed),
-    placement: FfiGraphicsPlacement = .{},
-};
-
 pub const FfiSurfaceResult = extern struct {
     status: i32 = @intFromEnum(HowlVtCallStatus.failed),
     history_count: u64 = 0,
@@ -351,7 +278,7 @@ fn renderColorStateOut(value: anytype) FfiRenderColorState {
 }
 
 fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
-    var out = FfiSurfaceCell{
+    const out = FfiSurfaceCell{
         .codepoint = value.codepoint,
         .combining_len = value.combining_len,
         .combining = value.combining,
@@ -374,16 +301,6 @@ fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
         },
         .link_id = value.attrs.link_id,
     };
-    if (value.codepoint == kitty_placeholder_codepoint and out.flags.continuation == 0) {
-        out.codepoint = ' ';
-        out.combining_len = 0;
-        out.combining = [_]u32{0} ** 3;
-        out.underline_color = .{};
-        out.underline_style = 0;
-        out.attrs.underline = 0;
-        out.attrs.underline_color_set = 0;
-        out.attrs.strikethrough = 0;
-    }
     return out;
 }
 
@@ -519,78 +436,6 @@ fn runtimeProgressResult(value: terminal.Terminal.RuntimeProgress) FfiRuntimePro
         .status = @intFromEnum(HowlVtCallStatus.ok),
         .state_changed = boolByte(value.state_changed),
         .obligation = runtimeObligationOut(value.obligation),
-    };
-}
-
-fn graphicsMetaResult(meta: terminal.Terminal.GraphicsMeta) FfiGraphicsMetaResult {
-    return .{
-        .status = @intFromEnum(HowlVtCallStatus.ok),
-        .meta = .{
-            .image_count = meta.image_count,
-            .placement_count = meta.placement_count,
-            .is_alternate_screen = boolByte(meta.is_alternate_screen),
-            .publication_seq = meta.publication_seq,
-            .dirty_generation = meta.dirty_generation,
-        },
-    };
-}
-
-fn graphicsRowAnchorOut(value: kitty_types.Graphics.RowAnchor) FfiGraphicsRowAnchor {
-    return switch (value) {
-        .on_screen => |row| .{ .kind = 1, .value = row },
-        .scrollback_above => |rows| .{ .kind = 2, .value = rows },
-        .below_screen => |rows| .{ .kind = 3, .value = rows },
-    };
-}
-
-fn graphicsDecodedImageResult(image: kitty_types.Graphics.DecodedImage) FfiGraphicsDecodedImageResult {
-    return .{
-        .status = @intFromEnum(HowlVtCallStatus.ok),
-        .image = .{
-            .image_id = image.image_id,
-            .image_ref_id = image.image_ref_id,
-            .image_number = image.image_number,
-            .format = image.format,
-            .width = image.width,
-            .height = image.height,
-            .payload_len = image.payload.len,
-        },
-    };
-}
-
-fn graphicsPlacementResult(placement: kitty_types.Graphics.Placement) FfiGraphicsPlacementResult {
-    return graphicsPlacementResultWithCell(placement, null);
-}
-
-fn graphicsPlacementResultWithCell(placement: kitty_types.Graphics.Placement, cell_pixel_size: ?screen.Screen.CellPixelSize) FfiGraphicsPlacementResult {
-    const dest = placement.resolveDestGeometry(cell_pixel_size);
-    std.debug.assert(placement.render_order_key != 0);
-    return .{
-        .status = @intFromEnum(HowlVtCallStatus.ok),
-        .placement = .{
-            .image_id = placement.image_id,
-            .placement_id = placement.placement_id,
-            .z_index = placement.z_index,
-            .anchor = graphicsRowAnchorOut(placement.anchor_row),
-            .anchor_col = placement.anchor_col,
-            .source_x = placement.source_x,
-            .source_y = placement.source_y,
-            .source_width = placement.source_width,
-            .source_height = placement.source_height,
-            .cell_x_offset = placement.cell_x_offset,
-            .cell_y_offset = placement.cell_y_offset,
-            .columns = placement.columns,
-            .rows = placement.rows,
-            .dest_left_cell_px = if (dest) |value| value.left_px else 0,
-            .dest_top_cell_px = if (dest) |value| value.top_px else 0,
-            .dest_right_cell_px = if (dest) |value| value.right_px else 0,
-            .dest_bottom_cell_px = if (dest) |value| value.bottom_px else 0,
-            .dest_grid_columns = placement.effective_columns,
-            .dest_grid_rows = placement.effective_rows,
-            .effective_columns = placement.effective_columns,
-            .effective_rows = placement.effective_rows,
-            .render_order_key = placement.render_order_key,
-        },
     };
 }
 
@@ -760,40 +605,6 @@ pub fn terminalAckSurface(handle: VtHandle, snapshot_seq: u64) callconv(.c) i32 
 pub fn terminalQueryVisibleMeta(handle: VtHandle, scrollback_offset: u64) callconv(.c) FfiVisibleMetaResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     return visibleMetaResult(owned.visibleMeta(scrollback_offset));
-}
-
-pub fn terminalQueryGraphicsMeta(handle: VtHandle) callconv(.c) FfiGraphicsMetaResult {
-    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const meta = owned.graphicsMeta() catch return .{ .status = @intFromEnum(HowlVtCallStatus.failed) };
-    return graphicsMetaResult(meta);
-}
-
-pub fn terminalQueryGraphicsDecodedImage(handle: VtHandle, publication_seq: u64, image_index: u32) callconv(.c) FfiGraphicsDecodedImageResult {
-    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const image = owned.graphicsDecodedImage(publication_seq, image_index) catch {
-        return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    return graphicsDecodedImageResult(image);
-}
-
-pub fn terminalQueryGraphicsPlacement(handle: VtHandle, publication_seq: u64, placement_index: u32) callconv(.c) FfiGraphicsPlacementResult {
-    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const placement = owned.graphicsPlacement(publication_seq, placement_index) catch |err| {
-        return .{ .status = @intFromEnum(switch (err) {
-            error.InvalidArgument => HowlVtCallStatus.invalid_argument,
-            error.OutOfMemory, error.ConsequenceLimit => HowlVtCallStatus.failed,
-        }) };
-    } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    return graphicsPlacementResultWithCell(placement, owned.screen_state.activeConst().cellPixelSize());
-}
-
-pub fn terminalCopyGraphicsDecodedPayload(handle: VtHandle, publication_seq: u64, image_index: u32, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
-    const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
-    const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const image = owned.graphicsDecodedImage(publication_seq, image_index) catch {
-        return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    } orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    return copyBytes(out, image.payload);
 }
 
 pub fn terminalCopySurface(handle: VtHandle, scrollback_offset: u64, cells_ptr: ?[*]FfiSurfaceCell, cells_cap: usize, dirty_rows_ptr: ?[*]u8, dirty_rows_cap: usize, cols_start_ptr: ?[*]u16, cols_start_cap: usize, cols_end_ptr: ?[*]u16, cols_end_cap: usize) callconv(.c) FfiSurfaceResult {
@@ -1124,174 +935,6 @@ test "vt ffi query visible meta reports explicit surface metadata" {
     try std.testing.expectEqual(@as(u8, 0), meta.meta.is_alternate_screen);
     try std.testing.expect(meta.meta.snapshot_seq != 0);
     try std.testing.expect(meta.meta.dirty_generation != 0);
-}
-
-fn testRawRgbBase64Owned(allocator: std.mem.Allocator, width: usize, height: usize) ![]u8 {
-    const raw = try allocator.alloc(u8, width * height * 3);
-    defer allocator.free(raw);
-    @memset(raw, 0);
-    const encoded = try allocator.alloc(u8, std.base64.standard.Encoder.calcSize(raw.len));
-    _ = std.base64.standard.Encoder.encode(encoded, raw);
-    return encoded;
-}
-
-test "vt ffi graphics queries expose active-screen retained truth" {
-    const handle = terminalInit(4, 16, 4);
-    defer terminalDeinit(handle);
-    try std.testing.expect(handle != null);
-
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalSetCellPixelSize(handle, 10, 20));
-
-    const payload = try testRawRgbBase64Owned(std.testing.allocator, 11, 13);
-    defer std.testing.allocator.free(payload);
-    const upload = try std.fmt.allocPrint(std.testing.allocator, "\x1b_Gi=7,s=11,v=13,t=d,f=24;{s}\x1b\\", .{payload});
-    defer std.testing.allocator.free(upload);
-    const place = "\x1b[3;5H\x1b_Ga=p,i=7,p=9,x=2,y=4,w=6,h=8,X=3,Y=5,c=10,r=12,z=-7\x1b\\";
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, place.ptr, place.len).status);
-
-    const meta = terminalQueryGraphicsMeta(handle);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
-    try std.testing.expectEqual(@as(u32, 1), meta.meta.image_count);
-    try std.testing.expectEqual(@as(u32, 1), meta.meta.placement_count);
-    try std.testing.expectEqual(@as(u8, 0), meta.meta.is_alternate_screen);
-    try std.testing.expect(meta.meta.publication_seq != 0);
-
-    const image = terminalQueryGraphicsDecodedImage(handle, meta.meta.publication_seq, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), image.status);
-    try std.testing.expectEqual(@as(u32, 7), image.image.image_id);
-    try std.testing.expectEqual(@as(u32, 0), image.image.image_number);
-    try std.testing.expectEqual(@as(u16, 24), image.image.format);
-    try std.testing.expectEqual(@as(u32, 11), image.image.width);
-    try std.testing.expectEqual(@as(u32, 13), image.image.height);
-    try std.testing.expectEqual(@as(u64, 11 * 13 * 3), image.image.payload_len);
-
-    const placement = terminalQueryGraphicsPlacement(handle, meta.meta.publication_seq, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), placement.status);
-    try std.testing.expectEqual(@as(u32, 7), placement.placement.image_id);
-    try std.testing.expectEqual(@as(u32, 9), placement.placement.placement_id);
-    try std.testing.expectEqual(@as(i32, -7), placement.placement.z_index);
-    try std.testing.expectEqual(@as(u8, 1), placement.placement.anchor.kind);
-    try std.testing.expectEqual(@as(u32, 2), placement.placement.anchor.value);
-    try std.testing.expectEqual(@as(u16, 4), placement.placement.anchor_col);
-    try std.testing.expectEqual(@as(u32, 2), placement.placement.source_x);
-    try std.testing.expectEqual(@as(u32, 4), placement.placement.source_y);
-    try std.testing.expectEqual(@as(u32, 6), placement.placement.source_width);
-    try std.testing.expectEqual(@as(u32, 8), placement.placement.source_height);
-    try std.testing.expectEqual(@as(u32, 3), placement.placement.cell_x_offset);
-    try std.testing.expectEqual(@as(u32, 5), placement.placement.cell_y_offset);
-    try std.testing.expectEqual(@as(u32, 10), placement.placement.columns);
-    try std.testing.expectEqual(@as(u32, 12), placement.placement.rows);
-    try std.testing.expectEqual(@as(u32, 3), placement.placement.dest_left_cell_px);
-    try std.testing.expectEqual(@as(u32, 5), placement.placement.dest_top_cell_px);
-    try std.testing.expectEqual(@as(u32, 103), placement.placement.dest_right_cell_px);
-    try std.testing.expectEqual(@as(u32, 245), placement.placement.dest_bottom_cell_px);
-    try std.testing.expectEqual(@as(u32, 10), placement.placement.dest_grid_columns);
-    try std.testing.expectEqual(@as(u32, 12), placement.placement.dest_grid_rows);
-    try std.testing.expectEqual(@as(u32, 10), placement.placement.effective_columns);
-    try std.testing.expectEqual(@as(u32, 12), placement.placement.effective_rows);
-
-    const copied_payload = try std.testing.allocator.alloc(u8, 11 * 13 * 3);
-    defer std.testing.allocator.free(copied_payload);
-    const copied = terminalCopyGraphicsDecodedPayload(handle, meta.meta.publication_seq, 0, copied_payload.ptr, copied_payload.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), copied.status);
-    try std.testing.expectEqual(@as(u64, 11 * 13 * 3), copied.written);
-}
-
-test "vt ffi graphics placement query exposes resolved omitted-size destination truth" {
-    const handle = terminalInit(4, 16, 4);
-    defer terminalDeinit(handle);
-    try std.testing.expect(handle != null);
-
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalSetCellPixelSize(handle, 10, 20));
-
-    const payload = try testRawRgbBase64Owned(std.testing.allocator, 40, 20);
-    defer std.testing.allocator.free(payload);
-    const upload = try std.fmt.allocPrint(std.testing.allocator, "\x1b_Gi=7,s=40,v=20,t=d,f=24;{s}\x1b\\", .{payload});
-    defer std.testing.allocator.free(upload);
-    const place = "\x1b_Ga=p,i=7,p=3,X=2,Y=5,c=2\x1b\\";
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, place.ptr, place.len).status);
-
-    const meta = terminalQueryGraphicsMeta(handle);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
-
-    const placement = terminalQueryGraphicsPlacement(handle, meta.meta.publication_seq, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), placement.status);
-    try std.testing.expectEqual(@as(u32, 0), placement.placement.rows);
-    try std.testing.expectEqual(@as(u32, 2), placement.placement.columns);
-    try std.testing.expectEqual(@as(u32, 2), placement.placement.dest_left_cell_px);
-    try std.testing.expectEqual(@as(u32, 5), placement.placement.dest_top_cell_px);
-    try std.testing.expectEqual(@as(u32, 22), placement.placement.dest_right_cell_px);
-    try std.testing.expectEqual(@as(u32, 16), placement.placement.dest_bottom_cell_px);
-    try std.testing.expectEqual(@as(u32, 2), placement.placement.dest_grid_columns);
-    try std.testing.expectEqual(@as(u32, 1), placement.placement.dest_grid_rows);
-    try std.testing.expectEqual(@as(u32, 2), placement.placement.effective_columns);
-    try std.testing.expectEqual(@as(u32, 1), placement.placement.effective_rows);
-}
-
-test "vt ffi graphics publication token rejects stale queries" {
-    const handle = terminalInit(3, 16, 4);
-    defer terminalDeinit(handle);
-    try std.testing.expect(handle != null);
-
-    const upload = "\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\";
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
-    const meta = terminalQueryGraphicsMeta(handle);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
-
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, "x".ptr, 1).status);
-
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalQueryGraphicsPlacement(handle, meta.meta.publication_seq, 0).status);
-
-    var payload: [8]u8 = undefined;
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalQueryGraphicsDecodedImage(handle, meta.meta.publication_seq, 0).status);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalCopyGraphicsDecodedPayload(handle, meta.meta.publication_seq, 0, payload[0..].ptr, payload.len).status);
-}
-
-test "vt ffi copies decoded graphics payload" {
-    const handle = terminalInit(3, 16, 4);
-    defer terminalDeinit(handle);
-    try std.testing.expect(handle != null);
-
-    const upload = "\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\";
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
-    const meta = terminalQueryGraphicsMeta(handle);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
-
-    const decoded = terminalQueryGraphicsDecodedImage(handle, meta.meta.publication_seq, 0);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), decoded.status);
-    try std.testing.expectEqual(@as(u16, 24), decoded.image.format);
-    try std.testing.expectEqual(@as(u64, 3), decoded.image.payload_len);
-
-    var decoded_buf: [3]u8 = undefined;
-    const decoded_copy = terminalCopyGraphicsDecodedPayload(handle, meta.meta.publication_seq, 0, decoded_buf[0..].ptr, decoded_buf.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), decoded_copy.status);
-    try std.testing.expectEqualStrings("ABC", decoded_buf[0..@intCast(decoded_copy.written)]);
-
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalQueryGraphicsDecodedImage(handle, meta.meta.publication_seq, 1).status);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)), terminalCopyGraphicsDecodedPayload(handle, meta.meta.publication_seq, 1, decoded_buf[0..].ptr, decoded_buf.len).status);
-}
-
-test "vt ffi graphics meta follows active screen only" {
-    const handle = terminalInit(3, 16, 4);
-    defer terminalDeinit(handle);
-    try std.testing.expect(handle != null);
-
-    const upload = "\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\";
-    const enter_alt = "\x1b[?1049h";
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, upload.ptr, upload.len).status);
-    const main_meta = terminalQueryGraphicsMeta(handle);
-    try std.testing.expectEqual(@as(u32, 1), main_meta.meta.image_count);
-    try std.testing.expectEqual(@as(u8, 0), main_meta.meta.is_alternate_screen);
-
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, enter_alt.ptr, enter_alt.len).status);
-    const alt_meta = terminalQueryGraphicsMeta(handle);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), alt_meta.status);
-    try std.testing.expectEqual(@as(u32, 0), alt_meta.meta.image_count);
-    try std.testing.expectEqual(@as(u32, 0), alt_meta.meta.placement_count);
-    try std.testing.expectEqual(@as(u8, 1), alt_meta.meta.is_alternate_screen);
-    try std.testing.expect(alt_meta.meta.publication_seq != main_meta.meta.publication_seq);
 }
 
 test "vt ffi set cell pixel size validates and applies" {

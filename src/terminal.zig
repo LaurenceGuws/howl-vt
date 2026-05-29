@@ -3,7 +3,6 @@ const mode = @import("control/mode.zig");
 const screen = @import("screen.zig");
 const host_state = @import("host/state.zig");
 const kitty_state = @import("kitty/state.zig");
-const kitty_types = @import("kitty/types.zig");
 const parser_mod = @import("parser.zig");
 const selection = @import("selection.zig");
 const screen_set = @import("screen_set.zig");
@@ -18,7 +17,6 @@ const FeedError = stream_terminal.FeedError;
 pub const Terminal = struct {
     const HostState = host_state.State;
     const KittyState = kitty_state.State;
-    const GraphicsState = kitty_types.Graphics.State;
     pub const Stream = stream_terminal.Stream;
 
     const ScreenSet = screen_set.Set;
@@ -41,9 +39,6 @@ pub const Terminal = struct {
     surface_snapshot_rows: u16 = 0,
     surface_snapshot_cols: u16 = 0,
     surface_snapshot_alt: bool = false,
-    graphics_publication_seq: u64 = 1,
-    graphics_publication_dirty_generation: u64 = 0,
-    graphics_publication_alt: bool = false,
 
     pub const RuntimeObligation = struct {
         pending_now: bool,
@@ -159,15 +154,6 @@ pub const Terminal = struct {
         }
 
         self.screen_state.setCellPixelSize(width, height);
-        self.kitty.main.graphics.rescaleImplicitPlacements(.{ .width = width, .height = height });
-        self.kitty.alt.graphics.rescaleImplicitPlacements(.{ .width = width, .height = height });
-
-        if ((self.kitty.activeGraphicsConst(self.screen_state.alt_active).resolvedPlacementCount(self.allocator, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize()) catch 1) == 0) {
-            return;
-        }
-
-        self.screen_state.active().markAllRowsDirty();
-        self.dirty_generation +%= 1;
     }
 
     pub fn resetScreen(self: *Terminal) void {
@@ -206,49 +192,19 @@ pub const Terminal = struct {
         };
     }
 
-    pub fn graphicsPublication(self: *Terminal) GraphicsPublication {
-        return .{
-            .publication_seq = self.noteGraphicsPublication(),
-            .dirty_generation = self.dirty_generation,
-            .is_alternate_screen = self.screen_state.alt_active,
-            .state = self.kitty.activeGraphicsConst(self.screen_state.alt_active),
-        };
-    }
-
-    pub fn graphicsMeta(self: *Terminal) host_state.ApplyError!GraphicsMeta {
-        const publication = self.graphicsPublication();
-        const meta = GraphicsMeta{
-            .image_count = publication.state.imageCount(),
-            .placement_count = try publication.state.resolvedPlacementCount(self.allocator, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize()),
-            .is_alternate_screen = publication.is_alternate_screen,
-            .publication_seq = publication.publication_seq,
-            .dirty_generation = publication.dirty_generation,
-        };
-        return meta;
-    }
-
     pub fn runtimeObligation(self: *const Terminal, now_ns: u64) RuntimeObligation {
-        const obligation = self.kitty.activeGraphicsConst(self.screen_state.alt_active).runtimeObligation(now_ns);
-        return .{ .pending_now = obligation.pending_now, .deadline_ns = obligation.deadline_ns };
+        _ = self;
+        _ = now_ns;
+        return .{ .pending_now = false, .deadline_ns = 0 };
     }
 
     pub fn progressRuntime(self: *Terminal, now_ns: u64) host_state.ApplyError!RuntimeProgress {
-        const changed = try self.kitty.activeGraphics(self.screen_state.alt_active).progressRuntime(self.allocator, now_ns);
-        if (changed) self.dirty_generation +%= 1;
+        _ = self;
+        _ = now_ns;
         return .{
-            .state_changed = changed,
-            .obligation = self.runtimeObligation(now_ns),
+            .state_changed = false,
+            .obligation = .{ .pending_now = false, .deadline_ns = 0 },
         };
-    }
-
-    pub fn graphicsDecodedImage(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.DecodedImage {
-        const state = try self.graphicsStateForPublication(publication_seq);
-        return state.decodedImageAt(idx);
-    }
-
-    pub fn graphicsPlacement(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) (error{InvalidArgument} || host_state.ApplyError)!?kitty_types.Graphics.Placement {
-        const state = try self.graphicsStateForPublication(publication_seq);
-        return try state.resolvedPlacementAt(self.allocator, idx, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize());
     }
 
     pub fn visibleCellHyperlinkUri(self: *Terminal, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
@@ -315,24 +271,6 @@ pub const Terminal = struct {
         self.dirty_generation +%= 1;
     }
 
-    fn graphicsStateForPublication(self: *Terminal, publication_seq: u64) error{InvalidArgument}!*const GraphicsState {
-        if (publication_seq == 0) return error.InvalidArgument;
-        const publication = self.graphicsPublication();
-        if (publication.publication_seq != publication_seq) return error.InvalidArgument;
-        return publication.state;
-    }
-
-    fn noteGraphicsPublication(self: *Terminal) u64 {
-        const same_dirty = self.graphics_publication_dirty_generation == self.dirty_generation;
-        const same_alt = self.graphics_publication_alt == self.screen_state.alt_active;
-        if (!(same_dirty and same_alt)) {
-            if (self.graphics_publication_dirty_generation != 0) self.graphics_publication_seq +%= 1;
-            self.graphics_publication_dirty_generation = self.dirty_generation;
-            self.graphics_publication_alt = self.screen_state.alt_active;
-        }
-        return self.graphics_publication_seq;
-    }
-
     pub const SurfacePublication = struct {
         snapshot_seq: u64,
         dirty_generation: u64,
@@ -345,21 +283,6 @@ pub const Terminal = struct {
         history_count: u32,
         is_alternate_screen: bool,
         snapshot_seq: u64,
-        dirty_generation: u64,
-    };
-
-    pub const GraphicsPublication = struct {
-        publication_seq: u64,
-        dirty_generation: u64,
-        is_alternate_screen: bool,
-        state: *const GraphicsState,
-    };
-
-    pub const GraphicsMeta = struct {
-        image_count: u32,
-        placement_count: u32,
-        is_alternate_screen: bool,
-        publication_seq: u64,
         dirty_generation: u64,
     };
 
@@ -426,44 +349,6 @@ test "terminal reset screen delegates owner resets" {
     try std.testing.expectEqualStrings("0", vt.kitty.main.pointer.currentName());
     try std.testing.expect(vt.host.locator.mode == .disabled);
     try std.testing.expectEqual(@as(u16, 0), vt.host.locator.coordinate_unit);
-}
-
-test "graphics publication stays stable across surface queries" {
-    var vt = try Terminal.initWithCellsAndHistory(std.testing.allocator, 2, 2, 4);
-    defer vt.deinit();
-
-    _ = try vt.feed("aa\r\nbb\r\ncc");
-    _ = try vt.feed("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
-
-    const first = vt.graphicsPublication();
-    _ = vt.surfaceSnapshot(0);
-    _ = vt.surfaceSnapshot(1);
-    const second = vt.graphicsPublication();
-
-    try std.testing.expectEqual(first.publication_seq, second.publication_seq);
-    try std.testing.expectEqual(first.dirty_generation, second.dirty_generation);
-    try std.testing.expectEqual(first.is_alternate_screen, second.is_alternate_screen);
-    try std.testing.expectEqual(@as(u32, 1), second.state.imageCount());
-}
-
-test "graphics publication advances on graphics mutation and alt switch" {
-    var vt = try Terminal.initWithCells(std.testing.allocator, 3, 16);
-    defer vt.deinit();
-
-    const initial = vt.graphicsPublication();
-    try std.testing.expectEqual(@as(u32, 0), initial.state.imageCount());
-
-    _ = try vt.feed("\x1b_Gi=7,s=1,v=1,t=d,f=24;AAAA\x1b\\");
-    const after_upload = vt.graphicsPublication();
-    try std.testing.expect(after_upload.publication_seq != initial.publication_seq);
-    try std.testing.expectEqual(@as(u32, 1), after_upload.state.imageCount());
-    try std.testing.expect(!after_upload.is_alternate_screen);
-
-    _ = try vt.feed("\x1b[?1049h");
-    const after_alt = vt.graphicsPublication();
-    try std.testing.expect(after_alt.publication_seq != after_upload.publication_seq);
-    try std.testing.expect(after_alt.is_alternate_screen);
-    try std.testing.expectEqual(@as(u32, 0), after_alt.state.imageCount());
 }
 
 test {

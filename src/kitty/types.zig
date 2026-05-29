@@ -1,23 +1,16 @@
 const std = @import("std");
 const color_mod = @import("color.zig");
-const graphics_mod = @import("graphics.zig");
 const key_mod = @import("key.zig");
 const pointer_mod = @import("pointer.zig");
 
 pub const Key = key_mod;
 pub const Pointer = pointer_mod;
 pub const Color = color_mod;
-pub const Graphics = graphics_mod;
 
 pub const ScreenState = struct {
     keyboard: Key.Stack = .{},
     pointer: Pointer.Stack = .{},
     multiple_cursor_count: u16 = 0,
-    graphics: Graphics.State = .{},
-
-    pub fn deinit(self: *ScreenState, allocator: std.mem.Allocator) void {
-        self.graphics.deinit(allocator);
-    }
 };
 
 pub const ShellMark = struct {

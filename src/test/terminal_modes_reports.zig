@@ -75,10 +75,6 @@ fn legacyControl(terminal: *const Terminal) ?action_mod.LegacyControlKind {
     return HostState.legacyControl(terminal);
 }
 
-fn sixelDisplayMode(terminal: *const Terminal) bool {
-    return HostState.sixelDisplayMode(terminal);
-}
-
 fn reverseWraparoundMode(terminal: *const Terminal) bool {
     return HostState.reverseWraparoundMode(terminal);
 }
@@ -614,13 +610,6 @@ test "DCS legacy payload protocols retain latest host-neutral payload" {
     try std.testing.expect(dcsPayloadKind(&terminal).? == .xtsettcap);
     try std.testing.expectEqualStrings("436F=7661", dcsPayload(&terminal).?);
 
-    write(&stream, "\x1bP0;0;0qdata\x1b\\");
-    try std.testing.expect(dcsPayloadKind(&terminal).? == .sixel);
-    try std.testing.expectEqualStrings("0;0;0qdata", dcsPayload(&terminal).?);
-
-    write(&stream, "\x1bP1pdraw\x1b\\");
-    try std.testing.expect(dcsPayloadKind(&terminal).? == .regis);
-    try std.testing.expectEqualStrings("1pdraw", dcsPayload(&terminal).?);
 }
 
 test "legacy Tektronix C0 and ESC controls retain latest host-neutral state" {
@@ -725,14 +714,12 @@ test "low priority private modes and media copy retain host-neutral state" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    write(&stream, "\x1b[?80h\x1b[?45h\x1b[?1045h\x1b[?5i");
-    try std.testing.expect(sixelDisplayMode(&terminal));
+    write(&stream, "\x1b[?45h\x1b[?1045h\x1b[?5i");
     try std.testing.expect(reverseWraparoundMode(&terminal));
     try std.testing.expect(extendedReverseWraparoundMode(&terminal));
     try std.testing.expectEqual(@as(?u16, 5), mediaCopyRequest(&terminal));
 
-    write(&stream, "\x1b[?80l\x1b[?45l\x1b[?1045l");
-    try std.testing.expect(!sixelDisplayMode(&terminal));
+    write(&stream, "\x1b[?45l\x1b[?1045l");
     try std.testing.expect(!reverseWraparoundMode(&terminal));
     try std.testing.expect(!extendedReverseWraparoundMode(&terminal));
 }

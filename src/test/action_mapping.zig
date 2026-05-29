@@ -676,8 +676,6 @@ test "actions: DCS legacy payload protocols classify host-neutral payloads" {
     try std.testing.expect(termcap.dcs_payload.kind == .xtsettcap);
     try std.testing.expectEqualStrings("436F=7661", termcap.dcs_payload.payload);
 
-    try std.testing.expect(process(makeDcs("0;0;0qdata")).?.dcs_payload.kind == .sixel);
-    try std.testing.expect(process(makeDcs("1pdraw")).?.dcs_payload.kind == .regis);
     try std.testing.expect(process(makeDcs("1$tstate")).?.dcs_payload.kind == .decrsps);
     try std.testing.expect(process(makeDcs("0;1|keys")).?.dcs_payload.kind == .decudk);
     try std.testing.expect(process(makeDcs("0!uA")).?.dcs_payload.kind == .decaupss);
@@ -842,10 +840,6 @@ test "actions: low priority DEC private modes and media copy map" {
         .intermediates = empty_intermediates[0..],
         .intermediates_len = 0,
     } };
-
-    params[0] = 80;
-    ev.style_change.params = params[0..];
-    try std.testing.expect(process(ev).?.sixel_display_mode);
 
     params[0] = 45;
     ev.style_change.params = params[0..];
@@ -1344,85 +1338,6 @@ test "actions: SR defaults to one column" {
 
 test "actions: DECST8C resets default tab stops" {
     try std.testing.expect(process(makePrivateStyleChange('W', &.{5})).? == .reset_default_tab_stops);
-}
-
-test "actions: kitty graphics APC parses control keys and payload" {
-    const sem = process(Event{ .apc = "Gi=31,I=4,s=10,v=2,a=q,t=d,f=24,x=3,y=5,z=-1;AAAA" }) orelse return error.NoEvent;
-    const cmd = sem.kitty_graphics;
-    try std.testing.expectEqual(@as(u8, 'q'), cmd.action);
-    try std.testing.expectEqual(@as(u32, 31), cmd.image_id);
-    try std.testing.expectEqual(@as(u32, 4), cmd.image_number);
-    try std.testing.expectEqual(@as(u32, 10), cmd.width);
-    try std.testing.expectEqual(@as(u32, 2), cmd.height);
-    try std.testing.expectEqual(@as(u32, 3), cmd.x);
-    try std.testing.expectEqual(@as(u32, 5), cmd.y);
-    try std.testing.expectEqual(@as(i32, -1), cmd.z);
-    try std.testing.expectEqual(@as(u32, 10), cmd.animation_state);
-    try std.testing.expectEqual(@as(u32, 2), cmd.loop_count);
-    try std.testing.expectEqual(@as(u16, 24), cmd.format);
-    try std.testing.expectEqual(@as(u8, 'd'), cmd.medium);
-    try std.testing.expectEqualStrings("AAAA", cmd.payload);
-}
-
-test "actions: kitty graphics APC parses relative placement controls" {
-    const sem = process(Event{ .apc = "Ga=p,i=31,p=9,P=7,Q=3,H=-2,V=4;AAAA" }) orelse return error.NoEvent;
-    const cmd = sem.kitty_graphics;
-    try std.testing.expectEqual(@as(u32, 31), cmd.image_id);
-    try std.testing.expectEqual(@as(u32, 9), cmd.placement_id);
-    try std.testing.expectEqual(@as(u32, 7), cmd.parent_image_id);
-    try std.testing.expectEqual(@as(u32, 3), cmd.parent_placement_id);
-    try std.testing.expectEqual(@as(i32, -2), cmd.parent_offset_cols);
-    try std.testing.expectEqual(@as(i32, 4), cmd.parent_offset_rows);
-}
-
-test "actions: kitty graphics APC accepts empty control block with payload" {
-    const sem = process(Event{ .apc = "G;AAAA" }) orelse return error.NoEvent;
-    const cmd = sem.kitty_graphics;
-    try std.testing.expectEqual(@as(u8, 't'), cmd.action);
-    try std.testing.expectEqualStrings("AAAA", cmd.payload);
-}
-
-test "actions: kitty graphics APC parses integer bool fields as nonzero" {
-    const sem = process(Event{ .apc = "GC=2,U=3,m=4,q=2;AAAA" }) orelse return error.NoEvent;
-    const cmd = sem.kitty_graphics;
-    try std.testing.expect(cmd.no_move_cursor);
-    try std.testing.expect(cmd.unicode_placement);
-    try std.testing.expect(cmd.more_chunks);
-    try std.testing.expectEqual(@as(u32, 2), cmd.quiet);
-}
-
-test "actions: kitty graphics APC preserves quiet response modes" {
-    const q0 = (process(Event{ .apc = "Gq=0;AAAA" }) orelse return error.NoEvent).kitty_graphics;
-    const q1 = (process(Event{ .apc = "Gq=1;AAAA" }) orelse return error.NoEvent).kitty_graphics;
-    const q2 = (process(Event{ .apc = "Gq=2;AAAA" }) orelse return error.NoEvent).kitty_graphics;
-    const q3 = (process(Event{ .apc = "Gq=3;AAAA" }) orelse return error.NoEvent).kitty_graphics;
-
-    try std.testing.expectEqual(@as(u32, 0), q0.quiet);
-    try std.testing.expectEqual(@as(u32, 1), q1.quiet);
-    try std.testing.expectEqual(@as(u32, 2), q2.quiet);
-    try std.testing.expectEqual(@as(u32, 3), q3.quiet);
-}
-
-test "actions: kitty graphics APC rejects malformed control fields" {
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=1," }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=1,,p=2" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=1,p" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "GN=1" }));
-}
-
-test "actions: kitty graphics APC rejects invalid integer and flag domains" {
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=abc" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=-1" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gz=+1" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gz=-" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gi=4294967296" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Ga=Z" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gd=B" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Gt=x" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Go=g" }));
-    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .apc = "Ga=tt" }));
 }
 
 test "actions: kitty shell integration OSC 133 parses mark and status" {

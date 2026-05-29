@@ -1,9 +1,0 @@
-const events = @import("../action/vocabulary.zig");
-const kitty = @import("protocol.zig");
-
-const SemanticEvent = events.SemanticEvent;
-
-pub fn process(data: []const u8) ?SemanticEvent {
-    if (kitty.parseGraphics(data)) |cmd| return SemanticEvent{ .kitty_graphics = cmd };
-    return null;
-}

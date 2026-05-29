@@ -71,26 +71,7 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!bool {
             try setOptionalPayload(allocator, &vt.kitty.global.text_size_request, payload);
             return true;
         },
-        .kitty_graphics => |cmd| {
-            const cursor = vt.screen_state.activeConst();
-            const graphics = vt.kitty.activeGraphics(vt.screen_state.alt_active);
-            const result = try graphics.handle(allocator, cursor, .{
-                .row = cursor.cursor_row,
-                .col = cursor.cursor_col,
-                .screen_rows = cursor.rows,
-            }, cursor.cellPixelSize(), &vt.host.pending_output, scratch.buf[0..], cmd);
-            if (result.move) |move| {
-                applyPlacementCursorMove(vt.screen_state.active(), move.cols, move.rows);
-            }
-            return result.changed;
-        },
     }
-}
-
-fn applyPlacementCursorMove(screen: anytype, cols: u32, rows: u32) void {
-    screen.wrap_pending = false;
-    screen.cursor_col = @intCast(@min(@as(u32, screen.rightBoundary()), @as(u32, screen.cursor_col) + cols));
-    screen.cursor_row = @intCast(@min(@as(u32, screen.rows -| 1), @as(u32, screen.cursor_row) + rows));
 }
 
 pub fn setShellMark(allocator: std.mem.Allocator, current: *types.ShellMark, mark: KittyShellMark) host_state.ApplyError!void {

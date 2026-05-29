@@ -9,8 +9,6 @@ pub const State = struct {
     global: KittyNs.GlobalState = .{},
 
     pub fn deinit(self: *State, allocator: std.mem.Allocator) void {
-        self.main.deinit(allocator);
-        self.alt.deinit(allocator);
         self.global.deinit(allocator);
     }
 
@@ -22,19 +20,10 @@ pub const State = struct {
         return if (alt_active) &self.alt else &self.main;
     }
 
-    pub fn activeGraphics(self: *State, alt_active: bool) *KittyNs.Graphics.State {
-        return &self.activeScreen(alt_active).graphics;
-    }
-
-    pub fn activeGraphicsConst(self: *const State, alt_active: bool) *const KittyNs.Graphics.State {
-        return &self.activeScreenConst(alt_active).graphics;
-    }
-
     pub fn resetTerminalState(self: *State, allocator: std.mem.Allocator) void {
+        _ = allocator;
         self.main.pointer.len = 0;
         self.alt.pointer.len = 0;
-        self.main.graphics.reset(allocator);
-        self.alt.graphics.reset(allocator);
         self.global.color_stack_depth = 0;
     }
 };
@@ -71,28 +60,4 @@ pub fn multipleCursorCount(vt: anytype) u16 {
 
 pub fn colorStackDepth(vt: anytype) u16 {
     return vt.kitty.global.color_stack_depth;
-}
-
-pub fn graphicsImageCount(vt: anytype) KittyNs.Graphics.Count {
-    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).imageCount();
-}
-
-pub fn graphicsImageAt(vt: anytype, idx: KittyNs.Graphics.Index) ?KittyNs.Graphics.Image {
-    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).imageAt(idx);
-}
-
-pub fn graphicsPlacementCount(vt: anytype) KittyNs.Graphics.Count {
-    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).placementCount();
-}
-
-pub fn graphicsPlacementAt(vt: anytype, idx: KittyNs.Graphics.Index) ?KittyNs.Graphics.Placement {
-    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).placementAtResolved(idx, vt.screen_state.activeConst());
-}
-
-pub fn graphicsFrameCount(vt: anytype) KittyNs.Graphics.Count {
-    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).frameCount();
-}
-
-pub fn graphicsFrameAt(vt: anytype, idx: KittyNs.Graphics.Index) ?KittyNs.Graphics.Frame {
-    return vt.kitty.activeGraphicsConst(vt.screen_state.alt_active).frameAt(idx);
 }

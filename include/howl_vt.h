@@ -225,83 +225,6 @@ typedef struct {
 } HowlVtVisibleMetaResult;
 
 typedef struct {
-  uint32_t image_count;
-  uint32_t placement_count;
-  uint8_t is_alternate_screen;
-  uint8_t reserved0;
-  uint64_t publication_seq;
-  uint64_t dirty_generation;
-} HowlVtGraphicsMeta;
-
-typedef struct {
-  int32_t status;
-  HowlVtGraphicsMeta meta;
-} HowlVtGraphicsMetaResult;
-
-enum {
-  HOWL_VT_GRAPHICS_ROW_ANCHOR_ON_SCREEN = 1,
-  HOWL_VT_GRAPHICS_ROW_ANCHOR_SCROLLBACK_ABOVE = 2,
-  HOWL_VT_GRAPHICS_ROW_ANCHOR_BELOW_SCREEN = 3,
-};
-
-typedef struct {
-  uint8_t kind;
-  uint8_t reserved0;
-  uint16_t reserved1;
-  uint32_t value;
-} HowlVtGraphicsRowAnchor;
-
-typedef struct {
-  uint32_t image_id;
-  uint32_t image_ref_id;
-  uint32_t image_number;
-  uint16_t format;
-  uint16_t reserved0;
-  uint32_t width;
-  uint32_t height;
-  uint64_t payload_len;
-} HowlVtGraphicsDecodedImage;
-
-/* Decoded graphics payload bytes are VT-owned image bytes copied by callers.
- * PNG images publish RGBA bytes with format 32. */
-
-typedef struct {
-  int32_t status;
-  HowlVtGraphicsDecodedImage image;
-} HowlVtGraphicsDecodedImageResult;
-
-typedef struct {
-  uint32_t image_id;
-  uint32_t placement_id;
-  int32_t z_index;
-  HowlVtGraphicsRowAnchor anchor;
-  uint16_t anchor_col;
-  uint16_t reserved0;
-  uint32_t source_x;
-  uint32_t source_y;
-  uint32_t source_width;
-  uint32_t source_height;
-  uint32_t cell_x_offset;
-  uint32_t cell_y_offset;
-  uint32_t columns;
-  uint32_t rows;
-  uint32_t dest_left_cell_px;
-  uint32_t dest_top_cell_px;
-  uint32_t dest_right_cell_px;
-  uint32_t dest_bottom_cell_px;
-  uint32_t dest_grid_columns;
-  uint32_t dest_grid_rows;
-  uint32_t effective_columns;
-  uint32_t effective_rows;
-  uint64_t render_order_key;
-} HowlVtGraphicsPlacement;
-
-typedef struct {
-  int32_t status;
-  HowlVtGraphicsPlacement placement;
-} HowlVtGraphicsPlacementResult;
-
-typedef struct {
   int32_t status;
   uint64_t history_count;
   uint64_t scrollback_offset;
@@ -314,9 +237,6 @@ int32_t howl_vt_terminal_resize(HowlVtHandle handle, uint16_t rows, uint16_t col
 int32_t howl_vt_terminal_set_cell_pixel_size(HowlVtHandle handle, uint32_t width, uint32_t height);
 int32_t howl_vt_terminal_ack_surface(HowlVtHandle handle, uint64_t snapshot_seq);
 HowlVtVisibleMetaResult howl_vt_terminal_query_visible_meta(HowlVtHandle handle, uint64_t scrollback_offset);
-HowlVtGraphicsMetaResult howl_vt_terminal_query_graphics_meta(HowlVtHandle handle);
-HowlVtGraphicsDecodedImageResult howl_vt_terminal_query_graphics_decoded_image(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index);
-HowlVtGraphicsPlacementResult howl_vt_terminal_query_graphics_placement(HowlVtHandle handle, uint64_t publication_seq, uint32_t placement_index);
 HowlVtSurfaceResult howl_vt_terminal_copy_surface(HowlVtHandle handle, uint64_t scrollback_offset, HowlVtSurfaceCell *cells_ptr, size_t cells_cap, uint8_t *dirty_rows_ptr, size_t dirty_rows_cap, uint16_t *cols_start_ptr, size_t cols_start_cap, uint16_t *cols_end_ptr, size_t cols_end_cap);
 HowlVtSelectionResult howl_vt_terminal_query_selection(HowlVtHandle handle);
 int32_t howl_vt_terminal_start_selection(HowlVtHandle handle, int32_t row, uint16_t col);
@@ -365,25 +285,7 @@ HowlVtHandle howl_vt_terminal_init(uint16_t rows, uint16_t cols, uint16_t histor
 HowlVtHandle howl_vt_terminal_init_with_options(uint16_t rows, uint16_t cols, uint16_t history_capacity, HowlVtTerminalInitOptions options);
 void howl_vt_terminal_deinit(HowlVtHandle handle);
 HowlVtFeedResult howl_vt_terminal_feed(HowlVtHandle handle, const uint8_t *ptr, size_t len);
-/* Graphics item queries and payload copies are publication-local.
- * Callers must first read `howl_vt_terminal_query_graphics_meta()` and pass the
- * returned `publication_seq` back to per-item queries/copies.
- *
- * Surface publication and graphics publication are separate today:
- * - `howl_vt_terminal_copy_surface()` yields a visible-surface `snapshot_seq`
- * - `howl_vt_terminal_query_graphics_meta()` yields a graphics `publication_seq`
- *
- * Graphics publication is conservative and may advance on any terminal mutation,
- * not only graphics-local changes. Callers that need one coherent acquisition of
- * visible text plus graphics must:
- * 1. copy the surface snapshot,
- * 2. query graphics meta,
- * 3. use that returned graphics `publication_seq` for item queries/copies, and
- * 4. restart acquisition if any graphics item query reports invalid publication.
- *
- * Do not mix item data from different graphics publication sequences. */
 HowlVtBytesResult howl_vt_terminal_copy_surface_hyperlink(HowlVtHandle handle, uint64_t scrollback_offset, uint64_t snapshot_seq, uint16_t row, uint16_t col, uint8_t *ptr, size_t cap);
-HowlVtBytesResult howl_vt_terminal_copy_graphics_decoded_payload(HowlVtHandle handle, uint64_t publication_seq, uint32_t image_index, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_selection(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_title(HowlVtHandle handle, uint8_t *ptr, size_t cap);
 HowlVtBytesResult howl_vt_terminal_copy_pending_output(HowlVtHandle handle, uint8_t *ptr, size_t cap);

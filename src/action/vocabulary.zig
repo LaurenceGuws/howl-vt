@@ -3,46 +3,6 @@ const parser_mod = @import("../parser.zig");
 const csi_max_params = parser_mod.max_params;
 pub const CsiSeparatorList = parser_mod.CsiSeparatorList;
 
-pub const KittyGraphicsCommand = struct {
-    action: u8,
-    unicode_placement: bool = false,
-    image_id: u32,
-    image_number: u32,
-    placement_id: u32,
-    parent_image_id: u32 = 0,
-    parent_placement_id: u32 = 0,
-    format: u16,
-    width: u32,
-    height: u32,
-    data_size: u32 = 0,
-    data_offset: u32 = 0,
-    source_width: u32 = 0,
-    source_height: u32 = 0,
-    columns: u32,
-    rows: u32,
-    current_frame_number: u32 = 0,
-    edit_frame_number: u32 = 0,
-    base_frame_number: u32 = 0,
-    x: u32,
-    y: u32,
-    parent_offset_cols: i32 = 0,
-    parent_offset_rows: i32 = 0,
-    cell_x_offset: u32 = 0,
-    cell_y_offset: u32 = 0,
-    no_move_cursor: bool = false,
-    compose_mode: u32 = 0,
-    background_rgba: u32 = 0,
-    animation_state: u32 = 0,
-    loop_count: u32 = 0,
-    z: i32,
-    medium: u8,
-    compression: u8 = 0,
-    more_chunks: bool,
-    quiet: u32,
-    delete_target: u8,
-    payload: []const u8,
-};
-
 pub const KittyShellMark = struct {
     kind: u8,
     status: ?i32,
@@ -83,8 +43,6 @@ pub const KittyMultipleCursorCommand = enum {
 
 pub const DcsPayloadKind = enum {
     xtsettcap,
-    sixel,
-    regis,
     decrsps,
     decudk,
     decaupss,
@@ -191,7 +149,6 @@ pub const SemanticEvent = union(enum) {
     key_format_query: u8,
     pointer_mode: u2,
     kitty_clipboard_mode: bool,
-    sixel_display_mode: bool,
     reverse_wraparound_mode: bool,
     extended_reverse_wraparound_mode: bool,
     focus_reporting: bool,
@@ -254,7 +211,6 @@ pub const SemanticEvent = union(enum) {
         params: []const i32,
         separators: CsiSeparatorList,
     },
-    kitty_graphics: KittyGraphicsCommand,
     enter_alt_screen: struct { clear: bool, save_cursor: bool },
     exit_alt_screen: struct { restore_cursor: bool },
     save_cursor,
@@ -393,7 +349,6 @@ pub const ModeAction = union(enum) {
     key_format_change: KeyFormatChange,
     pointer_mode: u2,
     kitty_clipboard_mode: bool,
-    sixel_display_mode: bool,
     reverse_wraparound_mode: bool,
     extended_reverse_wraparound_mode: bool,
     focus_reporting: bool,
@@ -423,7 +378,6 @@ pub const KittyAction = union(enum) {
     kitty_multiple_cursor: KittyMultipleCursorCommand,
     kitty_file_transfer: []const u8,
     kitty_text_size: []const u8,
-    kitty_graphics: KittyGraphicsCommand,
 };
 
 pub const HostAction = union(enum) {
