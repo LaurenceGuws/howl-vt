@@ -767,6 +767,15 @@ pub const State = struct {
         return found;
     }
 
+    pub fn markResolvedPlaceholderRunImageAccess(
+        self: *State,
+        allocator: std.mem.Allocator,
+        screen: *const screen_mod.Screen,
+    ) host_state.ApplyError!void {
+        var context = PlaceholderRunAccessContext{ .state = self };
+        try self.walkResolvedPlaceholderRuns(allocator, screen, PlaceholderRunAccessContext, &context, placeholderRunAccessVisit);
+    }
+
     pub fn resolvedGeneratedPlacementCount(
         self: *const State,
         allocator: std.mem.Allocator,
@@ -3916,6 +3925,15 @@ fn placeholderRunAtVisit(context: *PlaceholderRunAtContext, run: ResolvedPlaceho
     if (run.run_order != context.target) return true;
     context.found.* = run;
     return false;
+}
+
+const PlaceholderRunAccessContext = struct {
+    state: *State,
+};
+
+fn placeholderRunAccessVisit(context: *PlaceholderRunAccessContext, run: ResolvedPlaceholderRun) bool {
+    context.state.markImageAccess(run.image_id);
+    return true;
 }
 
 const GeneratedPlacementAtContext = struct {

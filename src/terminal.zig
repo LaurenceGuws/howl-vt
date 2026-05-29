@@ -217,6 +217,7 @@ pub const Terminal = struct {
 
     pub fn graphicsMeta(self: *Terminal) host_state.ApplyError!GraphicsMeta {
         const publication = self.graphicsPublication();
+        try self.kitty.activeGraphics(self.screen_state.alt_active).markResolvedPlaceholderRunImageAccess(self.allocator, self.screen_state.activeConst());
         const meta = GraphicsMeta{
             .image_count = publication.state.imageCount(),
             .placement_count = try publication.state.resolvedPlacementCount(self.allocator, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize()),
