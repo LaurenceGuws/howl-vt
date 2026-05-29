@@ -767,31 +767,6 @@ pub const State = struct {
         return found;
     }
 
-    pub fn resolvedGeneratedPlacementCount(
-        self: *const State,
-        allocator: std.mem.Allocator,
-        screen: *const screen_mod.Screen,
-        cell_pixel_size: ?CellPixelSize,
-    ) host_state.ApplyError!Count {
-        var count: Count = 0;
-        var context = GeneratedPlacementCountContext{ .count = &count, .state = self, .cell_pixel_size = cell_pixel_size };
-        try self.walkResolvedPlaceholderRuns(allocator, screen, GeneratedPlacementCountContext, &context, generatedPlacementCountVisit);
-        return count;
-    }
-
-    pub fn resolvedGeneratedPlacementAt(
-        self: *const State,
-        allocator: std.mem.Allocator,
-        idx: Index,
-        screen: *const screen_mod.Screen,
-        cell_pixel_size: ?CellPixelSize,
-    ) host_state.ApplyError!?Placement {
-        var found: ?Placement = null;
-        var context = GeneratedPlacementAtContext{ .target = idx, .seen = 0, .found = &found, .state = self, .cell_pixel_size = cell_pixel_size };
-        try self.walkResolvedPlaceholderRuns(allocator, screen, GeneratedPlacementAtContext, &context, generatedPlacementAtVisit);
-        return found;
-    }
-
     pub fn placementAtResolved(self: *const State, idx: Index, screen: *const screen_mod.Screen) ?Placement {
         if (idx >= self.placementCount()) return null;
         var placement = self.placements.items[@intCast(idx)];
@@ -803,16 +778,19 @@ pub const State = struct {
     }
 
     pub fn resolvedPlacementCount(self: *const State, allocator: std.mem.Allocator, screen: *const screen_mod.Screen, cell_pixel_size: ?CellPixelSize) host_state.ApplyError!Count {
+        _ = allocator;
+        _ = cell_pixel_size;
         var count: u32 = 0;
         for (self.placements.items) |placement| {
             _ = self.resolvePlacementAnchor(placement, screen) orelse continue;
             count += 1;
         }
-        count += try self.resolvedGeneratedPlacementCount(allocator, screen, cell_pixel_size);
         return count;
     }
 
     pub fn resolvedPlacementAt(self: *const State, allocator: std.mem.Allocator, idx: Index, screen: *const screen_mod.Screen, cell_pixel_size: ?CellPixelSize) host_state.ApplyError!?Placement {
+        _ = allocator;
+        _ = cell_pixel_size;
         var resolved_idx: u32 = 0;
         for (self.placements.items) |placement| {
             var resolved = placement;
@@ -827,7 +805,7 @@ pub const State = struct {
             }
             resolved_idx += 1;
         }
-        return try self.resolvedGeneratedPlacementAt(allocator, idx - resolved_idx, screen, cell_pixel_size);
+        return null;
     }
 
     pub fn frameCount(self: *const State) Count {
@@ -3908,199 +3886,6 @@ fn placeholderRunAtVisit(context: *PlaceholderRunAtContext, run: ResolvedPlaceho
     if (run.run_order != context.target) return true;
     context.found.* = run;
     return false;
-}
-
-const GeneratedPlacementAtContext = struct {
-    target: Index,
-    seen: Index,
-    found: *?Placement,
-    state: *const State,
-    cell_pixel_size: ?CellPixelSize,
-};
-
-const GeneratedPlacementCountContext = struct {
-    count: *Count,
-    state: *const State,
-    cell_pixel_size: ?CellPixelSize,
-};
-
-fn generatedPlacementCountVisit(context: *GeneratedPlacementCountContext, run: ResolvedPlaceholderRun) bool {
-    if (generatedPlacementFrom(context.state, run, context.cell_pixel_size) != null) context.count.* +%= 1;
-    return true;
-}
-
-fn generatedPlacementAtVisit(context: *GeneratedPlacementAtContext, run: ResolvedPlaceholderRun) bool {
-    const placement = generatedPlacementFrom(context.state, run, context.cell_pixel_size) orelse return true;
-    if (context.seen != context.target) {
-        context.seen +%= 1;
-        return true;
-    }
-    context.found.* = placement;
-    return false;
-}
-
-fn generatedPlacementFrom(self: *const State, run: ResolvedPlaceholderRun, cell_pixel_size: ?CellPixelSize) ?Placement {
-    const cell = cell_pixel_size orelse CellPixelSize{ .width = 1, .height = 1 };
-    if (cell.width == 0 or cell.height == 0) return null;
-    const virtual = self.virtualPlacementAt(run.virtual_placement_index) orelse return null;
-    std.debug.assert(virtual.ref_id != 0);
-    const image_idx = self.findImage(virtual.image_id) orelse return null;
-    const image = self.imageAt(image_idx) orelse return null;
-    const geometry = generatedPlacementGeometry(image, virtual, run, cell) orelse return null;
-
-    return .{
-        .image_id = virtual.image_id,
-        .placement_id = virtual.placement_id,
-        .z_index = -1,
-        .anchor_row = RowAnchor.initOnScreen(geometry.cell_row),
-        .anchor_col = geometry.cell_col,
-        .source_x = geometry.source_x,
-        .source_y = geometry.source_y,
-        .source_width = geometry.source_width,
-        .source_height = geometry.source_height,
-        .cell_x_offset = geometry.cell_x_offset,
-        .cell_y_offset = geometry.cell_y_offset,
-        .columns = geometry.columns,
-        .rows = geometry.rows,
-        .effective_columns = geometry.effective_columns,
-        .effective_rows = geometry.effective_rows,
-        .dest_width_px = geometry.dest_width_px,
-        .dest_height_px = geometry.dest_height_px,
-        .flags = placement_generated_placeholder_flag,
-        .render_order_key = (@as(u64, virtual.ref_id) << 32) | @as(u64, run.run_order),
-    };
-}
-
-const GeneratedPlacementGeometry = struct {
-    cell_row: u16,
-    cell_col: u16,
-    source_x: u32,
-    source_y: u32,
-    source_width: u32,
-    source_height: u32,
-    cell_x_offset: u32,
-    cell_y_offset: u32,
-    columns: u32,
-    rows: u32,
-    effective_columns: u32,
-    effective_rows: u32,
-    dest_width_px: u32,
-    dest_height_px: u32,
-};
-
-const GeneratedPlacementScale = struct {
-    x: f64,
-    y: f64,
-    offset_x: f64,
-    offset_y: f64,
-};
-
-fn generatedPlacementGeometry(image: Image, virtual: VirtualPlacement, run: ResolvedPlaceholderRun, cell: CellPixelSize) ?GeneratedPlacementGeometry {
-    if (virtual.source_x >= image.width or virtual.source_y >= image.height) return null;
-    const source_width = @min(virtual.source_width, image.width - virtual.source_x);
-    const source_height = @min(virtual.source_height, image.height - virtual.source_y);
-    if (source_width == 0 or source_height == 0) return null;
-    if (virtual.columns == 0 or virtual.rows == 0) return null;
-    if (run.image_col >= virtual.columns or run.image_row >= virtual.rows) return null;
-
-    const slice_columns = @min(run.columns, virtual.columns - run.image_col);
-    if (slice_columns == 0) return null;
-
-    const source_width_f64: f64 = @floatFromInt(source_width);
-    const source_height_f64: f64 = @floatFromInt(source_height);
-    const box_width_f64: f64 = @floatFromInt(virtual.columns * cell.width);
-    const box_height_f64: f64 = @floatFromInt(virtual.rows * cell.height);
-
-    const scale: GeneratedPlacementScale = if (source_width_f64 * box_height_f64 > source_height_f64 * box_width_f64) blk: {
-        const x_scale = box_width_f64 / @max(1.0, source_width_f64);
-        break :blk .{ .x = x_scale, .y = x_scale, .offset_x = 0.0, .offset_y = (box_height_f64 - source_height_f64 * x_scale) / 2.0 };
-    } else blk: {
-        const y_scale = box_height_f64 / @max(1.0, source_height_f64);
-        break :blk .{ .x = y_scale, .y = y_scale, .offset_x = (box_width_f64 - source_width_f64 * y_scale) / 2.0, .offset_y = 0.0 };
-    };
-
-    var source_x = (@as(f64, @floatFromInt(run.image_col * cell.width)) - scale.offset_x) / scale.x;
-    var source_y = (@as(f64, @floatFromInt(run.image_row * cell.height)) - scale.offset_y) / scale.y;
-    var source_w = @as(f64, @floatFromInt(slice_columns * cell.width)) / scale.x;
-    var source_h = @as(f64, @floatFromInt(cell.height)) / scale.y;
-    var dest_offset_x: f64 = 0;
-    var dest_offset_y: f64 = 0;
-    var dest_width = @as(f64, @floatFromInt(slice_columns * cell.width));
-    var dest_height = @as(f64, @floatFromInt(cell.height));
-
-    if (source_x < 0) {
-        const offset = -source_x;
-        source_w -= offset;
-        dest_offset_x = offset * scale.x;
-        dest_width -= dest_offset_x;
-        source_x = 0;
-    } else if (source_x + source_w > source_width_f64) {
-        source_w = source_width_f64 - source_x;
-        dest_width = source_w * scale.x;
-    }
-    if (source_y < 0) {
-        const offset = -source_y;
-        source_h -= offset;
-        dest_offset_y = offset * scale.y;
-        dest_height -= dest_offset_y;
-        source_y = 0;
-    } else if (source_y + source_h > source_height_f64) {
-        source_h = source_height_f64 - source_y;
-        dest_height = source_h * scale.y;
-    }
-
-    if (source_w <= 0 or source_h <= 0 or dest_width <= 0 or dest_height <= 0) return null;
-    const rounded_source_x = roundNonNegativeToU32(source_x);
-    const rounded_source_y = roundNonNegativeToU32(source_y);
-    const rounded_source_width = roundNonNegativeToU32(source_w);
-    const rounded_source_height = roundNonNegativeToU32(source_h);
-    const rounded_dest_offset_x = roundNonNegativeToU32(dest_offset_x);
-    const rounded_dest_offset_y = roundNonNegativeToU32(dest_offset_y);
-    const rounded_dest_width = roundNonNegativeToU32(dest_width);
-    const rounded_dest_height = roundNonNegativeToU32(dest_height);
-    if (rounded_source_width == 0 or rounded_source_height == 0) return null;
-    if (rounded_dest_width == 0 or rounded_dest_height == 0) return null;
-    if (rounded_source_x + rounded_source_width > source_width) return null;
-    if (rounded_source_y + rounded_source_height > source_height) return null;
-
-    const extent = generatedPlacementExtent(rounded_dest_offset_x, rounded_dest_offset_y, rounded_dest_width, rounded_dest_height, cell);
-
-    return .{
-        .cell_row = run.cell_row,
-        .cell_col = run.cell_col,
-        .source_x = virtual.source_x + rounded_source_x,
-        .source_y = virtual.source_y + rounded_source_y,
-        .source_width = rounded_source_width,
-        .source_height = rounded_source_height,
-        .cell_x_offset = rounded_dest_offset_x,
-        .cell_y_offset = rounded_dest_offset_y,
-        .columns = extent.columns,
-        .rows = extent.rows,
-        .effective_columns = extent.effective_columns,
-        .effective_rows = extent.effective_rows,
-        .dest_width_px = rounded_dest_width,
-        .dest_height_px = rounded_dest_height,
-    };
-}
-
-fn generatedPlacementExtent(dest_x: u32, dest_y: u32, dest_width: u32, dest_height: u32, cell: CellPixelSize) struct { columns: u32, rows: u32, effective_columns: u32, effective_rows: u32 } {
-    const effective_columns = ceilDiv(dest_x + dest_width, cell.width);
-    const effective_rows = ceilDiv(dest_y + dest_height, cell.height);
-    const full_width = effective_columns * cell.width;
-    const full_height = effective_rows * cell.height;
-    const columns: u32 = if (dest_width == full_width) effective_columns else 0;
-    const rows: u32 = if (dest_height == full_height) effective_rows else 0;
-    return .{
-        .columns = columns,
-        .rows = rows,
-        .effective_columns = effective_columns,
-        .effective_rows = effective_rows,
-    };
-}
-
-fn roundNonNegativeToU32(value: f64) u32 {
-    std.debug.assert(value >= 0);
-    return @intFromFloat(@round(value));
 }
 
 fn placeholderCellFromScreenCell(cell: screen_mod.Screen.Cell, row: u16, col: u16) ?PlaceholderCell {

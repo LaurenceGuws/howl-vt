@@ -1490,7 +1490,7 @@ test "vt ffi graphics publication exposes placeholder runs" {
 
     const meta = terminalQueryGraphicsMeta(handle);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
-    try std.testing.expectEqual(@as(u32, 1), meta.meta.placement_count);
+    try std.testing.expectEqual(@as(u32, 0), meta.meta.placement_count);
     try std.testing.expectEqual(@as(u32, 1), meta.meta.placeholder_run_count);
 
     const run = terminalQueryGraphicsPlaceholderRun(handle, meta.meta.publication_seq, 0);
