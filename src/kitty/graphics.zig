@@ -2864,22 +2864,17 @@ pub const State = struct {
         context: *Context,
         comptime visit: fn (*Context, ResolvedPlaceholderRun) bool,
     ) host_state.ApplyError!void {
+        _ = allocator;
         var run_order: u32 = 0;
         var row: u16 = 0;
         while (row < screen.rows) : (row += 1) {
-            var row_cells = std.ArrayList(PlaceholderCell).empty;
-            defer row_cells.deinit(allocator);
-
+            var previous: ?PlaceholderCell = null;
+            var pending: ?PlaceholderRun = null;
             var col: u16 = 0;
             while (col < screen.cols) : (col += 1) {
-                const current = placeholderCellFromScreenCell(screen.cellInfoAt(row, col), row, col) orelse continue;
-                try row_cells.append(allocator, current);
-            }
-
-            backfillPlaceholderRow(row_cells.items);
-
-            var pending: ?PlaceholderRun = null;
-            for (row_cells.items) |next| {
+                var next = placeholderCellFromScreenCell(screen.cellInfoAt(row, col), row, col) orelse continue;
+                backfillPlaceholderCell(&next, previous);
+                previous = next;
                 if (pending) |*run| {
                     if (run.canAppend(next)) {
                         run.append();
@@ -2895,10 +2890,7 @@ pub const State = struct {
                     pending = null;
                     continue;
                 }
-                var start = next;
-                if (start.col == null) start.col = 0;
-                if (start.image_id_high == null) start.image_id_high = 0;
-                pending = .{ .cell = start };
+                pending = .{ .cell = next };
             }
 
             if (pending) |run| {
@@ -4143,31 +4135,26 @@ fn placeholderCellFromScreenCell(cell: screen_mod.Screen.Cell, row: u16, col: u1
     };
 }
 
-fn backfillPlaceholderRow(cells: []PlaceholderCell) void {
-    var previous: ?PlaceholderCell = null;
-    for (cells) |*cell| {
-        const continues = if (previous) |prev|
-            cell.cell_col == prev.cell_col + 1 and
-                cell.image_id_low == prev.image_id_low and
-                cell.placement_id == prev.placement_id and
-                (cell.row == null or cell.row.? == prev.row.?) and
-                (cell.col == null or cell.col.? == prev.col.? + 1) and
-                (cell.image_id_high == null or cell.image_id_high.? == prev.image_id_high.?)
-        else
-            false;
+fn backfillPlaceholderCell(cell: *PlaceholderCell, previous: ?PlaceholderCell) void {
+    const continues = if (previous) |prev|
+        cell.cell_col == prev.cell_col + 1 and
+            cell.image_id_low == prev.image_id_low and
+            cell.placement_id == prev.placement_id and
+            (cell.row == null or cell.row.? == prev.row.?) and
+            (cell.col == null or cell.col.? == prev.col.? + 1) and
+            (cell.image_id_high == null or cell.image_id_high.? == prev.image_id_high.?)
+    else
+        false;
 
-        if (continues) {
-            const prev = previous.?;
-            if (cell.row == null) cell.row = prev.row.?;
-            if (cell.col == null) cell.col = prev.col.? + 1;
-            if (cell.image_id_high == null) cell.image_id_high = prev.image_id_high.?;
-        } else {
-            if (cell.row == null) cell.row = 0;
-            if (cell.col == null) cell.col = 0;
-            if (cell.image_id_high == null) cell.image_id_high = 0;
-        }
-
-        previous = cell.*;
+    if (continues) {
+        const prev = previous.?;
+        if (cell.row == null) cell.row = prev.row.?;
+        if (cell.col == null) cell.col = prev.col.? + 1;
+        if (cell.image_id_high == null) cell.image_id_high = prev.image_id_high.?;
+    } else {
+        if (cell.row == null) cell.row = 0;
+        if (cell.col == null) cell.col = 0;
+        if (cell.image_id_high == null) cell.image_id_high = 0;
     }
 }
 
