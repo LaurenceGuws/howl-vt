@@ -22,24 +22,6 @@ fn pendingOutput(terminal: *const Terminal) []const u8 {
     return HostState.pendingOutput(terminal);
 }
 
-
-fn noteNoGraphicsImagesDrawn(terminal: *Terminal) !void {
-    const meta = try terminal.graphicsMeta();
-    try terminal.noteDrawnGraphics(meta.publication_seq, &.{});
-}
-
-fn noteFirstGraphicsImageDrawn(terminal: *Terminal) !void {
-    const meta = try terminal.graphicsMeta();
-    const image = (try terminal.graphicsDecodedImage(meta.publication_seq, 0)).?;
-    try terminal.noteDrawnGraphics(meta.publication_seq, &.{image.image_ref_id});
-}
-
-fn expectAnimationUndrawnRuntimeIdle(terminal: *Terminal) !void {
-    const obligation = terminal.runtimeObligation(0);
-    try std.testing.expect(!obligation.pending_now);
-    try std.testing.expectEqual(@as(u64, 0), obligation.deadline_ns);
-}
-
 fn base64Owned(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
     const encoded = try allocator.alloc(u8, std.base64.standard.Encoder.calcSize(bytes.len));
     _ = std.base64.standard.Encoder.encode(encoded, bytes);
@@ -169,8 +151,6 @@ fn appendTestDecodedFrame(
         .decoded_payload = payload,
     });
 }
-
-
 
 fn placeImageThenDeletePlacement(state: *Graphics.State, allocator: std.mem.Allocator, screen: *const Screen, output: *std.ArrayList(u8), encode_buf: []u8, image_id: u32) !void {
     _ = try state.handle(allocator, screen, .{ .row = 0, .col = 0, .screen_rows = 24 }, null, output, encode_buf, .{
@@ -373,9 +353,6 @@ test "kitty graphics query with image number but no image id produces no reply o
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
 
-
-
-
 test "kitty graphics decoded ABI returns direct raw RGBA bytes" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -387,10 +364,6 @@ test "kitty graphics decoded ABI returns direct raw RGBA bytes" {
 
     try expectDecodedImage(&terminal, 32, 1, 1, "ABCD");
 }
-
-
-
-
 
 test "kitty graphics direct raw rejects payload larger than oversize slack" {
     const allocator = std.testing.allocator;
@@ -815,7 +788,6 @@ test "kitty graphics q1 suppresses successful animation control OK" {
     try std.testing.expectEqual(.running, KittyState.graphicsImageAt(&terminal, 0).?.animation_state);
 }
 
-
 test "kitty graphics file upload rejects undersize explicit raw data" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -841,9 +813,6 @@ test "kitty graphics file upload rejects undersize explicit raw data" {
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
-
-
-
 
 test "kitty graphics temp file upload rejects undersize explicit raw data and deletes safe temp file" {
     const allocator = std.testing.allocator;
@@ -878,7 +847,6 @@ test "kitty graphics temp file upload rejects undersize explicit raw data and de
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
 
-
 test "kitty graphics shared memory upload rejects undersize explicit raw data and unlinks object" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -905,7 +873,6 @@ test "kitty graphics shared memory upload rejects undersize explicit raw data an
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
 
-
 fn cShmOpenReadOnly(name: [:0]const u8) !void {
     const fd = c.shm_open(name, c.O_RDONLY, 0);
     if (fd < 0) return error.FileNotFound;
@@ -924,12 +891,6 @@ test "kitty graphics invalid transmission flag is rejected by parser" {
     try std.testing.expectEqualStrings("", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
-
-
-
-
-
-
 
 test "kitty graphics png zlib compression is rejected explicitly" {
     const allocator = std.testing.allocator;
@@ -1004,7 +965,6 @@ test "kitty graphics valid png query returns OK without storing state" {
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
 }
-
 
 test "kitty graphics truncated png header returns EBADPNG without storing" {
     const allocator = std.testing.allocator;
@@ -1179,7 +1139,6 @@ test "kitty graphics RIS aborts partial upload" {
     try std.testing.expectEqual(@as(u32, 9), terminal.kitty.main.graphics.imageAt(0).?.image_id);
 }
 
-
 test "kitty graphics direct upload does not concatenate chunk base64 text" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -1193,7 +1152,6 @@ test "kitty graphics direct upload does not concatenate chunk base64 text" {
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
-
 
 test "kitty graphics direct chunked raw rejects payload larger than oversize slack" {
     const allocator = std.testing.allocator;
@@ -1222,7 +1180,6 @@ test "kitty graphics direct chunked raw rejects payload larger than oversize sla
     try std.testing.expect(terminal.kitty.main.graphics.upload == null);
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
 }
-
 
 test "kitty graphics transmit and display chunk completion uses first placement metadata" {
     const allocator = std.testing.allocator;
@@ -1295,8 +1252,6 @@ test "kitty graphics transmit and display chunk completion keeps first unicode p
     try std.testing.expectEqual(@as(u16, 4), terminal.screen_state.activeConst().cursor_row);
     try std.testing.expectEqual(@as(u16, 8), terminal.screen_state.activeConst().cursor_col);
 }
-
-
 
 test "kitty graphics place stores metadata and replies with placement id" {
     const allocator = std.testing.allocator;
@@ -2391,8 +2346,6 @@ test "kitty graphics default delete preserves fully scrolled-above retained phys
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageCount(&terminal));
 }
 
-
-
 test "kitty graphics d=a removes visible parent placement and relative descendants" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 8, 16);
@@ -2410,7 +2363,6 @@ test "kitty graphics d=a removes visible parent placement and relative descendan
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageCount(&terminal));
 }
-
 
 test "kitty graphics uppercase delete by image id frees only targeted unplaced image" {
     const allocator = std.testing.allocator;
@@ -2507,7 +2459,6 @@ test "kitty graphics image numbers allocate ids and place newest image" {
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsPlacementAt(&terminal, 0).?.image_id);
 }
 
-
 test "kitty graphics image number upload reuses lowest freed positive id" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -2527,8 +2478,6 @@ test "kitty graphics image number upload reuses lowest freed positive id" {
     try std.testing.expectEqual(@as(u32, 14), reused.image_number);
     try std.testing.expectEqualStrings("\x1b_Gi=2,I=13;OK\x1b\\\x1b_Gi=1,I=14;OK\x1b\\", pendingOutput(&terminal));
 }
-
-
 
 test "kitty graphics frame upload by missing image number replies not found without allocation" {
     const allocator = std.testing.allocator;
@@ -2587,9 +2536,6 @@ test "kitty graphics deletion selectors remove matching placements" {
     try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsPlacementCount(&terminal));
     try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsPlacementAt(&terminal, 0).?.placement_id);
 }
-
-
-
 
 test "kitty graphics animation frame upload with both id forms rejects without storing frame" {
     const allocator = std.testing.allocator;
@@ -2654,7 +2600,6 @@ test "kitty graphics oversized animation frame height rejects without storing fr
     try std.testing.expectEqualStrings("\x1b_Gi=7;EINVAL:Frame height 2 larger than image height: 1\x1b\\", pendingOutput(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
 }
-
 
 test "kitty graphics quiet one emits oversized animation frame failure" {
     const allocator = std.testing.allocator;
@@ -2765,9 +2710,6 @@ test "kitty graphics editing animation frame with negative z becomes gapless" {
     try std.testing.expectEqual(@as(i32, 0), KittyState.graphicsFrameAt(&terminal, 0).?.gap);
 }
 
-
-
-
 test "kitty graphics uppercase frame delete without extra frames deletes image data" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -2782,10 +2724,6 @@ test "kitty graphics uppercase frame delete without extra frames deletes image d
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsImageCount(&terminal));
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsFrameCount(&terminal));
 }
-
-
-
-
 
 test "kitty graphics root frame edit without z preserves root gap" {
     const allocator = std.testing.allocator;
@@ -2829,15 +2767,6 @@ test "kitty graphics root frame edit negative z clamps root gap to zero" {
     try std.testing.expectEqual(@as(i32, 0), KittyState.graphicsImageAt(&terminal, 0).?.root_frame_gap);
 }
 
-
-
-
-
-
-
-
-
-
 test "kitty graphics selecting animation frame preserves root decoded image" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -2853,36 +2782,6 @@ test "kitty graphics selecting animation frame preserves root decoded image" {
     try expectDecodedImage(&terminal, 24, 1, 1, "ABC");
 }
 
-
-
-
-
-
-test "kitty graphics runtime obligation starts due and arms first frame deadline" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
-    try noteFirstGraphicsImageDrawn(&terminal);
-
-    const due = terminal.runtimeObligation(100);
-    try std.testing.expect(due.pending_now);
-    try std.testing.expectEqual(@as(u64, 0), due.deadline_ns);
-
-    const first = try terminal.progressRuntime(100);
-    try std.testing.expect(!first.state_changed);
-    try std.testing.expect(!first.obligation.pending_now);
-    try std.testing.expectEqual(@as(u64, 100 + 7 * std.time.ns_per_ms), first.obligation.deadline_ns);
-}
-
-
-
 test "kitty graphics undrawn unplaced animation has no runtime obligation" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
@@ -2895,25 +2794,9 @@ test "kitty graphics undrawn unplaced animation has no runtime obligation" {
     try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
 
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
-    try expectAnimationUndrawnRuntimeIdle(&terminal);
-}
-
-test "kitty graphics undrawn deleted-placement animation has no runtime obligation" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
-    try stream.nextSlice("\x1b_Ga=p,i=7,p=3,z=7\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=1\x1b\\");
-    try stream.nextSlice("\x1b_Ga=d,d=i,i=7\x1b\\");
-    try noteNoGraphicsImagesDrawn(&terminal);
-
-    try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
-    try expectAnimationUndrawnRuntimeIdle(&terminal);
+    const obligation = terminal.runtimeObligation(0);
+    try std.testing.expect(!obligation.pending_now);
+    try std.testing.expectEqual(@as(u64, 0), obligation.deadline_ns);
 }
 
 test "kitty graphics virtual-only animation has no runtime obligation without placeholders" {
@@ -2930,157 +2813,10 @@ test "kitty graphics virtual-only animation has no runtime obligation without pl
 
     try std.testing.expectEqual(@as(u32, 0), KittyState.graphicsPlacementCount(&terminal));
     try std.testing.expectEqual(@as(u32, 1), terminal.kitty.main.graphics.virtualPlacementCount());
-    try expectAnimationUndrawnRuntimeIdle(&terminal);
+    const obligation = terminal.runtimeObligation(0);
+    try std.testing.expect(!obligation.pending_now);
+    try std.testing.expectEqual(@as(u64, 0), obligation.deadline_ns);
 }
-
-test "kitty graphics icat style retained animation controls run without EINVAL" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,r=1,z=7\x1b\\");
-    try noteFirstGraphicsImageDrawn(&terminal);
-
-    try std.testing.expectEqualStrings(
-        "\x1b_Gi=7,I=0;OK\x1b\\" ** 3,
-        pendingOutput(&terminal),
-    );
-    try std.testing.expectEqual(
-        @as(i32, 7),
-        KittyState.graphicsImageAt(&terminal, 0).?.root_frame_gap,
-    );
-    try std.testing.expectEqual(
-        .running,
-        KittyState.graphicsImageAt(&terminal, 0).?.animation_state,
-    );
-
-    _ = try terminal.progressRuntime(100);
-    const advanced = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
-    try std.testing.expect(advanced.state_changed);
-    try std.testing.expectEqual(
-        @as(u32, 2),
-        KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number,
-    );
-}
-
-test "kitty graphics choose files style retained animation controls preserve v1 runtime" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7,v=1\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7,v=1\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,r=1,z=7,v=1\x1b\\");
-    try noteFirstGraphicsImageDrawn(&terminal);
-
-    try std.testing.expectEqual(
-        @as(i32, 7),
-        KittyState.graphicsImageAt(&terminal, 0).?.root_frame_gap,
-    );
-    try std.testing.expectEqual(
-        @as(u32, 0),
-        KittyState.graphicsImageAt(&terminal, 0).?.max_loops,
-    );
-    try std.testing.expectEqual(
-        .running,
-        KittyState.graphicsImageAt(&terminal, 0).?.animation_state,
-    );
-
-    _ = try terminal.progressRuntime(100);
-    _ = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
-    const wrapped = try terminal.progressRuntime(100 + 12 * std.time.ns_per_ms);
-    try std.testing.expect(wrapped.state_changed);
-    try std.testing.expectEqual(
-        @as(u32, 1),
-        KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number,
-    );
-    try std.testing.expectEqual(
-        .running,
-        KittyState.graphicsImageAt(&terminal, 0).?.animation_state,
-    );
-}
-
-
-test "kitty graphics loading replay with retained controls advances after future frame upload" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7,v=1\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,s=2,r=1,z=7,v=1\x1b\\");
-    try noteFirstGraphicsImageDrawn(&terminal);
-
-    _ = try terminal.progressRuntime(100);
-    _ = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
-    try std.testing.expectEqual(
-        @as(u32, 2),
-        KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number,
-    );
-
-    const waiting = try terminal.progressRuntime(100 + 12 * std.time.ns_per_ms);
-    try std.testing.expect(!waiting.state_changed);
-    try std.testing.expectEqual(@as(u64, 0), waiting.obligation.deadline_ns);
-
-    try stream.nextSlice("\x1b_Ga=f,i=7,r=3,s=1,v=1,z=9,t=d,f=24;R0hJ\x1b\\");
-    const due = terminal.runtimeObligation(200 + 12 * std.time.ns_per_ms);
-    try std.testing.expect(due.pending_now);
-
-    const advanced = try terminal.progressRuntime(200 + 12 * std.time.ns_per_ms);
-    try std.testing.expect(advanced.state_changed);
-    try std.testing.expectEqual(
-        @as(u32, 3),
-        KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number,
-    );
-}
-
-test "kitty graphics finite v2 two-frame animation completes one wrap before stopping" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    try stream.nextSlice("\x1b_Gi=7,s=1,v=1,t=d,f=24;QUJD\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,r=1,z=7\x1b\\");
-    try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,z=5,t=d,f=24;REVG\x1b\\");
-    try stream.nextSlice("\x1b_Ga=a,i=7,s=3,v=2\x1b\\");
-    try noteFirstGraphicsImageDrawn(&terminal);
-
-    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
-    _ = try terminal.progressRuntime(100);
-
-    const second = try terminal.progressRuntime(100 + 7 * std.time.ns_per_ms);
-    try std.testing.expect(second.state_changed);
-    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
-
-    const first_again = try terminal.progressRuntime(100 + 12 * std.time.ns_per_ms);
-    try std.testing.expect(first_again.state_changed);
-    try std.testing.expectEqual(@as(u32, 1), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
-
-    const second_again = try terminal.progressRuntime(100 + 19 * std.time.ns_per_ms);
-    try std.testing.expect(second_again.state_changed);
-    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
-
-    const stopped = try terminal.progressRuntime(100 + 24 * std.time.ns_per_ms);
-    try std.testing.expect(!stopped.state_changed);
-    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
-    try std.testing.expectEqual(.stopped, KittyState.graphicsImageAt(&terminal, 0).?.animation_state);
-}
-
 
 test "kitty graphics decoded quota evicts unplaced image" {
     const allocator = std.testing.allocator;
@@ -3244,7 +2980,6 @@ test "kitty graphics decoded quota preserves virtual placement" {
     try std.testing.expectEqual(@as(u32, 1), state.imageCount());
 }
 
-
 test "kitty graphics decoded quota compose root preserves protected shifted image" {
     const allocator = std.testing.allocator;
     var state: Graphics.State = .{};
@@ -3286,14 +3021,6 @@ test "kitty graphics decoded quota compose root preserves protected shifted imag
     try std.testing.expectEqual(@as(usize, 4), state.imageAt(0).?.decoded_payload.len);
     try std.testing.expectEqual(@as(u32, 1), state.frameCount());
 }
-
-
-
-
-
-
-
-
 
 test "kitty graphics image count cap is explicit" {
     const allocator = std.testing.allocator;

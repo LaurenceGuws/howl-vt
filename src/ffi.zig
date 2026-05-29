@@ -981,19 +981,6 @@ pub fn terminalProgressRuntime(handle: VtHandle, now_ns: u64) callconv(.c) FfiRu
     return runtimeProgressResult(progress);
 }
 
-pub fn terminalNoteDrawnGraphics(handle: VtHandle, publication_seq: u64, ptr: ?[*]const u32, len: usize) callconv(.c) c_int {
-    const owned = vtFromHandle(handle) orelse return @intFromEnum(HowlVtCallStatus.missing_handle);
-    if (len > 0 and ptr == null) return @intFromEnum(HowlVtCallStatus.invalid_argument);
-    const image_ref_ids = if (len == 0) &[_]u32{} else ptr.?[0..len];
-    owned.noteDrawnGraphics(publication_seq, image_ref_ids) catch |err| {
-        return @intFromEnum(switch (err) {
-            error.InvalidArgument => HowlVtCallStatus.invalid_argument,
-            error.OutOfMemory, error.ConsequenceLimit => HowlVtCallStatus.failed,
-        });
-    };
-    return @intFromEnum(HowlVtCallStatus.ok);
-}
-
 pub fn terminalEncodeKey(handle: VtHandle, key: u32, mods: u8, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };

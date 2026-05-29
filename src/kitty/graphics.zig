@@ -581,18 +581,6 @@ pub const State = struct {
         };
     }
 
-    pub fn noteDrawnImageRefs(self: *State, image_ref_ids: []const u32) error{ InvalidArgument, ConsequenceLimit }!void {
-        if (image_ref_ids.len > image_max_count) return error.ConsequenceLimit;
-        for (image_ref_ids) |image_ref_id| {
-            if (image_ref_id == 0) return error.InvalidArgument;
-            _ = self.imageByRefId(image_ref_id) orelse return error.InvalidArgument;
-        }
-        for (self.images.items) |*image| image.drawn = false;
-        for (image_ref_ids) |image_ref_id| {
-            self.imageByRefId(image_ref_id).?.drawn = true;
-        }
-    }
-
     pub fn placementCount(self: *const State) Count {
         return count32(self.placements.items);
     }

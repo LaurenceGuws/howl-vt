@@ -242,11 +242,6 @@ pub const Terminal = struct {
         };
     }
 
-    pub fn noteDrawnGraphics(self: *Terminal, publication_seq: u64, image_ref_ids: []const u32) (error{InvalidArgument} || host_state.ApplyError)!void {
-        _ = try self.graphicsStateForPublication(publication_seq);
-        return self.kitty.activeGraphics(self.screen_state.alt_active).noteDrawnImageRefs(image_ref_ids);
-    }
-
     pub fn graphicsDecodedImage(self: *Terminal, publication_seq: u64, idx: kitty_types.Graphics.Index) error{InvalidArgument}!?kitty_types.Graphics.DecodedImage {
         const state = try self.graphicsStateForPublication(publication_seq);
         return state.decodedImageAt(idx);
