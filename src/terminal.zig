@@ -277,19 +277,6 @@ pub const Terminal = struct {
         return state.resolvedPlaceholderRunAt(self.allocator, idx, self.screen_state.activeConst());
     }
 
-    pub fn graphicsPlaceholderRunProofCount(self: *Terminal, publication_seq: u64) (error{InvalidArgument} || host_state.ApplyError)!u32 {
-        const state = try self.graphicsStateForPublication(publication_seq);
-        return try state.resolvedPlaceholderRunCount(self.allocator, self.screen_state.activeConst());
-    }
-
-    pub fn graphicsPlaceholderRunProof(
-        self: *Terminal,
-        publication_seq: u64,
-        idx: kitty_types.Graphics.Index,
-    ) (error{InvalidArgument} || host_state.ApplyError)!?kitty_types.Graphics.ResolvedPlaceholderRun {
-        return self.graphicsPlaceholderRun(publication_seq, idx);
-    }
-
     pub fn visibleCellHyperlinkUri(self: *Terminal, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
         if (snapshot_seq == 0) return error.InvalidArgument;
         const publication = self.surfaceSnapshot(scrollback_offset);
