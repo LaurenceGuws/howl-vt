@@ -2838,7 +2838,7 @@ test "kitty graphics root frame edit negative z clamps root gap to zero" {
 
 
 
-test "kitty graphics selecting current frame twice stays publication-noop" {
+test "kitty graphics selecting animation frame preserves root decoded image" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 16);
     defer terminal.deinit();
@@ -2849,11 +2849,8 @@ test "kitty graphics selecting current frame twice stays publication-noop" {
     try stream.nextSlice("\x1b_Ga=f,i=7,r=2,s=1,v=1,t=d,f=24;REVG\x1b\\");
     try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
 
-    const first = try terminal.graphicsMeta();
-    try stream.nextSlice("\x1b_Ga=a,i=7,c=2\x1b\\");
-    const second = try terminal.graphicsMeta();
-
-    try std.testing.expectEqual(first.publication_seq, second.publication_seq);
+    try std.testing.expectEqual(@as(u32, 2), KittyState.graphicsImageAt(&terminal, 0).?.current_frame_number);
+    try expectDecodedImage(&terminal, 24, 1, 1, "ABC");
 }
 
 

@@ -94,10 +94,6 @@ pub const Image = struct {
     decoded_height: u32,
     decoded_payload: []u8,
     current_frame_number: u32 = 1,
-    current_override_format: u16 = 0,
-    current_override_width: u32 = 0,
-    current_override_height: u32 = 0,
-    current_override_decoded_payload: ?[]u8 = null,
     next_frame_id: u32 = 1,
     root_frame_gap: i32 = 0,
     animation_state: AnimationState = .stopped,
@@ -357,7 +353,6 @@ pub const State = struct {
     pub fn deinit(self: *State, allocator: std.mem.Allocator) void {
         for (self.images.items) |image| {
             allocator.free(image.decoded_payload);
-            if (image.current_override_decoded_payload) |payload| allocator.free(payload);
         }
         self.images.deinit(allocator);
         self.placements.deinit(allocator);
@@ -383,6 +378,7 @@ pub const State = struct {
     }
 
     pub fn progressRuntime(self: *State, allocator: std.mem.Allocator, now_ns: u64) host_state.ApplyError!bool {
+        _ = allocator;
         var candidate_idx: ?usize = null;
         var earliest_deadline_ns: u64 = 0;
         for (self.images.items, 0..) |image, idx| {
@@ -395,7 +391,7 @@ pub const State = struct {
             }
         }
         const idx = candidate_idx orelse return false;
-        return try self.progressImageRuntime(allocator, @intCast(idx), now_ns);
+        return self.progressImageRuntime(@intCast(idx), now_ns);
     }
 
     fn imageRuntimeObligation(self: *const State, image: Image, now_ns: u64) RuntimeObligation {
@@ -422,7 +418,7 @@ pub const State = struct {
         return deadline_ns;
     }
 
-    fn progressImageRuntime(self: *State, allocator: std.mem.Allocator, image_idx: Index, now_ns: u64) host_state.ApplyError!bool {
+    fn progressImageRuntime(self: *State, image_idx: Index, now_ns: u64) bool {
         const image = &self.images.items[@intCast(image_idx)];
         if (!imageNeedsRuntime(self, image.*)) return false;
 
@@ -432,18 +428,18 @@ pub const State = struct {
                 image.current_frame_shown_at_ns = now_ns;
                 return false;
             }
-            return try self.advanceRuntimeFrame(allocator, image_idx, now_ns);
+            return self.advanceRuntimeFrame(image_idx, now_ns);
         }
 
         if (gap > 0) {
-            const gap_ns = gapToNs(gap) orelse return try self.advanceRuntimeFrame(allocator, image_idx, now_ns);
+            const gap_ns = gapToNs(gap) orelse return self.advanceRuntimeFrame(image_idx, now_ns);
             if (now_ns < image.current_frame_shown_at_ns +% gap_ns) return false;
         }
 
-        return try self.advanceRuntimeFrame(allocator, image_idx, now_ns);
+        return self.advanceRuntimeFrame(image_idx, now_ns);
     }
 
-    fn advanceRuntimeFrame(self: *State, allocator: std.mem.Allocator, image_idx: Index, now_ns: u64) host_state.ApplyError!bool {
+    fn advanceRuntimeFrame(self: *State, image_idx: Index, now_ns: u64) bool {
         const image = &self.images.items[@intCast(image_idx)];
         const original_frame = image.current_frame_number;
         const total_frames = self.frameCountForImage(image.image_id);
@@ -455,7 +451,6 @@ pub const State = struct {
             image.current_frame_number = next;
             const gap = self.currentFrameGap(image.*);
             if (gap > 0) {
-                try self.refreshCurrentFramePublication(allocator, image_idx);
                 image.current_frame_shown_at_ns = now_ns;
                 return image.current_frame_number != original_frame;
             }
@@ -547,7 +542,6 @@ pub const State = struct {
     pub fn reset(self: *State, allocator: std.mem.Allocator) void {
         for (self.images.items) |image| {
             allocator.free(image.decoded_payload);
-            if (image.current_override_decoded_payload) |payload| allocator.free(payload);
         }
         self.images.clearRetainingCapacity();
         self.placements.clearRetainingCapacity();
@@ -569,19 +563,6 @@ pub const State = struct {
         if (idx >= self.imageCount()) return null;
         const image = self.images.items[@intCast(idx)];
         assertImagePayloadsCoherent(image);
-        if (image.current_override_decoded_payload) |payload| {
-            var published = image;
-            std.debug.assert(payload.len <= decoded_payload_max_bytes);
-            published.format = image.current_override_format;
-            published.width = image.current_override_width;
-            published.height = image.current_override_height;
-            published.decoded_format = image.current_override_format;
-            published.decoded_width = image.current_override_width;
-            published.decoded_height = image.current_override_height;
-            published.decoded_payload = payload;
-            assertImagePayloadsCoherent(published);
-            return published;
-        }
         return image;
     }
 
@@ -842,7 +823,7 @@ pub const State = struct {
             changed = try self.setFrameGap(allocator, @intCast(image_idx), cmd.edit_frame_number, cmd.z);
         }
         if (has_current_frame) {
-            changed = try self.selectCurrentFrame(allocator, @intCast(image_idx), cmd.current_frame_number) or changed;
+            changed = self.selectCurrentFrame(@intCast(image_idx), cmd.current_frame_number) or changed;
         }
         if (has_animation_state or has_loop_count) {
             changed = self.setAnimationControl(@intCast(image_idx), cmd.animation_state, cmd.loop_count) or changed;
@@ -936,11 +917,6 @@ pub const State = struct {
             assertFramePayloadsCoherent(self.frames.items[@intCast(frame_idx)]);
         }
 
-        const refreshed_image_idx = self.findImage(image_id) orelse return .{ .changed = true, .move = null };
-        const refreshed_image = &self.images.items[@intCast(refreshed_image_idx)];
-        if (refreshed_image.current_frame_number == dest_frame_number) {
-            try self.refreshCurrentFramePublication(allocator, @intCast(refreshed_image_idx));
-        }
         if (shouldReplySuccess(cmd.quiet) and (cmd.image_id != 0 or cmd.image_number != 0)) {
             try appendPlacementReply(allocator, output, encode_buf, cmd.image_id, cmd.image_number, 0, "OK");
         }
@@ -1601,8 +1577,8 @@ pub const State = struct {
             error.OutOfMemory => return error.OutOfMemory,
             error.ConsequenceLimit => return error.ConsequenceLimit,
         };
-        if (!currentFramePublicationFormatSupported(image.format)) return;
-        if (!currentFramePublicationFormatSupported(format)) return;
+        if (!framePublicationFormatSupported(image.format)) return;
+        if (!framePublicationFormatSupported(format)) return;
         if (target_frame_number == 1) {
             try self.editRootFrame(
                 allocator,
@@ -1692,10 +1668,6 @@ pub const State = struct {
             try self.frames.append(allocator, frame);
             decoded_ownership_transferred = true;
         }
-
-        if (image.current_frame_number == target_frame_number) {
-            try self.refreshCurrentFramePublication(allocator, @intCast(image_idx));
-        }
     }
 
     fn editRootFrame(
@@ -1713,8 +1685,8 @@ pub const State = struct {
     ) host_state.ApplyError!void {
         var image = &self.images.items[@intCast(image_idx)];
         const target_format: u16 = if (image.format == 100 or format == 100) 32 else image.format;
-        if (!currentFramePublicationFormatSupported(image.format)) return;
-        if (!currentFramePublicationFormatSupported(format)) return;
+        if (!framePublicationFormatSupported(image.format)) return;
+        if (!framePublicationFormatSupported(format)) return;
         if (target_format != 32 and format != image.format) return;
 
         const root = try self.coalesceFrameNumberOwned(allocator, image.*, 1, target_format);
@@ -1746,48 +1718,15 @@ pub const State = struct {
         assertImagePayloadsCoherent(image.*);
         if (gap != 0) image.root_frame_gap = @max(gap, 0);
         if (image.current_frame_number == 1) image.current_frame_shown_at_ns = 0;
-        if (image.current_frame_number != 1) {
-            try self.refreshCurrentFramePublication(allocator, @intCast(refreshed_idx));
-        }
     }
 
-    fn selectCurrentFrame(self: *State, allocator: std.mem.Allocator, image_idx: Index, frame_number: u32) host_state.ApplyError!bool {
+    fn selectCurrentFrame(self: *State, image_idx: Index, frame_number: u32) bool {
         const image = &self.images.items[@intCast(image_idx)];
         if (frame_number == image.current_frame_number) return false;
         if (frame_number != 1 and self.findFrameIndex(image.image_id, frame_number) == null) return false;
         image.current_frame_number = frame_number;
         image.current_frame_shown_at_ns = 0;
-        try self.refreshCurrentFramePublication(allocator, image_idx);
         return true;
-    }
-
-    fn refreshCurrentFramePublication(self: *State, allocator: std.mem.Allocator, image_idx: Index) host_state.ApplyError!void {
-        const image = &self.images.items[@intCast(image_idx)];
-        if (image.current_override_decoded_payload) |payload| {
-            allocator.free(payload);
-            image.current_override_decoded_payload = null;
-        }
-        if (image.current_frame_number == 1) return;
-
-        const frame = self.frameByNumber(image.image_id, image.current_frame_number) orelse return;
-        const publish_format: u16 = if (self.frameGraphPublishesRgba(image.*, frame)) 32 else frame.format;
-        const raw = if (publish_format == 32)
-            try self.coalesceFrameRgbaOwned(allocator, image.*, frame)
-        else
-            try self.coalesceFrameRawOwned(allocator, image.*, frame);
-        defer allocator.free(raw);
-        const image_id = image.image_id;
-        try self.ensureDecodedPayloadStore(allocator, count32(raw), 0, image_id);
-        const decoded = try allocator.dupe(u8, raw);
-        var decoded_owned = true;
-        errdefer if (decoded_owned) allocator.free(decoded);
-        const refreshed_image = &self.images.items[@intCast(self.findImage(image_id) orelse return)];
-        refreshed_image.current_override_format = publish_format;
-        refreshed_image.current_override_width = refreshed_image.width;
-        refreshed_image.current_override_height = refreshed_image.height;
-        refreshed_image.current_override_decoded_payload = decoded;
-        decoded_owned = false;
-        assertImagePayloadsCoherent(refreshed_image.*);
     }
 
     fn frameGraphPublishesRgba(self: *const State, image: Image, frame: Frame) bool {
@@ -2021,7 +1960,6 @@ pub const State = struct {
         var idx: Index = 0;
         while (idx < self.imageCount()) {
             if (self.images.items[@intCast(idx)].image_id == image_id) {
-                if (self.images.items[@intCast(idx)].current_override_decoded_payload) |payload| allocator.free(payload);
                 allocator.free(self.images.items[@intCast(idx)].decoded_payload);
                 _ = self.images.swapRemove(@intCast(idx));
             } else idx += 1;
@@ -2048,7 +1986,6 @@ pub const State = struct {
     fn deleteImageDataAtPreserveOrder(self: *State, allocator: std.mem.Allocator, image_idx: Index) void {
         const image = self.images.items[@intCast(image_idx)];
         const image_id = image.image_id;
-        if (image.current_override_decoded_payload) |payload| allocator.free(payload);
         allocator.free(image.decoded_payload);
         _ = self.images.orderedRemove(@intCast(image_idx));
 
@@ -2583,10 +2520,6 @@ pub const State = struct {
         if (deleted_frame_number == 1) {
             const promoted_idx = self.findFrameIndex(image_id, 2) orelse return;
             const promoted = self.frames.items[@intCast(promoted_idx)];
-            if (image.current_override_decoded_payload) |payload| {
-                allocator.free(payload);
-                image.current_override_decoded_payload = null;
-            }
             allocator.free(image.decoded_payload);
             image.decoded_payload = promoted.decoded_payload;
             image.format = promoted.format;
@@ -2618,7 +2551,6 @@ pub const State = struct {
         }
         if (old_current_frame_number >= deleted_frame_number) {
             image.current_frame_shown_at_ns = 0;
-            self.refreshCurrentFramePublication(allocator, image_idx) catch {};
         }
     }
 
@@ -2680,7 +2612,6 @@ fn decodedPayloadBytes(self: *const State) u32 {
     var total: u32 = 0;
     for (self.images.items) |image| {
         total = addDecodedBytes(total, image.decoded_payload.len);
-        if (image.current_override_decoded_payload) |payload| total = addDecodedBytes(total, payload.len);
     }
     for (self.frames.items) |frame| total = addDecodedBytes(total, frame.decoded_payload.len);
     if (self.upload) |upload| total = addDecodedBytes(total, upload.data.items.len);
@@ -2703,7 +2634,6 @@ fn decodedPayloadBytesFreedByImage(self: *const State, image_id: u32) u32 {
     for (self.images.items) |image| {
         if (image.image_id == image_id) {
             total = addDecodedBytes(total, image.decoded_payload.len);
-            if (image.current_override_decoded_payload) |payload| total = addDecodedBytes(total, payload.len);
         }
     }
     for (self.frames.items) |frame| {
@@ -2801,7 +2731,7 @@ fn copyRawOwned(allocator: std.mem.Allocator, format: u16, width: u32, height: u
     return try allocator.dupe(u8, payload);
 }
 
-fn currentFramePublicationFormatSupported(format: u16) bool {
+fn framePublicationFormatSupported(format: u16) bool {
     return format == 24 or format == 32 or format == 100;
 }
 
