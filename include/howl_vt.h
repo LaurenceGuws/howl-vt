@@ -245,10 +245,6 @@ enum {
   HOWL_VT_GRAPHICS_ROW_ANCHOR_BELOW_SCREEN = 3,
 };
 
-enum {
-  HOWL_VT_GRAPHICS_PLACEMENT_GENERATED_PLACEHOLDER = 1u,
-};
-
 typedef struct {
   uint8_t kind;
   uint8_t reserved0;

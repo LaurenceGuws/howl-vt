@@ -60,7 +60,6 @@ pub const CursorMove = struct {
 
 pub const Count = u32;
 pub const Index = u32;
-pub const placement_generated_placeholder_flag: u32 = 1;
 
 // Ghostty accepts substantially larger Kitty APC payloads than the generic
 // large-control ceiling because real direct-upload image traffic can exceed a
@@ -195,9 +194,6 @@ pub const Placement = struct {
     rows: u32,
     effective_columns: u32,
     effective_rows: u32,
-    dest_width_px: u32 = 0,
-    dest_height_px: u32 = 0,
-    flags: u32 = 0,
     render_order_key: u64 = 0,
 
     pub const ResolvedDestGeometry = struct {
@@ -210,17 +206,6 @@ pub const Placement = struct {
     pub fn resolveDestGeometry(self: Placement, cell_pixel_size: ?CellPixelSize) ?ResolvedDestGeometry {
         const left_px = self.cell_x_offset;
         const top_px = self.cell_y_offset;
-
-        if (self.flags & placement_generated_placeholder_flag != 0 and self.dest_width_px != 0 and self.dest_height_px != 0) {
-            const right_px = std.math.add(u32, left_px, self.dest_width_px) catch return null;
-            const bottom_px = std.math.add(u32, top_px, self.dest_height_px) catch return null;
-            return .{
-                .left_px = left_px,
-                .top_px = top_px,
-                .right_px = right_px,
-                .bottom_px = bottom_px,
-            };
-        }
 
         if (cell_pixel_size == null) {
             const right_px = std.math.add(u32, left_px, self.effective_columns) catch return null;

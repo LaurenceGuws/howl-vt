@@ -31,8 +31,6 @@ pub const HowlVtCallStatus = enum(c_int) {
     limit_reached = -5,
 };
 
-pub const HOWL_VT_GRAPHICS_PLACEMENT_GENERATED_PLACEHOLDER: u32 = 1;
-
 const kitty_placeholder_codepoint: u32 = 0x10EEEE;
 
 pub const FfiColor = extern struct {
@@ -642,7 +640,7 @@ fn graphicsPlacementResultWithCell(placement: kitty_types.Graphics.Placement, ce
             .dest_grid_rows = placement.effective_rows,
             .effective_columns = placement.effective_columns,
             .effective_rows = placement.effective_rows,
-            .flags = placement.flags,
+            .flags = 0,
             .render_order_key = placement.render_order_key,
         },
     };
