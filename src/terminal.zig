@@ -221,7 +221,7 @@ pub const Terminal = struct {
             .image_count = publication.state.imageCount(),
             .placement_count = try publication.state.resolvedPlacementCount(self.allocator, self.screen_state.activeConst(), self.screen_state.activeConst().cellPixelSize()),
             .virtual_placement_count = publication.state.virtualPlacementCount(),
-            .placeholder_run_count = 0,
+            .placeholder_run_count = try publication.state.resolvedPlaceholderRunCount(self.allocator, self.screen_state.activeConst()),
             .is_alternate_screen = publication.is_alternate_screen,
             .publication_seq = publication.publication_seq,
             .dirty_generation = publication.dirty_generation,
@@ -273,9 +273,8 @@ pub const Terminal = struct {
         publication_seq: u64,
         idx: kitty_types.Graphics.Index,
     ) (error{InvalidArgument} || host_state.ApplyError)!?kitty_types.Graphics.ResolvedPlaceholderRun {
-        _ = idx;
-        _ = try self.graphicsStateForPublication(publication_seq);
-        return null;
+        const state = try self.graphicsStateForPublication(publication_seq);
+        return state.resolvedPlaceholderRunAt(self.allocator, idx, self.screen_state.activeConst());
     }
 
     pub fn graphicsPlaceholderRunProofCount(self: *Terminal, publication_seq: u64) (error{InvalidArgument} || host_state.ApplyError)!u32 {
@@ -288,8 +287,7 @@ pub const Terminal = struct {
         publication_seq: u64,
         idx: kitty_types.Graphics.Index,
     ) (error{InvalidArgument} || host_state.ApplyError)!?kitty_types.Graphics.ResolvedPlaceholderRun {
-        const state = try self.graphicsStateForPublication(publication_seq);
-        return state.resolvedPlaceholderRunAt(self.allocator, idx, self.screen_state.activeConst());
+        return self.graphicsPlaceholderRun(publication_seq, idx);
     }
 
     pub fn visibleCellHyperlinkUri(self: *Terminal, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {

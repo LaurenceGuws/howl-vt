@@ -1462,7 +1462,7 @@ test "vt ffi graphics queries expose chunked unicode no-move virtual contract" {
     try std.testing.expectEqual(@as(u32, 3), placement.placement.rows);
 }
 
-test "vt ffi graphics publication suppresses render-facing placeholder runs" {
+test "vt ffi graphics publication exposes placeholder runs" {
     const handle = terminalInit(4, 8, 4);
     defer terminalDeinit(handle);
     try std.testing.expect(handle != null);
@@ -1491,12 +1491,13 @@ test "vt ffi graphics publication suppresses render-facing placeholder runs" {
     const meta = terminalQueryGraphicsMeta(handle);
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), meta.status);
     try std.testing.expectEqual(@as(u32, 1), meta.meta.placement_count);
-    try std.testing.expectEqual(@as(u32, 0), meta.meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.meta.placeholder_run_count);
 
-    try std.testing.expectEqual(
-        @as(i32, @intFromEnum(HowlVtCallStatus.invalid_argument)),
-        terminalQueryGraphicsPlaceholderRun(handle, meta.meta.publication_seq, 0).status,
-    );
+    const run = terminalQueryGraphicsPlaceholderRun(handle, meta.meta.publication_seq, 0);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), run.status);
+    try std.testing.expectEqual(@as(u32, 7), run.run.image_id);
+    try std.testing.expectEqual(@as(u32, 9), run.run.placement_id);
+    try std.testing.expectEqual(@as(u32, 3), run.run.columns);
 }
 
 test "vt ffi graphics publication token rejects stale queries" {
@@ -1573,7 +1574,7 @@ test "vt ffi graphics publication token rejects stale placeholder runs" {
     owned.postApply(true);
 
     const meta = terminalQueryGraphicsMeta(handle);
-    try std.testing.expectEqual(@as(u32, 0), meta.meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.meta.placeholder_run_count);
 
     const enter_alt = "\x1b[?1049h";
     try std.testing.expectEqual(@as(i32, @intFromEnum(HowlVtCallStatus.ok)), terminalFeed(handle, enter_alt.ptr, enter_alt.len).status);

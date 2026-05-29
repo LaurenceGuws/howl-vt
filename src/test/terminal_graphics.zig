@@ -1864,9 +1864,11 @@ test "kitty graphics placeholder-run export resolves left-to-right row inheritan
     terminal.postApply(true);
 
     const meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 1), try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq));
-    const run = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 0)).?;
+    const run = (try terminal.graphicsPlaceholderRun(meta.publication_seq, 0)).?;
+    const proof_run = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 0)).?;
+    try std.testing.expectEqual(run, proof_run);
     try std.testing.expectEqual(@as(u32, 7), run.image_id);
     try std.testing.expectEqual(@as(u32, 9), run.placement_id);
     try std.testing.expectEqual(@as(u32, 0), run.virtual_placement_index);
@@ -1900,7 +1902,7 @@ test "kitty graphics placeholder cells publish generated placements and suppress
 
     const meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 1), meta.placement_count);
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 1), try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq));
 
     const placement = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
@@ -1987,7 +1989,7 @@ test "kitty graphics generated placements publish stable synthetic render order 
 
     var meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 2), meta.placement_count);
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 2), meta.placeholder_run_count);
     var first = (try terminal.graphicsPlacement(meta.publication_seq, 0)).?;
     var second = (try terminal.graphicsPlacement(meta.publication_seq, 1)).?;
     try std.testing.expectEqual((@as(u64, virtual.ref_id) << 32) | @as(u64, 0), first.render_order_key);
@@ -2034,6 +2036,7 @@ test "kitty graphics generated placements clear and update from VT truth" {
     terminal.postApply(true);
     const cleared_meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 0), cleared_meta.placement_count);
+    try std.testing.expectEqual(@as(u32, 0), cleared_meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 0), try terminal.graphicsPlaceholderRunProofCount(cleared_meta.publication_seq));
 }
 
@@ -2118,7 +2121,7 @@ test "kitty graphics generated placements follow scroll-region index over placeh
 
     const meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 6), meta.placement_count);
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 6), meta.placeholder_run_count);
     try std.testing.expectEqual(
         @as(u32, 6),
         try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq),
@@ -2164,7 +2167,7 @@ test "kitty graphics generated placements follow scroll-region reverse index ove
 
     const meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 5), meta.placement_count);
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 5), meta.placeholder_run_count);
     try std.testing.expectEqual(
         @as(u32, 5),
         try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq),
@@ -2225,6 +2228,7 @@ test "kitty graphics generated placements are removed by clearing placeholder ra
 
     const meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 0), meta.placement_count);
+    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 0), try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq));
 }
 
@@ -2311,7 +2315,7 @@ test "kitty graphics placeholder-run export maps U+0305 to row and column zero" 
     terminal.postApply(true);
 
     const meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 1), try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq));
     const run = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 0)).?;
     try std.testing.expectEqual(@as(u32, 0), run.image_row);
@@ -2334,7 +2338,7 @@ test "kitty graphics placeholder-run export infers missing column and high byte 
     terminal.postApply(true);
 
     const meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 1), try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq));
     const run = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 0)).?;
     try std.testing.expectEqual(@as(u32, 16777223), run.image_id);
@@ -2371,7 +2375,7 @@ test "kitty graphics placeholder-run export breaks on mismatched fields" {
     terminal.postApply(true);
 
     const meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 10), meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 10), try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq));
     const row_mismatch_second = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 1)).?;
     const col_mismatch_second = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 3)).?;
@@ -2402,7 +2406,7 @@ test "kitty graphics placeholder-run export does not inherit across rows" {
     terminal.postApply(true);
 
     const meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 2), meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 2), try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq));
     const first = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 0)).?;
     const second = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 1)).?;
@@ -2430,7 +2434,7 @@ test "kitty graphics placeholder-run export matches image id high byte" {
     terminal.postApply(true);
 
     const meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
     const run = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 0)).?;
     try std.testing.expectEqual(@as(u32, 16777223), run.image_id);
     try std.testing.expectEqual(@as(u32, 9), run.placement_id);
@@ -2486,7 +2490,7 @@ test "kitty graphics generated placements use third combining char image high by
 
     const meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 1), meta.placement_count);
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
     try std.testing.expectEqual(
         @as(u32, 1),
         try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq),
@@ -2514,7 +2518,7 @@ test "kitty graphics placeholder-run export resolves anonymous placement to firs
 
     const meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 2), meta.virtual_placement_count);
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), meta.placeholder_run_count);
     const run = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 0)).?;
     try std.testing.expectEqual(@as(u32, 0), run.placement_id);
     try std.testing.expectEqual(@as(u32, 0), run.virtual_placement_index);
@@ -2536,7 +2540,7 @@ test "kitty graphics placeholder-run export carries stable order for same-image 
     terminal.postApply(true);
 
     const meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 2), meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 2), try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq));
 
     const first = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 0)).?;
@@ -2582,7 +2586,7 @@ test "kitty graphics generated placements use underline placement id" {
 
     const meta = try terminal.graphicsMeta();
     try std.testing.expectEqual(@as(u32, 3), meta.placement_count);
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 3), meta.placeholder_run_count);
     try std.testing.expectEqual(
         @as(u32, 3),
         try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq),
@@ -2645,7 +2649,7 @@ test "kitty graphics placeholder-run export covers yazi-like alt-screen path coh
     const meta = try terminal.graphicsMeta();
     try std.testing.expect(meta.is_alternate_screen);
     try std.testing.expectEqual(@as(u32, 1), meta.virtual_placement_count);
-    try std.testing.expectEqual(@as(u32, 0), meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 3), meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 3), try terminal.graphicsPlaceholderRunProofCount(meta.publication_seq));
 
     const first = (try terminal.graphicsPlaceholderRunProof(meta.publication_seq, 0)).?;
@@ -6211,11 +6215,12 @@ test "kitty graphics placeholder-run export rejects stale publication" {
     terminal.postApply(true);
 
     const fallback_meta = try terminal.graphicsMeta();
-    try std.testing.expectEqual(@as(u32, 0), fallback_meta.placeholder_run_count);
+    try std.testing.expectEqual(@as(u32, 1), fallback_meta.placeholder_run_count);
     try std.testing.expectEqual(@as(u32, 1), try terminal.graphicsPlaceholderRunProofCount(fallback_meta.publication_seq));
 
     try stream.nextSlice("\x1b[?1049h");
 
+    try std.testing.expectError(error.InvalidArgument, terminal.graphicsPlaceholderRun(fallback_meta.publication_seq, 0));
     try std.testing.expectError(error.InvalidArgument, terminal.graphicsPlaceholderRunProof(fallback_meta.publication_seq, 0));
 }
 
