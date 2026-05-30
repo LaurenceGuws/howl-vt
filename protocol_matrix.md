@@ -68,9 +68,9 @@ sqlite3 protocol_coverage.db \
   - `official_docs/xterm/ctlseqs.html.md`
   - `official_docs/xterm/ctlseqs-contents.md`
   - `official_docs/kitty/*.md`
-- Current deterministic fuzzers:
-  - `src/fuzz/scrollback.zig`
-  - `src/fuzz/protocol.zig`
+- Current deterministic simulations:
+  - `src/simulation/scrollback.zig`
+  - `src/simulation/protocol.zig`
 
 - `protocols` is the authoritative implementation scope.
 - Source material exists for provenance and clarification, not for ongoing
@@ -136,7 +136,7 @@ sqlite3 protocol_coverage.db \
 | modifyOtherKeys / enhanced keyboard reporting | partial | XTMODKEYS/XTQMODKEYS support now tracks `modifyOtherKeys` resource `4`, emits xterm `CSI 27;modifier;code~` reports for printable keys in levels 2/3, and supports disable/query. Other modifier/format resources remain pending. |
 | Function/navigation key encoding | partial | Basic xterm-style sequences exist, but not gated by negotiated modes and not extended past current key set. |
 | Alt-screen enter/exit and primary scrollback preservation | supported | Explicit tests exist for `1049` save/restore behavior and full-dirty transitions. |
-| Snapshot / replay determinism across chunking | supported | Unit/regression/fuzz coverage exists. |
+| Snapshot / replay determinism across chunking | supported | Unit coverage and deterministic simulation coverage exist. |
 
 ## Proof Rules
 Every protocol slice should land with:
@@ -145,4 +145,4 @@ Every protocol slice should land with:
 2. parser-event coverage
 3. action-mapping coverage
 4. screen/input/response behavior coverage
-5. protocol fuzz seed or regression fixture when behavior is stateful
+5. protocol simulation seed or regression fixture when behavior is stateful

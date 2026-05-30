@@ -1,9 +1,8 @@
 const std = @import("std");
 const howl_vt = @import("howl_vt");
 
-// Shared VT verification helper for scrollback churn. Fuzz uses it to search
-// seeded input space; regression uses it to replay named expensive scenarios
-// with explicit preservation claims.
+// Shared VT simulation helper for scrollback churn. Workloads use deterministic
+// seeded input space with explicit preservation claims.
 
 const screen_set = howl_vt.ScreenSet;
 const Terminal = howl_vt.Terminal;
@@ -430,7 +429,7 @@ fn summarizeCoreState(vt: *const Terminal) CoreStateSummary {
 
 fn logBreakpoint(index: ScenarioOpCount, before: CoreStateSummary, step: ChurnStep, expected: u64, actual: u64, after: CoreStateSummary) void {
     std.debug.print(
-        "scrollback fuzz breakpoint at step {d}\nstate before: rows={d} cols={d} cursor=({d},{d}) wrap_pending={} history={d}/{d}\n",
+        "scrollback simulation breakpoint at step {d}\nstate before: rows={d} cols={d} cursor=({d},{d}) wrap_pending={} history={d}/{d}\n",
         .{
             index,
             before.rows,

@@ -334,6 +334,6 @@ test {
     _ = @import("test/terminal_surface.zig");
     _ = @import("test/screen_state_behavior.zig");
     _ = @import("test/action_mapping.zig");
-    _ = @import("test/snapshot_regression.zig");
+    _ = @import("test/snapshot_behavior.zig");
     _ = @import("test/terminal_end_to_end.zig");
 }

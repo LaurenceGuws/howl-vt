@@ -2,11 +2,10 @@ const std = @import("std");
 const protocol = @import("protocol.zig");
 const scrollback = @import("scrollback.zig");
 
-// Proof statement: this root searches VT-owned protocol and scrollback churn
-// state space for invariant violations; it is fuzz evidence, not a unit or
-// regression proof surface.
+// Proof statement: this root runs deterministic VT-owned protocol and scrollback
+// simulation workloads with replayable seeds; it is not a unit test.
 
-const Fuzzer = enum {
+const Simulation = enum {
     smoke,
     protocol,
     scrollback,
@@ -15,7 +14,7 @@ const Fuzzer = enum {
 const EventMax = u32;
 
 const CLIArgs = struct {
-    fuzzer: Fuzzer,
+    simulation: Simulation,
     seed: ?u64 = null,
     events_max: ?EventMax = null,
 };
@@ -32,7 +31,7 @@ pub fn main(init: std.process.Init) !void {
 
     const cli_args = try parseArgs(argv);
 
-    switch (cli_args.fuzzer) {
+    switch (cli_args.simulation) {
         .smoke => try mainSmoke(gpa),
         .protocol => try mainProtocol(gpa, cli_args),
         .scrollback => try mainScrollback(gpa, cli_args),
@@ -65,7 +64,7 @@ fn mainScrollback(gpa: std.mem.Allocator, cli_args: CLIArgs) !void {
 }
 
 fn parseArgs(argv: []const [:0]const u8) !CLIArgs {
-    var result = CLIArgs{ .fuzzer = .smoke };
+    var result = CLIArgs{ .simulation = .smoke };
     var positional: [2][]const u8 = undefined;
     var positional_len: u8 = 0;
     const argc = argCount(argv);
@@ -90,7 +89,7 @@ fn parseArgs(argv: []const [:0]const u8) !CLIArgs {
 
     if (positional_len == 0) return result;
 
-    result.fuzzer = std.meta.stringToEnum(Fuzzer, positional[0]) orelse return error.UnknownFuzzer;
+    result.simulation = std.meta.stringToEnum(Simulation, positional[0]) orelse return error.UnknownSimulation;
     if (positional_len >= 2) {
         result.seed = try scrollback.parseSeed(positional[1]);
     }

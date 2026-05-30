@@ -20,12 +20,6 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     internal_mod.addOptions("vt_options", module_options);
-    const scrollback_verifier_mod = b.createModule(.{
-        .root_source_file = b.path("src/fuzz/scrollback.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    scrollback_verifier_mod.addImport("howl_vt", internal_mod);
     const mod_tests = b.addTest(.{
         .name = "test-unit",
         .root_module = internal_mod,
@@ -92,68 +86,24 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(ffi_lib);
     b.installFile("include/howl_vt.h", "include/howl_vt.h");
 
-    const scrollback_regression_mod = b.createModule(.{
-        .root_source_file = b.path("src/test/scrollback_regression.zig"),
+    const simulation_module = b.createModule(.{
+        .root_source_file = b.path("src/simulation/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    scrollback_regression_mod.addImport("scrollback_verifier", scrollback_verifier_mod);
+    simulation_module.addImport("howl_vt", internal_mod);
 
-    const snapshot_regression_mod = b.createModule(.{
-        .root_source_file = b.path("src/test_regression_snapshot.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
+    const simulation_exe = b.addExecutable(.{
+        .name = "howl_vt_simulate",
+        .root_module = simulation_module,
     });
-    snapshot_regression_mod.addOptions("vt_options", module_options);
-
-    const scrollback_regression_tests = b.addTest(.{
-        .name = "test-regression-scrollback",
-        .root_module = scrollback_regression_mod,
-        .filters = b.args orelse &.{},
-    });
-    scrollback_regression_tests.use_llvm = true;
-    const run_scrollback_regression_tests = b.addRunArtifact(scrollback_regression_tests);
-    if (b.args != null) {
-        run_scrollback_regression_tests.has_side_effects = true;
-    }
-
-    const snapshot_regression_tests = b.addTest(.{
-        .name = "test-regression-snapshot",
-        .root_module = snapshot_regression_mod,
-        .filters = b.args orelse &.{},
-    });
-    snapshot_regression_tests.use_llvm = true;
-    const run_snapshot_regression_tests = b.addRunArtifact(snapshot_regression_tests);
-    if (b.args != null) {
-        run_snapshot_regression_tests.has_side_effects = true;
-    }
-
-    const test_regression_step = b.step("test:regression", "Run slow regression tests");
-    const test_regression_build_step = b.step("test:regression:build", "Build slow regression tests");
-    test_regression_build_step.dependOn(&scrollback_regression_tests.step);
-    test_regression_build_step.dependOn(&snapshot_regression_tests.step);
-    test_regression_step.dependOn(&run_scrollback_regression_tests.step);
-    test_regression_step.dependOn(&run_snapshot_regression_tests.step);
-
-    const fuzz_module = b.createModule(.{
-        .root_source_file = b.path("src/fuzz/fuzz_tests.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    fuzz_module.addImport("howl_vt", internal_mod);
-
-    const fuzz_exe = b.addExecutable(.{
-        .name = "howl_vt_fuzz",
-        .root_module = fuzz_module,
-    });
-    fuzz_exe.use_llvm = true;
-    const fuzz_step = b.step("fuzz", "Run VT protocol and scrollback fuzz search");
-    const fuzz_build_step = b.step("fuzz:build", "Build VT protocol and scrollback fuzz search");
-    fuzz_build_step.dependOn(&fuzz_exe.step);
-    const run_fuzz = b.addRunArtifact(fuzz_exe);
-    if (b.args) |args| run_fuzz.addArgs(args);
-    fuzz_step.dependOn(&run_fuzz.step);
+    simulation_exe.use_llvm = true;
+    const simulation_step = b.step("simulate", "Run VT protocol and scrollback simulations");
+    const simulation_build_step = b.step("simulate:build", "Build VT protocol and scrollback simulations");
+    simulation_build_step.dependOn(&simulation_exe.step);
+    const run_simulation = b.addRunArtifact(simulation_exe);
+    if (b.args) |args| run_simulation.addArgs(args);
+    simulation_step.dependOn(&run_simulation.step);
 
     const baseline_mod = b.createModule(.{
         .root_source_file = b.path("src/terminal_benchmark_main.zig"),
