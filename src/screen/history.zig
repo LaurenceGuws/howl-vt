@@ -316,10 +316,15 @@ fn takeReusableLine(self: anytype) struct { line: HistoryLine, slot: ?u32 } {
 
 fn appendProjectedRow(self: anytype, allocator: std.mem.Allocator, cells: []const Cell, wrapped: bool) !void {
     if (self.cols == 0) return;
-    try ensureProjectedCapacity(self, allocator, self.history_count + 1);
+    const capacity_target = @min(self.history_count + 1, @as(u32, self.history_capacity));
+    try ensureProjectedCapacity(self, allocator, capacity_target);
 
     const wraps = self.history_wraps orelse return;
     const history = self.history orelse return;
+    if (self.history_count == self.history_capacity) {
+        self.history_write_idx = (self.history_write_idx + 1) % @as(u32, @intCast(wraps.len));
+        self.history_count -= 1;
+    }
     const slot = projectedAppendSlot(self);
     const cols = colCount(self.cols);
     const base = slot * cols;

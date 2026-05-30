@@ -390,6 +390,25 @@ test "scrollback projection change gets a new surface snapshot sequence" {
     try std.testing.expectEqual(live.dirty_generation, scrolled.dirty_generation);
 }
 
+test "surface copy remains bounded after projected history wraps" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 2, 3, 2);
+    defer terminal.deinit();
+    var harness = try StreamHarness.init(&terminal);
+    defer harness.deinit();
+
+    try harness.nextSlice("aaa\nbbb\nccc\nddd\neee");
+
+    const handle: ffi.VtHandle = @ptrCast(&terminal);
+    var cells: [6]ffi.FfiSurfaceCell = undefined;
+    var dirty_rows: [2]u8 = undefined;
+    var cols_start: [2]u16 = undefined;
+    var cols_end: [2]u16 = undefined;
+
+    const result = try copySurfaceOk(handle, 2, 3, &cells, &dirty_rows, &cols_start, &cols_end);
+    try std.testing.expect(result.history_count <= historyCapacity(&terminal));
+}
+
 test "copy surface exports bounded combining truth" {
     const handle = ffi.terminalInit(1, 2, 4);
     defer ffi.terminalDeinit(handle);
