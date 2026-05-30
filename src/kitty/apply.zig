@@ -1,8 +1,8 @@
 const std = @import("std");
-const input = @import("../input.zig");
 const vocabulary = @import("../action/vocabulary.zig");
 const kitty_color = @import("color.zig");
 const kitty_state = @import("state.zig");
+const input_encode = @import("../input/encode.zig");
 const host_state = @import("../host/state.zig");
 
 const KittyNotificationCommand = vocabulary.KittyNotificationCommand;
@@ -10,7 +10,7 @@ const KittyShellMark = vocabulary.KittyShellMark;
 const KittyAction = vocabulary.KittyAction;
 
 pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!bool {
-    var scratch: input.Scratch = .{};
+    var scratch: input_encode.Scratch = .{};
     const allocator = vt.allocator;
     const active_screen = vt.kitty.activeScreen(vt.screen_state.alt_active);
     const active_screen_const = vt.kitty.activeScreenConst(vt.screen_state.alt_active);

@@ -6,19 +6,19 @@ const screen = @import("../screen.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
 const selection = @import("../selection.zig");
-const input_mod = @import("../input.zig");
+const input_encode = @import("../input/encode.zig");
+const input_keyboard = @import("../input/keyboard.zig");
 const stream_harness = @import("stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;
 const Screen = screen.Screen;
 const Selection = selection;
-const Input = input_mod;
 const StreamHarness = stream_harness.Harness;
 
-var encode_scratch: Input.Scratch = .{};
+var encode_scratch: input_encode.Scratch = .{};
 
-fn encodeKey(terminal: *Terminal, key: Input.Key, mod: Input.Modifier) []const u8 {
-    return Input.encodeKey(terminal, &encode_scratch, key, mod);
+fn encodeKey(terminal: *Terminal, key: input_keyboard.Key, mod: input_keyboard.Modifier) []const u8 {
+    return input_encode.encodeKey(terminal, &encode_scratch, key, mod);
 }
 
 fn activeScreen(terminal: *const Terminal) *const Screen {
@@ -492,18 +492,18 @@ test "input encoding APIs are callable without terminal facade methods" {
 }
 
 test "Input exposes key and modifier constants" {
-    _ = Input.mod_none;
-    _ = Input.mod_shift;
-    _ = Input.mod_alt;
-    _ = Input.mod_ctrl;
-    _ = Input.key_enter;
-    _ = Input.key_tab;
-    _ = Input.key_backspace;
-    _ = Input.key_escape;
-    _ = Input.key_up;
-    _ = Input.key_down;
-    _ = Input.key_left;
-    _ = Input.key_right;
-    _ = Input.key_kp_0;
-    _ = Input.key_kp_enter;
+    _ = input_keyboard.mod_none;
+    _ = input_keyboard.mod_shift;
+    _ = input_keyboard.mod_alt;
+    _ = input_keyboard.mod_ctrl;
+    _ = input_keyboard.key_enter;
+    _ = input_keyboard.key_tab;
+    _ = input_keyboard.key_backspace;
+    _ = input_keyboard.key_escape;
+    _ = input_keyboard.key_up;
+    _ = input_keyboard.key_down;
+    _ = input_keyboard.key_left;
+    _ = input_keyboard.key_right;
+    _ = input_keyboard.key_kp_0;
+    _ = input_keyboard.key_kp_enter;
 }

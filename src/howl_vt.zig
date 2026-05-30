@@ -1,6 +1,11 @@
 const action = @import("action.zig");
 const ffi = @import("ffi.zig");
-const input = @import("input.zig");
+const input_encode = @import("input/encode.zig");
+const input_encoded = @import("input/encoded.zig");
+const input_event = @import("input/event.zig");
+const input_keyboard = @import("input/keyboard.zig");
+const input_mouse = @import("input/mouse.zig");
+const input_tokens = @import("input/tokens.zig");
 const parser = @import("parser/main.zig");
 const parser_owned_actions = @import("parser/owned_actions.zig");
 const screen = @import("screen.zig");
@@ -16,7 +21,12 @@ pub const Terminal = terminal.Terminal;
 test {
     _ = action;
     _ = ffi;
-    _ = input;
+    _ = input_encode;
+    _ = input_encoded;
+    _ = input_event;
+    _ = input_keyboard;
+    _ = input_mouse;
+    _ = input_tokens;
     _ = parser;
     _ = parser_owned_actions;
     _ = screen;

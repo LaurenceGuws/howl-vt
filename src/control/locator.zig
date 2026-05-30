@@ -1,9 +1,8 @@
 const std = @import("std");
-const input_mod = @import("../input.zig");
 const action_mod = @import("../action.zig");
+const input_mouse = @import("../input/mouse.zig");
 const host_state = @import("../host/state.zig");
 
-const Input = input_mod;
 const Action = action_mod;
 const format_output_max_bytes = 40;
 
@@ -90,7 +89,7 @@ pub fn appendDeviceStatusReport(allocator: std.mem.Allocator, output: *std.Array
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn handleMouseEvent(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event: Input.MouseEvent) void {
+pub fn handleMouseEvent(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event: input_mouse.MouseEvent) void {
     if (event.row < 0) return;
     const row: u16 = @intCast(event.row);
     const col = event.col;

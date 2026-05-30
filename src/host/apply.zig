@@ -1,9 +1,9 @@
 const std = @import("std");
-const input = @import("../input.zig");
 const locator = @import("../control/locator.zig");
 const osc_color = @import("../control/osc_color.zig");
 const screen = @import("../screen.zig");
 const kitty_color = @import("../kitty/color.zig");
+const input_encode = @import("../input/encode.zig");
 const vocabulary = @import("../action/vocabulary.zig");
 
 const ScreenNs = screen.Screen;
@@ -14,7 +14,7 @@ const HostAction = vocabulary.HostAction;
 const HostState = @import("state.zig");
 
 pub fn apply(vt: anytype, action: HostAction) HostState.ApplyError!void {
-    var scratch: input.Scratch = .{};
+    var scratch: input_encode.Scratch = .{};
     const allocator = vt.allocator;
     switch (action) {
         .title_set => |title| try setCurrentTitle(vt, title),

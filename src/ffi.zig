@@ -1,8 +1,10 @@
 const std = @import("std");
 const screen = @import("screen.zig");
-const input = @import("input.zig");
 const selection = @import("selection.zig");
 const host_state = @import("host/state.zig");
+const input_encode = @import("input/encode.zig");
+const input_keyboard = @import("input/keyboard.zig");
+const input_mouse = @import("input/mouse.zig");
 const screen_set = @import("screen_set.zig");
 const terminal = @import("terminal.zig");
 
@@ -13,7 +15,7 @@ comptime {
     std.debug.assert(host_state.title_max_bytes == 1024);
     std.debug.assert(host_state.pending_output_max_bytes == 1024 * 1024);
     std.debug.assert(host_state.retained_payload_max_bytes == 1024 * 1024);
-    std.debug.assert(@sizeOf(input.Scratch) == 64);
+    std.debug.assert(@sizeOf(input_encode.Scratch) == 64);
     std.debug.assert(@sizeOf(FfiRgb8) == 3);
     std.debug.assert(@sizeOf(FfiRenderColorState) == 777);
 }
@@ -304,24 +306,24 @@ fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
     return out;
 }
 
-fn mouseKindIn(kind: u8) ?input.MouseEventKind {
+fn mouseKindIn(kind: u8) ?input_mouse.MouseEventKind {
     return switch (kind) {
-        @intFromEnum(input.mouse_press) => .press,
-        @intFromEnum(input.mouse_release) => .release,
-        @intFromEnum(input.mouse_move) => .move,
-        @intFromEnum(input.mouse_wheel) => .wheel,
+        @intFromEnum(input_mouse.mouse_press) => .press,
+        @intFromEnum(input_mouse.mouse_release) => .release,
+        @intFromEnum(input_mouse.mouse_move) => .move,
+        @intFromEnum(input_mouse.mouse_wheel) => .wheel,
         else => null,
     };
 }
 
-fn mouseButtonIn(button: u8) ?input.MouseButton {
+fn mouseButtonIn(button: u8) ?input_mouse.MouseButton {
     return switch (button) {
-        @intFromEnum(input.mouse_button_none) => .none,
-        @intFromEnum(input.mouse_button_left) => .left,
-        @intFromEnum(input.mouse_button_middle) => .middle,
-        @intFromEnum(input.mouse_button_right) => .right,
-        @intFromEnum(input.mouse_button_wheel_up) => .wheel_up,
-        @intFromEnum(input.mouse_button_wheel_down) => .wheel_down,
+        @intFromEnum(input_mouse.mouse_button_none) => .none,
+        @intFromEnum(input_mouse.mouse_button_left) => .left,
+        @intFromEnum(input_mouse.mouse_button_middle) => .middle,
+        @intFromEnum(input_mouse.mouse_button_right) => .right,
+        @intFromEnum(input_mouse.mouse_button_wheel_up) => .wheel_up,
+        @intFromEnum(input_mouse.mouse_button_wheel_down) => .wheel_down,
         else => null,
     };
 }
@@ -750,30 +752,30 @@ pub fn terminalProgressRuntime(handle: VtHandle, now_ns: u64) callconv(.c) FfiRu
 pub fn terminalEncodeKey(handle: VtHandle, key: u32, mods: u8, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    var scratch: input.Scratch = .{};
-    return copyBytes(out, input.encodeKey(owned, &scratch, key, mods));
+    var scratch: input_encode.Scratch = .{};
+    return copyBytes(out, input_encode.encodeKey(owned, &scratch, key, mods));
 }
 
 pub fn terminalEncodeFocus(handle: VtHandle, focused: u8, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    var scratch: input.Scratch = .{};
-    const bytes = if (focused != 0) input.encodeFocusIn(owned, &scratch) else input.encodeFocusOut(owned, &scratch);
+    var scratch: input_encode.Scratch = .{};
+    const bytes = if (focused != 0) input_encode.encodeFocusIn(owned, &scratch) else input_encode.encodeFocusOut(owned, &scratch);
     return copyBytes(out, bytes);
 }
 
 pub fn terminalEncodePasteStart(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    var scratch: input.Scratch = .{};
-    return copyBytes(out, input.encodePasteStart(owned, &scratch));
+    var scratch: input_encode.Scratch = .{};
+    return copyBytes(out, input_encode.encodePasteStart(owned, &scratch));
 }
 
 pub fn terminalEncodePasteEnd(handle: VtHandle, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    var scratch: input.Scratch = .{};
-    return copyBytes(out, input.encodePasteEnd(owned, &scratch));
+    var scratch: input_encode.Scratch = .{};
+    return copyBytes(out, input_encode.encodePasteEnd(owned, &scratch));
 }
 
 pub fn terminalEncodeMouse(
@@ -795,7 +797,7 @@ pub fn terminalEncodeMouse(
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     const event_kind = mouseKindIn(kind) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     const event_button = mouseButtonIn(button) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    const event = input.MouseEvent{
+    const event = input_mouse.MouseEvent{
         .kind = event_kind,
         .button = event_button,
         .row = row,
@@ -805,17 +807,17 @@ pub fn terminalEncodeMouse(
         .mod = mods,
         .buttons_down = buttons_down,
     };
-    var scratch: input.Scratch = .{};
-    return copyBytes(out, input.encodeMouse(owned, &scratch, event));
+    var scratch: input_encode.Scratch = .{};
+    return copyBytes(out, input_encode.encodeMouse(owned, &scratch, event));
 }
 
 pub fn terminalEncodePaste(handle: VtHandle, text_ptr: ?[*]const u8, text_len: usize, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const text = bytesIn(text_ptr, text_len) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
-    var scratch: input.Scratch = .{};
-    const start = input.encodePasteStart(owned, &scratch);
-    const end = input.encodePasteEnd(owned, &scratch);
+    var scratch: input_encode.Scratch = .{};
+    const start = input_encode.encodePasteStart(owned, &scratch);
+    const end = input_encode.encodePasteEnd(owned, &scratch);
     const needed = start.len + text.len + end.len;
     if (out.len < needed) {
         return .{
@@ -843,7 +845,7 @@ test "vt ffi runtime surface covers feed encode and surface" {
     try std.testing.expectEqual(@as(u8, 1), fed.state_changed);
 
     var key_buf: [16]u8 = undefined;
-    const key = terminalEncodeKey(handle, input.key_enter, input.mod_none, key_buf[0..].ptr, key_buf.len);
+    const key = terminalEncodeKey(handle, input_keyboard.key_enter, input_keyboard.mod_none, key_buf[0..].ptr, key_buf.len);
     try std.testing.expectEqual(@as(i32, 0), key.status);
     try std.testing.expectEqualStrings("\r", key_buf[0..@intCast(key.written)]);
 

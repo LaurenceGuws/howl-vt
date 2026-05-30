@@ -1,8 +1,7 @@
 const std = @import("std");
-const input_mod = @import("../input.zig");
 const action_mod = @import("../action.zig");
+const input_mouse = @import("../input/mouse.zig");
 
-const Input = input_mod;
 const ModeAction = action_mod.ModeAction;
 
 const saved_dec_mode_limit = 16;
@@ -23,8 +22,8 @@ pub const State = struct {
     kitty_clipboard: bool = false,
     reverse_wraparound_mode: bool = false,
     extended_reverse_wraparound_mode: bool = false,
-    mouse_tracking: Input.MouseTrackingMode = .off,
-    mouse_protocol: Input.MouseProtocol = .none,
+    mouse_tracking: input_mouse.MouseTrackingMode = .off,
+    mouse_protocol: input_mouse.MouseProtocol = .none,
     pointer_mode: u2 = 1,
     saved_dec_modes: [saved_dec_mode_limit]SavedDecMode = [_]SavedDecMode{.{ .mode = 0, .state = 0 }} ** saved_dec_mode_limit,
     saved_dec_mode_count: SavedDecModeCount = 0,
@@ -79,8 +78,8 @@ pub const DecView = struct {
     left_right_margin_mode: bool,
     cursor_visible: bool,
     alt_active: bool,
-    mouse_tracking: Input.MouseTrackingMode,
-    mouse_protocol: Input.MouseProtocol,
+    mouse_tracking: input_mouse.MouseTrackingMode,
+    mouse_protocol: input_mouse.MouseProtocol,
     focus_reporting: bool,
     bracketed_paste: bool,
     synchronized_output: bool,

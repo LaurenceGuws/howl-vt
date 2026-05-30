@@ -1,7 +1,6 @@
 const std = @import("std");
 const locator = @import("../control/locator.zig");
 const osc_color = @import("../control/osc_color.zig");
-const input = @import("../input.zig");
 const action = @import("../action.zig");
 const osc = @import("../xterm/osc.zig");
 const parser = @import("../parser.zig");

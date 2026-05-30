@@ -1,9 +1,9 @@
 const std = @import("std");
 const screen_mod = @import("../screen.zig");
 const action_mod = @import("../action.zig");
-const input = @import("../input.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
+const input_encode = @import("../input/encode.zig");
 const host_state = @import("../host/state.zig");
 
 const Screen = screen_mod.Screen;
@@ -40,7 +40,7 @@ pub const RectChecksumRequest = struct {
 };
 
 pub fn apply(vt: anytype, report_action: ReportAction) host_state.ApplyError!void {
-    var scratch: input.Scratch = .{};
+    var scratch: input_encode.Scratch = .{};
     const active = vt.screen_state.activeConst();
     const deccir_charset = vt.deccirCharsetState();
     const ctx = Context{
