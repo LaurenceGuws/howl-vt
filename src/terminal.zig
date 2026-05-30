@@ -7,6 +7,7 @@ const parser_mod = @import("parser/main.zig");
 const selection = @import("selection.zig");
 const screen_set = @import("screen_set.zig");
 const stream_terminal = @import("stream_terminal.zig");
+const surface_publication = @import("surface/publication.zig");
 
 const ScreenNs = screen.Screen;
 const TerminalModeNs = mode;
@@ -32,13 +33,7 @@ pub const Terminal = struct {
     g0_designation: u8 = 'B',
     g1_designation: u8 = 'B',
     dirty_generation: u64 = 1,
-    surface_snapshot_seq: u64 = 1,
-    surface_snapshot_dirty_generation: u64 = 0,
-    surface_snapshot_scrollback_offset: u64 = 0,
-    surface_snapshot_start: u64 = 0,
-    surface_snapshot_rows: u16 = 0,
-    surface_snapshot_cols: u16 = 0,
-    surface_snapshot_alt: bool = false,
+    surface_publication: surface_publication.State = .{},
 
     pub const RuntimeObligation = struct {
         pending_now: bool,
@@ -164,7 +159,7 @@ pub const Terminal = struct {
 
     pub fn ackSurface(self: *Terminal, snapshot_seq: u64) bool {
         if (snapshot_seq == 0) return false;
-        if (self.surface_snapshot_seq == snapshot_seq and self.surface_snapshot_dirty_generation == self.dirty_generation) {
+        if (self.surface_publication.canAck(snapshot_seq, self.dirty_generation)) {
             screen_set.clearDirtyRows(&self.screen_state);
         }
         return true;
@@ -173,7 +168,7 @@ pub const Terminal = struct {
     pub fn surfaceSnapshot(self: *Terminal, scrollback_offset: u64) SurfacePublication {
         const snapshot = screen_set.surfaceSnapshot(&self.screen_state, scrollback_offset);
         return .{
-            .snapshot_seq = self.noteSurfacePublication(snapshot.view, scrollback_offset),
+            .snapshot_seq = self.surface_publication.publish(snapshot.view, scrollback_offset, self.dirty_generation),
             .dirty_generation = self.dirty_generation,
             .snapshot = snapshot,
         };
@@ -245,25 +240,6 @@ pub const Terminal = struct {
         if (self.selectionState() == null) return;
         self.screen_state.activeSelection().clear();
         self.noteSelectionChanged();
-    }
-
-    fn noteSurfacePublication(self: *Terminal, view: screen_set.View, scrollback_offset: u64) u64 {
-        const same_dirty = self.surface_snapshot_dirty_generation == self.dirty_generation;
-        const same_offset = self.surface_snapshot_scrollback_offset == scrollback_offset;
-        const same_start = self.surface_snapshot_start == view.start;
-        const same_rows = self.surface_snapshot_rows == view.rows;
-        const same_cols = self.surface_snapshot_cols == view.cols;
-        const same_alt = self.surface_snapshot_alt == view.is_alternate_screen;
-        if (!(same_dirty and same_offset and same_start and same_rows and same_cols and same_alt)) {
-            if (self.surface_snapshot_dirty_generation != 0) self.surface_snapshot_seq +%= 1;
-            self.surface_snapshot_dirty_generation = self.dirty_generation;
-            self.surface_snapshot_scrollback_offset = scrollback_offset;
-            self.surface_snapshot_start = view.start;
-            self.surface_snapshot_rows = view.rows;
-            self.surface_snapshot_cols = view.cols;
-            self.surface_snapshot_alt = view.is_alternate_screen;
-        }
-        return self.surface_snapshot_seq;
     }
 
     fn noteSelectionChanged(self: *Terminal) void {
