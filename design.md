@@ -1,240 +1,60 @@
-# Design
+# howl-vt Design
 
-Shared rules: [`../AGENTS.md`](../AGENTS.md), [`../reference-index.md`](../reference-index.md)
+Updated: 2026-05-30.
+
+Shared rules: [`../AGENTS.md`](../AGENTS.md), [`../project-memory.md`](../project-memory.md), [`../libs.yaml`](../libs.yaml)
 
 ## Purpose
+
 `howl-vt` owns the host-neutral terminal model.
 
-It parses terminal input streams, maps parser events into terminal actions, applies screen state, tracks selection, and exposes render-facing and host-output-facing surfaces.
+It parses terminal input streams, maps parser events into terminal actions, mutates screen state, owns selection truth, encodes host input according to terminal modes, and exposes host-facing protocol consequences and visible-surface truth through a C ABI.
 
-Host wake, PTY control signals, and runtime turn ownership are not VT ownership.
-They belong to `howl-pty` or the owning host runtime.
-
-## Doc Set
-- `design.md`: owner boundary, file rules, and ABI contract.
-- `protocol_matrix.md`: protocol ledger summary, queries, and support table.
+It does not own PTY transport, host wake policy, host event loops, render text shaping, or backend presentation.
 
 ## Public Surface
-- `include/howl_vt.h`: C ABI header.
-- `howl_vt_*` exported symbols: C ABI contract for terminal runtime calls only.
-- The shipped embedding boundary is C ABI only.
-- `src/howl_vt.zig` is not an embedding surface. If it survives, it is repo-local only.
-- Internal workspace wiring is not a public contract and is not a preservation target.
-- Accepted cleanup result so far is exact:
-  - `src/vt_namespace.zig` is deleted
-  - `src/libhowl_vt.zig` is the explicit ABI export root
-  - `include/howl_vt.h` carries explicit vocabulary constants instead of exported getter helpers
-  - `HowlVtHandle` is an opaque pointer handle contract
-  - Linux host consumes explicit VT ABI steps only
-  - repo-local terminal and input convenience posture that mirrored deeper owners or old ABI shape is removed
 
-```mermaid
-classDiagram
-    class HowlVtHeader
-    class HowlVtAbi
-    class Terminal
-    class Input
-    class ParserApi
-    class Action
-    class Dispatch
-    class Screen
-    class ScreenSet
-    class Selection
+- The shipped embedding contract is `include/howl_vt.h` plus exported `howl_vt_*` symbols.
+- `src/libhowl_vt.zig` is the C ABI export root.
+- Internal Zig roots are repo-local test/fuzz/proof wiring only.
+- Hosts and embedders consume VT through the C ABI only.
 
-    HowlVtHeader --> HowlVtAbi
-    HowlVtAbi --> Terminal
-    Terminal --> Input : key/modifier vocabulary
-    Terminal --> ParserApi : feed parser work
-    Terminal --> Dispatch : delegate event routing
-    Dispatch --> Action : classify actions
-    Terminal --> Screen : mutable screen state
-    Terminal --> ScreenSet : primary/alternate composition
-    Terminal --> Selection : selection state
-```
+## Owners
 
-## Ownership Rules
-- `src/howl_vt.zig` is repo-local only. It is a curated root for tests and local Zig proofs, not a host integration surface.
-- `Terminal` currently owns lifecycle, grouped screen/mode/host/kitty state, and the temporary terminal implementation facade behind the C ABI.
-- `Input` owns key, modifier, mouse, host-token parsing, and input encoding vocabulary.
-- `Action` owns terminal action vocabulary and payload types.
-- `Dispatch` owns the parent event-routing control spine.
-- `Action` also owns the parser-event and action export surface through `src/action.zig`.
-- `Screen` owns one-screen mutable state and mutation.
-- `ScreenSet` owns primary/alternate screen selection plus visible-history projection.
-- `Host` owns host-facing consequence state and application.
-- `Kitty` owns kitty state, kitty payload parsing, and kitty consequence application.
-- `Screen` treats scrollback truth as logical lines; history rows exposed to hosts are width-dependent projections.
-- `Selection` owns selection state and validity against screen mutations.
-- `ParserApi` owns byte-stream parsing contracts used by action routing, tests, and fuzzing.
-- Protocol syntax, parser-event shape, action meaning, screen mutation, and terminal host consequences must stay in separate owners.
-- Runtime control signals and wake policy do not belong in `howl-vt`.
+- `src/ffi.zig` translates the C ABI only.
+- `src/terminal.zig` owns terminal lifecycle and composes parser, screen, host, kitty, selection, and input state.
+- `src/stream_terminal.zig` owns byte-stream batching and parent routing into terminal-owned state.
+- `src/parser/` owns byte-step syntax recognition and parser-event materialization.
+- `src/action/` owns terminal action vocabulary and parsed-event routing.
+- `src/screen.zig` and `src/screen/` own one-screen mutable state and screen mutation.
+- `src/screen_set.zig` owns primary/alternate screen composition and visible-history projection.
+- `src/selection.zig` and `src/selection/state.zig` own selection state and mutation.
+- `src/host/` owns host-facing retained consequences such as title, pending output, clipboard, hyperlink, dynamic color, and visible-surface metadata.
+- `src/input/` owns key/mouse/focus/paste input vocabulary and encoding.
+- `src/xterm/` owns xterm-family control routing.
+- `src/kitty/` owns kitty protocol state, parsing, and consequences.
 
-## File Rules
-- `src/parser/main.zig` owns byte-step parser state and syntax recognition.
-- `src/parser/` keeps parser-internal leaf owners only.
-- `src/parser.zig` is the curated repo-local parser root.
-- `src/howl_vt.zig` is a curated repo-local export root.
-- `src/action.zig` is a curated export root for parser-event, routing, and action vocabulary surfaces.
-- `src/stream_terminal.zig` owns the repo-local VT stream parser/event batching plus parent routing
-  against `Terminal` state in the same general role Ghostty uses for `stream_terminal.zig`.
-- `src/action/vocabulary.zig` owns terminal action vocabulary.
-- `src/action/route.zig` owns the parent parsed-event routing and direct VT control spine that
-  delegates mutation to screen, report, mode, kitty, and host owners.
-- `src/parser/events.zig` owns parser-event materialization plus direct string-control payload state
-  used by the live stream path and parser-event proofs.
-- `src/xterm/` owns current xterm-family routing.
-- `src/host/state.zig` owns host-facing consequence state.
-- `src/host/apply.zig` owns host-facing consequence application.
-- `src/kitty/state.zig` owns kitty aggregate state.
-- `src/kitty/types.zig` owns kitty local state and payload types.
-- `src/kitty/apply.zig` owns kitty consequence application.
-- `src/kitty/protocol.zig` owns kitty payload parsing.
-- `src/kitty/apc.zig` owns kitty APC action routing.
-- `src/screen.zig` is the real one-screen mutable owner.
-- `src/screen_set.zig` owns primary/alternate composition and visible-history projection.
-- `src/input/encode.zig` owns input encoding logic.
-- `src/input/types.zig` owns input event and encoded-value types.
-- `src/selection.zig` owns selection state and terminal-facing selection helpers.
-- `src/selection/state.zig` owns selection state and mutation.
-- `src/screen/` owns screen leaf mutation only.
-- `src/input/` keeps key, mouse, token, and encoding owners separate.
-- `src/terminal.zig` is the real terminal state owner.
-- `src/ffi.zig` translates the shipped C ABI only. Feed, surface snapshot, and clipboard-drain
-  behavior live under `src/terminal.zig`, `src/screen_set.zig`, `src/host/state.zig`, and
-  `src/xterm/osc.zig`.
-- `src/howl_vt.zig` is the curated repo-local root, in the same role Ghostty gives `src/terminal/main.zig`.
-- `howl-vt` does not define PTY or host runtime control-signal vocabulary.
-- `protocol_coverage.db` is the protocol source of truth. `unit_test_filters` must stay executable.
-- New protocol work defines syntax, parser event shape, action meaning, state mutation, and proof before code lands.
-- Normal proof is focused tests plus `zig build test`.
+## Main Flow
 
-## Lifecycle
-```mermaid
-stateDiagram-v2
-    [*] --> Uninitialized
-    Uninitialized --> Ready: init/initWithCells/initWithCellsAndHistory
-    Ready --> Ready: feedByte/feedSlice
-    Ready --> Ready: resize
-    Ready --> Ready: reset/resetScreen/clear
-    Ready --> Destroyed: deinit
-    Destroyed --> [*]
-```
+1. Host creates an opaque VT terminal handle through the C ABI.
+2. Host feeds bytes from PTY transport into `howl_vt_terminal_feed`.
+3. Parser owners produce events and action routing delegates mutation to screen, host, kitty, mode, report, and selection owners.
+4. Host drains pending protocol consequences such as output, clipboard, title, and visible metadata through ABI calls.
+5. Host copies visible-surface truth for render publication.
+6. Host encodes keyboard, mouse, focus, and paste input through VT input ABI calls before sending bytes to PTY.
 
-## Main Flows
-### Feed And Apply
-```mermaid
-sequenceDiagram
-    participant Host
-    participant V as Terminal
-    participant T as VT Stream
-    participant P as Parser
-    participant A as Action Routing
-    participant G as Screen
-    participant S as SelectionState
+## Invariants
 
-    Host->>V: feedSlice(bytes)
-    V->>T: vtStream.nextSlice(bytes)
-    loop each byte
-        T->>P: next(byte)
-        P-->>T: parser actions
-        T->>A: process(event)
-        A->>G: apply screen-visible action
-    end
-    V->>S: clearIfInvalidatedByGrid(&state)
-    V-->>Host: visibleView()/screen()
-```
-
-### Resize
-```mermaid
-sequenceDiagram
-    participant Host
-    participant V as Terminal
-    participant G as Screen
-    participant S as SelectionState
-
-    Host->>V: resize(rows, cols)
-    V->>G: resize(allocator, rows, cols)
-    V->>S: clearIfInvalidatedByGrid(&state)
-```
-
-## API Contracts
-- The public compatibility promise is the C ABI only.
-- `include/howl_vt.h` and `howl_vt_*` exported symbols define the product surface.
-- Hosts and embedders consume `howl-vt` through that header and those exported symbols only.
-- Zig root imports are not an acceptable host integration path and are not a preservation target.
-- `howl_vt_terminal_init` and `howl_vt_terminal_deinit` own opaque terminal-handle lifecycle.
-- `howl_vt_terminal_feed` directly parses and applies terminal input in one bounded call.
-- `HOWL_VT_TITLE_MAX_BYTES`, `HOWL_VT_PENDING_OUTPUT_MAX_BYTES`, `HOWL_VT_CLIPBOARD_SCRATCH_MAX_BYTES`, and `HOWL_VT_INPUT_ENCODE_MAX_BYTES` publish the bounded host-buffer sizes that the C ABI expects callers to preallocate.
-- `howl_vt_terminal_copy_title` copies the current terminal title when host code needs it.
-- `howl_vt_terminal_resize` covers geometry control.
-- `howl_vt_terminal_feed` must fail instead of silently dropping parser work when parser-owned
-  buffering cannot accept more bytes within its explicit bound, or when parser-owned buffering or
-  parser-event materialization cannot allocate.
-- `howl_vt_terminal_feed` must also fail instead of partially mutating VT-owned host consequences
-  when retained title, clipboard, hyperlink, DCS, or pending-output state cannot fit within the
-  owning bound or cannot allocate.
-- `HowlVtSurface` and `HowlVtSurfaceResult` are the primary renderer-facing VT-surface contract types for visible surface cells, cursor state, selection truth, publication identity, and dirtiness truth.
-- `HowlVtVisibleMeta` and `HowlVtVisibleMetaResult` are the explicit VT metadata query contract for rows, cols, history count, alternate-screen state, snapshot identity, and dirty generation.
-- `howl_vt_terminal_query_visible_meta` is the explicit VT-visible metadata query seam.
-- `howl_vt_terminal_copy_surface` is the bounded VT-surface export call.
-- `howl_vt_terminal_copy_surface` exports VT-owned visible state and dirty spans only. It must not
-  act as a courier for host-fed damage classification or scroll effects that the VT owner does not
-  own.
-- `howl_vt_terminal_copy_surface` exports dirty-column bounds in per-row shape so hosts can forward
-  VT dirty truth without reclassifying or expanding it for render.
-- `howl_vt_terminal_copy_surface` reports two owner-truth identities: `snapshot_seq` for visible publication identity, including the requested scrollback projection, and `dirty_generation` for the current unretired dirty set.
-- `howl_vt_terminal_ack_surface` is the only public dirty-retirement path. It retires dirty truth only for the captured visible publication identity that the renderer-facing VT-surface copy reported, and only when that identity still points at the current dirty generation.
-- `howl_vt_terminal_query_selection`, `howl_vt_terminal_start_selection`, `howl_vt_terminal_update_selection`, `howl_vt_terminal_finish_selection`, `howl_vt_terminal_clear_selection`, and `howl_vt_terminal_copy_selection` cover host selection UX against VT-owned history-aware coordinates.
-- `howl_vt_terminal_copy_pending_output`, `howl_vt_terminal_clear_pending_output`, and `howl_vt_terminal_drain_pending_clipboard` cover host-facing protocol consequences.
-- `howl_vt_terminal_encode_key`, `howl_vt_terminal_encode_focus`, `howl_vt_terminal_encode_mouse`, `howl_vt_terminal_encode_paste_start`, `howl_vt_terminal_encode_paste_end`, and `howl_vt_terminal_encode_paste` cover host input encoding against current terminal modes.
-- Header-declared key, modifier, and mouse constants are part of the shipped vocabulary contract. Getter and validator helper exports are not.
-- Zig owner names may change as long as the C ABI contract stays stable.
-
-## Repo-Local Surface
-- `src/terminal.zig` may expose temporary migration APIs for tests, fuzzers, and internal seams only when they describe true owned state or mutation.
-- `src/terminal.zig` may expose repo-local `vtStream` entrypoints for direct VT application against
-  the terminal owner.
-- Root `src/*.zig` files are curated test, fuzz, or ABI roots only. They must not act as broad
-  namespace bags that preserve a fake host-facing Zig integration story.
-- Repo-local callers should consume visible terminal state through `src/screen.zig` and `src/screen_set.zig`, not through terminal facade methods.
-- Repo-local callers should use `vtStream` for live terminal mutation. Parser byte-step proof and
-  parser-event proof still live under `src/parser.zig` and `src/action.zig`.
-- `src/input.zig` owns input vocabulary and repo-local input encoding entrypoints.
-- Repo-local callers should consume input encoding through `src/input.zig`, not through terminal facade methods.
-- Repo-local callers should consume selection mutation and selection queries through `src/selection.zig`, not through terminal facade methods.
-- Repo-local callers should consume host-facing consequence queries through `src/host/state.zig`, not through terminal facade methods.
-- Repo-local callers should consume kitty retained-state queries through `src/kitty/state.zig`, not through terminal facade methods.
-- Checkpoint 4 accepted result:
-  - repo-local queue, title, history, and alternate-screen convenience getters were removed in favor of `applyLimit` and `visibleView`
-  - repo-local token parsing no longer pretends to be owned by `Terminal`
-  - repo-local input namespace bag posture was removed
-
-## Internal Invariants
-- The implementation still follows the same internal runtime invariants:
-  - `init*` returns owned terminal state
-  - `feedByte` and `feedSlice` parse and mutate terminal state directly through terminal-owned
-    stream state
-  - `resize` preserves terminal semantics while updating visible geometry
-- selection validity is rechecked after screen-affecting operations
+- VT owns terminal state truth; render and host must not invent terminal state.
+- Selection coordinates are VT/history-aware and must be mutated through VT selection contracts.
+- Dirty and snapshot identities are VT-owned and retired only through the acknowledged ABI path.
+- Parser syntax, parser events, action vocabulary, screen mutation, and host consequences remain separate owners.
+- Bounded ABI buffers publish their limits in `howl_vt.h`.
+- Runtime control signals and wake policy do not belong in VT.
 
 ## Non-Goals
-- PTY ownership.
-- Host windowing.
-- GPU rendering.
-- Font loading or rasterization.
 
-## Change Rules
-- New visible-state concepts must have a named owner before code is added.
-- Parser syntax must not own terminal meaning.
-- Action-routing owners must not mutate screen or host state directly.
-- Parent routing control flow must stay centralized in one owner.
-- Screen mutation owners must not know protocol families.
-- `Terminal` boundary owners must keep host consequences explicit.
-- Host consequence retention stays explicitly bounded: title is capped at 1024 bytes, hyperlink and
-  metadata retention stays within the parser metadata ceiling, and pending output plus retained
-  large payload consequences stay within the parser large-OSC ceiling.
-- Hosts should depend on the C ABI, not deep parser/screen leaves.
-- Bounded feed and throughput policy must stay explicit at the owning seam. If a limit changes,
-  lock the current Ghostty or Alacritty reference, the reason Howl keeps that value today, and proof
-  of the changed host path in the same change.
-- Update `protocol_coverage.db` and test filters with the same change that adds protocol behavior.
+- PTY process management or transport reads/writes.
+- Host windows, input queues, event loops, or wake threads.
+- Render glyph shaping, rasterization, or prepared surfaces.
+- Backend presentation or graphics resources.
