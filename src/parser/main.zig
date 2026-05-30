@@ -402,16 +402,19 @@ pub const Parser = struct {
                 break :exit .{ .osc_dispatch = self.osc.snapshot(term) };
             },
             .dcs_passthrough => dcs: {
-                self.dcs.clearFinished();
+                self.dcs.reset();
+                std.debug.assert(!self.dcs.active());
                 break :dcs .dcs_unhook;
             },
             .sos_pm_apc_string => switch (sos_kind orelse self.sosPmApcKind()) {
                 .apc => apc: {
-                    self.apc.clearFinished();
+                    self.apc.reset();
+                    std.debug.assert(!self.apc.active());
                     break :apc .apc_end;
                 },
                 .pm => pm: {
-                    self.pm.clearFinished();
+                    self.pm.reset();
+                    std.debug.assert(!self.pm.active());
                     break :pm .pm_end;
                 },
             },
@@ -653,3 +656,28 @@ pub const Parser = struct {
         return .{ .csi_dispatch = action };
     }
 };
+
+test "parser: C1 string controls replace active DCS passthrough control" {
+    var parser = try Parser.init(std.testing.allocator);
+    defer parser.deinit();
+
+    _ = parser.next(0x1B);
+    _ = parser.next('P');
+    const dcs_hook = parser.next('q');
+    try std.testing.expectEqual(Action.dcs_hook, std.meta.activeTag(dcs_hook[2].?));
+
+    const apc_start = parser.next(0x9F);
+    try std.testing.expectEqual(Action.dcs_unhook, apc_start[0].?);
+    try std.testing.expectEqual(Action.apc_start, apc_start[2].?);
+
+    parser.reset();
+
+    _ = parser.next(0x1B);
+    _ = parser.next('P');
+    const second_dcs_hook = parser.next('q');
+    try std.testing.expectEqual(Action.dcs_hook, std.meta.activeTag(second_dcs_hook[2].?));
+
+    const pm_start = parser.next(0x9E);
+    try std.testing.expectEqual(Action.dcs_unhook, pm_start[0].?);
+    try std.testing.expectEqual(Action.pm_start, pm_start[2].?);
+}
