@@ -38,6 +38,7 @@ pub const Screen = struct {
     pub const default_cell = cell.default_cell;
     pub const isCellContinuation = cell.isCellContinuation;
     pub const DirtyRows = dirty.DirtyRows;
+    pub const EraseMode = action_mod.EraseMode;
     pub const CellPixelSize = struct {
         width: u32,
         height: u32,
@@ -435,7 +436,7 @@ pub const Screen = struct {
         right: u16,
     };
 
-    pub fn eraseDisplay(self: *Screen, mode: u2) void {
+    pub fn eraseDisplay(self: *Screen, mode: EraseMode) void {
         erase.eraseDisplay(self, mode);
     }
 
@@ -489,7 +490,7 @@ pub const Screen = struct {
         return self.cell_pixel_size;
     }
 
-    pub fn eraseLine(self: *Screen, mode: u2) void {
+    pub fn eraseLine(self: *Screen, mode: EraseMode) void {
         erase.eraseLine(self, mode);
     }
 
@@ -501,11 +502,11 @@ pub const Screen = struct {
         rect.changeAttrs(self, area, attrs, reverse);
     }
 
-    pub fn selectiveEraseDisplay(self: *Screen, mode: u2) void {
+    pub fn selectiveEraseDisplay(self: *Screen, mode: EraseMode) void {
         erase.selectiveEraseDisplay(self, mode);
     }
 
-    pub fn selectiveEraseLine(self: *Screen, mode: u2) void {
+    pub fn selectiveEraseLine(self: *Screen, mode: EraseMode) void {
         erase.selectiveEraseLine(self, mode);
     }
 

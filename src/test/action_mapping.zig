@@ -3,6 +3,7 @@ const action = @import("../action.zig");
 const parser_mod = @import("../parser.zig");
 
 const Event = action.Event;
+const EraseMode = action.EraseMode;
 const SemanticEvent = action.SemanticEvent;
 const process = action.process;
 const csi_max_params = parser_mod.max_params;
@@ -467,6 +468,18 @@ test "actions: HT maps to horizontal_tab" {
     try std.testing.expect(sem == .horizontal_tab);
 }
 
+test "actions: legacy C0 controls map to legacy events" {
+    try std.testing.expectEqual(action.LegacyControlKind.tek_point_plot, process(Event{ .control = 0x1C }).?.legacy_control);
+    try std.testing.expectEqual(action.LegacyControlKind.tek_graph, process(Event{ .control = 0x1D }).?.legacy_control);
+    try std.testing.expectEqual(action.LegacyControlKind.tek_incremental_plot, process(Event{ .control = 0x1E }).?.legacy_control);
+    try std.testing.expectEqual(action.LegacyControlKind.tek_alpha, process(Event{ .control = 0x1F }).?.legacy_control);
+}
+
+test "actions: ignored C0 controls return no event" {
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .control = 0x00 }));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(Event{ .control = 0x07 }));
+}
+
 test "actions: HTS and TBC map to tab stop controls" {
     try std.testing.expect(process(makeEscFinal('H')).? == .horizontal_tab_set);
     try std.testing.expect(process(makeStyleChange('g', 0, 0, 0)).? == .tab_clear_current);
@@ -482,8 +495,13 @@ test "actions: DECSCA maps protection modes" {
 }
 
 test "actions: DECSED and DECSEL map from private CSI" {
-    try std.testing.expectEqual(@as(u2, 2), process(makePrivateStyleChange('J', &.{2})).?.selective_erase_display);
-    try std.testing.expectEqual(@as(u2, 1), process(makePrivateStyleChange('K', &.{1})).?.selective_erase_line);
+    try std.testing.expectEqual(EraseMode.all, process(makePrivateStyleChange('J', &.{2})).?.selective_erase_display);
+    try std.testing.expectEqual(EraseMode.start_to_cursor, process(makePrivateStyleChange('K', &.{1})).?.selective_erase_line);
+}
+
+test "actions: DEC selective erase invalid mode maps to cursor-to-end" {
+    try std.testing.expectEqual(EraseMode.cursor_to_end, process(makePrivateStyleChange('J', &.{5})).?.selective_erase_display);
+    try std.testing.expectEqual(EraseMode.cursor_to_end, process(makePrivateStyleChange('K', &.{5})).?.selective_erase_line);
 }
 
 test "actions: rectangular erase fill copy and column ops map" {
@@ -1278,42 +1296,47 @@ test "actions: XTSAVE and XTRESTORE collect DEC private modes" {
 
 test "actions: ED no param defaults to mode 0" {
     const sem = process(makeStyleChange('J', 0, 0, 0)) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u2, 0), sem.erase_display);
+    try std.testing.expectEqual(EraseMode.cursor_to_end, sem.erase_display);
 }
 
 test "actions: ED mode 1 above" {
     const sem = process(makeStyleChange('J', 1, 0, 1)) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u2, 1), sem.erase_display);
+    try std.testing.expectEqual(EraseMode.start_to_cursor, sem.erase_display);
 }
 
 test "actions: ED mode 2 full" {
     const sem = process(makeStyleChange('J', 2, 0, 1)) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u2, 2), sem.erase_display);
+    try std.testing.expectEqual(EraseMode.all, sem.erase_display);
 }
 
 test "actions: ED mode 3 scrollback" {
     const sem = process(makeStyleChange('J', 3, 0, 1)) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u2, 3), sem.erase_display);
+    try std.testing.expectEqual(EraseMode.scrollback, sem.erase_display);
+}
+
+test "actions: ED invalid mode maps to cursor-to-end" {
+    const sem = process(makeStyleChange('J', 5, 0, 1)) orelse return error.NoEvent;
+    try std.testing.expectEqual(EraseMode.cursor_to_end, sem.erase_display);
 }
 
 test "actions: EL mode 0 right" {
     const sem = process(makeStyleChange('K', 0, 0, 0)) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u2, 0), sem.erase_line);
+    try std.testing.expectEqual(EraseMode.cursor_to_end, sem.erase_line);
 }
 
 test "actions: EL mode 1 left" {
     const sem = process(makeStyleChange('K', 1, 0, 1)) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u2, 1), sem.erase_line);
+    try std.testing.expectEqual(EraseMode.start_to_cursor, sem.erase_line);
 }
 
 test "actions: EL mode 2 full line" {
     const sem = process(makeStyleChange('K', 2, 0, 1)) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u2, 2), sem.erase_line);
+    try std.testing.expectEqual(EraseMode.all, sem.erase_line);
 }
 
 test "actions: EL invalid mode maps to 0" {
     const sem = process(makeStyleChange('K', 5, 0, 1)) orelse return error.NoEvent;
-    try std.testing.expectEqual(@as(u2, 0), sem.erase_line);
+    try std.testing.expectEqual(EraseMode.cursor_to_end, sem.erase_line);
 }
 
 test "actions: ECH explicit count" {

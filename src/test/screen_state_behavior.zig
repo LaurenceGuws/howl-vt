@@ -5,6 +5,7 @@ const parser_mod = @import("../parser.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
+const EraseMode = action.EraseMode;
 const SemanticEvent = action.SemanticEvent;
 const csi_max_params = parser_mod.max_params;
 
@@ -483,7 +484,7 @@ test "screen: erase_line mode 0 clears from cursor to end of line" {
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "helloworld" });
     s.cursor_col = 5;
-    s.apply(SemanticEvent{ .erase_line = 0 });
+    s.apply(SemanticEvent{ .erase_line = .cursor_to_end });
     try std.testing.expectEqual(@as(u21, 'h'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'e'), s.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 5));
@@ -497,7 +498,7 @@ test "screen: erase_line mode 1 clears from start to cursor" {
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "helloworld" });
     s.cursor_col = 4;
-    s.apply(SemanticEvent{ .erase_line = 1 });
+    s.apply(SemanticEvent{ .erase_line = .start_to_cursor });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 4));
     try std.testing.expectEqual(@as(u21, 'w'), s.cellAt(0, 5));
@@ -510,7 +511,7 @@ test "screen: erase_line mode 2 clears full line" {
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "helloworld" });
     s.cursor_col = 3;
-    s.apply(SemanticEvent{ .erase_line = 2 });
+    s.apply(SemanticEvent{ .erase_line = .all });
     for (0..10) |i| {
         try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, @intCast(i)));
     }
@@ -532,7 +533,7 @@ test "screen: erase_display mode 0 clears from cursor to end of screen" {
     s.apply(SemanticEvent{ .write_text = "CCCCC" });
     s.cursor_row = 1;
     s.cursor_col = 2;
-    s.apply(SemanticEvent{ .erase_display = 0 });
+    s.apply(SemanticEvent{ .erase_display = .cursor_to_end });
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 1));
@@ -557,7 +558,7 @@ test "screen: erase_display mode 1 clears from start to cursor" {
     s.apply(SemanticEvent{ .write_text = "CCCCC" });
     s.cursor_row = 1;
     s.cursor_col = 2;
-    s.apply(SemanticEvent{ .erase_display = 1 });
+    s.apply(SemanticEvent{ .erase_display = .start_to_cursor });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 2));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 3));
@@ -575,7 +576,7 @@ test "screen: erase_display mode 2 clears entire screen" {
     s.apply(SemanticEvent{ .write_text = "AB" });
     s.cursor_row = 1;
     s.cursor_col = 2;
-    s.apply(SemanticEvent{ .erase_display = 2 });
+    s.apply(SemanticEvent{ .erase_display = .all });
     for (0..3) |r| {
         for (0..5) |c_| {
             try std.testing.expectEqual(@as(u21, 0), s.cellAt(@intCast(r), @intCast(c_)));
@@ -588,8 +589,8 @@ test "screen: erase_display mode 2 clears entire screen" {
 test "screen: erase ops no-op without cell buffer" {
     var s = Grid.init(4, 10);
     s.cursor_col = 3;
-    s.apply(SemanticEvent{ .erase_line = 2 });
-    s.apply(SemanticEvent{ .erase_display = 2 });
+    s.apply(SemanticEvent{ .erase_line = EraseMode.all });
+    s.apply(SemanticEvent{ .erase_display = EraseMode.all });
     try std.testing.expectEqual(@as(u16, 3), s.cursor_col);
 }
 
@@ -787,7 +788,7 @@ test "screen: erase_line uses current background for empty cells" {
 
     s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
     s.apply(SemanticEvent{ .write_text = "~" });
-    s.apply(SemanticEvent{ .erase_line = 0 });
+    s.apply(SemanticEvent{ .erase_line = .cursor_to_end });
 
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 1));
     const cell = s.cellInfoAt(0, 1);
@@ -885,7 +886,7 @@ test "screen: DECSCA protects cells from selective erase" {
 
     s.cursor_row = 1;
     s.cursor_col = 2;
-    s.apply(SemanticEvent{ .selective_erase_display = 2 });
+    s.apply(SemanticEvent{ .selective_erase_display = .all });
 
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));
@@ -1164,7 +1165,7 @@ test "screen: ED 3 clears scrollback history" {
 
     s.apply(SemanticEvent{ .write_text = "AAAA\nBBBB\nCCCC" });
     try std.testing.expect(s.historyCount() > 0);
-    s.apply(SemanticEvent{ .erase_display = 3 });
+    s.apply(SemanticEvent{ .erase_display = .scrollback });
     try std.testing.expectEqual(@as(u32, 0), s.historyCount());
 }
 

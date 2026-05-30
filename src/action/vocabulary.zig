@@ -53,6 +53,13 @@ pub const DcsPayload = struct {
     payload: []const u8,
 };
 
+pub const EraseMode = enum(u2) {
+    cursor_to_end = 0,
+    start_to_cursor = 1,
+    all = 2,
+    scrollback = 3,
+};
+
 pub const LegacyControlKind = enum {
     tek_point_plot,
     tek_graph,
@@ -226,10 +233,10 @@ pub const SemanticEvent = union(enum) {
         bottom: ?u16,
     },
     reset_screen,
-    erase_display: u2,
-    erase_line: u2,
-    selective_erase_display: u2,
-    selective_erase_line: u2,
+    erase_display: EraseMode,
+    erase_line: EraseMode,
+    selective_erase_display: EraseMode,
+    selective_erase_line: EraseMode,
     erase_chars: u16,
     shift_left_columns: u16,
     shift_right_columns: u16,
@@ -290,10 +297,10 @@ pub const ScreenAction = union(enum) {
     scroll_down_lines: u16,
     set_scroll_region: struct { top: u16, bottom: ?u16 },
     reset_screen,
-    erase_display: u2,
-    erase_line: u2,
-    selective_erase_display: u2,
-    selective_erase_line: u2,
+    erase_display: EraseMode,
+    erase_line: EraseMode,
+    selective_erase_display: EraseMode,
+    selective_erase_line: EraseMode,
     erase_chars: u16,
     shift_left_columns: u16,
     shift_right_columns: u16,

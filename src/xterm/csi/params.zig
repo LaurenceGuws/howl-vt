@@ -56,12 +56,12 @@ pub fn paramAtOrDefault0(params: []const i32, idx: u8) u16 {
     return if (count32(params) > idx) paramOrDefault0(params[idx]) else 0;
 }
 
-pub fn eraseMode(v: i32) u2 {
+pub fn eraseMode(v: i32) events.EraseMode {
     return switch (v) {
-        1 => 1,
-        2 => 2,
-        3 => 3,
-        else => 0,
+        1 => .start_to_cursor,
+        2 => .all,
+        3 => .scrollback,
+        else => .cursor_to_end,
     };
 }
 

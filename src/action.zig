@@ -12,6 +12,7 @@ pub const KittyAction = vocabulary.KittyAction;
 pub const HostAction = vocabulary.HostAction;
 pub const DcsPayload = vocabulary.DcsPayload;
 pub const DcsPayloadKind = vocabulary.DcsPayloadKind;
+pub const EraseMode = vocabulary.EraseMode;
 pub const KittyNotificationCommand = vocabulary.KittyNotificationCommand;
 pub const KittyShellMark = vocabulary.KittyShellMark;
 pub const LegacyControlKind = vocabulary.LegacyControlKind;

@@ -37,7 +37,7 @@ pub fn process(event: Event) ?SemanticEvent {
         .invoke_charset, .configure_charset => return null,
         .text => |s| return SemanticEvent{ .write_text = s },
         .codepoint => |cp| return SemanticEvent{ .write_codepoint = cp },
-        .control => |c| return c0.process(c),
+        .control => |c| return c0.process(c0.fromByte(c)),
         .osc => |osc_event| return osc.process(osc_event),
         .esc_dispatch => |esc_dispatch| return esc.process(esc_dispatch.final),
         .apc => return null,
