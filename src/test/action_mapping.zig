@@ -1,7 +1,7 @@
 const std = @import("std");
 const action_route = @import("../action/route.zig");
 const action_vocabulary = @import("../action/vocabulary.zig");
-const parser_mod = @import("../parser.zig");
+const parser_mod = @import("../parser/main.zig");
 const parsed_events = @import("../parser/events.zig");
 
 const Event = parsed_events.Event;

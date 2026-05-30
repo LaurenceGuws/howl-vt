@@ -1,5 +1,5 @@
 const std = @import("std");
-const parser_mod = @import("../parser.zig");
+const parser_mod = @import("../parser/main.zig");
 const terminal_mod = @import("../terminal.zig");
 const ffi = @import("../ffi.zig");
 const screen = @import("../screen.zig");

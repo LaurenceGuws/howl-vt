@@ -1,6 +1,6 @@
 const std = @import("std");
 const owned_actions = @import("../parser/owned_actions.zig");
-const parser_mod = @import("../parser.zig");
+const parser_mod = @import("../parser/main.zig");
 
 const CsiAction = parser_mod.CsiAction;
 const OwnedCsiAction = struct {
