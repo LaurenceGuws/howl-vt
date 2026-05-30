@@ -1,9 +1,8 @@
 const std = @import("std");
-const action_mod = @import("../action.zig");
+const action_vocabulary = @import("../action/vocabulary.zig");
 const input_mouse = @import("../input/mouse.zig");
 const host_state = @import("../host/state.zig");
 
-const Action = action_mod;
 const format_output_max_bytes = 40;
 
 pub const ReportingMode = enum(u2) {
@@ -41,7 +40,7 @@ pub fn setReporting(state: *State, mode: u16, unit: u16) void {
     state.coordinate_unit = unit;
 }
 
-pub fn setFilter(state: *State, area: Action.SemanticEvent.OptionalRectArea) void {
+pub fn setFilter(state: *State, area: action_vocabulary.SemanticEvent.OptionalRectArea) void {
     const row = state.last_row orelse 0;
     const col = state.last_col orelse 0;
     const top = area.top orelse row;

@@ -1,6 +1,6 @@
-const action = @import("../action.zig");
+const action_vocabulary = @import("../action/vocabulary.zig");
 
-const ScreenAction = action.ScreenAction;
+const ScreenAction = action_vocabulary.ScreenAction;
 
 pub fn applyScreen(self: anytype, event: ScreenAction) void {
     switch (event) {

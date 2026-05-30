@@ -1,5 +1,5 @@
 const std = @import("std");
-const action_mod = @import("../action.zig");
+const action_vocabulary = @import("../action/vocabulary.zig");
 const host_state = @import("../host/state.zig");
 const screen_capture = @import("screen_capture.zig");
 const screen_set = @import("../screen_set.zig");
@@ -64,7 +64,7 @@ fn clearPendingOutput(terminal: *Terminal) void {
     HostState.clearPendingOutput(terminal);
 }
 
-fn dcsPayloadKind(terminal: *const Terminal) ?action_mod.DcsPayloadKind {
+fn dcsPayloadKind(terminal: *const Terminal) ?action_vocabulary.DcsPayloadKind {
     return HostState.dcsPayloadKind(terminal);
 }
 
@@ -72,7 +72,7 @@ fn dcsPayload(terminal: *const Terminal) ?[]const u8 {
     return HostState.dcsPayload(terminal);
 }
 
-fn legacyControl(terminal: *const Terminal) ?action_mod.LegacyControlKind {
+fn legacyControl(terminal: *const Terminal) ?action_vocabulary.LegacyControlKind {
     return HostState.legacyControl(terminal);
 }
 

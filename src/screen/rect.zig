@@ -1,8 +1,8 @@
-const action = @import("../action.zig");
+const action_vocabulary = @import("../action/vocabulary.zig");
 const style_mod = @import("style.zig");
 const cell = @import("cell.zig");
 
-const SemanticEvent = action.SemanticEvent;
+const SemanticEvent = action_vocabulary.SemanticEvent;
 const Cell = cell.Cell;
 
 pub fn changeAttrs(self: anytype, area: SemanticEvent.RectArea, attrs: []const u16, reverse: bool) void {

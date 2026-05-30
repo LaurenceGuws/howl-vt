@@ -1,4 +1,5 @@
-const action = @import("action.zig");
+const action_route = @import("action/route.zig");
+const action_vocabulary = @import("action/vocabulary.zig");
 const ffi = @import("ffi.zig");
 const input_encode = @import("input/encode.zig");
 const input_encoded = @import("input/encoded.zig");
@@ -19,7 +20,8 @@ pub const ScreenSet = screen_set;
 pub const Terminal = terminal.Terminal;
 
 test {
-    _ = action;
+    _ = action_route;
+    _ = action_vocabulary;
     _ = ffi;
     _ = input_encode;
     _ = input_encoded;

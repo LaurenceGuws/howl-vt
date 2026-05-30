@@ -1,11 +1,13 @@
 const std = @import("std");
-const action = @import("../action.zig");
+const action_route = @import("../action/route.zig");
+const action_vocabulary = @import("../action/vocabulary.zig");
 const parser_mod = @import("../parser.zig");
+const parsed_events = @import("../parser/events.zig");
 
-const Event = action.Event;
-const EraseMode = action.EraseMode;
-const SemanticEvent = action.SemanticEvent;
-const process = action.process;
+const Event = parsed_events.Event;
+const EraseMode = action_vocabulary.EraseMode;
+const SemanticEvent = action_vocabulary.SemanticEvent;
+const process = action_route.process;
 const csi_max_params = parser_mod.max_params;
 const empty_params = [_]i32{0} ** csi_max_params;
 const empty_separators = parser_mod.CsiSeparatorList.initEmpty();
@@ -469,10 +471,10 @@ test "actions: HT maps to horizontal_tab" {
 }
 
 test "actions: legacy C0 controls map to legacy events" {
-    try std.testing.expectEqual(action.LegacyControlKind.tek_point_plot, process(Event{ .control = 0x1C }).?.legacy_control);
-    try std.testing.expectEqual(action.LegacyControlKind.tek_graph, process(Event{ .control = 0x1D }).?.legacy_control);
-    try std.testing.expectEqual(action.LegacyControlKind.tek_incremental_plot, process(Event{ .control = 0x1E }).?.legacy_control);
-    try std.testing.expectEqual(action.LegacyControlKind.tek_alpha, process(Event{ .control = 0x1F }).?.legacy_control);
+    try std.testing.expectEqual(action_vocabulary.LegacyControlKind.tek_point_plot, process(Event{ .control = 0x1C }).?.legacy_control);
+    try std.testing.expectEqual(action_vocabulary.LegacyControlKind.tek_graph, process(Event{ .control = 0x1D }).?.legacy_control);
+    try std.testing.expectEqual(action_vocabulary.LegacyControlKind.tek_incremental_plot, process(Event{ .control = 0x1E }).?.legacy_control);
+    try std.testing.expectEqual(action_vocabulary.LegacyControlKind.tek_alpha, process(Event{ .control = 0x1F }).?.legacy_control);
 }
 
 test "actions: ignored C0 controls return no event" {

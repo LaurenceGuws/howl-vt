@@ -1,6 +1,6 @@
 const std = @import("std");
 const screen_mod = @import("../screen.zig");
-const action_mod = @import("../action.zig");
+const action_vocabulary = @import("../action/vocabulary.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
 const input_encode = @import("../input/encode.zig");
@@ -9,7 +9,7 @@ const host_state = @import("../host/state.zig");
 const Screen = screen_mod.Screen;
 const Grid = Screen;
 const LocatorNs = locator;
-const ReportAction = action_mod.ReportAction;
+const ReportAction = action_vocabulary.ReportAction;
 const TerminalModeNs = mode_mod;
 
 const xtversion_text = "howl-vt dev";
@@ -313,7 +313,7 @@ pub fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.Array
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid, area: action_mod.SemanticEvent.RectArea) host_state.ApplyError!void {
+pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid, area: action_vocabulary.SemanticEvent.RectArea) host_state.ApplyError!void {
     const common = commonAttrsForRect(screen, area) orelse {
         try host_state.appendOutput(output, allocator, "\x1b[0m");
         return;
@@ -340,7 +340,7 @@ pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output
     try host_state.appendOutput(output, allocator, "m");
 }
 
-pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: action_mod.SemanticEvent.RectArea) u16 {
+pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: action_vocabulary.SemanticEvent.RectArea) u16 {
     if (page != 1) return 0;
     const bounds = screen.rectBounds(area) orelse return 0;
     var sum: u16 = 0;
@@ -381,7 +381,7 @@ const CommonAttrs = struct {
     bg: Grid.Color,
 };
 
-fn commonAttrsForRect(screen: *const Grid, area: action_mod.SemanticEvent.RectArea) ?CommonAttrs {
+fn commonAttrsForRect(screen: *const Grid, area: action_vocabulary.SemanticEvent.RectArea) ?CommonAttrs {
     const bounds = screen.rectBounds(area) orelse return null;
     const first_cell = screen.cellInfoAt(bounds.top, bounds.left);
     var common = CommonAttrs{

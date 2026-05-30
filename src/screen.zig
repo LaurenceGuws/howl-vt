@@ -1,5 +1,6 @@
 const std = @import("std");
-const action_mod = @import("action.zig");
+const action_route = @import("action/route.zig");
+const action_vocabulary = @import("action/vocabulary.zig");
 const parser_mod = @import("parser.zig");
 const cell = @import("screen/cell.zig");
 const color = @import("screen/color.zig");
@@ -17,8 +18,8 @@ const style_mod = @import("screen/style.zig");
 const tabs = @import("screen/tabs.zig");
 const write = @import("screen/write.zig");
 
-const SemanticEvent = action_mod.SemanticEvent;
-const ScreenAction = action_mod.ScreenAction;
+const SemanticEvent = action_vocabulary.SemanticEvent;
+const ScreenAction = action_vocabulary.ScreenAction;
 const HistoryLine = history_mod.HistoryLine;
 
 /// Terminal screen state for cursor, cells, margins, and history.
@@ -38,7 +39,7 @@ pub const Screen = struct {
     pub const default_cell = cell.default_cell;
     pub const isCellContinuation = cell.isCellContinuation;
     pub const DirtyRows = dirty.DirtyRows;
-    pub const EraseMode = action_mod.EraseMode;
+    pub const EraseMode = action_vocabulary.EraseMode;
     pub const CellPixelSize = struct {
         width: u32,
         height: u32,
@@ -421,7 +422,7 @@ pub const Screen = struct {
 
     /// Apply one terminal event to screen state.
     pub fn apply(self: *Screen, event: SemanticEvent) void {
-        const screen_action = action_mod.screenAction(event) orelse return;
+        const screen_action = action_route.screenAction(event) orelse return;
         self.applyScreen(screen_action);
     }
 

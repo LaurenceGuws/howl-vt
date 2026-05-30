@@ -1,8 +1,8 @@
 const std = @import("std");
-const action_mod = @import("../action.zig");
+const action_vocabulary = @import("../action/vocabulary.zig");
 const input_mouse = @import("../input/mouse.zig");
 
-const ModeAction = action_mod.ModeAction;
+const ModeAction = action_vocabulary.ModeAction;
 
 const saved_dec_mode_limit = 16;
 const SavedDecModeCount = u8;

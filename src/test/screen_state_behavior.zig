@@ -1,12 +1,12 @@
 const std = @import("std");
 const screen_mod = @import("../screen.zig");
-const action = @import("../action.zig");
+const action_vocabulary = @import("../action/vocabulary.zig");
 const parser_mod = @import("../parser.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
-const EraseMode = action.EraseMode;
-const SemanticEvent = action.SemanticEvent;
+const EraseMode = action_vocabulary.EraseMode;
+const SemanticEvent = action_vocabulary.SemanticEvent;
 const csi_max_params = parser_mod.max_params;
 
 fn emptySeparators() parser_mod.CsiSeparatorList {
