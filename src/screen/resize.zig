@@ -49,8 +49,7 @@ const ViewportState = struct {
 const ResizeBuffers = struct {
     cells: ?[]Cell,
     row_wraps: ?[]bool,
-    dirty_cols_start: ?[]u16,
-    dirty_cols_end: ?[]u16,
+    dirty_state: dirty.State,
     tab_stops: ?[]bool,
 };
 
@@ -59,8 +58,7 @@ pub fn resizeWithReflow(self: anytype, allocator: std.mem.Allocator, rows: u16, 
     const old = .{
         .cells = self.cells,
         .row_wraps = self.row_wraps,
-        .dirty_cols_start = self.dirty_cols_start,
-        .dirty_cols_end = self.dirty_cols_end,
+        .dirty_state = self.dirty_state,
         .tab_stops = self.tab_stops,
         .history = self.history,
         .history_wraps = self.history_wraps,
@@ -317,8 +315,7 @@ fn allocResizeBuffers(
     return .{
         .cells = cells,
         .row_wraps = row_wraps,
-        .dirty_cols_start = dirty_cols_start,
-        .dirty_cols_end = dirty_cols_end,
+        .dirty_state = dirty.State.initFull(rows, dirty_cols_start, dirty_cols_end),
         .tab_stops = tab_stops,
     };
 }
@@ -326,8 +323,8 @@ fn allocResizeBuffers(
 fn freeResizeBuffers(allocator: std.mem.Allocator, buffers: ResizeBuffers) void {
     if (buffers.cells) |buf| allocator.free(buf);
     if (buffers.row_wraps) |buf| allocator.free(buf);
-    if (buffers.dirty_cols_start) |buf| allocator.free(buf);
-    if (buffers.dirty_cols_end) |buf| allocator.free(buf);
+    var dirty_state = buffers.dirty_state;
+    dirty_state.deinit(allocator);
     if (buffers.tab_stops) |buf| allocator.free(buf);
 }
 
@@ -366,8 +363,7 @@ fn installResizeState(self: anytype, rows: u16, cols: u16, buffers: ResizeBuffer
     self.cols = cols;
     self.cells = buffers.cells;
     self.row_wraps = buffers.row_wraps;
-    self.dirty_cols_start = buffers.dirty_cols_start;
-    self.dirty_cols_end = buffers.dirty_cols_end;
+    self.dirty_state = buffers.dirty_state;
     self.tab_stops = buffers.tab_stops;
     self.history = null;
     self.history_wraps = null;
@@ -381,19 +377,19 @@ fn installResizeState(self: anytype, rows: u16, cols: u16, buffers: ResizeBuffer
     self.left_margin = 0;
     self.right_margin = cols -| 1;
     self.attr_change_extent_rect = false;
-    self.dirty_rows = dirty.rowsForFull(rows, buffers.dirty_cols_start, buffers.dirty_cols_end);
+    self.dirty_state.rows = dirty.rowsForFull(rows, self.dirty_state.cols_start, self.dirty_state.cols_end);
 
     std.debug.assert(self.rows == rows);
     std.debug.assert(self.cols == cols);
     std.debug.assert((self.cells != null) == (rows > 0 and cols > 0));
     std.debug.assert((self.row_wraps != null) == (rows > 0));
-    std.debug.assert((self.dirty_cols_start != null) == (rows > 0));
-    std.debug.assert((self.dirty_cols_end != null) == (rows > 0));
+    std.debug.assert((self.dirty_state.cols_start != null) == (rows > 0));
+    std.debug.assert((self.dirty_state.cols_end != null) == (rows > 0));
     std.debug.assert((self.tab_stops != null) == (cols > 0));
     if (self.cells) |buf| std.debug.assert(buf.len == cellCount(rows, cols));
     if (self.row_wraps) |buf| std.debug.assert(buf.len == rows);
-    if (self.dirty_cols_start) |buf| std.debug.assert(buf.len == rows);
-    if (self.dirty_cols_end) |buf| std.debug.assert(buf.len == rows);
+    if (self.dirty_state.cols_start) |buf| std.debug.assert(buf.len == rows);
+    if (self.dirty_state.cols_end) |buf| std.debug.assert(buf.len == rows);
     if (self.tab_stops) |buf| std.debug.assert(buf.len == cols);
     std.debug.assert(self.history == null);
     std.debug.assert(self.history_wraps == null);
@@ -468,8 +464,8 @@ fn restoreCursor(self: anytype, rows: u16, cols: u16, reflow: ReflowState, viewp
 fn freeOldStorage(allocator: std.mem.Allocator, old: anytype) void {
     if (old.cells) |buf| allocator.free(buf);
     if (old.row_wraps) |buf| allocator.free(buf);
-    if (old.dirty_cols_start) |buf| allocator.free(buf);
-    if (old.dirty_cols_end) |buf| allocator.free(buf);
+    var dirty_state = old.dirty_state;
+    dirty_state.deinit(allocator);
     if (old.tab_stops) |buf| allocator.free(buf);
     if (old.history) |buf| allocator.free(buf);
     if (old.history_wraps) |buf| allocator.free(buf);

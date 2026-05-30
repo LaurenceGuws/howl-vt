@@ -83,9 +83,7 @@ pub const Screen = struct {
     },
     last_graphic_codepoint: ?u21,
     current_attrs: CellAttrs,
-    dirty_rows: ?DirtyRows,
-    dirty_cols_start: ?[]u16,
-    dirty_cols_end: ?[]u16,
+    dirty_state: dirty.State,
     tab_stops: ?[]bool,
     cell_pixel_size: ?CellPixelSize,
 
@@ -134,9 +132,7 @@ pub const Screen = struct {
             .saved_cursor = null,
             .last_graphic_codepoint = null,
             .current_attrs = default_cell_attrs,
-            .dirty_rows = null,
-            .dirty_cols_start = null,
-            .dirty_cols_end = null,
+            .dirty_state = .{},
             .tab_stops = null,
             .cell_pixel_size = null,
         };
@@ -202,9 +198,7 @@ pub const Screen = struct {
             .saved_cursor = null,
             .last_graphic_codepoint = null,
             .current_attrs = default_cell_attrs,
-            .dirty_rows = dirty.rowsForFull(rows, dirty_cols_start, dirty_cols_end),
-            .dirty_cols_start = dirty_cols_start,
-            .dirty_cols_end = dirty_cols_end,
+            .dirty_state = dirty.State.initFull(rows, dirty_cols_start, dirty_cols_end),
             .tab_stops = tab_stops,
             .cell_pixel_size = null,
         };
@@ -279,9 +273,7 @@ pub const Screen = struct {
             .saved_cursor = null,
             .last_graphic_codepoint = null,
             .current_attrs = default_cell_attrs,
-            .dirty_rows = dirty.rowsForFull(rows, dirty_cols_start, dirty_cols_end),
-            .dirty_cols_start = dirty_cols_start,
-            .dirty_cols_end = dirty_cols_end,
+            .dirty_state = dirty.State.initFull(rows, dirty_cols_start, dirty_cols_end),
             .tab_stops = tab_stops,
             .cell_pixel_size = null,
         };
@@ -293,10 +285,7 @@ pub const Screen = struct {
         self.cells = null;
         if (self.row_wraps) |buf| allocator.free(buf);
         self.row_wraps = null;
-        if (self.dirty_cols_start) |buf| allocator.free(buf);
-        self.dirty_cols_start = null;
-        if (self.dirty_cols_end) |buf| allocator.free(buf);
-        self.dirty_cols_end = null;
+        self.dirty_state.deinit(allocator);
         if (self.tab_stops) |buf| allocator.free(buf);
         self.tab_stops = null;
         if (self.history) |h| allocator.free(h);
@@ -357,13 +346,13 @@ pub const Screen = struct {
     }
 
     pub fn peekDirtyRows(self: *const Screen) ?DirtyRows {
-        return self.dirty_rows;
+        return self.dirty_state.rows;
     }
 
     pub fn clearDirtyRows(self: *Screen) void {
-        self.dirty_rows = null;
-        if (self.dirty_cols_start) |buf| @memset(buf, self.cols);
-        if (self.dirty_cols_end) |buf| @memset(buf, 0);
+        self.dirty_state.rows = null;
+        if (self.dirty_state.cols_start) |buf| @memset(buf, self.cols);
+        if (self.dirty_state.cols_end) |buf| @memset(buf, 0);
     }
 
     /// Read visible cell value by row and column.
