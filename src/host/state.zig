@@ -35,12 +35,22 @@ pub const retained_metadata_max_bytes: u32 = parser.max_metadata_control_bytes;
 pub const title_max_bytes: u32 = 1024;
 pub const hyperlink_target_max_count: u32 = 4096;
 
+comptime {
+    std.debug.assert(pending_output_max_bytes == parser.max_large_osc_control_bytes);
+    std.debug.assert(retained_payload_max_bytes == parser.max_large_osc_control_bytes);
+    std.debug.assert(retained_metadata_max_bytes == parser.max_metadata_control_bytes);
+    std.debug.assert(title_max_bytes <= retained_metadata_max_bytes);
+    std.debug.assert(hyperlink_target_max_count > 0);
+}
+
 pub fn count32(items: anytype) u32 {
     std.debug.assert(items.len <= std.math.maxInt(u32));
     return @intCast(items.len);
 }
 
 pub const State = struct {
+    // Host consequence retention is heap-backed today, but every retained path
+    // is bounded by this file's product capacity constants before allocation.
     pub const DcsPayloadOwned = struct {
         kind: action_vocabulary.DcsPayloadKind,
         payload: []u8,

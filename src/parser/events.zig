@@ -51,8 +51,15 @@ pub const Event = union(enum) {
 pub const ParsedEvents = struct {
     // Keep parser-event materialization explicitly bounded. The live VT feed
     // path drains these events immediately, but parser-event proofs may still
-    // materialize large slices here.
+    // materialize large slices here. Aggregate byte/int/aux store capacity
+    // remains a separate proof gap until a product capacity is selected.
     pub const max_queued_events: u32 = 1024 * 1024;
+
+    comptime {
+        std.debug.assert(max_queued_events > 0);
+        std.debug.assert(parser_mod.max_metadata_control_bytes > 0);
+        std.debug.assert(parser_mod.max_apc_control_bytes > parser_mod.max_metadata_control_bytes);
+    }
 
     allocator: std.mem.Allocator,
     events: std.ArrayList(EventMeta),
