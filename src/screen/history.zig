@@ -29,7 +29,17 @@ pub const RewrappedRow = struct {
     wrapped: bool,
 };
 
-pub fn appendSourceRowToLogicalLines(self: anytype, allocator: std.mem.Allocator, logical_lines: *std.ArrayListUnmanaged(LogicalLine), current_line: *LogicalLine, row_index: u16, cols: u16, cursor_found: *bool, cursor_line_index: *u32, cursor_offset: *u32) !void {
+pub fn appendSourceRowToLogicalLines(
+    self: anytype,
+    allocator: std.mem.Allocator,
+    logical_lines: *std.ArrayListUnmanaged(LogicalLine),
+    current_line: *LogicalLine,
+    row_index: u16,
+    cols: u16,
+    cursor_found: *bool,
+    cursor_line_index: *u32,
+    cursor_offset: *u32,
+) !void {
     const wrapped = self.rowWrapped(row_index);
     const is_cursor_row = row_index == self.cursor_row;
     const content_len = sourceRowContentLen(self, row_index, cols);
@@ -78,7 +88,17 @@ pub fn firstLineForRowBounded(line_row_starts: []const u32, line_row_counts: []c
     return null;
 }
 
-pub fn replaceAuthority(self: anytype, allocator: std.mem.Allocator, logical_lines: []const LogicalLine, line_row_starts: []const u32, line_row_counts: []const u16, first_visible_line: u32, hidden_rows_in_first_visible_line: u16, rewrapped: []const RewrappedRow, cols: u16) !void {
+pub fn replaceAuthority(
+    self: anytype,
+    allocator: std.mem.Allocator,
+    logical_lines: []const LogicalLine,
+    line_row_starts: []const u32,
+    line_row_counts: []const u16,
+    first_visible_line: u32,
+    hidden_rows_in_first_visible_line: u16,
+    rewrapped: []const RewrappedRow,
+    cols: u16,
+) !void {
     clearAuthority(self, allocator);
 
     std.debug.assert(line_row_starts.len == logical_lines.len);

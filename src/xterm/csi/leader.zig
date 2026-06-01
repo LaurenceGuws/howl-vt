@@ -18,7 +18,10 @@ pub fn process(final: u8, params: []const i32, leader: u8, intermediates: []cons
         },
         '=' => switch (final) {
             'c' => SemanticEvent.tertiary_device_attributes,
-            'u' => SemanticEvent{ .kitty_keyboard_set = .{ .flags = @intCast(@max(if (params.len != 0) params[0] else 0, 0)), .mode = @intCast(@max(if (params.len >= 2) params[1] else 1, 1)) } },
+            'u' => SemanticEvent{ .kitty_keyboard_set = .{
+                .flags = @intCast(@max(if (params.len != 0) params[0] else 0, 0)),
+                .mode = @intCast(@max(if (params.len >= 2) params[1] else 1, 1)),
+            } },
             else => null,
         },
         '<' => switch (final) {

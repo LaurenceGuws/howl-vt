@@ -370,7 +370,16 @@ fn runSnapshotWorkload(io: std.Io, base_allocator: std.mem.Allocator, fixture: [
     return try summarizeObservations(base_allocator, "snapshot_opt_in", snapshot_calls_per_run, observations);
 }
 
-fn runReplayRecordWorkload(io: std.Io, base_allocator: std.mem.Allocator, name: []const u8, record: *const pty_feed_record.Record, rows: u16, cols: u16, history_capacity: u16, runs: u32) !WorkloadResult {
+fn runReplayRecordWorkload(
+    io: std.Io,
+    base_allocator: std.mem.Allocator,
+    name: []const u8,
+    record: *const pty_feed_record.Record,
+    rows: u16,
+    cols: u16,
+    history_capacity: u16,
+    runs: u32,
+) !WorkloadResult {
     const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
     defer base_allocator.free(observations);
 
@@ -509,7 +518,9 @@ fn printTextResult(result: WorkloadResult) void {
 
 fn printNdjsonResult(result: WorkloadResult) void {
     std.debug.print(
-        "{{\"type\":\"vt_core_benchmark\",\"schema\":4,\"workload\":\"{s}\",\"runs\":{d},\"bytes_per_run\":{d},\"median_ns\":{d},\"p95_ns\":{d},\"throughput_mib_s\":{d:.3},\"median_alloc_count\":{d},\"median_alloc_bytes\":{d},\"median_peak_live_bytes\":{d}}}\n",
+        "{{\"type\":\"vt_core_benchmark\",\"schema\":4,\"workload\":\"{s}\",\"runs\":{d}," ++
+            "\"bytes_per_run\":{d},\"median_ns\":{d},\"p95_ns\":{d},\"throughput_mib_s\":{d:.3}," ++
+            "\"median_alloc_count\":{d},\"median_alloc_bytes\":{d},\"median_peak_live_bytes\":{d}}}\n",
         .{
             result.name,
             result.runs,

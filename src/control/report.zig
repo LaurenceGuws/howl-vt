@@ -121,7 +121,13 @@ fn applyWithContext(ctx: Context, report_action: ReportAction) host_state.ApplyE
         .xtversion => try appendXtVersionReport(ctx.allocator, ctx.pending_output),
         .xttitlepos => try appendTitleStackPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, 0, 0),
         .xtchecksum => |flags| ctx.xtchecksum_flags.* = flags,
-        .rect_checksum_request => |req| try appendRectChecksumReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, .{ .request_id = req.request_id }, computeRectChecksum(ctx.active_screen, ctx.xtchecksum_flags.*, req.page, req.area)),
+        .rect_checksum_request => |req| try appendRectChecksumReport(
+            ctx.allocator,
+            ctx.pending_output,
+            ctx.encode_buf,
+            .{ .request_id = req.request_id },
+            computeRectChecksum(ctx.active_screen, ctx.xtchecksum_flags.*, req.page, req.area),
+        ),
         .selected_graphic_rendition_report => |area| try appendSelectedGraphicRenditionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.active_screen, area),
         .presentation_state_report => |kind| {
             switch (kind) {
@@ -247,7 +253,13 @@ pub fn appendColorStackReport(allocator: std.mem.Allocator, output: *std.ArrayLi
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendCursorInformationReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, view: CursorInformationView, charset: CharsetReportView) host_state.ApplyError!void {
+pub fn appendCursorInformationReport(
+    allocator: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    encode_buf: []u8,
+    view: CursorInformationView,
+    charset: CharsetReportView,
+) host_state.ApplyError!void {
     const attrs = view.current_attrs;
 
     var srend_bits: u8 = 0;
@@ -313,7 +325,13 @@ pub fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.Array
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendSelectedGraphicRenditionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid, area: action_vocabulary.SemanticEvent.RectArea) host_state.ApplyError!void {
+pub fn appendSelectedGraphicRenditionReport(
+    allocator: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    encode_buf: []u8,
+    screen: *const Grid,
+    area: action_vocabulary.SemanticEvent.RectArea,
+) host_state.ApplyError!void {
     const common = commonAttrsForRect(screen, area) orelse {
         try host_state.appendOutput(output, allocator, "\x1b[0m");
         return;
@@ -441,7 +459,15 @@ fn underlineStyleParam(style: Grid.UnderlineStyle) []const u8 {
     };
 }
 
-fn appendColorParam(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, first: *bool, is_fg: bool, color: Grid.Color, default_color: Grid.Color) host_state.ApplyError!void {
+fn appendColorParam(
+    allocator: std.mem.Allocator,
+    output: *std.ArrayList(u8),
+    encode_buf: []u8,
+    first: *bool,
+    is_fg: bool,
+    color: Grid.Color,
+    default_color: Grid.Color,
+) host_state.ApplyError!void {
     if (colorEq(color, default_color)) return;
     switch (color.kind) {
         .default => return,

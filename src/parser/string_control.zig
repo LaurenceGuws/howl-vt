@@ -682,7 +682,11 @@ pub const OscControl = struct {
             .c52 => .{ .command = 52, .class = .clipboard, .max_len = self.large_max_len },
             .c66 => .{ .command = 66, .class = .kitty_text_size, .max_len = self.large_max_len },
             .c104 => .{ .command = 104, .class = .palette_reset, .max_len = self.metadata_max_len },
-            .c110, .c111, .c112, .c113, .c114, .c115, .c116, .c117, .c118, .c119 => .{ .command = prefixDynamicCommand(self.prefix), .class = .dynamic_reset, .max_len = self.metadata_max_len },
+            .c110, .c111, .c112, .c113, .c114, .c115, .c116, .c117, .c118, .c119 => .{
+                .command = prefixDynamicCommand(self.prefix),
+                .class = .dynamic_reset,
+                .max_len = self.metadata_max_len,
+            },
             .c133 => .{ .command = 133, .class = .shell_mark, .max_len = self.metadata_max_len },
             .c777 => .{ .command = 777, .class = .rxvt_extension, .max_len = self.metadata_max_len },
             .c1337 => .{ .command = 1337, .class = .iterm2, .max_len = self.metadata_max_len },

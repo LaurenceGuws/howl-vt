@@ -165,7 +165,16 @@ pub const key_kp_enter: Key = VTERM_KEY_KP_ENTER;
 const max_encoded_len: usize = 32;
 
 /// Encode one host key for the active terminal keyboard modes.
-pub fn encodeKey(buf: []u8, key: Key, mod: Modifier, application_cursor_keys: bool, application_keypad: bool, modify_other_keys: i8, format_other_keys: u16, kitty_keyboard_flags: u32) []const u8 {
+pub fn encodeKey(
+    buf: []u8,
+    key: Key,
+    mod: Modifier,
+    application_cursor_keys: bool,
+    application_keypad: bool,
+    modify_other_keys: i8,
+    format_other_keys: u16,
+    kitty_keyboard_flags: u32,
+) []const u8 {
     std.debug.assert(validModifier(mod));
     if (kitty_keyboard_flags != 0) {
         if (encodeKittyKey(buf, key, mod)) |encoded| return encoded;

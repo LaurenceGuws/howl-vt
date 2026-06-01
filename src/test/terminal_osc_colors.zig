@@ -326,7 +326,13 @@ test "kitty OSC 21 sets queries and resets terminal colors" {
     try std.testing.expectEqual(Rgb{ .r = 0x11, .g = 0x22, .b = 0x33 }, colors.foreground);
     try std.testing.expectEqual(Rgb{ .r = 0x44, .g = 0x55, .b = 0x66 }, colors.background);
     try std.testing.expectEqual(@as(?Rgb, null), colors.cursor);
-    try std.testing.expectEqualStrings("\x1b]21;foreground=rgb:11/22/33\x1b\\\x1b]21;background=rgb:44/55/66\x1b\\\x1b]21;cursor=\x1b\\\x1b]21;no_such=?\x1b\\", HostState.pendingOutput(&terminal));
+    try std.testing.expectEqualStrings(
+        "\x1b]21;foreground=rgb:11/22/33\x1b\\" ++
+            "\x1b]21;background=rgb:44/55/66\x1b\\" ++
+            "\x1b]21;cursor=\x1b\\" ++
+            "\x1b]21;no_such=?\x1b\\",
+        HostState.pendingOutput(&terminal),
+    );
 
     try stream.nextSlice("\x1b]21;foreground;background\x1b\\");
     try std.testing.expectEqual(Rgb{ .r = 220, .g = 220, .b = 220 }, HostState.terminalColorState(&terminal).foreground);
@@ -371,7 +377,16 @@ test "xterm extra dynamic colors set query and reset host-neutral state" {
     try std.testing.expectEqual(Rgb{ .r = 13, .g = 14, .b = 15 }, colors.selection_background.?);
     try std.testing.expectEqual(Rgb{ .r = 16, .g = 17, .b = 18 }, colors.tektronix_cursor.?);
     try std.testing.expectEqual(Rgb{ .r = 19, .g = 20, .b = 21 }, colors.selection_foreground.?);
-    try std.testing.expectEqualStrings("\x1b]13;rgb:01/02/03\x1b\\\x1b]14;rgb:04/05/06\x1b\\\x1b]15;rgb:07/08/09\x1b\\\x1b]16;rgb:0a/0b/0c\x1b\\\x1b]17;rgb:0d/0e/0f\x1b\\\x1b]18;rgb:10/11/12\x1b\\\x1b]19;rgb:13/14/15\x1b\\", HostState.pendingOutput(&terminal));
+    try std.testing.expectEqualStrings(
+        "\x1b]13;rgb:01/02/03\x1b\\" ++
+            "\x1b]14;rgb:04/05/06\x1b\\" ++
+            "\x1b]15;rgb:07/08/09\x1b\\" ++
+            "\x1b]16;rgb:0a/0b/0c\x1b\\" ++
+            "\x1b]17;rgb:0d/0e/0f\x1b\\" ++
+            "\x1b]18;rgb:10/11/12\x1b\\" ++
+            "\x1b]19;rgb:13/14/15\x1b\\",
+        HostState.pendingOutput(&terminal),
+    );
 
     HostState.clearPendingOutput(&terminal);
     try stream.nextSlice("\x1b]113\x1b\\\x1b]114\x1b\\\x1b]115\x1b\\\x1b]116\x1b\\\x1b]117\x1b\\\x1b]118\x1b\\\x1b]119\x1b\\");
@@ -400,7 +415,13 @@ test "xterm special colors via OSC 5 and OSC 4 special offsets" {
     try std.testing.expectEqual(Rgb{ .r = 4, .g = 5, .b = 6 }, colors.special_palette[1].?);
     try std.testing.expectEqual(Rgb{ .r = 7, .g = 8, .b = 9 }, colors.special_palette[2].?);
     try std.testing.expectEqual(Rgb{ .r = 10, .g = 11, .b = 12 }, colors.special_palette[4].?);
-    try std.testing.expectEqualStrings("\x1b]5;0;rgb:01/02/03\x1b\\\x1b]5;1;rgb:04/05/06\x1b\\\x1b]4;258;rgb:07/08/09\x1b\\\x1b]4;260;rgb:0a/0b/0c\x1b\\", HostState.pendingOutput(&terminal));
+    try std.testing.expectEqualStrings(
+        "\x1b]5;0;rgb:01/02/03\x1b\\" ++
+            "\x1b]5;1;rgb:04/05/06\x1b\\" ++
+            "\x1b]4;258;rgb:07/08/09\x1b\\" ++
+            "\x1b]4;260;rgb:0a/0b/0c\x1b\\",
+        HostState.pendingOutput(&terminal),
+    );
 
     HostState.clearPendingOutput(&terminal);
     try stream.nextSlice("\x1b]104;258;260\x1b\\");
