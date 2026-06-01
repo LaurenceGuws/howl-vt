@@ -610,7 +610,6 @@ test "DCS legacy payload protocols retain latest host-neutral payload" {
     write(&stream, "\x1bP+p436F=7661\x1b\\");
     try std.testing.expect(dcsPayloadKind(&terminal).? == .xtsettcap);
     try std.testing.expectEqualStrings("436F=7661", dcsPayload(&terminal).?);
-
 }
 
 test "legacy Tektronix C0 and ESC controls retain latest host-neutral state" {
