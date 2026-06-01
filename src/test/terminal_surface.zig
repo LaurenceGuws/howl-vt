@@ -70,15 +70,7 @@ fn selectionClear(terminal: *Terminal) void {
     Selection.terminalClear(terminal);
 }
 
-fn copySurfaceOk(
-    handle: ffi.VtHandle,
-    rows: u16,
-    cols: u16,
-    cells: []ffi.FfiSurfaceCell,
-    dirty_rows: []u8,
-    cols_start: []u16,
-    cols_end: []u16,
-) !ffi.FfiSurfaceResult {
+fn copySurfaceOk(handle: ffi.VtHandle, rows: u16, cols: u16, cells: []ffi.FfiSurfaceCell, dirty_rows: []u8, cols_start: []u16, cols_end: []u16) !ffi.FfiSurfaceResult {
     const result = ffi.terminalCopySurface(
         handle,
         0,

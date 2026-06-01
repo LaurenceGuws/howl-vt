@@ -92,11 +92,7 @@ pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: ScenarioOp
     };
 }
 
-pub fn runCanonicalPreservation(
-    allocator: std.mem.Allocator,
-    seed: u64,
-    options: PreservationOptions,
-) !void {
+pub fn runCanonicalPreservation(allocator: std.mem.Allocator, seed: u64, options: PreservationOptions) !void {
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
 
@@ -338,14 +334,7 @@ fn canonicalLogicalStream(allocator: std.mem.Allocator, vt: *const Terminal) ![]
     return try lines.toOwnedSlice(allocator);
 }
 
-fn appendHistoryRowCanonical(
-    allocator: std.mem.Allocator,
-    all_lines: *std.ArrayList(u21),
-    current_line: *std.ArrayList(u21),
-    vt: *const Terminal,
-    recency: u32,
-    cols: u16,
-) !void {
+fn appendHistoryRowCanonical(allocator: std.mem.Allocator, all_lines: *std.ArrayList(u21), current_line: *std.ArrayList(u21), vt: *const Terminal, recency: u32, cols: u16) !void {
     const s = vt.screen_state.activeConst();
     const len = historyContentLen(s, vt, recency, cols);
     var col: u16 = 0;
@@ -357,14 +346,7 @@ fn appendHistoryRowCanonical(
     }
 }
 
-fn appendVisibleRowCanonical(
-    allocator: std.mem.Allocator,
-    all_lines: *std.ArrayList(u21),
-    current_line: *std.ArrayList(u21),
-    s: anytype,
-    row: u16,
-    cols: u16,
-) !void {
+fn appendVisibleRowCanonical(allocator: std.mem.Allocator, all_lines: *std.ArrayList(u21), current_line: *std.ArrayList(u21), s: anytype, row: u16, cols: u16) !void {
     const len = visibleContentLen(s, row, cols);
     var col: u16 = 0;
     while (col < len) : (col += 1) {

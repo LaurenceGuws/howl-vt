@@ -226,12 +226,7 @@ pub fn copyViewCells(view: View, out: anytype, map: anytype) void {
     }
 }
 
-pub fn copyDirtyRows(
-    dirty_rows_out: []u8,
-    cols_start: []u16,
-    cols_end: []u16,
-    dirty: ?Screen.DirtyRows,
-) void {
+pub fn copyDirtyRows(dirty_rows_out: []u8, cols_start: []u16, cols_end: []u16, dirty: ?Screen.DirtyRows) void {
     @memset(dirty_rows_out, 0);
     @memset(cols_start, 0);
     @memset(cols_end, 0);

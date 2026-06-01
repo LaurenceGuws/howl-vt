@@ -236,12 +236,7 @@ fn buildScrollFixture(allocator: std.mem.Allocator) ![]u8 {
     return owned;
 }
 
-fn summarizeObservations(
-    base_allocator: std.mem.Allocator,
-    name: []const u8,
-    bytes_per_run: u64,
-    observations: []const RunObservation,
-) !WorkloadResult {
+fn summarizeObservations(base_allocator: std.mem.Allocator, name: []const u8, bytes_per_run: u64, observations: []const RunObservation) !WorkloadResult {
     const runs = count32(observations);
     const ns_values = try base_allocator.alloc(u64, @intCast(runs));
     defer base_allocator.free(ns_values);
@@ -271,16 +266,7 @@ fn summarizeObservations(
     };
 }
 
-fn runStreamWorkload(
-    io: std.Io,
-    base_allocator: std.mem.Allocator,
-    name: []const u8,
-    fixture: []const u8,
-    rows: u16,
-    cols: u16,
-    history_capacity: u16,
-    runs: RunCount,
-) !WorkloadResult {
+fn runStreamWorkload(io: std.Io, base_allocator: std.mem.Allocator, name: []const u8, fixture: []const u8, rows: u16, cols: u16, history_capacity: u16, runs: RunCount) !WorkloadResult {
     const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
     defer base_allocator.free(observations);
     var i: RunCount = 0;
@@ -309,11 +295,7 @@ fn runStreamWorkload(
     return try summarizeObservations(base_allocator, name, count64(fixture), observations);
 }
 
-fn runMixedInteractiveWorkload(
-    io: std.Io,
-    base_allocator: std.mem.Allocator,
-    runs: RunCount,
-) !WorkloadResult {
+fn runMixedInteractiveWorkload(io: std.Io, base_allocator: std.mem.Allocator, runs: RunCount) !WorkloadResult {
     const bursts_per_run: RunCount = 5_000;
     const burst = "abc\x1b[D\x1b[C\r";
     const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
@@ -348,12 +330,7 @@ fn runMixedInteractiveWorkload(
     return try summarizeObservations(base_allocator, "mixed_interactive", @as(u64, bursts_per_run) * count64(burst), observations);
 }
 
-fn runSnapshotWorkload(
-    io: std.Io,
-    base_allocator: std.mem.Allocator,
-    fixture: []const u8,
-    runs: RunCount,
-) !WorkloadResult {
+fn runSnapshotWorkload(io: std.Io, base_allocator: std.mem.Allocator, fixture: []const u8, runs: RunCount) !WorkloadResult {
     const snapshot_calls_per_run: RunCount = 200;
     const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
     defer base_allocator.free(observations);
@@ -393,16 +370,7 @@ fn runSnapshotWorkload(
     return try summarizeObservations(base_allocator, "snapshot_opt_in", snapshot_calls_per_run, observations);
 }
 
-fn runReplayRecordWorkload(
-    io: std.Io,
-    base_allocator: std.mem.Allocator,
-    name: []const u8,
-    record: *const pty_feed_record.Record,
-    rows: u16,
-    cols: u16,
-    history_capacity: u16,
-    runs: u32,
-) !WorkloadResult {
+fn runReplayRecordWorkload(io: std.Io, base_allocator: std.mem.Allocator, name: []const u8, record: *const pty_feed_record.Record, rows: u16, cols: u16, history_capacity: u16, runs: u32) !WorkloadResult {
     const observations = try base_allocator.alloc(RunObservation, @intCast(runs));
     defer base_allocator.free(observations);
 

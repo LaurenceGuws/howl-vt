@@ -371,17 +371,7 @@ fn selectionResult(value: ?selection.TerminalSelection) FfiSelectionResult {
     };
 }
 
-fn surfaceResult(
-    vt: *terminal.Terminal,
-    view: screen_set.View,
-    selected: ?selection.TerminalSelection,
-    snapshot_seq: u64,
-    dirty_generation: u64,
-    cells_ptr: ?[*]FfiSurfaceCell,
-    dirty_rows_ptr: ?[*]u8,
-    cols_start_ptr: ?[*]u16,
-    cols_end_ptr: ?[*]u16,
-) FfiSurfaceResult {
+fn surfaceResult(vt: *terminal.Terminal, view: screen_set.View, selected: ?selection.TerminalSelection, snapshot_seq: u64, dirty_generation: u64, cells_ptr: ?[*]FfiSurfaceCell, dirty_rows_ptr: ?[*]u8, cols_start_ptr: ?[*]u16, cols_end_ptr: ?[*]u16) FfiSurfaceResult {
     const colors = renderColorStateOut(host_state.terminalColorState(vt));
     return .{
         .status = @intFromEnum(HowlVtCallStatus.ok),
@@ -694,21 +684,7 @@ pub fn terminalEncodePasteEnd(handle: VtHandle, ptr: ?[*]u8, cap: usize) callcon
     return copyBytes(out, input_encode.encodePasteEnd(owned, &scratch));
 }
 
-pub fn terminalEncodeMouse(
-    handle: VtHandle,
-    kind: u8,
-    button: u8,
-    row: i32,
-    col: u16,
-    pixel_x_valid: u8,
-    pixel_x: u32,
-    pixel_y_valid: u8,
-    pixel_y: u32,
-    mods: u8,
-    buttons_down: u8,
-    ptr: ?[*]u8,
-    cap: usize,
-) callconv(.c) FfiBytesResult {
+pub fn terminalEncodeMouse(handle: VtHandle, kind: u8, button: u8, row: i32, col: u16, pixel_x_valid: u8, pixel_x: u32, pixel_y_valid: u8, pixel_y: u32, mods: u8, buttons_down: u8, ptr: ?[*]u8, cap: usize) callconv(.c) FfiBytesResult {
     const owned = vtFromHandle(handle) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.missing_handle) };
     const out = bytesOut(ptr, cap) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };
     const event_kind = mouseKindIn(kind) orelse return .{ .status = @intFromEnum(HowlVtCallStatus.invalid_argument) };

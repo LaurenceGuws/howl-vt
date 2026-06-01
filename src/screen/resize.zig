@@ -163,13 +163,7 @@ fn reflowLogicalLines(allocator: std.mem.Allocator, lines: LogicalLinesState, co
     return result;
 }
 
-fn appendRewrappedRows(
-    allocator: std.mem.Allocator,
-    result: *ReflowState,
-    cells: []const Cell,
-    row_count: u16,
-    cols: u16,
-) !void {
+fn appendRewrappedRows(allocator: std.mem.Allocator, result: *ReflowState, cells: []const Cell, row_count: u16, cols: u16) !void {
     if (cols == 0) return;
     if (row_count == 0) unreachable;
 
@@ -193,13 +187,7 @@ fn appendRewrappedRows(
     std.debug.assert(count32(result.flat_rows.items) == flat_rows_before + @as(u32, row_count) * colCount(cols));
 }
 
-fn appendRowCells(
-    allocator: std.mem.Allocator,
-    flat_rows: *std.ArrayListUnmanaged(Cell),
-    cells: []const Cell,
-    start: u32,
-    cols: u16,
-) !void {
+fn appendRowCells(allocator: std.mem.Allocator, flat_rows: *std.ArrayListUnmanaged(Cell), cells: []const Cell, start: u32, cols: u16) !void {
     const cell_len = count32(cells);
     var col_idx: u16 = 0;
     while (col_idx < cols) : (col_idx += 1) {
@@ -270,12 +258,7 @@ fn projectViewport(logical_line_count: u32, reflow: ReflowState, rows: u16) View
     };
 }
 
-fn allocResizeBuffers(
-    allocator: std.mem.Allocator,
-    rows: u16,
-    cols: u16,
-    old_tab_stops: ?[]bool,
-) !ResizeBuffers {
+fn allocResizeBuffers(allocator: std.mem.Allocator, rows: u16, cols: u16, old_tab_stops: ?[]bool) !ResizeBuffers {
     const cell_count = cellCount(rows, cols);
     var cells: ?[]Cell = null;
     if (cell_count > 0) {
@@ -328,13 +311,7 @@ fn freeResizeBuffers(allocator: std.mem.Allocator, buffers: ResizeBuffers) void 
     if (buffers.tab_stops) |buf| allocator.free(buf);
 }
 
-fn copyVisibleRows(
-    new_cells: ?[]Cell,
-    new_row_wraps: ?[]bool,
-    reflow: ReflowState,
-    viewport: ViewportState,
-    cols: u16,
-) void {
+fn copyVisibleRows(new_cells: ?[]Cell, new_row_wraps: ?[]bool, reflow: ReflowState, viewport: ViewportState, cols: u16) void {
     const dst = new_cells orelse return;
     const dst_wraps = new_row_wraps orelse return;
 
@@ -404,14 +381,7 @@ fn installResizeState(self: anytype, rows: u16, cols: u16, buffers: ResizeBuffer
     std.debug.assert(self.right_margin == cols -| 1);
 }
 
-fn rebuildResizeAuthority(
-    self: anytype,
-    allocator: std.mem.Allocator,
-    lines: LogicalLinesState,
-    reflow: ReflowState,
-    viewport: ViewportState,
-    cols: u16,
-) !void {
+fn rebuildResizeAuthority(self: anytype, allocator: std.mem.Allocator, lines: LogicalLinesState, reflow: ReflowState, viewport: ViewportState, cols: u16) !void {
     std.debug.assert(reflow.line_row_starts.items.len == lines.logical_lines.items.len);
     std.debug.assert(reflow.line_row_counts.items.len == lines.logical_lines.items.len);
     std.debug.assert(viewport.total_rows == count32(reflow.rewrapped.items));

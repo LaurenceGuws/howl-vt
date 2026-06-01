@@ -37,12 +37,7 @@ pub const StringControl = struct {
     alloc_failed: bool = false,
     overflowed: bool = false,
 
-    pub fn init(
-        allocator: std.mem.Allocator,
-        capacity: ByteLimit,
-        max_len: ByteLimit,
-        bel_terminates: bool,
-    ) !StringControl {
+    pub fn init(allocator: std.mem.Allocator, capacity: ByteLimit, max_len: ByteLimit, bel_terminates: bool) !StringControl {
         return .{
             .allocator = allocator,
             .buffer = try std.ArrayList(u8).initCapacity(allocator, @intCast(capacity)),
@@ -236,12 +231,7 @@ pub const OscControl = struct {
         c5522,
     };
 
-    pub fn init(
-        allocator: std.mem.Allocator,
-        capacity: ByteLimit,
-        metadata_max_len: ByteLimit,
-        large_max_len: ByteLimit,
-    ) !OscControl {
+    pub fn init(allocator: std.mem.Allocator, capacity: ByteLimit, metadata_max_len: ByteLimit, large_max_len: ByteLimit) !OscControl {
         return .{
             .allocator = allocator,
             .buffer = try std.ArrayList(u8).initCapacity(allocator, @intCast(capacity)),

@@ -1,23 +1,13 @@
 const std = @import("std");
 const parser_mod = @import("main.zig");
 
-pub fn appendOwnedPhases(
-    allocator: std.mem.Allocator,
-    arena: std.mem.Allocator,
-    actions: *std.ArrayList(parser_mod.Action),
-    phases: parser_mod.PhaseActions,
-) error{OutOfMemory}!void {
+pub fn appendOwnedPhases(allocator: std.mem.Allocator, arena: std.mem.Allocator, actions: *std.ArrayList(parser_mod.Action), phases: parser_mod.PhaseActions) error{OutOfMemory}!void {
     for (phases) |phase| {
         if (phase) |action| try appendOwnedAction(allocator, arena, actions, action);
     }
 }
 
-fn appendOwnedAction(
-    allocator: std.mem.Allocator,
-    arena: std.mem.Allocator,
-    actions: *std.ArrayList(parser_mod.Action),
-    action: parser_mod.Action,
-) error{OutOfMemory}!void {
+fn appendOwnedAction(allocator: std.mem.Allocator, arena: std.mem.Allocator, actions: *std.ArrayList(parser_mod.Action), action: parser_mod.Action) error{OutOfMemory}!void {
     switch (action) {
         .csi_dispatch => |csi| {
             const params = try dupeArenaSlice(arena, i32, csi.params[0..csi.count]);

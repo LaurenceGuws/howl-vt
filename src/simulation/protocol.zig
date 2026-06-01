@@ -254,14 +254,7 @@ fn buildCase(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.
     }
 }
 
-fn assertParserDeterminism(
-    gpa: std.mem.Allocator,
-    seed: u64,
-    case_index: IterationCount,
-    bytes: []const u8,
-    rand: std.Random,
-    max_chunk_len: ChunkLen,
-) !void {
+fn assertParserDeterminism(gpa: std.mem.Allocator, seed: u64, case_index: IterationCount, bytes: []const u8, rand: std.Random, max_chunk_len: ChunkLen) !void {
     var whole = try runParser(gpa, bytes, .whole_slice, rand, max_chunk_len);
     defer whole.deinit();
     var bytewise = try runParser(gpa, bytes, .bytewise, rand, max_chunk_len);
@@ -286,14 +279,7 @@ fn assertParserDeterminism(
     }
 }
 
-fn assertTerminalDeterminism(
-    gpa: std.mem.Allocator,
-    seed: u64,
-    case_index: IterationCount,
-    bytes: []const u8,
-    rand: std.Random,
-    max_chunk_len: ChunkLen,
-) !void {
+fn assertTerminalDeterminism(gpa: std.mem.Allocator, seed: u64, case_index: IterationCount, bytes: []const u8, rand: std.Random, max_chunk_len: ChunkLen) !void {
     const whole = try runTerminal(gpa, bytes, .whole_slice, rand, max_chunk_len);
     const bytewise = try runTerminal(gpa, bytes, .bytewise, rand, max_chunk_len);
     const chunked = try runTerminal(gpa, bytes, .chunked, rand, max_chunk_len);
@@ -311,13 +297,7 @@ fn assertTerminalDeterminism(
     }
 }
 
-fn runParser(
-    gpa: std.mem.Allocator,
-    bytes: []const u8,
-    mode: FeedMode,
-    rand: std.Random,
-    max_chunk_len: ChunkLen,
-) !Harness {
+fn runParser(gpa: std.mem.Allocator, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: ChunkLen) !Harness {
     var harness = Harness.init(gpa);
     errdefer harness.deinit();
 
@@ -330,13 +310,7 @@ fn runParser(
     return harness;
 }
 
-fn runTerminal(
-    gpa: std.mem.Allocator,
-    bytes: []const u8,
-    mode: FeedMode,
-    rand: std.Random,
-    max_chunk_len: ChunkLen,
-) !VtDigest {
+fn runTerminal(gpa: std.mem.Allocator, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: ChunkLen) !VtDigest {
     var terminal = try Terminal.initWithCellsAndHistory(gpa, 24, 80, 256);
     defer terminal.deinit();
 
