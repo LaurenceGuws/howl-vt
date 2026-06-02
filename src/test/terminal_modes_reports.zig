@@ -539,6 +539,24 @@ test "DECCIR reports charset designation and GL shift" {
     try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;1;2;@;00BB\x1b\\", pendingOutput(&terminal));
 }
 
+test "DECCIR reports charset designation and GL shift across slices" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 3, 10);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    write(&stream, "\x1b(0");
+    write(&stream, "\x1b[1$w");
+    try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;0;2;@;0BBB\x1b\\", pendingOutput(&terminal));
+
+    clearPendingOutput(&terminal);
+    write(&stream, "\x1b)0");
+    write(&stream, "\x0E");
+    write(&stream, "\x1b[1$w");
+    try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;1;2;@;00BB\x1b\\", pendingOutput(&terminal));
+}
+
 test "DECXCPR appends DEC cursor position report" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 4, 8);
@@ -608,6 +626,19 @@ test "DCS legacy payload protocols retain latest host-neutral payload" {
     defer stream.deinit();
 
     write(&stream, "\x1bP+p436F=7661\x1b\\");
+    try std.testing.expect(dcsPayloadKind(&terminal).? == .xtsettcap);
+    try std.testing.expectEqualStrings("436F=7661", dcsPayload(&terminal).?);
+}
+
+test "DCS legacy payload protocols retain latest host-neutral payload across slices" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("\x1bP+p436F=");
+    try stream.nextSlice("7661\x1b\\");
     try std.testing.expect(dcsPayloadKind(&terminal).? == .xtsettcap);
     try std.testing.expectEqualStrings("436F=7661", dcsPayload(&terminal).?);
 }

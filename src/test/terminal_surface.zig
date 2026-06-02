@@ -478,6 +478,33 @@ test "terminal feed fails overlong APC instead of truncating it" {
     try std.testing.expectEqual(@as(u8, 1), recovered.state_changed);
 }
 
+test "terminal feed fails overlong PM instead of truncating it" {
+    const allocator = std.testing.allocator;
+    const handle = ffi.terminalInit(2, 4, 4);
+    defer ffi.terminalDeinit(handle);
+
+    const begin = ffi.terminalFeed(handle, "\x1b^".ptr, 2);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), begin.status);
+
+    const chunk_len: usize = 4096;
+    const chunk = try allocator.alloc(u8, chunk_len);
+    defer allocator.free(chunk);
+    @memset(chunk, 'A');
+
+    var sent: usize = 0;
+    while (sent + chunk_len <= parser_mod.max_metadata_control_bytes) : (sent += chunk_len) {
+        const result = ffi.terminalFeed(handle, chunk.ptr, chunk.len);
+        try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), result.status);
+    }
+
+    const failed = ffi.terminalFeed(handle, chunk.ptr, 1);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)), failed.status);
+
+    const recovered = ffi.terminalFeed(handle, "A".ptr, 1);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), recovered.status);
+    try std.testing.expectEqual(@as(u8, 1), recovered.state_changed);
+}
+
 test "input encoding APIs are callable without terminal facade methods" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 5, 10);
