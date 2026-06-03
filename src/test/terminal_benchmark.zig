@@ -543,13 +543,7 @@ fn printResult(result: WorkloadResult, format: OutputFormat) void {
 }
 
 fn usage() void {
-    std.debug.print(
-        \\usage: vt_core_benchmark [--runs N] [--text] [--replay PATH]...
-        \\
-        \\Default output is NDJSON, one event per workload.
-        \\Replay fixtures are opt-in and must be passed explicitly.
-        \\
-    , .{});
+    return;
 }
 
 fn parseOptions(allocator: std.mem.Allocator, args_vector: std.process.Args.Vector) !Options {
@@ -667,6 +661,7 @@ pub fn main(init: std.process.Init) !void {
         std.debug.print("rows=40 cols=120 runs={d}\n", .{runs});
         std.debug.print("---\n", .{});
     }
+
     printResult(ascii_result, options.format);
     printResult(unicode_result, options.format);
     printResult(csi_result, options.format);
