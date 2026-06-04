@@ -91,14 +91,21 @@ pub const Screen = struct {
         return @as(u32, rows) * @as(u32, cols);
     }
 
-    /// Initialize cursor-only grid state.
-    pub fn init(rows: u16, cols: u16) Screen {
-        return initWithDefaultCursorStyle(rows, cols, cursor.default_cursor_style);
-    }
-
-    pub fn initWithDefaultCursorStyle(rows: u16, cols: u16, cursor_style_default: CursorStyle) Screen {
+    fn initBase(
+        allocator: ?std.mem.Allocator,
+        rows: u16,
+        cols: u16,
+        cursor_style_default: CursorStyle,
+        cells: ?[]Cell,
+        row_wraps: ?[]bool,
+        history: ?[]Cell,
+        history_wraps: ?[]bool,
+        history_capacity: u16,
+        dirty_state: dirty.State,
+        tab_stops: ?[]bool,
+    ) Screen {
         return .{
-            .allocator = null,
+            .allocator = allocator,
             .rows = rows,
             .cols = cols,
             .cursor_row = 0,
@@ -118,11 +125,11 @@ pub const Screen = struct {
             .row_origin = 0,
             .scroll_top = 0,
             .scroll_bottom = rows -| 1,
-            .cells = null,
-            .row_wraps = null,
-            .history = null,
-            .history_wraps = null,
-            .history_capacity = 0,
+            .cells = cells,
+            .row_wraps = row_wraps,
+            .history = history,
+            .history_wraps = history_wraps,
+            .history_capacity = history_capacity,
             .history_count = 0,
             .history_write_idx = 0,
             .history_lines = .empty,
@@ -132,10 +139,19 @@ pub const Screen = struct {
             .saved_cursor = null,
             .last_graphic_codepoint = null,
             .current_attrs = default_cell_attrs,
-            .dirty_state = .{},
-            .tab_stops = null,
+            .dirty_state = dirty_state,
+            .tab_stops = tab_stops,
             .cell_pixel_size = null,
         };
+    }
+
+    /// Initialize cursor-only grid state.
+    pub fn init(rows: u16, cols: u16) Screen {
+        return initWithDefaultCursorStyle(rows, cols, cursor.default_cursor_style);
+    }
+
+    pub fn initWithDefaultCursorStyle(rows: u16, cols: u16, cursor_style_default: CursorStyle) Screen {
+        return initBase(null, rows, cols, cursor_style_default, null, null, null, null, 0, .{}, null);
     }
 
     /// Initialize screen with owned cell storage.
@@ -163,45 +179,19 @@ pub const Screen = struct {
         errdefer if (dirty_cols_end) |buf| allocator.free(buf);
         const tab_stops = try tabs.allocTabStops(allocator, cols);
         errdefer if (tab_stops) |buf| allocator.free(buf);
-        return .{
-            .allocator = allocator,
-            .rows = rows,
-            .cols = cols,
-            .cursor_row = 0,
-            .cursor_col = 0,
-            .wrap_pending = false,
-            .cursor_visible = true,
-            .cursor_style_default = cursor_style_default,
-            .cursor_style = cursor_style_default,
-            .auto_wrap = true,
-            .origin_mode = false,
-            .insert_mode = false,
-            .left_right_margin_mode = false,
-            .left_margin = 0,
-            .right_margin = cols -| 1,
-            .attr_change_extent_rect = false,
-            .view_padding_rows = 0,
-            .row_origin = 0,
-            .scroll_top = 0,
-            .scroll_bottom = rows -| 1,
-            .cells = cells,
-            .row_wraps = row_wraps,
-            .history = null,
-            .history_wraps = null,
-            .history_capacity = 0,
-            .history_count = 0,
-            .history_write_idx = 0,
-            .history_lines = .empty,
-            .history_lines_start = 0,
-            .open_history_line = null,
-            .open_history_reuse_slot = null,
-            .saved_cursor = null,
-            .last_graphic_codepoint = null,
-            .current_attrs = default_cell_attrs,
-            .dirty_state = dirty.State.initFull(rows, dirty_cols_start, dirty_cols_end),
-            .tab_stops = tab_stops,
-            .cell_pixel_size = null,
-        };
+        return initBase(
+            allocator,
+            rows,
+            cols,
+            cursor_style_default,
+            cells,
+            row_wraps,
+            null,
+            null,
+            0,
+            dirty.State.initFull(rows, dirty_cols_start, dirty_cols_end),
+            tab_stops,
+        );
     }
 
     /// Initialize screen with cells and history storage.
@@ -238,45 +228,19 @@ pub const Screen = struct {
             const buf = try allocator.alloc(bool, 0);
             break :blk buf;
         } else null;
-        return .{
-            .allocator = allocator,
-            .rows = rows,
-            .cols = cols,
-            .cursor_row = 0,
-            .cursor_col = 0,
-            .wrap_pending = false,
-            .cursor_visible = true,
-            .cursor_style_default = cursor_style_default,
-            .cursor_style = cursor_style_default,
-            .auto_wrap = true,
-            .origin_mode = false,
-            .insert_mode = false,
-            .left_right_margin_mode = false,
-            .left_margin = 0,
-            .right_margin = cols -| 1,
-            .attr_change_extent_rect = false,
-            .view_padding_rows = 0,
-            .row_origin = 0,
-            .scroll_top = 0,
-            .scroll_bottom = rows -| 1,
-            .cells = cells,
-            .row_wraps = row_wraps,
-            .history = history,
-            .history_wraps = history_wraps,
-            .history_capacity = if (cells != null) history_capacity else 0,
-            .history_count = 0,
-            .history_write_idx = 0,
-            .history_lines = .empty,
-            .history_lines_start = 0,
-            .open_history_line = null,
-            .open_history_reuse_slot = null,
-            .saved_cursor = null,
-            .last_graphic_codepoint = null,
-            .current_attrs = default_cell_attrs,
-            .dirty_state = dirty.State.initFull(rows, dirty_cols_start, dirty_cols_end),
-            .tab_stops = tab_stops,
-            .cell_pixel_size = null,
-        };
+        return initBase(
+            allocator,
+            rows,
+            cols,
+            cursor_style_default,
+            cells,
+            row_wraps,
+            history,
+            history_wraps,
+            if (cells != null) history_capacity else 0,
+            dirty.State.initFull(rows, dirty_cols_start, dirty_cols_end),
+            tab_stops,
+        );
     }
 
     /// Release owned cell and history buffers.

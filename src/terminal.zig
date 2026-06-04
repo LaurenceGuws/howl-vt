@@ -49,6 +49,15 @@ pub const Terminal = struct {
         default_cursor_style: ScreenNs.CursorStyle = ScreenNs.default_cursor_style,
     };
 
+    fn initWithScreens(allocator: std.mem.Allocator, stream_state: stream_terminal.State, state: ScreenNs, alt_state: ScreenNs) Terminal {
+        return .{
+            .allocator = allocator,
+            .stream_state = stream_state,
+            .screen_state = ScreenSet.init(state, alt_state),
+            .host = HostState.init(),
+        };
+    }
+
     /// Initialize Terminal without cell storage.
     pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
         return initWithOptions(allocator, rows, cols, .{});
@@ -59,12 +68,7 @@ pub const Terminal = struct {
         errdefer stream_state.deinit();
         const state = ScreenNs.initWithDefaultCursorStyle(rows, cols, options.default_cursor_style);
         const alt_state = ScreenNs.initWithDefaultCursorStyle(rows, cols, options.default_cursor_style);
-        return Terminal{
-            .allocator = allocator,
-            .stream_state = stream_state,
-            .screen_state = ScreenSet.init(state, alt_state),
-            .host = HostState.init(),
-        };
+        return initWithScreens(allocator, stream_state, state, alt_state);
     }
 
     /// Initialize Terminal with cell storage.
@@ -79,12 +83,7 @@ pub const Terminal = struct {
         errdefer state.deinit(allocator);
         var alt_state = try ScreenNs.initWithCellsAndDefaultCursorStyle(allocator, rows, cols, options.default_cursor_style);
         errdefer alt_state.deinit(allocator);
-        return Terminal{
-            .allocator = allocator,
-            .stream_state = stream_state,
-            .screen_state = ScreenSet.init(state, alt_state),
-            .host = HostState.init(),
-        };
+        return initWithScreens(allocator, stream_state, state, alt_state);
     }
 
     /// Initialize Terminal with cell and history storage.
@@ -99,12 +98,7 @@ pub const Terminal = struct {
         errdefer state.deinit(allocator);
         var alt_state = try ScreenNs.initWithCellsAndDefaultCursorStyle(allocator, rows, cols, options.default_cursor_style);
         errdefer alt_state.deinit(allocator);
-        return Terminal{
-            .allocator = allocator,
-            .stream_state = stream_state,
-            .screen_state = ScreenSet.init(state, alt_state),
-            .host = HostState.init(),
-        };
+        return initWithScreens(allocator, stream_state, state, alt_state);
     }
 
     /// Release Terminal resources.
