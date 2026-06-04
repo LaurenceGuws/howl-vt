@@ -63,3 +63,24 @@ test "c0 handled controls keep protocol values" {
     try std.testing.expectEqual(@as(u8, 0x0C), @intFromEnum(C0.form_feed));
     try std.testing.expectEqual(@as(u8, 0x0D), @intFromEnum(C0.carriage_return));
 }
+
+test "c0 maps line and cursor stream controls" {
+    try std.testing.expect(process(.line_feed).? == .line_feed);
+    try std.testing.expect(process(.vertical_tab).? == .line_feed);
+    try std.testing.expect(process(.form_feed).? == .line_feed);
+    try std.testing.expect(process(.carriage_return).? == .carriage_return);
+    try std.testing.expect(process(.backspace).? == .backspace);
+    try std.testing.expect(process(.horizontal_tab).? == .horizontal_tab);
+}
+
+test "c0 legacy controls map host-neutral state" {
+    try std.testing.expectEqual(events.LegacyControlKind.tek_point_plot, process(.file_separator).?.legacy_control);
+    try std.testing.expectEqual(events.LegacyControlKind.tek_graph, process(.group_separator).?.legacy_control);
+    try std.testing.expectEqual(events.LegacyControlKind.tek_incremental_plot, process(.record_separator).?.legacy_control);
+    try std.testing.expectEqual(events.LegacyControlKind.tek_alpha, process(.unit_separator).?.legacy_control);
+}
+
+test "c0 ignores unsupported controls" {
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(fromByte(0x00)));
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process(fromByte(0x07)));
+}

@@ -1,0 +1,88 @@
+const std = @import("std");
+const screen_mod = @import("../screen.zig");
+const action_vocabulary = @import("../action/vocabulary.zig");
+
+const Grid = screen_mod.Screen;
+const SemanticEvent = action_vocabulary.SemanticEvent;
+
+test "screen history: initWithCells has no history by default" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCells(gpa, 4, 10);
+    defer s.deinit(gpa);
+    try std.testing.expectEqual(@as(u16, 0), s.history_capacity);
+    try std.testing.expect(s.history == null);
+}
+
+test "screen history: initWithCellsAndHistory allocates bounded history" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCellsAndHistory(gpa, 4, 10, 100);
+    defer s.deinit(gpa);
+    try std.testing.expectEqual(@as(u16, 100), s.history_capacity);
+    try std.testing.expect(s.history != null);
+    try std.testing.expectEqual(@as(u32, 0), s.history_count);
+}
+
+test "screen history: scrollUp captures row to history" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCellsAndHistory(gpa, 2, 10, 10);
+    defer s.deinit(gpa);
+    s.apply(SemanticEvent{ .write_text = "abc" });
+    s.cursor_row = 1;
+    s.cursor_col = 0;
+    s.apply(SemanticEvent{ .write_text = "xyz" });
+    s.cursor_col = 0;
+    s.apply(SemanticEvent.line_feed);
+    try std.testing.expectEqual(@as(u32, 1), s.history_count);
+    const h = s.history.?;
+    try std.testing.expectEqual(@as(u21, 'a'), @as(u21, @intCast(h[0].codepoint)));
+    try std.testing.expectEqual(@as(u21, 'b'), @as(u21, @intCast(h[1].codepoint)));
+    try std.testing.expectEqual(@as(u21, 'c'), @as(u21, @intCast(h[2].codepoint)));
+    try std.testing.expectEqual(@as(u21, 'x'), s.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'y'), s.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'z'), s.cellAt(0, 2));
+}
+
+test "screen history: capacity limits with wraparound" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCellsAndHistory(gpa, 2, 2, 2);
+    defer s.deinit(gpa);
+    var row_num: u21 = '1';
+    var i: u16 = 0;
+    while (i < 5) : (i += 1) {
+        s.cursor_col = 0;
+        s.cursor_row = 0;
+        for (0..2) |_| s.apply(SemanticEvent{ .write_codepoint = row_num });
+        if (i < 4) {
+            s.cursor_row = 1;
+            s.apply(SemanticEvent.line_feed);
+        }
+        row_num += 1;
+    }
+    try std.testing.expectEqual(@as(u32, 2), s.history_count);
+    try std.testing.expectEqual(@as(u21, '4'), s.historyRowAt(0, 0));
+    try std.testing.expectEqual(@as(u21, '4'), s.historyRowAt(0, 1));
+    try std.testing.expectEqual(@as(u21, '3'), s.historyRowAt(1, 0));
+    try std.testing.expectEqual(@as(u21, '3'), s.historyRowAt(1, 1));
+}
+
+test "screen history: reset does not truncate history" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCellsAndHistory(gpa, 2, 5, 10);
+    defer s.deinit(gpa);
+    s.apply(SemanticEvent{ .write_text = "test1" });
+    s.cursor_row = 1;
+    s.apply(SemanticEvent.line_feed);
+    try std.testing.expectEqual(@as(u32, 1), s.history_count);
+    s.reset();
+    try std.testing.expectEqual(@as(u32, 1), s.history_count);
+}
+
+test "screen history: ED 3 clears scrollback history" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCellsAndHistory(gpa, 2, 4, 8);
+    defer s.deinit(gpa);
+    s.apply(SemanticEvent{ .write_text = "AAAA\nBBBB\nCCCC" });
+    try std.testing.expect(s.historyCount() > 0);
+    s.apply(SemanticEvent{ .erase_display = .scrollback });
+    try std.testing.expectEqual(@as(u32, 0), s.historyCount());
+}

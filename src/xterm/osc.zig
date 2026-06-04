@@ -70,3 +70,54 @@ test "OSC 52 clipboard set payload decodes" {
 test "OSC 52 clipboard query is unsupported for set drain" {
     try std.testing.expectError(error.UnsupportedOsc52Query, decodeClipboardSet(std.testing.allocator, "c;?"));
 }
+
+test "OSC title and hyperlink actions map to semantic events" {
+    try std.testing.expectEqualStrings("My Title", process(.{ .title = .{ .command = 0, .payload = "My Title", .term = .bel } }).?.title_set);
+    try std.testing.expectEqualStrings("Raw Title", process(.{ .raw_title = .{ .payload = "Raw Title", .term = .bel } }).?.title_set);
+    try std.testing.expectEqualStrings("https://example.com", process(.{ .hyperlink = .{ .payload = ";https://example.com", .term = .bel } }).?.hyperlink_set);
+    try std.testing.expect(process(.{ .hyperlink = .{ .payload = ";", .term = .bel } }).? == .hyperlink_clear);
+}
+
+test "OSC clipboard and color controls preserve payloads" {
+    try std.testing.expectEqualStrings("c;Zm9v", process(.{ .clipboard = .{ .command = 52, .payload = "c;Zm9v", .term = .bel } }).?.clipboard_set);
+
+    const kitty_color = process(.{ .kitty_color = .{ .command = 21, .payload = "foreground=?", .term = .st } }).?;
+    try std.testing.expectEqual(@as(u16, 21), kitty_color.color_control.command);
+    try std.testing.expectEqualStrings("foreground=?", kitty_color.color_control.payload);
+
+    const xterm_palette = process(.{ .palette_control = .{ .command = 4, .payload = "1;#ff0000", .term = .st } }).?;
+    try std.testing.expectEqual(@as(u16, 4), xterm_palette.color_control.command);
+    try std.testing.expectEqualStrings("1;#ff0000", xterm_palette.color_control.payload);
+}
+
+test "OSC kitty consequence payloads map to semantic events" {
+    const shell_mark = process(.{ .shell_mark = .{ .payload = "D;7", .term = .bel } }).?;
+    try std.testing.expectEqual(@as(u8, 'D'), shell_mark.kitty_shell_mark.kind);
+    try std.testing.expectEqual(@as(?i32, 7), shell_mark.kitty_shell_mark.status);
+
+    const notification = process(.{ .notification = .{ .command = 99, .payload = "i=1:p=body;Hello", .term = .st } }).?;
+    try std.testing.expectEqualStrings("i=1:p=body", notification.kitty_notification.metadata);
+    try std.testing.expectEqualStrings("Hello", notification.kitty_notification.payload);
+
+    const alias = process(.{ .notification = .{ .command = 9, .payload = "i=2:p=body;Hi", .term = .st } }).?;
+    try std.testing.expectEqualStrings("i=2:p=body", alias.kitty_notification.metadata);
+    try std.testing.expectEqualStrings("Hi", alias.kitty_notification.payload);
+
+    const pointer = process(.{ .pointer_shape = .{ .payload = ">wait,pointer", .term = .st } }).?;
+    try std.testing.expectEqual(@as(u8, '>'), pointer.kitty_pointer_shape.action);
+    try std.testing.expectEqualStrings("wait,pointer", pointer.kitty_pointer_shape.names);
+
+    const push = process(.{ .kitty_color_stack_push = .st }).?;
+    const pop = process(.{ .kitty_color_stack_pop = .st }).?;
+    try std.testing.expect(push.kitty_color_stack == .push);
+    try std.testing.expect(pop.kitty_color_stack == .pop);
+
+    const clipboard = process(.{ .kitty_clipboard = .{ .payload = "type=write", .term = .st } }).?;
+    try std.testing.expectEqualStrings("type=write", clipboard.clipboard_set);
+
+    const transfer = process(.{ .kitty_file_transfer = .{ .payload = "cmd=data", .term = .st } }).?;
+    try std.testing.expectEqualStrings("cmd=data", transfer.kitty_file_transfer);
+
+    const size = process(.{ .kitty_text_size = .{ .payload = "s=2;Big", .term = .st } }).?;
+    try std.testing.expectEqualStrings("s=2;Big", size.kitty_text_size);
+}

@@ -329,11 +329,11 @@ test "terminal reset screen delegates owner resets" {
 
 test {
     _ = @import("test/pty_feed_record.zig");
-    _ = @import("test/terminal_modes_reports.zig");
-    _ = @import("test/terminal_osc_colors.zig");
-    _ = @import("test/terminal_surface.zig");
-    _ = @import("test/screen_state_behavior.zig");
-    _ = @import("test/action_mapping.zig");
-    _ = @import("test/snapshot_behavior.zig");
-    _ = @import("test/terminal_end_to_end.zig");
+    _ = @import("terminal_modes_test.zig");
+    _ = @import("terminal_osc_test.zig");
+    _ = @import("terminal_surface_test.zig");
+    _ = @import("screen_test.zig");
+    _ = @import("action/route_test.zig");
+    _ = @import("terminal_snapshot_test.zig");
+    _ = @import("terminal_end_to_end_test.zig");
 }

@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const EscAction = union(enum) {
     line_feed,
     next_line,
@@ -49,4 +51,27 @@ pub fn process(final: u8) ?SemanticEvent {
         .restore_cursor => SemanticEvent.restore_cursor,
         .application_keypad => |enabled| SemanticEvent{ .application_keypad = enabled },
     };
+}
+
+test "esc maps C1 7-bit aliases and cursor save restore" {
+    try std.testing.expect(process('D').? == .line_feed);
+    try std.testing.expect(process('E').? == .next_line);
+    try std.testing.expect(process('M').? == .reverse_index);
+    try std.testing.expect(process('7').? == .save_cursor);
+    try std.testing.expect(process('8').? == .restore_cursor);
+}
+
+test "esc maps DECID RIS and application keypad" {
+    try std.testing.expect(process('Z').? == .primary_device_attributes);
+    try std.testing.expect(process('c').? == .reset_screen);
+    try std.testing.expect(process('=').?.application_keypad);
+    try std.testing.expect(!process('>').?.application_keypad);
+}
+
+test "esc maps low legacy controls and ignores unsupported finals" {
+    try std.testing.expect(process(0x17).?.legacy_control == .tek_copy);
+    try std.testing.expect(process(0x1C).?.legacy_control == .tek_special_point_plot);
+    try std.testing.expect(process('l').?.legacy_control == .hp_memory_lock);
+    try std.testing.expect(process('s').?.legacy_control == .tek_write_thru_short_dashed);
+    try std.testing.expectEqual(@as(?SemanticEvent, null), process('z'));
 }

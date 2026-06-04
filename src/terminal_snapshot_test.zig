@@ -1,9 +1,9 @@
 const std = @import("std");
-const screen_capture = @import("screen_capture.zig");
-const screen_set = @import("../screen_set.zig");
-const selection = @import("../selection.zig");
-const terminal_mod = @import("../terminal.zig");
-const stream_harness = @import("stream_harness.zig");
+const screen_capture = @import("test/screen_capture.zig");
+const screen_set = @import("screen_set.zig");
+const selection = @import("selection.zig");
+const terminal_mod = @import("terminal.zig");
+const stream_harness = @import("test/stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;
 const StreamHarness = stream_harness.Harness;
