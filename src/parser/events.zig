@@ -203,24 +203,6 @@ pub const ParsedEvents = struct {
         self.aux_head = 0;
     }
 
-    pub fn resetState(self: *ParsedEvents) void {
-        self.events.clearRetainingCapacity();
-        self.event_head = 0;
-        self.bytes.clearRetainingCapacity();
-        self.byte_head = 0;
-        self.ints.clearRetainingCapacity();
-        self.int_head = 0;
-        self.aux.clearRetainingCapacity();
-        self.aux_head = 0;
-        self.apc_bytes.clearRetainingCapacity();
-        self.dcs_bytes.clearRetainingCapacity();
-        self.pm_bytes.clearRetainingCapacity();
-        self.dcs_hook = null;
-        self.gl_index = 0;
-        self.g0_designation = ascii_designation;
-        self.g1_designation = ascii_designation;
-    }
-
     pub fn deccirCharsetState(self: *const ParsedEvents) parser_mod.DeccirCharsetState {
         return .{
             .gl_index = self.gl_index,
