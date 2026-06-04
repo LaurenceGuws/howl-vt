@@ -40,6 +40,7 @@ test {
     _ = selection;
     _ = terminal;
     _ = @import("parser/csi_test.zig");
+    _ = @import("parser/events_test.zig");
     _ = @import("parser/main_test.zig");
     _ = @import("parser/string_control_test.zig");
     _ = @import("xterm/csi_mapping_test.zig");
