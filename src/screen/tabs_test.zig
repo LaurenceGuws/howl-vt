@@ -65,3 +65,21 @@ test "screen tabs: HTS TBC and reset manage custom and default stops" {
     try std.testing.expect(s.tabStopAt(16));
     try std.testing.expect(!s.tabStopAt(4));
 }
+
+test "screen tabs: resize wider preserves custom and default stops" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCells(gpa, 4, 20);
+    defer s.deinit(gpa);
+
+    s.cursor_col = 5;
+    s.apply(.horizontal_tab_set);
+    s.cursor_col = 8;
+    s.apply(.tab_clear_current);
+
+    try s.resize(gpa, 4, 25);
+
+    try std.testing.expect(s.tabStopAt(5));
+    try std.testing.expect(!s.tabStopAt(8));
+    try std.testing.expect(s.tabStopAt(16));
+    try std.testing.expect(s.tabStopAt(24));
+}

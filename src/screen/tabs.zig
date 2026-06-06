@@ -16,7 +16,6 @@ pub fn setDefaultTabStops(stops: []bool) void {
 
 pub fn copyTabStops(dst: ?[]bool, src: ?[]const bool) void {
     const d = dst orelse return;
-    setDefaultTabStops(d);
     const s = src orelse return;
     @memcpy(d[0..@min(d.len, s.len)], s[0..@min(d.len, s.len)]);
 }
