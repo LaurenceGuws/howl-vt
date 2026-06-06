@@ -1,11 +1,13 @@
 const std = @import("std");
 const owned_actions = @import("owned_actions.zig");
 const parser_mod = @import("main.zig");
+const string_control = @import("string_control.zig");
 
 const Parser = parser_mod.Parser;
 const OscTerminator = parser_mod.OscTerminator;
 const OscAction = parser_mod.OscAction;
 const Action = parser_mod.Action;
+const OscControl = string_control.OscControl;
 
 const Output = struct {
     arena: std.heap.ArenaAllocator,
@@ -243,4 +245,30 @@ test "parser string controls: explicit OSC ladder recognizes full command list" 
         try std.testing.expect(output.actions.items[0] == .osc_dispatch);
         try std.testing.expectEqual(case.command, output.actions.items[0].osc_dispatch.command());
     }
+}
+
+test "osc control: title payload keeps metadata limit" {
+    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32);
+    defer osc.deinit();
+    osc.start();
+    for ("0;hello") |byte| _ = osc.feed(byte);
+    _ = osc.feed(0x07);
+    const snapshot = osc.snapshot(.bel);
+    try std.testing.expectEqual(@as(?u16, 0), snapshot.command());
+    try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).title, std.meta.activeTag(snapshot));
+    try std.testing.expectEqualStrings("hell", snapshot.payload());
+    try std.testing.expectEqual(error.StringControlLimit, osc.takeFailure().?);
+}
+
+test "osc control: clipboard payload uses large limit" {
+    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32);
+    defer osc.deinit();
+    osc.start();
+    for ("52;c;abcdefgh") |byte| _ = osc.feed(byte);
+    _ = osc.feed(0x07);
+    const snapshot = osc.snapshot(.bel);
+    try std.testing.expectEqual(@as(?u16, 52), snapshot.command());
+    try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).clipboard, std.meta.activeTag(snapshot));
+    try std.testing.expectEqualStrings("c;abcdefgh", snapshot.payload());
+    try std.testing.expectEqual(@as(?(error{ OutOfMemory, StringControlLimit }), null), osc.takeFailure());
 }

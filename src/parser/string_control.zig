@@ -824,29 +824,3 @@ fn feedEscState(state: *DelimitedState, byte: u8) ?FeedResult {
     state.* = .payload;
     return .{ .put = byte };
 }
-
-test "osc control: title payload keeps metadata limit" {
-    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32);
-    defer osc.deinit();
-    osc.start();
-    for ("0;hello") |byte| _ = osc.feed(byte);
-    _ = osc.feed(0x07);
-    const snapshot = osc.snapshot(.bel);
-    try std.testing.expectEqual(@as(?u16, 0), snapshot.command());
-    try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).title, std.meta.activeTag(snapshot));
-    try std.testing.expectEqualStrings("hell", snapshot.payload());
-    try std.testing.expectEqual(error.StringControlLimit, osc.takeFailure().?);
-}
-
-test "osc control: clipboard payload uses large limit" {
-    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32);
-    defer osc.deinit();
-    osc.start();
-    for ("52;c;abcdefgh") |byte| _ = osc.feed(byte);
-    _ = osc.feed(0x07);
-    const snapshot = osc.snapshot(.bel);
-    try std.testing.expectEqual(@as(?u16, 52), snapshot.command());
-    try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).clipboard, std.meta.activeTag(snapshot));
-    try std.testing.expectEqualStrings("c;abcdefgh", snapshot.payload());
-    try std.testing.expectEqual(@as(?(error{ OutOfMemory, StringControlLimit }), null), osc.takeFailure());
-}

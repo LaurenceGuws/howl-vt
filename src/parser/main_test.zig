@@ -204,3 +204,28 @@ test "parser: SO SI stay stream controls and do not mutate parser-owned charset 
     try std.testing.expectEqual(@as(u8, 0x0F), output.actions.items[3].execute);
     try std.testing.expectEqual(@as(u21, 'q'), output.actions.items[4].print);
 }
+
+test "parser: C1 string controls replace active DCS passthrough control" {
+    var parser = try Parser.init(std.testing.allocator);
+    defer parser.deinit();
+
+    _ = parser.next(0x1B);
+    _ = parser.next('P');
+    const dcs_hook = parser.next('q');
+    try std.testing.expectEqual(Action.dcs_hook, std.meta.activeTag(dcs_hook[2].?));
+
+    const apc_start = parser.next(0x9F);
+    try std.testing.expectEqual(Action.dcs_unhook, apc_start[0].?);
+    try std.testing.expectEqual(Action.apc_start, apc_start[2].?);
+
+    parser.reset();
+
+    _ = parser.next(0x1B);
+    _ = parser.next('P');
+    const second_dcs_hook = parser.next('q');
+    try std.testing.expectEqual(Action.dcs_hook, std.meta.activeTag(second_dcs_hook[2].?));
+
+    const pm_start = parser.next(0x9E);
+    try std.testing.expectEqual(Action.dcs_unhook, pm_start[0].?);
+    try std.testing.expectEqual(Action.pm_start, pm_start[2].?);
+}
