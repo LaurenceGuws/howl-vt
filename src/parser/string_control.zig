@@ -25,93 +25,6 @@ const DelimitedState = enum {
     esc,
 };
 
-/// Incremental string-control byte buffer.
-pub const StringControl = struct {
-    const Failure = error{ OutOfMemory, StringControlLimit };
-
-    allocator: std.mem.Allocator,
-    state: DelimitedState = .idle,
-    buffer: std.ArrayList(u8),
-    max_len: ByteLimit,
-    bel_terminates: bool,
-    alloc_failed: bool = false,
-    overflowed: bool = false,
-
-    pub fn init(allocator: std.mem.Allocator, capacity: ByteLimit, max_len: ByteLimit, bel_terminates: bool) !StringControl {
-        return .{
-            .allocator = allocator,
-            .buffer = try std.ArrayList(u8).initCapacity(allocator, @intCast(capacity)),
-            .max_len = max_len,
-            .bel_terminates = bel_terminates,
-        };
-    }
-
-    pub fn deinit(self: *StringControl) void {
-        self.buffer.deinit(self.allocator);
-    }
-
-    pub fn reset(self: *StringControl) void {
-        self.state = .idle;
-        self.alloc_failed = false;
-        self.overflowed = false;
-        self.buffer.clearRetainingCapacity();
-    }
-
-    pub fn start(self: *StringControl) void {
-        self.state = .payload;
-        self.alloc_failed = false;
-        self.overflowed = false;
-        self.buffer.clearRetainingCapacity();
-    }
-
-    pub fn active(self: *const StringControl) bool {
-        return stateActive(self.state);
-    }
-
-    pub fn escaping(self: *const StringControl) bool {
-        return stateEscaping(self.state);
-    }
-
-    pub fn data(self: *const StringControl) []const u8 {
-        return self.buffer.items;
-    }
-
-    pub fn clearFinished(self: *StringControl) void {
-        self.buffer.clearRetainingCapacity();
-    }
-
-    pub fn takeFailure(self: *StringControl) ?Failure {
-        var failure: ?Failure = null;
-        if (self.overflowed) {
-            failure = error.StringControlLimit;
-        } else if (self.alloc_failed) {
-            failure = error.OutOfMemory;
-        }
-        self.alloc_failed = false;
-        self.overflowed = false;
-        return failure;
-    }
-
-    pub fn feed(self: *StringControl, byte: u8) ?FeedResult {
-        const result = feedDelimitedState(&self.state, byte, self.bel_terminates) orelse return null;
-        switch (result) {
-            .put => |payload_byte| self.append(payload_byte),
-            .finish => {},
-        }
-        return result;
-    }
-
-    fn append(self: *StringControl, byte: u8) void {
-        if (count32(self.buffer.items) >= self.max_len) {
-            self.overflowed = true;
-            return;
-        }
-        self.buffer.append(self.allocator, byte) catch {
-            self.alloc_failed = true;
-        };
-    }
-};
-
 pub const OscControl = struct {
     const Failure = error{ OutOfMemory, StringControlLimit };
     const prefix_max_bytes = 8;
@@ -738,10 +651,6 @@ fn bodyEscState(comptime kind: OscControl.BodyKind) OscControl.OscState {
         .payload => .payload_esc,
         .raw => .raw_esc,
     };
-}
-
-fn isDigit(byte: u8) bool {
-    return byte >= '0' and byte <= '9';
 }
 
 /// Incremental string-control parser state without payload ownership.
