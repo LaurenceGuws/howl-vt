@@ -521,27 +521,19 @@ fn appendControlBurst(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), r
 }
 
 fn appendAssetText(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random, desired_len: TextLen) !void {
-    var idx = pickAssetStart(rand);
-    const asset_len = assetByteCount();
-    var written: TextLen = 0;
-    while (idx < asset_len and written < desired_len) : (idx += 1) {
-        try bytes.append(allocator, sanitizeTextByte(xterm_ctlseqs[@intCast(idx)]));
-        written += 1;
-    }
+    try appendAssetSample(allocator, bytes, rand, desired_len, sanitizeTextByte);
 }
 
 fn appendAssetPayload(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random, desired_len: TextLen) !void {
+    try appendAssetSample(allocator, bytes, rand, desired_len, sanitizePayloadByte);
+}
+
+fn appendAssetSample(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), rand: std.Random, desired_len: TextLen, sanitize: *const fn (u8) u8) !void {
     var idx = pickAssetStart(rand);
     const asset_len = assetByteCount();
     var written: TextLen = 0;
     while (idx < asset_len and written < desired_len) : (idx += 1) {
-        const source = xterm_ctlseqs[@intCast(idx)];
-        const byte = switch (source) {
-            0x1B => '.',
-            0x00...0x1A, 0x1C...0x1F, 0x7F => ' ',
-            else => source,
-        };
-        try bytes.append(allocator, byte);
+        try bytes.append(allocator, sanitize(xterm_ctlseqs[@intCast(idx)]));
         written += 1;
     }
 }
@@ -549,6 +541,14 @@ fn appendAssetPayload(allocator: std.mem.Allocator, bytes: *std.ArrayList(u8), r
 fn sanitizeTextByte(byte: u8) u8 {
     return switch (byte) {
         0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F, 0x7F => ' ',
+        else => byte,
+    };
+}
+
+fn sanitizePayloadByte(byte: u8) u8 {
+    return switch (byte) {
+        0x1B => '.',
+        0x00...0x1A, 0x1C...0x1F, 0x7F => ' ',
         else => byte,
     };
 }
