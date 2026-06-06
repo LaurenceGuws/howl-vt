@@ -159,7 +159,7 @@ pub const Screen = struct {
         return initWithCellsAndDefaultCursorStyle(allocator, rows, cols, cursor.default_cursor_style);
     }
 
-    pub fn initWithCellsAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) !Screen {
+    fn initOwnedVisibleGrid(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) !Screen {
         const cell_count = cellCount(rows, cols);
         const cells: ?[]Cell = if (cell_count > 0) blk: {
             const buf = try allocator.alloc(Cell, @intCast(cell_count));
@@ -194,53 +194,33 @@ pub const Screen = struct {
         );
     }
 
+    pub fn initWithCellsAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) !Screen {
+        return initOwnedVisibleGrid(allocator, rows, cols, cursor_style_default);
+    }
+
     /// Initialize screen with cells and history storage.
     pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !Screen {
         return initWithCellsHistoryAndDefaultCursorStyle(allocator, rows, cols, history_capacity, cursor.default_cursor_style);
     }
 
     pub fn initWithCellsHistoryAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16, cursor_style_default: CursorStyle) !Screen {
-        const cell_count = cellCount(rows, cols);
-        const cells: ?[]Cell = if (cell_count > 0) blk: {
-            const buf = try allocator.alloc(Cell, @intCast(cell_count));
-            @memset(buf, default_cell);
-            break :blk buf;
-        } else null;
-        errdefer if (cells) |c| allocator.free(c);
-        const row_wraps: ?[]bool = if (rows > 0) blk: {
-            const buf = try allocator.alloc(bool, rows);
-            @memset(buf, false);
-            break :blk buf;
-        } else null;
-        errdefer if (row_wraps) |buf| allocator.free(buf);
-        const dirty_cols_start = try dirty.allocDirtyCols(allocator, rows, 0);
-        errdefer if (dirty_cols_start) |buf| allocator.free(buf);
-        const dirty_cols_end = try dirty.allocDirtyCols(allocator, rows, cols -| 1);
-        errdefer if (dirty_cols_end) |buf| allocator.free(buf);
-        const tab_stops = try tabs.allocTabStops(allocator, cols);
-        errdefer if (tab_stops) |buf| allocator.free(buf);
-        const history: ?[]Cell = if (cells != null and history_capacity > 0) blk: {
+        var screen = try initOwnedVisibleGrid(allocator, rows, cols, cursor_style_default);
+        errdefer screen.deinit(allocator);
+
+        const history: ?[]Cell = if (screen.cells != null and history_capacity > 0) blk: {
             const buf = try allocator.alloc(Cell, 0);
             break :blk buf;
         } else null;
         errdefer if (history) |buf| allocator.free(buf);
-        const history_wraps: ?[]bool = if (cells != null and history_capacity > 0) blk: {
+        const history_wraps: ?[]bool = if (screen.cells != null and history_capacity > 0) blk: {
             const buf = try allocator.alloc(bool, 0);
             break :blk buf;
         } else null;
-        return initBase(
-            allocator,
-            rows,
-            cols,
-            cursor_style_default,
-            cells,
-            row_wraps,
-            history,
-            history_wraps,
-            if (cells != null) history_capacity else 0,
-            dirty.State.initFull(rows, dirty_cols_start, dirty_cols_end),
-            tab_stops,
-        );
+
+        screen.history = history;
+        screen.history_wraps = history_wraps;
+        screen.history_capacity = if (screen.cells != null) history_capacity else 0;
+        return screen;
     }
 
     /// Release owned cell and history buffers.
