@@ -147,14 +147,7 @@ fn applyTabState(self: anytype, event: ScreenAction) void {
 fn applyScreenState(self: anytype, event: ScreenAction) void {
     switch (event) {
         .cursor_visible => |visible| self.cursor_visible = visible,
-        .cursor_style => |cursor_style| self.cursor_style = .{
-            .shape = switch (cursor_style.shape) {
-                .block => .block,
-                .underline => .underline,
-                .bar => .bar,
-            },
-            .blink = cursor_style.blink,
-        },
+        .cursor_style => |cursor_style| self.cursor_style = cursor_style,
         .auto_wrap => |enabled| {
             self.auto_wrap = enabled;
             if (!enabled) self.wrap_pending = false;

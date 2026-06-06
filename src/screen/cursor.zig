@@ -1,13 +1,7 @@
-pub const CursorShape = enum {
-    block,
-    underline,
-    bar,
-};
+const action_vocabulary = @import("../action/vocabulary.zig");
 
-pub const CursorStyle = struct {
-    shape: CursorShape,
-    blink: bool,
-};
+pub const CursorShape = action_vocabulary.SemanticEvent.CursorShape;
+pub const CursorStyle = action_vocabulary.SemanticEvent.CursorStyle;
 
 pub const default_cursor_style = CursorStyle{ .shape = .block, .blink = true };
 
