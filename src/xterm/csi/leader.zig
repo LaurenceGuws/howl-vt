@@ -1,4 +1,3 @@
-const std = @import("std");
 const events = @import("../../action/vocabulary.zig");
 const params_mod = @import("params.zig");
 
@@ -47,7 +46,7 @@ fn multipleCursorOrXtVersion(params: []const i32, intermediates: []const u8) ?Se
 
 fn keyFormatChange(params: []const i32) SemanticEvent {
     if (params.len == 0) return SemanticEvent{ .key_format_change = .{ .resource = null, .value = null } };
-    const resource: u8 = @intCast(@min(params_mod.paramAtOrDefault0(params, 0), std.math.maxInt(u8)));
+    const resource = params_mod.keyFormatParamAtOrDefault0(params, 0);
     if (params.len == 1) return SemanticEvent{ .key_format_change = .{ .resource = resource, .value = null } };
     return SemanticEvent{ .key_format_change = .{ .resource = resource, .value = params_mod.paramAtOrDefault0(params, 1) } };
 }

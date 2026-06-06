@@ -83,7 +83,6 @@ fn makeEscFinal(final: u8) Event {
     } };
 }
 
-
 test "actions: text event maps to write_text" {
     const sem = process(Event{ .text = "hello" }) orelse return error.NoEvent;
     try std.testing.expectEqualSlices(u8, "hello", sem.write_text);
@@ -93,9 +92,6 @@ test "actions: codepoint event maps to write_codepoint" {
     const sem = process(Event{ .codepoint = 0xE9 }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u21, 0xE9), sem.write_codepoint);
 }
-
-
-
 
 test "actions: DEC private application cursor enable maps true" {
     var params = [_]i32{0} ** csi_max_params;
@@ -314,6 +310,63 @@ test "actions: xterm key format set reset and query mappings" {
     try std.testing.expectEqual(@as(u8, 4), process(ev).?.key_format_query);
 }
 
+test "actions: xterm key format resource saturates above 255" {
+    var params = [_]i32{0} ** csi_max_params;
+    params[0] = 300;
+    const ev = Event{ .style_change = .{
+        .final = 'f',
+        .params = params[0..],
+        .separators = empty_separators,
+        .param_count = 1,
+        .leader = '>',
+        .private = false,
+        .intermediates = empty_intermediates[0..],
+        .intermediates_len = 0,
+    } };
+
+    try std.testing.expectEqual(@as(?u8, 255), process(ev).?.key_format_change.resource);
+}
+
+test "actions: xterm key format query saturates above 255" {
+    var params = [_]i32{0} ** csi_max_params;
+    params[0] = 300;
+    const ev = Event{ .style_change = .{
+        .final = 'g',
+        .params = params[0..],
+        .separators = empty_separators,
+        .param_count = 1,
+        .leader = '?',
+        .private = true,
+        .intermediates = empty_intermediates[0..],
+        .intermediates_len = 0,
+    } };
+
+    try std.testing.expectEqual(@as(u8, 255), process(ev).?.key_format_query);
+}
+
+test "actions: xterm key format non-positive params normalize to 0" {
+    var params = [_]i32{0} ** csi_max_params;
+    params[0] = -7;
+    var ev = Event{ .style_change = .{
+        .final = 'f',
+        .params = params[0..],
+        .separators = empty_separators,
+        .param_count = 1,
+        .leader = '>',
+        .private = false,
+        .intermediates = empty_intermediates[0..],
+        .intermediates_len = 0,
+    } };
+
+    try std.testing.expectEqual(@as(?u8, 0), process(ev).?.key_format_change.resource);
+
+    params[0] = 0;
+    ev.style_change.final = 'g';
+    ev.style_change.leader = '?';
+    ev.style_change.private = true;
+    try std.testing.expectEqual(@as(u8, 0), process(ev).?.key_format_query);
+}
+
 test "actions: xterm pointer mode maps bounded value" {
     var params = [_]i32{0} ** csi_max_params;
     params[0] = 2;
@@ -336,7 +389,6 @@ test "actions: xterm pointer mode maps bounded value" {
     ev.style_change.param_count = 0;
     try std.testing.expectEqual(@as(u2, 1), process(ev).?.pointer_mode);
 }
-
 
 test "actions: ANSI mode set reset and query map" {
     const set = process(makeStyleChange('h', 4, 20, 2)) orelse return error.NoEvent;
@@ -364,7 +416,6 @@ test "actions: ANSI mode set reset and query map" {
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u16, 4), query.ansi_mode_query);
 }
-
 
 test "actions: locator controls map" {
     var params = [_]i32{0} ** csi_max_params;
@@ -433,8 +484,6 @@ test "actions: locator controls map" {
     } }) orelse return error.NoEvent;
     try std.testing.expectEqual(@as(u8, 2), sle.locator_events.param_count);
 }
-
-
 
 test "actions: kitty multiple cursor query and clear mappings" {
     var params = [_]i32{0} ** csi_max_params;

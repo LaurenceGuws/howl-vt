@@ -1,4 +1,3 @@
-const std = @import("std");
 const events = @import("../../action/vocabulary.zig");
 const params_mod = @import("params.zig");
 
@@ -17,7 +16,7 @@ pub fn process(final: u8, params: []const i32, leader: u8, intermediates: []cons
 fn directQuery(final: u8, params: []const i32) ?SemanticEvent {
     switch (final) {
         'u' => return SemanticEvent.kitty_keyboard_query,
-        'g' => return SemanticEvent{ .key_format_query = @intCast(@min(params_mod.paramAtOrDefault0(params, 0), std.math.maxInt(u8))) },
+        'g' => return SemanticEvent{ .key_format_query = params_mod.keyFormatParamAtOrDefault0(params, 0) },
         'J' => return SemanticEvent{ .selective_erase_display = params_mod.eraseMode(params_mod.paramAtOrDefault0(params, 0)) },
         'K' => return SemanticEvent{ .selective_erase_line = params_mod.eraseMode(params_mod.paramAtOrDefault0(params, 0)) },
         'W' => if (params_mod.paramAtOrDefault0(params, 0) == 5) return SemanticEvent.reset_default_tab_stops,

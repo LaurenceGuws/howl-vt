@@ -56,6 +56,10 @@ pub fn paramAtOrDefault0(params: []const i32, idx: u8) u16 {
     return if (count32(params) > idx) paramOrDefault0(params[idx]) else 0;
 }
 
+pub fn keyFormatParamAtOrDefault0(params: []const i32, idx: u8) u8 {
+    return @intCast(@min(paramAtOrDefault0(params, idx), std.math.maxInt(u8)));
+}
+
 pub fn eraseMode(v: i32) events.EraseMode {
     return switch (v) {
         1 => .start_to_cursor,
