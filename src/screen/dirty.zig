@@ -7,12 +7,12 @@ pub const DirtyRows = struct {
     dirty_cols_end: []const u16 = &.{},
 };
 
-pub const State = struct {
+pub const DirtyState = struct {
     rows: ?DirtyRows = null,
     cols_start: ?[]u16 = null,
     cols_end: ?[]u16 = null,
 
-    pub fn initFull(row_count: u16, cols_start: ?[]u16, cols_end: ?[]u16) State {
+    pub fn initFull(row_count: u16, cols_start: ?[]u16, cols_end: ?[]u16) DirtyState {
         return .{
             .rows = rowsForFull(row_count, cols_start, cols_end),
             .cols_start = cols_start,
@@ -20,7 +20,7 @@ pub const State = struct {
         };
     }
 
-    pub fn deinit(self: *State, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *DirtyState, allocator: std.mem.Allocator) void {
         if (self.cols_start) |buf| allocator.free(buf);
         if (self.cols_end) |buf| allocator.free(buf);
         self.* = .{};

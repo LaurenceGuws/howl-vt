@@ -83,7 +83,7 @@ pub const Screen = struct {
     },
     last_graphic_codepoint: ?u21,
     current_attrs: CellAttrs,
-    dirty_state: dirty.State,
+    dirty_state: dirty.DirtyState,
     tab_stops: ?[]bool,
     cell_pixel_size: ?CellPixelSize,
 
@@ -101,7 +101,7 @@ pub const Screen = struct {
         history: ?[]Cell,
         history_wraps: ?[]bool,
         history_capacity: u16,
-        dirty_state: dirty.State,
+        dirty_state: dirty.DirtyState,
         tab_stops: ?[]bool,
     ) Screen {
         return .{
@@ -189,7 +189,7 @@ pub const Screen = struct {
             null,
             null,
             0,
-            dirty.State.initFull(rows, dirty_cols_start, dirty_cols_end),
+            dirty.DirtyState.initFull(rows, dirty_cols_start, dirty_cols_end),
             tab_stops,
         );
     }

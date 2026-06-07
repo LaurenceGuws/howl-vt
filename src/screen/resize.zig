@@ -49,7 +49,7 @@ const ViewportState = struct {
 const ResizeBuffers = struct {
     cells: ?[]Cell,
     row_wraps: ?[]bool,
-    dirty_state: dirty.State,
+    dirty_state: dirty.DirtyState,
     tab_stops: ?[]bool,
 };
 
@@ -298,7 +298,7 @@ fn allocResizeBuffers(allocator: std.mem.Allocator, rows: u16, cols: u16, old_ta
     return .{
         .cells = cells,
         .row_wraps = row_wraps,
-        .dirty_state = dirty.State.initFull(rows, dirty_cols_start, dirty_cols_end),
+        .dirty_state = dirty.DirtyState.initFull(rows, dirty_cols_start, dirty_cols_end),
         .tab_stops = tab_stops,
     };
 }
