@@ -568,3 +568,16 @@ test "selection follows viewport movement through scrollback rows" {
     try std.testing.expectEqual(@as(?selection_projection.Range, null), selection_projection.visibleRange(scrolled, selectionState(&terminal).?, 0));
     try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(scrolled, selectionState(&terminal).?, 1));
 }
+
+test "cursor hides when viewport is scrolled off live bottom" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 2, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("aa\r\nbb\r\ncc");
+
+    try std.testing.expect(visibleView(&terminal, 0).cursor_visible);
+    try std.testing.expect(!visibleView(&terminal, 1).cursor_visible);
+}

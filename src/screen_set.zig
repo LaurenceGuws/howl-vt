@@ -172,6 +172,7 @@ pub fn visibleView(screen_state: *const Set, scrollback_offset: u32) View {
     const rows_count: u32 = active.rows;
     const total_rows = history_count + rows_count;
     const start = if (total_rows >= rows_count + offset) total_rows - rows_count - offset else 0;
+    const cursor_visible = active.cursor_visible and offset == 0;
     std.debug.assert(offset <= history_count);
     std.debug.assert(total_rows >= rows_count);
     std.debug.assert(start + rows_count <= total_rows);
@@ -181,7 +182,7 @@ pub fn visibleView(screen_state: *const Set, scrollback_offset: u32) View {
         .cols = active.cols,
         .cursor_row = active.cursor_row,
         .cursor_col = active.cursor_col,
-        .cursor_visible = active.cursor_visible,
+        .cursor_visible = cursor_visible,
         .cursor_shape = active.cursor_style.shape,
         .cursor_blink = active.cursor_style.blink,
         .is_alternate_screen = screen_state.alt_active,
