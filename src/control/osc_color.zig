@@ -8,7 +8,7 @@ const Rgb = Screen.Rgb;
 const osc_reply_max_bytes = 8;
 const color_osc_max_bytes = 16;
 
-pub const State = struct {
+pub const TerminalColorState = struct {
     foreground: Rgb = default_fg,
     background: Rgb = default_bg,
     cursor: ?Rgb = null,
@@ -48,7 +48,7 @@ pub const SpecialPaletteKey = enum(u3) {
     italic = 4,
 };
 
-pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) host_state.ApplyError!void {
+pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *TerminalColorState, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) host_state.ApplyError!void {
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |idx_text| {
         const value = parts.next() orelse break;
@@ -66,7 +66,7 @@ pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *State, o
     }
 }
 
-pub fn handleXtermSpecialPaletteControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) host_state.ApplyError!void {
+pub fn handleXtermSpecialPaletteControl(allocator: std.mem.Allocator, colors: *TerminalColorState, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) host_state.ApplyError!void {
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |idx_text| {
         const value = parts.next() orelse break;
@@ -84,7 +84,7 @@ pub fn handleXtermSpecialPaletteControl(allocator: std.mem.Allocator, colors: *S
     }
 }
 
-pub fn handleXtermDynamicColor(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), encode_buf: []u8, command: u16, payload: []const u8) host_state.ApplyError!void {
+pub fn handleXtermDynamicColor(allocator: std.mem.Allocator, colors: *TerminalColorState, output: *std.ArrayList(u8), encode_buf: []u8, command: u16, payload: []const u8) host_state.ApplyError!void {
     var key = dynamicKeyForCommand(command) orelse return;
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |value| {
@@ -97,7 +97,7 @@ pub fn handleXtermDynamicColor(allocator: std.mem.Allocator, colors: *State, out
     }
 }
 
-pub fn resetXtermPalette(colors: *State, payload: []const u8) void {
+pub fn resetXtermPalette(colors: *TerminalColorState, payload: []const u8) void {
     if (payload.len == 0) {
         colors.palette = buildDefaultPalette();
         return;
@@ -109,7 +109,7 @@ pub fn resetXtermPalette(colors: *State, payload: []const u8) void {
     }
 }
 
-pub fn resetXtermDynamicColor(colors: *State, command: u16, payload: []const u8) void {
+pub fn resetXtermDynamicColor(colors: *TerminalColorState, command: u16, payload: []const u8) void {
     if (payload.len != 0) return;
     const key = dynamicKeyForResetCommand(command) orelse return;
     resetDynamicColor(colors, key);
@@ -152,7 +152,7 @@ pub fn isKnownColorKey(key: []const u8) bool {
     return true;
 }
 
-pub fn colorForKey(colors: State, key: []const u8) ?Rgb {
+pub fn colorForKey(colors: TerminalColorState, key: []const u8) ?Rgb {
     if (std.fmt.parseUnsigned(u8, key, 10)) |idx| return colors.palette[idx] else |_| {}
     if (specialColorKey(key)) |special| return switch (special) {
         .foreground => colors.foreground,
@@ -165,14 +165,14 @@ pub fn colorForKey(colors: State, key: []const u8) ?Rgb {
     return null;
 }
 
-fn paletteTargetColor(colors: State, idx: u16) ?Rgb {
+fn paletteTargetColor(colors: TerminalColorState, idx: u16) ?Rgb {
     if (idx < 256) return colors.palette[@intCast(idx)];
     const special_idx = idx - 256;
     if (special_idx >= colors.special_palette.len) return null;
     return colors.special_palette[special_idx];
 }
 
-fn setPaletteTarget(colors: *State, idx: u16, color: Rgb) void {
+fn setPaletteTarget(colors: *TerminalColorState, idx: u16, color: Rgb) void {
     if (idx < 256) {
         colors.palette[@intCast(idx)] = color;
         return;
@@ -182,7 +182,7 @@ fn setPaletteTarget(colors: *State, idx: u16, color: Rgb) void {
     colors.special_palette[special_idx] = color;
 }
 
-fn resetPaletteTarget(colors: *State, idx: u16) void {
+fn resetPaletteTarget(colors: *TerminalColorState, idx: u16) void {
     if (idx < 256) {
         colors.palette[@intCast(idx)] = paletteColor(@intCast(idx));
         return;
@@ -254,7 +254,7 @@ fn dynamicCommandForKey(key: DynamicKey) u16 {
     };
 }
 
-fn dynamicColor(colors: State, key: DynamicKey) ?Rgb {
+fn dynamicColor(colors: TerminalColorState, key: DynamicKey) ?Rgb {
     return switch (key) {
         .foreground => colors.foreground,
         .background => colors.background,
@@ -269,7 +269,7 @@ fn dynamicColor(colors: State, key: DynamicKey) ?Rgb {
     };
 }
 
-fn setDynamicColor(colors: *State, key: DynamicKey, color: Rgb) void {
+fn setDynamicColor(colors: *TerminalColorState, key: DynamicKey, color: Rgb) void {
     switch (key) {
         .foreground => colors.foreground = color,
         .background => colors.background = color,
@@ -284,7 +284,7 @@ fn setDynamicColor(colors: *State, key: DynamicKey, color: Rgb) void {
     }
 }
 
-fn resetDynamicColor(colors: *State, key: DynamicKey) void {
+fn resetDynamicColor(colors: *TerminalColorState, key: DynamicKey) void {
     switch (key) {
         .foreground => colors.foreground = default_fg,
         .background => colors.background = default_bg,
@@ -305,7 +305,7 @@ pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), 
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn setColorKey(colors: *State, key: []const u8, value: []const u8) void {
+pub fn setColorKey(colors: *TerminalColorState, key: []const u8, value: []const u8) void {
     if (std.fmt.parseUnsigned(u8, key, 10)) |idx| {
         if (parseColor(value)) |color| colors.palette[idx] = color;
         return;
@@ -317,7 +317,7 @@ pub fn setColorKey(colors: *State, key: []const u8, value: []const u8) void {
     }
 }
 
-pub fn resetColorKey(colors: *State, key: []const u8) void {
+pub fn resetColorKey(colors: *TerminalColorState, key: []const u8) void {
     if (std.fmt.parseUnsigned(u8, key, 10)) |idx| {
         colors.palette[idx] = paletteColor(idx);
         return;
@@ -332,7 +332,7 @@ pub fn resetColorKey(colors: *State, key: []const u8) void {
     };
 }
 
-fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: State, key: SpecialKey) host_state.ApplyError!void {
+fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: TerminalColorState, key: SpecialKey) host_state.ApplyError!void {
     const osc: u8 = switch (key) {
         .foreground => 10,
         .background => 11,
@@ -353,7 +353,7 @@ fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.Array
     try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
-fn appendXtermDynamicColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: State, key: DynamicKey) host_state.ApplyError!void {
+fn appendXtermDynamicColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: TerminalColorState, key: DynamicKey) host_state.ApplyError!void {
     const text = formatOscReply(encode_buf, "\x1b]{d};", .{dynamicCommandForKey(key)});
     const start = host_state.count32(output.items);
     errdefer host_state.restorePendingOutput(output, start);
@@ -362,7 +362,7 @@ fn appendXtermDynamicColorReply(allocator: std.mem.Allocator, output: *std.Array
     try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
-fn setSpecialColor(colors: *State, key: SpecialKey, color: Rgb) void {
+fn setSpecialColor(colors: *TerminalColorState, key: SpecialKey, color: Rgb) void {
     switch (key) {
         .foreground => colors.foreground = color,
         .background => colors.background = color,
@@ -373,7 +373,7 @@ fn setSpecialColor(colors: *State, key: SpecialKey, color: Rgb) void {
     }
 }
 
-fn setSpecialColorDynamic(colors: *State, key: []const u8) void {
+fn setSpecialColorDynamic(colors: *TerminalColorState, key: []const u8) void {
     if (specialColorKey(key)) |special| switch (special) {
         .foreground => {},
         .background => {},

@@ -56,7 +56,7 @@ pub const State = struct {
         payload: []u8,
     };
 
-    colors: OscColorNs.State = .{},
+    colors: OscColorNs.TerminalColorState = .{},
     pending_output: std.ArrayList(u8),
     hyperlink_targets: std.ArrayList([]u8),
     pending_clipboard: ?ClipboardRequest = null,
@@ -214,7 +214,7 @@ pub fn legacyControl(vt: anytype) ?action_vocabulary.LegacyControlKind {
     return vt.host.legacy_control;
 }
 
-pub fn terminalColorState(vt: anytype) OscColorNs.State {
+pub fn terminalColorState(vt: anytype) OscColorNs.TerminalColorState {
     return vt.host.colors;
 }
 

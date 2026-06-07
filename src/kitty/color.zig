@@ -4,7 +4,7 @@ const host_state = @import("../host/state.zig");
 
 const OscColor = osc_color;
 
-pub const State = OscColor.State;
+pub const State = OscColor.TerminalColorState;
 
 pub const Stack = struct {
     stack: [16]State = undefined,
