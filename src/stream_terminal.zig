@@ -113,13 +113,13 @@ const DcsCapture = struct {
     }
 };
 
-pub const State = struct {
+pub const TerminalStreamState = struct {
     parser: parser_mod.Parser,
     dcs: DcsCapture,
     apc: BoundedStringControl,
     pm: BoundedStringControl,
 
-    pub fn initAlloc(allocator: std.mem.Allocator) !State {
+    pub fn initAlloc(allocator: std.mem.Allocator) !TerminalStreamState {
         var parser = try parser_mod.Parser.init(allocator);
         errdefer parser.deinit();
         return .{
@@ -130,7 +130,7 @@ pub const State = struct {
         };
     }
 
-    pub fn deinit(self: *State) void {
+    pub fn deinit(self: *TerminalStreamState) void {
         self.dcs.deinit();
         self.parser.deinit();
     }
