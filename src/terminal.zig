@@ -33,7 +33,7 @@ pub const Terminal = struct {
     g0_designation: u8 = 'B',
     g1_designation: u8 = 'B',
     dirty_generation: u64 = 1,
-    surface_publication: surface_publication.State = .{},
+    surface_publication: surface_publication.Publication = .{},
 
     pub const RuntimeObligation = struct {
         pending_now: bool,

@@ -1,7 +1,7 @@
 const std = @import("std");
 const screen_set = @import("../screen_set.zig");
 
-pub const State = struct {
+pub const Publication = struct {
     seq: u64 = 1,
     dirty_generation: u64 = 0,
     scrollback_offset: u64 = 0,
@@ -10,7 +10,7 @@ pub const State = struct {
     cols: u16 = 0,
     alt: bool = false,
 
-    pub fn publish(self: *State, view: screen_set.View, scrollback_offset: u64, dirty_generation: u64) u64 {
+    pub fn publish(self: *Publication, view: screen_set.View, scrollback_offset: u64, dirty_generation: u64) u64 {
         std.debug.assert(view.rows > 0);
         std.debug.assert(view.cols > 0);
         const same_dirty = self.dirty_generation == dirty_generation;
@@ -32,7 +32,7 @@ pub const State = struct {
         return self.seq;
     }
 
-    pub fn canAck(self: State, snapshot_seq: u64, dirty_generation_current: u64) bool {
+    pub fn canAck(self: Publication, snapshot_seq: u64, dirty_generation_current: u64) bool {
         if (snapshot_seq == 0) return false;
         return self.seq == snapshot_seq and self.dirty_generation == dirty_generation_current;
     }
