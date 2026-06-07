@@ -18,7 +18,7 @@ pub const FilterRect = struct {
     right: u16,
 };
 
-pub const State = struct {
+pub const Locator = struct {
     mode: ReportingMode = .disabled,
     coordinate_unit: u16 = 0,
     report_button_down: bool = false,
@@ -31,7 +31,7 @@ pub const State = struct {
     last_buttons_down: u8 = 0,
 };
 
-pub fn setReporting(state: *State, mode: u16, unit: u16) void {
+pub fn setReporting(state: *Locator, mode: u16, unit: u16) void {
     state.mode = switch (mode) {
         1 => .continuous,
         2 => .one_shot,
@@ -40,7 +40,7 @@ pub fn setReporting(state: *State, mode: u16, unit: u16) void {
     state.coordinate_unit = unit;
 }
 
-pub fn setFilter(state: *State, area: action_vocabulary.SemanticEvent.OptionalRectArea) void {
+pub fn setFilter(state: *Locator, area: action_vocabulary.SemanticEvent.OptionalRectArea) void {
     const row = state.last_row orelse 0;
     const col = state.last_col orelse 0;
     const top = area.top orelse row;
@@ -55,7 +55,7 @@ pub fn setFilter(state: *State, area: action_vocabulary.SemanticEvent.OptionalRe
     state.filter_rect = .{ .top = top, .left = left, .bottom = bottom, .right = right };
 }
 
-pub fn setEvents(state: *State, modes: []const u16) void {
+pub fn setEvents(state: *Locator, modes: []const u16) void {
     for (modes) |mode| switch (mode) {
         0 => {
             state.report_button_down = false;
@@ -70,7 +70,7 @@ pub fn setEvents(state: *State, modes: []const u16) void {
     };
 }
 
-pub fn appendReportForRequest(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, param: u16) host_state.ApplyError!void {
+pub fn appendReportForRequest(state: *Locator, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, param: u16) host_state.ApplyError!void {
     if (param > 1) return;
     if (state.mode == .disabled or state.last_row == null or state.last_col == null) {
         try host_state.appendOutput(output, allocator, "\x1b[0&w");
@@ -88,7 +88,7 @@ pub fn appendDeviceStatusReport(allocator: std.mem.Allocator, output: *std.Array
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn handleMouseEvent(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event: input_mouse.MouseEvent) void {
+pub fn handleMouseEvent(state: *Locator, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event: input_mouse.MouseEvent) void {
     if (event.row < 0) return;
     const row: u16 = @intCast(event.row);
     const col = event.col;
@@ -126,7 +126,7 @@ pub fn handleMouseEvent(state: *State, allocator: std.mem.Allocator, output: *st
     if (event_code) |code| appendReport(state, allocator, output, encode_buf, code, event.buttons_down, row, col) catch unreachable;
 }
 
-fn appendReport(state: *State, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event_code: u16, buttons_down: u8, row: u16, col: u16) host_state.ApplyError!void {
+fn appendReport(state: *Locator, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event_code: u16, buttons_down: u8, row: u16, col: u16) host_state.ApplyError!void {
     const button_mask = buttonsMask(buttons_down);
     const coords = coordinates(state, row, col);
     const text = formatOutput(encode_buf, "\x1b[{d};{d};{d};{d};0&w", .{ event_code, button_mask, coords.row + 1, coords.col + 1 });
@@ -139,7 +139,7 @@ fn formatOutput(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []con
     return std.fmt.bufPrint(encode_buf, fmt, args) catch unreachable;
 }
 
-fn coordinates(state: *const State, row: u16, col: u16) struct { row: u32, col: u32 } {
+fn coordinates(state: *const Locator, row: u16, col: u16) struct { row: u32, col: u32 } {
     if (state.coordinate_unit == 1) {
         return .{ .row = state.last_pixel_y orelse row, .col = state.last_pixel_x orelse col };
     }

@@ -61,7 +61,7 @@ pub const State = struct {
     hyperlink_targets: std.ArrayList([]u8),
     pending_clipboard: ?ClipboardRequest = null,
     current_title: ?[]u8 = null,
-    locator: LocatorNs.State = .{},
+    locator: LocatorNs.Locator = .{},
     media_copy_request: ?u16 = null,
     dcs_payload: ?DcsPayloadOwned = null,
     legacy_control: ?action_vocabulary.LegacyControlKind = null,
