@@ -40,8 +40,8 @@ fn encodePasteEnd(terminal: *Terminal) []const u8 {
     return input_encode.encodePasteEnd(terminal, &encode_scratch);
 }
 
-fn visibleView(terminal: *const Terminal, options: screen_set.Options) screen_set.View {
-    return screen_set.visibleView(&terminal.screen_state, options);
+fn visibleView(terminal: *const Terminal, scrollback_offset: u32) screen_set.View {
+    return screen_set.visibleView(&terminal.screen_state, scrollback_offset);
 }
 
 fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
@@ -261,7 +261,7 @@ test "kitty keyboard flags stay separate across alternate screen" {
     defer stream.deinit();
 
     write(&stream, "\x1b[=1u\x1b[?1049h\x1b[=8u");
-    try std.testing.expect(visibleView(&terminal, .{}).is_alternate_screen);
+    try std.testing.expect(visibleView(&terminal, 0).is_alternate_screen);
     try std.testing.expectEqual(@as(u32, 8), input_encode.kittyKeyboardFlags(&terminal));
     write(&stream, "\x1b[?1049l");
     try std.testing.expectEqual(@as(u32, 1), input_encode.kittyKeyboardFlags(&terminal));
@@ -354,7 +354,7 @@ test "ENQ default answerback is empty and printable space remains text" {
     write(&stream, "A \x05B");
 
     try std.testing.expectEqualStrings("", pendingOutput(&terminal));
-    const view = visibleView(&terminal, .{});
+    const view = visibleView(&terminal, 0);
     try std.testing.expectEqual(@as(u16, 0), view.cursor_row);
     try std.testing.expectEqual(@as(u16, 3), view.cursor_col);
     try std.testing.expectEqual(@as(u21, 'A'), view.cellAt(0, 0));
@@ -422,7 +422,7 @@ test "ANSI modes affect key encoding and insert writes" {
     try std.testing.expectEqualStrings("\r\n", encodeKey(&terminal, input_keyboard.key_enter, input_keyboard.mod_none));
 
     write(&stream, "ABCD\x1b[4h\x1b[1;2H!\x1b[4$p");
-    const view = visibleView(&terminal, .{});
+    const view = visibleView(&terminal, 0);
     try std.testing.expectEqual(@as(u21, 'A'), view.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, '!'), view.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 'B'), view.cellAt(0, 2));
@@ -670,7 +670,7 @@ test "XTSAVE and XTRESTORE restore supported DEC private modes" {
     write(&stream, "\x1b[?1;7;25;1004;2004r");
     write(&stream, "\x1b[?1$p\x1b[?7$p\x1b[?25$p\x1b[?1004$p\x1b[?2004$p");
 
-    const view = visibleView(&terminal, .{});
+    const view = visibleView(&terminal, 0);
     try std.testing.expectEqualStrings("\x1bOA", encodeKey(&terminal, input_keyboard.key_up, input_keyboard.mod_none));
     try std.testing.expect(!view.screen.auto_wrap);
     try std.testing.expect(!view.cursor_visible);

@@ -21,7 +21,7 @@ fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
 }
 
 fn visibleView(terminal: *const Terminal) screen_set.View {
-    return screen_set.visibleView(&terminal.screen_state, .{});
+    return screen_set.visibleView(&terminal.screen_state, 0);
 }
 
 test "snapshot: capture from simple text" {

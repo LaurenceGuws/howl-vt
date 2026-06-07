@@ -86,7 +86,7 @@ pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: ScenarioOp
     return .{
         .structural_hash = hashStructural(&vt),
         .logical_hash = hashLogicalContent(&vt),
-        .history_count = screen_set.visibleView(&vt.screen_state, .{}).history_count,
+        .history_count = screen_set.visibleView(&vt.screen_state, 0).history_count,
         .rows = vt.screen_state.activeConst().rows,
         .cols = vt.screen_state.activeConst().cols,
     };
@@ -266,7 +266,7 @@ fn hashStructural(vt: *const Terminal) u64 {
     h.update(std.mem.asBytes(&s.cursor_row));
     h.update(std.mem.asBytes(&s.cursor_col));
     h.update(std.mem.asBytes(&s.wrap_pending));
-    const history_count = screen_set.visibleView(&vt.screen_state, .{}).history_count;
+    const history_count = screen_set.visibleView(&vt.screen_state, 0).history_count;
     const history_capacity = screen_set.historyCapacity(&vt.screen_state);
     h.update(std.mem.asBytes(&history_count));
     h.update(std.mem.asBytes(&history_capacity));
@@ -276,7 +276,7 @@ fn hashStructural(vt: *const Terminal) u64 {
 fn hashLogicalContent(vt: *const Terminal) u64 {
     var h = std.hash.Wyhash.init(0x9e3779b97f4a7c15);
     const s = vt.screen_state.activeConst();
-    const history = screen_set.visibleView(&vt.screen_state, .{}).history_count;
+    const history = screen_set.visibleView(&vt.screen_state, 0).history_count;
 
     var hr: u32 = 0;
     while (hr < history) : (hr += 1) {
@@ -316,7 +316,7 @@ fn canonicalLogicalStream(allocator: std.mem.Allocator, vt: *const Terminal) ![]
     var row_buf: std.ArrayList(u21) = .empty;
     defer row_buf.deinit(allocator);
 
-    var history_idx = screen_set.visibleView(&vt.screen_state, .{}).history_count;
+    var history_idx = screen_set.visibleView(&vt.screen_state, 0).history_count;
     while (history_idx > 0) {
         history_idx -= 1;
         try appendHistoryRowCanonical(allocator, &lines, &row_buf, vt, history_idx, s.cols);
@@ -404,7 +404,7 @@ fn summarizeCoreState(vt: *const Terminal) CoreStateSummary {
         .cursor_row = s.cursor_row,
         .cursor_col = s.cursor_col,
         .wrap_pending = s.wrap_pending,
-        .history_count = screen_set.visibleView(&vt.screen_state, .{}).history_count,
+        .history_count = screen_set.visibleView(&vt.screen_state, 0).history_count,
         .history_capacity = screen_set.historyCapacity(&vt.screen_state),
     };
 }

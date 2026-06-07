@@ -25,8 +25,8 @@ fn activeScreen(terminal: *const Terminal) *const Screen {
     return terminal.screen_state.activeConst();
 }
 
-fn visibleView(terminal: *const Terminal, options: screen_set.Options) screen_set.View {
-    return screen_set.visibleView(&terminal.screen_state, options);
+fn visibleView(terminal: *const Terminal, scrollback_offset: u32) screen_set.View {
+    return screen_set.visibleView(&terminal.screen_state, scrollback_offset);
 }
 
 fn historyCapacity(terminal: *const Terminal) u16 {
@@ -162,11 +162,11 @@ test "resize keeps history enabled state" {
     defer stream.deinit();
 
     try stream.nextSlice("111\n222\n333");
-    const before = visibleView(&terminal, .{}).history_count;
+    const before = visibleView(&terminal, 0).history_count;
     try resizeTerminal(&terminal, 3, 3);
 
     try std.testing.expectEqual(@as(u16, 8), historyCapacity(&terminal));
-    try std.testing.expect(visibleView(&terminal, .{}).history_count <= before);
+    try std.testing.expect(visibleView(&terminal, 0).history_count <= before);
 }
 
 test "alternate screen exit preserves primary scrollback" {
@@ -179,19 +179,19 @@ test "alternate screen exit preserves primary scrollback" {
     try stream.nextSlice("AAAA\nBBBB\nCCCC\nDDDD");
     var before = try captureSnapshot(&terminal);
     defer before.deinit();
-    const history_before = visibleView(&terminal, .{}).history_count;
+    const history_before = visibleView(&terminal, 0).history_count;
     try std.testing.expect(history_before > 0);
 
     try stream.nextSlice("\x1b[?1049hALT!");
-    try std.testing.expect(visibleView(&terminal, .{}).is_alternate_screen);
-    try std.testing.expectEqual(@as(u32, 0), visibleView(&terminal, .{}).history_count);
+    try std.testing.expect(visibleView(&terminal, 0).is_alternate_screen);
+    try std.testing.expectEqual(@as(u32, 0), visibleView(&terminal, 0).history_count);
     try std.testing.expectEqual(@as(u21, 'A'), activeScreen(&terminal).cellAt(0, 0));
 
     try stream.nextSlice("\x1b[?1049l");
     var after = try captureSnapshot(&terminal);
     defer after.deinit();
-    try std.testing.expect(!visibleView(&terminal, .{}).is_alternate_screen);
-    try std.testing.expectEqual(history_before, visibleView(&terminal, .{}).history_count);
+    try std.testing.expect(!visibleView(&terminal, 0).is_alternate_screen);
+    try std.testing.expectEqual(history_before, visibleView(&terminal, 0).history_count);
     try std.testing.expectEqual(before.cursor_row, after.cursor_row);
     try std.testing.expectEqual(before.cursor_col, after.cursor_col);
     var row: u16 = 0;

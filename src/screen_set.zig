@@ -5,10 +5,6 @@ const selection = @import("selection.zig");
 const Screen = screen_mod.Screen;
 const SelectionState = selection.SelectionState;
 
-pub const Options = struct {
-    scrollback_offset: u32 = 0,
-};
-
 pub const RowSource = union(enum) {
     history: u32,
     screen: u16,
@@ -168,10 +164,10 @@ pub const Set = struct {
     }
 };
 
-pub fn visibleView(screen_state: *const Set, options: Options) View {
+pub fn visibleView(screen_state: *const Set, scrollback_offset: u32) View {
     const active = screen_state.activeConst();
     const history_count: u32 = if (screen_state.alt_active) 0 else active.historyCount();
-    const offset = @min(options.scrollback_offset, history_count);
+    const offset = @min(scrollback_offset, history_count);
     const rows_count: u32 = active.rows;
     const total_rows = history_count + rows_count;
     const start = if (total_rows >= rows_count + offset) total_rows - rows_count - offset else 0;
@@ -201,7 +197,7 @@ pub fn surfaceSnapshot(screen_state: *const Set, scrollback_offset: u64) Surface
     else
         screen_state.activeConst().historyCount();
     const offset: u32 = @intCast(@min(scrollback_offset, history_count));
-    const view = visibleView(screen_state, .{ .scrollback_offset = offset });
+    const view = visibleView(screen_state, offset);
     const dirty = peekDirtyRows(screen_state);
     return .{
         .view = view,

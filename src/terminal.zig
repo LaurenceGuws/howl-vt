@@ -288,12 +288,12 @@ test "terminal visible view projects scrollback rows" {
 
     try stream.nextSlice("aa\r\nbb\r\ncc");
 
-    const live = screen_set.visibleView(&vt.screen_state, .{});
+    const live = screen_set.visibleView(&vt.screen_state, 0);
     try std.testing.expectEqual(0, live.scrollback_offset);
     try std.testing.expectEqual(@as(u21, 'b'), live.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'c'), live.cellAt(1, 0));
 
-    const scrolled = screen_set.visibleView(&vt.screen_state, .{ .scrollback_offset = 1 });
+    const scrolled = screen_set.visibleView(&vt.screen_state, 1);
     try std.testing.expectEqual(1, scrolled.scrollback_offset);
     try std.testing.expectEqual(@as(u21, 'a'), scrolled.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'b'), scrolled.cellAt(1, 0));

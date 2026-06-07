@@ -380,7 +380,7 @@ fn feedBytesToTerminal(
 
 fn digestTerminal(terminal: *const Terminal) VtDigest {
     var hasher = std.hash.Wyhash.init(0);
-    const view = screen_set.visibleView(&terminal.screen_state, .{});
+    const view = screen_set.visibleView(&terminal.screen_state, 0);
 
     hashValue(&hasher, view.rows);
     hashValue(&hasher, view.cols);
