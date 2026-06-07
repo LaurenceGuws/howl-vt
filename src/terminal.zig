@@ -17,7 +17,7 @@ const FeedError = stream_terminal.FeedError;
 /// Host-neutral terminal state and protocol engine.
 pub const Terminal = struct {
     const HostState = host_state.State;
-    const KittyState = kitty_state.State;
+    const KittyState = kitty_state.KittyState;
     pub const Stream = stream_terminal.Stream;
 
     const ScreenSet = screen_set.Set;

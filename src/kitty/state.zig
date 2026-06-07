@@ -42,24 +42,24 @@ pub const GlobalState = struct {
     }
 };
 
-pub const State = struct {
+pub const KittyState = struct {
     main: ScreenState = .{},
     alt: ScreenState = .{},
     global: GlobalState = .{},
 
-    pub fn deinit(self: *State, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *KittyState, allocator: std.mem.Allocator) void {
         self.global.deinit(allocator);
     }
 
-    pub fn activeScreen(self: *State, alt_active: bool) *ScreenState {
+    pub fn activeScreen(self: *KittyState, alt_active: bool) *ScreenState {
         return if (alt_active) &self.alt else &self.main;
     }
 
-    pub fn activeScreenConst(self: *const State, alt_active: bool) *const ScreenState {
+    pub fn activeScreenConst(self: *const KittyState, alt_active: bool) *const ScreenState {
         return if (alt_active) &self.alt else &self.main;
     }
 
-    pub fn resetTerminalState(self: *State, allocator: std.mem.Allocator) void {
+    pub fn resetTerminalState(self: *KittyState, allocator: std.mem.Allocator) void {
         _ = allocator;
         self.main.pointer.len = 0;
         self.alt.pointer.len = 0;
