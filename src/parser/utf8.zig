@@ -26,17 +26,10 @@ pub const Utf8Decoder = struct {
                 return .{ .codepoint = @intCast(byte) };
             }
             const seq_len = std.unicode.utf8ByteSequenceLength(byte) catch return .invalid;
+            std.debug.assert(seq_len > 1);
             self.buf[0] = byte;
             self.len = 1;
             self.needed = @intCast(seq_len);
-            if (self.needed == 1) {
-                const cp = std.unicode.utf8Decode(self.buf[0..1]) catch {
-                    self.reset();
-                    return .invalid;
-                };
-                self.reset();
-                return .{ .codepoint = @intCast(cp) };
-            }
             return .incomplete;
         }
 
@@ -55,7 +48,7 @@ pub const Utf8Decoder = struct {
             return .invalid;
         };
         self.reset();
-        return .{ .codepoint = @intCast(cp) };
+        return .{ .codepoint = cp };
     }
 };
 
@@ -73,4 +66,22 @@ test "UTF8 decoder: multi-byte sequence (€ = U+20AC)" {
     try std.testing.expect(result == .incomplete);
     result = decoder.feed(0xAC);
     try std.testing.expectEqual(@as(u21, 0x20AC), result.codepoint);
+}
+
+test "UTF8 decoder: invalid start leaves decoder clear" {
+    var decoder = Utf8Decoder{};
+    var result = decoder.feed(0x80);
+    try std.testing.expect(result == .invalid);
+    result = decoder.feed('A');
+    try std.testing.expectEqual(@as(u21, 'A'), result.codepoint);
+}
+
+test "UTF8 decoder: invalid continuation resets partial sequence" {
+    var decoder = Utf8Decoder{};
+    var result = decoder.feed(0xE2);
+    try std.testing.expect(result == .incomplete);
+    result = decoder.feed('A');
+    try std.testing.expect(result == .invalid);
+    result = decoder.feed('B');
+    try std.testing.expectEqual(@as(u21, 'B'), result.codepoint);
 }
