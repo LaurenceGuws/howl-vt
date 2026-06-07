@@ -92,15 +92,15 @@ test "vt ffi selection query and copy stay history-aware" {
     const fed = lifecycle.terminalFeed(vt_handle, "aa\r\nbb\r\ncc".ptr, 8);
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), fed.status);
 
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), terminalStartSelection(vt_handle, -1, 0));
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), terminalUpdateSelection(vt_handle, 0, 1));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), terminalStartSelection(vt_handle, 0, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), terminalUpdateSelection(vt_handle, 1, 1));
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), terminalFinishSelection(vt_handle));
 
     const selection_result = terminalQuerySelection(vt_handle);
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), selection_result.status);
     try std.testing.expectEqual(@as(u8, 1), selection_result.selection.active);
-    try std.testing.expectEqual(@as(i32, -1), selection_result.selection.start.row);
-    try std.testing.expectEqual(@as(i32, 0), selection_result.selection.end.row);
+    try std.testing.expectEqual(@as(i32, 0), selection_result.selection.start.row);
+    try std.testing.expectEqual(@as(i32, 1), selection_result.selection.end.row);
 
     var text: [32]u8 = undefined;
     const copied = terminalCopySelection(vt_handle, text[0..].ptr, text.len);
@@ -114,8 +114,8 @@ test "vt ffi selection query and copy stay history-aware" {
     const surface_result = surface.terminalCopySurface(vt_handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), surface_result.status);
     try std.testing.expectEqual(@as(u8, 1), surface_result.source.selection.active);
-    try std.testing.expectEqual(@as(i32, -1), surface_result.source.selection.start.row);
-    try std.testing.expectEqual(@as(i32, 0), surface_result.source.selection.end.row);
+    try std.testing.expectEqual(@as(i32, 0), surface_result.source.selection.start.row);
+    try std.testing.expectEqual(@as(i32, 1), surface_result.source.selection.end.row);
 }
 
 test "vt ffi alternate selection does not read primary history" {
@@ -131,14 +131,14 @@ test "vt ffi alternate selection does not read primary history" {
     const enter_alt = lifecycle.terminalFeed(vt_handle, "\x1b[?1049hzz".ptr, 10);
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), enter_alt.status);
 
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), terminalStartSelection(vt_handle, -1, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), terminalStartSelection(vt_handle, 0, 0));
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), terminalUpdateSelection(vt_handle, 0, 1));
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), terminalFinishSelection(vt_handle));
 
     var text: [32]u8 = undefined;
     const copied = terminalCopySelection(vt_handle, text[0..].ptr, text.len);
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), copied.status);
-    try std.testing.expectEqualStrings("", text[0..@intCast(copied.written)]);
+    try std.testing.expectEqualStrings("zz", text[0..@intCast(copied.written)]);
 
     var cells: [8]surface.FfiSurfaceCell = undefined;
     var dirty_rows: [2]u8 = undefined;

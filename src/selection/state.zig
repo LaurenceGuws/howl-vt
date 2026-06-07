@@ -3,7 +3,7 @@ const screen_mod = @import("../screen.zig");
 
 const Screen = screen_mod.Screen;
 
-/// Selection endpoint coordinate.
+/// Selection endpoint coordinate in stable projected scrollback rows.
 pub const SelectionPos = struct {
     row: i32,
     col: u16,
@@ -113,20 +113,20 @@ test "selection: start in viewport coordinates" {
     try std.testing.expect(sel.selecting);
 }
 
-test "selection: start in history coordinates" {
+test "selection: start in projected scrollback coordinates" {
     var s = SelectionState.init();
-    s.start(-3, 7);
+    s.start(3, 7);
     const sel = s.state().?;
-    try std.testing.expectEqual(@as(i32, -3), sel.start.row);
+    try std.testing.expectEqual(@as(i32, 3), sel.start.row);
     try std.testing.expectEqual(@as(u16, 7), sel.start.col);
 }
 
-test "selection: update spanning viewport and history" {
+test "selection: update spanning projected rows" {
     var s = SelectionState.init();
-    s.start(-1, 0);
+    s.start(1, 0);
     s.update(5, 20);
     const sel = s.state().?;
-    try std.testing.expectEqual(@as(i32, -1), sel.start.row);
+    try std.testing.expectEqual(@as(i32, 1), sel.start.row);
     try std.testing.expectEqual(@as(i32, 5), sel.end.row);
     try std.testing.expectEqual(@as(u16, 20), sel.end.col);
 }
@@ -149,28 +149,28 @@ test "selection: start and update with viewport coordinates" {
     try std.testing.expectEqual(@as(u16, 15), state.end.col);
 }
 
-test "selection: start and update with history coordinates" {
+test "selection: start and update with projected coordinates" {
     var sel = SelectionState.init();
-    sel.start(-3, 2);
+    sel.start(3, 2);
     var state = sel.state().?;
-    try std.testing.expectEqual(@as(i32, -3), state.start.row);
+    try std.testing.expectEqual(@as(i32, 3), state.start.row);
     try std.testing.expectEqual(@as(u16, 2), state.start.col);
 
-    sel.update(-1, 8);
+    sel.update(5, 8);
     state = sel.state().?;
-    try std.testing.expectEqual(@as(i32, -1), state.end.row);
+    try std.testing.expectEqual(@as(i32, 5), state.end.row);
     try std.testing.expectEqual(@as(u16, 8), state.end.col);
 }
 
-test "selection: span from history to viewport" {
+test "selection: span projected rows" {
     var sel = SelectionState.init();
-    sel.start(-2, 0);
+    sel.start(2, 0);
     var state = sel.state().?;
-    try std.testing.expectEqual(@as(i32, -2), state.start.row);
+    try std.testing.expectEqual(@as(i32, 2), state.start.row);
 
     sel.update(5, 20);
     state = sel.state().?;
-    try std.testing.expectEqual(@as(i32, -2), state.start.row);
+    try std.testing.expectEqual(@as(i32, 2), state.start.row);
     try std.testing.expectEqual(@as(i32, 5), state.end.row);
     try std.testing.expect(state.active);
     try std.testing.expect(state.selecting);

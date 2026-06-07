@@ -72,6 +72,7 @@ pub const Screen = struct {
     history_capacity: u16,
     history_count: u32,
     history_write_idx: u32,
+    history_row_base: u32,
     history_lines: std.ArrayListUnmanaged(HistoryLine),
     history_lines_start: u32,
     open_history_line: ?HistoryLine,
@@ -132,6 +133,7 @@ pub const Screen = struct {
             .history_capacity = history_capacity,
             .history_count = 0,
             .history_write_idx = 0,
+            .history_row_base = 0,
             .history_lines = .empty,
             .history_lines_start = 0,
             .open_history_line = null,
@@ -333,6 +335,10 @@ pub const Screen = struct {
         return self.history_count;
     }
 
+    pub fn historyRowBase(self: *const Screen) u32 {
+        return self.history_row_base;
+    }
+
     /// Return configured history capacity.
     pub fn historyCapacity(self: *const Screen) u16 {
         return self.history_capacity;
@@ -340,16 +346,11 @@ pub const Screen = struct {
 
     /// Report whether selection endpoint should be invalidated.
     pub fn shouldInvalidateSelectionEndpoint(self: *const Screen, endpoint_row: i32) bool {
-        if (self.history_capacity == 0 or self.history_lines.items.len < self.history_capacity) {
-            return false;
-        }
-        const projected_rows_i32: i32 = if (self.history_count > @as(u32, std.math.maxInt(i32)))
-            std.math.maxInt(i32)
-        else
-            @intCast(self.history_count);
-        if (endpoint_row < -projected_rows_i32) {
-            return true;
-        }
+        if (endpoint_row < 0) return true;
+        const oldest_row = self.history_row_base;
+        const newest_row_exclusive = oldest_row + self.history_count + self.rows;
+        if (@as(u32, @intCast(endpoint_row)) < oldest_row) return true;
+        if (@as(u32, @intCast(endpoint_row)) >= newest_row_exclusive) return true;
         return false;
     }
 
@@ -408,6 +409,7 @@ pub const Screen = struct {
 
     pub fn clearScrollback(self: *Screen) void {
         const allocator = self.allocator orelse return;
+        self.history_row_base += self.history_count;
         self.clearHistoryAuthority(allocator);
         self.history_count = 0;
         self.history_write_idx = 0;

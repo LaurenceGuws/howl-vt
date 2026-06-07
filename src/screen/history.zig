@@ -322,8 +322,7 @@ fn appendProjectedRow(self: anytype, allocator: std.mem.Allocator, cells: []cons
     const wraps = self.history_wraps orelse return;
     const history = self.history orelse return;
     if (self.history_count == self.history_capacity) {
-        self.history_write_idx = (self.history_write_idx + 1) % @as(u32, @intCast(wraps.len));
-        self.history_count -= 1;
+        dropOldestProjectedRows(self, 1);
     }
     const slot = projectedAppendSlot(self);
     const cols = colCount(self.cols);
@@ -402,6 +401,7 @@ fn dropOldestProjectedRows(self: anytype, row_count: u32) void {
     const capacity = projectedCapacity(self);
     std.debug.assert(drop <= self.history_count);
     if (drop == self.history_count or capacity == 0) {
+        self.history_row_base += self.history_count;
         self.history_count = 0;
         self.history_write_idx = 0;
         return;
@@ -410,6 +410,7 @@ fn dropOldestProjectedRows(self: anytype, row_count: u32) void {
     std.debug.assert(self.history_write_idx < capacity);
     self.history_write_idx = (self.history_write_idx + drop) % capacity;
     self.history_count -= drop;
+    self.history_row_base += drop;
 }
 
 fn colCount(cols: u16) u32 {

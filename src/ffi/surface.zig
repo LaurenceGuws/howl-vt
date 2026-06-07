@@ -497,8 +497,8 @@ test "vt ffi surface selection follows viewport and hugs visible content" {
     const fed = lifecycle.terminalFeed(vt_handle, "aa\r\nbb\r\ncc".ptr, 10);
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), fed.status);
 
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), selection.terminalStartSelection(vt_handle, -1, 0));
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), selection.terminalUpdateSelection(vt_handle, 0, 1));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), selection.terminalStartSelection(vt_handle, 0, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), selection.terminalUpdateSelection(vt_handle, 1, 1));
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), selection.terminalFinishSelection(vt_handle));
 
     var cells: [8]FfiSurfaceCell = undefined;

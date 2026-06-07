@@ -21,6 +21,7 @@ pub const View = struct {
     is_alternate_screen: bool,
     scrollback_offset: u32,
     history_count: u32,
+    history_row_base: u32,
     start: u32,
     screen: *const Screen,
 
@@ -186,6 +187,7 @@ pub fn visibleView(screen_state: *const Set, scrollback_offset: u32) View {
         .is_alternate_screen = screen_state.alt_active,
         .scrollback_offset = offset,
         .history_count = history_count,
+        .history_row_base = active.historyRowBase(),
         .start = start,
         .screen = active,
     };

@@ -210,13 +210,13 @@ pub const Terminal = struct {
     }
 
     pub fn startSelection(self: *Terminal, row: i32, col: u16) void {
-        self.screen_state.activeSelection().start(row, col);
+        self.screen_state.activeSelection().start(self.selectionAbsoluteRow(row), col);
         self.noteSelectionChanged();
     }
 
     pub fn updateSelection(self: *Terminal, row: i32, col: u16) void {
         const before = self.selectionState() orelse return;
-        self.screen_state.activeSelection().update(row, col);
+        self.screen_state.activeSelection().update(self.selectionAbsoluteRow(row), col);
         const after = self.selectionState() orelse return;
         if (before.end.row == after.end.row and before.end.col == after.end.col) return;
         self.noteSelectionChanged();
@@ -239,6 +239,12 @@ pub const Terminal = struct {
     fn noteSelectionChanged(self: *Terminal) void {
         self.screen_state.active().markAllRowsDirty();
         self.dirty_generation +%= 1;
+    }
+
+    fn selectionAbsoluteRow(self: *const Terminal, row: i32) i32 {
+        if (row < 0) return row;
+        const absolute = @as(u64, self.screen_state.activeConst().historyRowBase()) + @as(u64, @intCast(row));
+        return std.math.cast(i32, absolute) orelse std.math.maxInt(i32);
     }
 
     pub const SurfacePublication = struct {

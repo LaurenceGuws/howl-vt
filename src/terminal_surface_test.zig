@@ -6,6 +6,7 @@ const screen = @import("screen.zig");
 const screen_capture = @import("test/screen_capture.zig");
 const screen_set = @import("screen_set.zig");
 const selection = @import("selection.zig");
+const selection_projection = @import("selection/projection.zig");
 const input_encode = @import("input/encode.zig");
 const input_keyboard = @import("input/keyboard.zig");
 const stream_harness = @import("test/stream_harness.zig");
@@ -544,4 +545,26 @@ test "Input exposes key and modifier constants" {
     _ = input_keyboard.key_right;
     _ = input_keyboard.key_kp_0;
     _ = input_keyboard.key_kp_enter;
+}
+
+test "selection follows viewport movement through scrollback rows" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.initWithCellsAndHistory(allocator, 2, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    defer stream.deinit();
+
+    try stream.nextSlice("aa\r\nbb\r\ncc");
+
+    selectionStart(&terminal, 1, 0);
+    selectionUpdate(&terminal, 2, 1);
+    selectionFinish(&terminal);
+
+    const live = visibleView(&terminal, 0);
+    try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(live, selectionState(&terminal).?, 0));
+    try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(live, selectionState(&terminal).?, 1));
+
+    const scrolled = visibleView(&terminal, 1);
+    try std.testing.expectEqual(@as(?selection_projection.Range, null), selection_projection.visibleRange(scrolled, selectionState(&terminal).?, 0));
+    try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(scrolled, selectionState(&terminal).?, 1));
 }

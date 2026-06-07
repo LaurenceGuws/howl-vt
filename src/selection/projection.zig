@@ -8,17 +8,17 @@ pub const Range = struct {
 };
 
 pub fn rowSource(screen_state: *const screen_set.Set, row: i32) ?screen_set.RowSource {
-    if (row < 0) {
-        const depth_i64 = -(@as(i64, row) + 1);
-        std.debug.assert(depth_i64 >= 0);
-        const depth: u32 = std.math.cast(u32, depth_i64) orelse return null;
-        if (screen_state.alt_active) return null;
-        if (depth >= screen_state.primary.historyCount()) return null;
-        return .{ .history = depth };
-    }
-    const screen_row: u16 = std.math.cast(u16, row) orelse return null;
-    if (screen_row >= screen_state.activeConst().rows) return null;
-    return .{ .screen = screen_row };
+    if (row < 0) return null;
+    const active = screen_state.activeConst();
+    const absolute: u32 = std.math.cast(u32, row) orelse return null;
+    const history_base = if (screen_state.alt_active) 0 else screen_state.primary.historyRowBase();
+    if (absolute < history_base) return null;
+    const logical_row = absolute - history_base;
+    const history_count = if (screen_state.alt_active) 0 else screen_state.primary.historyCount();
+    if (logical_row < history_count) return .{ .history = history_count - 1 - logical_row };
+    const screen_row = logical_row - history_count;
+    if (screen_row >= active.rows) return null;
+    return .{ .screen = @intCast(screen_row) };
 }
 
 pub fn contentEndExclusive(screen_state: *const screen_set.Set, row: i32) u16 {
@@ -39,10 +39,8 @@ pub fn contentEndExclusive(screen_state: *const screen_set.Set, row: i32) u16 {
 
 pub fn visibleRow(view: screen_set.View, row: u16) i32 {
     std.debug.assert(row < view.rows or view.rows == 0);
-    return switch (view.rowSource(row)) {
-        .history => |recency| -1 - @as(i32, @intCast(recency)),
-        .screen => |screen_row| screen_row,
-    };
+    const absolute = @as(u64, view.history_row_base) + @as(u64, view.start) + @as(u64, row);
+    return std.math.cast(i32, absolute) orelse std.math.maxInt(i32);
 }
 
 pub fn visibleRange(view: screen_set.View, selected: state.TerminalSelection, row: u16) ?Range {
