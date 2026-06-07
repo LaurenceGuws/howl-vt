@@ -25,7 +25,7 @@ pub const Terminal = struct {
     allocator: std.mem.Allocator,
     stream_state: stream_terminal.State,
     screen_state: ScreenSet,
-    modes: TerminalModeNs.State = .{},
+    modes: TerminalModeNs.ModeState = .{},
     kitty: KittyState = .{},
     xtchecksum_flags: u16 = 0,
     host: HostState,

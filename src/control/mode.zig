@@ -8,7 +8,7 @@ const saved_dec_mode_limit = 16;
 const SavedDecModeCount = u8;
 const SavedDecModeSlot = u8;
 
-pub const State = struct {
+pub const ModeState = struct {
     keyboard_action_mode: bool = false,
     application_cursor_keys: bool = false,
     application_keypad: bool = false,
