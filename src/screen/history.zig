@@ -29,6 +29,58 @@ pub const RewrappedRow = struct {
     wrapped: bool,
 };
 
+pub fn collectLogicalLines(self: anytype, allocator: std.mem.Allocator, rows: u16) !std.ArrayListUnmanaged(LogicalLine) {
+    var logical_lines: std.ArrayListUnmanaged(LogicalLine) = .empty;
+    errdefer {
+        for (logical_lines.items) |*line| line.cells.deinit(allocator);
+        logical_lines.deinit(allocator);
+    }
+
+    var current_line = try cloneOpenHistoryAsLogicalLine(self, allocator);
+    defer current_line.cells.deinit(allocator);
+
+    var history_line_idx: u32 = 0;
+    while (history_line_idx < self.history_lines.items.len) : (history_line_idx += 1) {
+        const line = historyLineAt(self, history_line_idx);
+        var copied = try cloneHistoryLine(allocator, line.cells.items);
+        copied.cursor_offset = null;
+        try logical_lines.append(allocator, copied);
+    }
+
+    var cursor_found = false;
+    var cursor_line_index: u32 = 0;
+    var cursor_offset: u32 = 0;
+    var row: u16 = 0;
+    while (row < rows) : (row += 1) {
+        try appendSourceRowToLogicalLines(
+            self,
+            allocator,
+            &logical_lines,
+            &current_line,
+            row,
+            self.cols,
+            &cursor_found,
+            &cursor_line_index,
+            &cursor_offset,
+        );
+    }
+
+    if (current_line.cells.items.len > 0 or current_line.cursor_offset != null or logical_lines.items.len == 0) {
+        try logical_lines.append(allocator, current_line);
+        current_line = .{};
+    }
+
+    while (logical_lines.items.len > 1) {
+        const last_idx = logical_lines.items.len - 1;
+        const last = &logical_lines.items[last_idx];
+        if (last.cells.items.len > 0) break;
+        last.cells.deinit(allocator);
+        logical_lines.items.len = last_idx;
+    }
+
+    return logical_lines;
+}
+
 pub fn appendSourceRowToLogicalLines(
     self: anytype,
     allocator: std.mem.Allocator,

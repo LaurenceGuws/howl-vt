@@ -300,78 +300,55 @@ fn hashLogicalContent(vt: *const Terminal) u64 {
 }
 
 fn canonicalLogicalHash(allocator: std.mem.Allocator, vt: *const Terminal) !u64 {
-    const lines = try canonicalLogicalStream(allocator, vt);
-    defer allocator.free(lines);
-
+    _ = allocator;
     var h = std.hash.Wyhash.init(0xd1b54a32d192ed03);
-    h.update(std.mem.sliceAsBytes(lines));
-    return h.final();
-}
 
-fn canonicalLogicalStream(allocator: std.mem.Allocator, vt: *const Terminal) ![]u21 {
     const s = vt.screen_state.activeConst();
-    var lines: std.ArrayList(u21) = .empty;
-    defer lines.deinit(allocator);
+    const row_break: u32 = 0;
 
-    var row_buf: std.ArrayList(u21) = .empty;
-    defer row_buf.deinit(allocator);
-
-    var history_idx = screen_set.visibleView(&vt.screen_state, 0).history_count;
-    while (history_idx > 0) {
-        history_idx -= 1;
-        try appendHistoryRowCanonical(allocator, &lines, &row_buf, vt, history_idx, s.cols);
+    for (s.history_lines.items, 0..) |_, line_idx| {
+        const slot = (s.history_lines_start + @as(u32, @intCast(line_idx))) % @as(u32, @intCast(s.history_lines.items.len));
+        const line = s.history_lines.items[@intCast(slot)];
+        h.update(std.mem.asBytes(&row_break));
+        for (line.cells.items) |cell| {
+            const codepoint: u32 = @intCast(cell.codepoint);
+            h.update(std.mem.asBytes(&codepoint));
+        }
     }
+
+    var open_prefix_len: usize = 0;
+    if (s.open_history_line) |open_line| {
+        h.update(std.mem.asBytes(&row_break));
+        for (open_line.cells.items) |cell| {
+            const codepoint: u32 = @intCast(cell.codepoint);
+            h.update(std.mem.asBytes(&codepoint));
+        }
+        open_prefix_len = open_line.cells.items.len;
+    }
+
+    var pending_visible = false;
 
     var row: u16 = 0;
     while (row < s.rows) : (row += 1) {
-        try appendVisibleRowCanonical(allocator, &lines, &row_buf, s, row, s.cols);
+        const len = visibleContentLen(s, row, s.cols);
+        var col: u16 = 0;
+        if (!pending_visible and (row > 0 or open_prefix_len == 0)) {
+            h.update(std.mem.asBytes(&row_break));
+        }
+        pending_visible = true;
+        while (col < len) : (col += 1) {
+            const codepoint: u32 = s.cellAt(row, col);
+            h.update(std.mem.asBytes(&codepoint));
+        }
+        if (!s.rowWrapped(row)) {
+            pending_visible = false;
+        }
     }
 
-    if (row_buf.items.len > 0 or lines.items.len == 0) {
-        try flushLogicalRow(allocator, &lines, &row_buf);
+    if (!pending_visible and s.history_lines.items.len == 0 and open_prefix_len == 0 and s.rows == 0) {
+        h.update(std.mem.asBytes(&row_break));
     }
-
-    return try lines.toOwnedSlice(allocator);
-}
-
-fn appendHistoryRowCanonical(allocator: std.mem.Allocator, all_lines: *std.ArrayList(u21), current_line: *std.ArrayList(u21), vt: *const Terminal, recency: u32, cols: u16) !void {
-    const s = vt.screen_state.activeConst();
-    const len = historyContentLen(s, vt, recency, cols);
-    var col: u16 = 0;
-    while (col < len) : (col += 1) {
-        try current_line.append(allocator, screen_set.historyRowAt(&vt.screen_state, recency, col));
-    }
-    if (!historyRowWrapped(s, recency)) {
-        try flushLogicalRow(allocator, all_lines, current_line);
-    }
-}
-
-fn appendVisibleRowCanonical(allocator: std.mem.Allocator, all_lines: *std.ArrayList(u21), current_line: *std.ArrayList(u21), s: anytype, row: u16, cols: u16) !void {
-    const len = visibleContentLen(s, row, cols);
-    var col: u16 = 0;
-    while (col < len) : (col += 1) {
-        try current_line.append(allocator, s.cellAt(row, col));
-    }
-    if (!visibleRowWrapped(s, row)) {
-        try flushLogicalRow(allocator, all_lines, current_line);
-    }
-}
-
-fn flushLogicalRow(allocator: std.mem.Allocator, all_lines: *std.ArrayList(u21), current_line: *std.ArrayList(u21)) !void {
-    try all_lines.append(allocator, 0);
-    try all_lines.appendSlice(allocator, current_line.items);
-    current_line.clearRetainingCapacity();
-}
-
-fn historyContentLen(s: anytype, vt: *const Terminal, recency: u32, cols: u16) u16 {
-    var col = cols;
-    while (col > 0) {
-        const idx = col - 1;
-        if (screen_set.historyRowAt(&vt.screen_state, recency, idx) != 0) return col;
-        col -= 1;
-    }
-    if (historyRowWrapped(s, recency) and cols > 0) return cols;
-    return 0;
+    return h.final();
 }
 
 fn visibleContentLen(s: anytype, row: u16, cols: u16) u16 {
@@ -381,19 +358,8 @@ fn visibleContentLen(s: anytype, row: u16, cols: u16) u16 {
         if (s.cellAt(row, idx) != 0) return col;
         col -= 1;
     }
-    if (visibleRowWrapped(s, row) and cols > 0) return cols;
+    if (s.rowWrapped(row) and cols > 0) return cols;
     return 0;
-}
-
-fn visibleRowWrapped(s: anytype, row: u16) bool {
-    const wraps = s.row_wraps orelse return false;
-    if (s.rows == 0 or row >= s.rows) return false;
-    const idx = (s.row_origin + row) % s.rows;
-    return wraps[@intCast(idx)];
-}
-
-fn historyRowWrapped(s: anytype, recency: u32) bool {
-    return s.historyRowWrapped(recency);
 }
 
 fn summarizeCoreState(vt: *const Terminal) CoreStateSummary {

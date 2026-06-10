@@ -1,9 +1,30 @@
 const std = @import("std");
 const screen_mod = @import("../screen.zig");
 const action_vocabulary = @import("../action/vocabulary.zig");
+const history_mod = @import("history.zig");
 
 const Grid = screen_mod.Screen;
 const SemanticEvent = action_vocabulary.SemanticEvent;
+
+fn canonicalLogicalStream(allocator: std.mem.Allocator, screen: *const Grid) ![]u21 {
+    var logical_lines = try history_mod.collectLogicalLines(screen, allocator, screen.rows);
+    defer {
+        for (logical_lines.items) |*line| line.cells.deinit(allocator);
+        logical_lines.deinit(allocator);
+    }
+
+    var lines: std.ArrayList(u21) = .empty;
+    defer lines.deinit(allocator);
+
+    for (logical_lines.items) |line| {
+        try lines.append(allocator, 0);
+        for (line.cells.items) |cell| {
+            try lines.append(allocator, @intCast(cell.codepoint));
+        }
+    }
+
+    return try lines.toOwnedSlice(allocator);
+}
 
 test "screen resize: row-only resize preserves live bottom and restores from history" {
     const gpa = std.testing.allocator;
@@ -93,4 +114,22 @@ test "screen resize: column resize preserves exact-fill cursor wrap state" {
     try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
     try std.testing.expectEqual(@as(u16, 1), s.cursor_col);
     try std.testing.expect(s.wrap_pending);
+}
+
+test "screen resize: canonical logical content survives reflow when projected history saturates" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCellsAndHistory(gpa, 2, 6, 4);
+    defer s.deinit(gpa);
+
+    s.apply(SemanticEvent{ .write_text = "AAAAAA\nBBBBBB\nCCCCCC\nDDDDDD\nEEEEEE" });
+    const before = try canonicalLogicalStream(gpa, &s);
+    defer gpa.free(before);
+
+    try s.resize(gpa, 5, 3);
+    try std.testing.expectEqual(@as(u32, 4), s.historyCount());
+
+    const after = try canonicalLogicalStream(gpa, &s);
+    defer gpa.free(after);
+
+    try std.testing.expectEqualSlices(u21, before, after);
 }
