@@ -1,5 +1,5 @@
 const std = @import("std");
-const selection_mod = @import("../selection.zig");
+const selection_mod = @import("../selection/state.zig");
 const screen_mod = @import("../screen.zig");
 
 const Selection = selection_mod;

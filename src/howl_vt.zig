@@ -9,7 +9,7 @@ const parser = @import("parser/main.zig");
 const parser_owned_actions = @import("parser/owned_actions.zig");
 const screen = @import("screen.zig");
 const screen_set = @import("screen_set.zig");
-const selection = @import("selection.zig");
+const selection = @import("selection/state.zig");
 const terminal = @import("terminal.zig");
 
 pub const Parser = parser;

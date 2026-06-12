@@ -1,5 +1,5 @@
 const std = @import("std");
-const terminal_selection = @import("../selection.zig");
+const terminal_selection = @import("../selection/state.zig");
 const selection_projection = @import("../selection/projection.zig");
 const bytes = @import("bytes.zig");
 const handle = @import("handle.zig");
