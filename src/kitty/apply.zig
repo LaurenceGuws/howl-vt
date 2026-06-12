@@ -82,8 +82,8 @@ pub fn setShellMark(allocator: std.mem.Allocator, current: *kitty_state.ShellMar
 }
 
 pub fn appendNotification(allocator: std.mem.Allocator, notifications: *std.ArrayList(kitty_state.NotificationRequest), notification: KittyNotificationCommand) host_state.ApplyError!void {
-    try ensureRetainedBound(host_state.count32(notification.metadata), host_state.retained_metadata_max_bytes);
-    try ensureRetainedBound(host_state.count32(notification.payload), host_state.retained_metadata_max_bytes);
+    try ensureRetainedBound(host_state.byteCount(notification.metadata), host_state.retained_metadata_max_bytes);
+    try ensureRetainedBound(host_state.byteCount(notification.payload), host_state.retained_metadata_max_bytes);
     const metadata = try allocator.dupe(u8, notification.metadata);
     errdefer allocator.free(metadata);
     const payload = try allocator.dupe(u8, notification.payload);
@@ -98,7 +98,7 @@ pub fn setOptionalPayload(allocator: std.mem.Allocator, slot: *?[]u8, payload: [
 }
 
 fn replaceOwned(allocator: std.mem.Allocator, next: []const u8, max_len: u32) host_state.ApplyError![]u8 {
-    try ensureRetainedBound(host_state.count32(next), max_len);
+    try ensureRetainedBound(host_state.byteCount(next), max_len);
     const owned = try allocator.dupe(u8, next);
     return owned;
 }

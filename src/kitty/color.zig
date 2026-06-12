@@ -51,7 +51,7 @@ pub fn handleKittyControl(allocator: std.mem.Allocator, colors: *State, output: 
     }
 }
 fn appendKittyQueryReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), key: []const u8, colors: State) host_state.ApplyError!void {
-    const start = host_state.count32(output.items);
+    const start = host_state.byteCount(output.items);
     errdefer host_state.restorePendingOutput(output, start);
     try host_state.appendOutput(output, allocator, "\x1b]21;");
     try host_state.appendOutput(output, allocator, key);

@@ -55,7 +55,7 @@ pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *Terminal
         const idx = std.fmt.parseUnsigned(u16, idx_text, 10) catch continue;
         if (std.mem.eql(u8, value, "?")) {
             const text = formatOscReply(encode_buf, "\x1b]4;{d};", .{idx});
-            const start = host_state.count32(output.items);
+            const start = host_state.byteCount(output.items);
             errdefer host_state.restorePendingOutput(output, start);
             try host_state.appendOutput(output, allocator, text);
             if (paletteTargetColor(colors.*, idx)) |color| try appendColorOsc(allocator, output, color);
@@ -73,7 +73,7 @@ pub fn handleXtermSpecialPaletteControl(allocator: std.mem.Allocator, colors: *T
         const idx = std.fmt.parseUnsigned(u3, idx_text, 10) catch continue;
         const text = formatOscReply(encode_buf, "\x1b]5;{d};", .{idx});
         if (std.mem.eql(u8, value, "?")) {
-            const start = host_state.count32(output.items);
+            const start = host_state.byteCount(output.items);
             errdefer host_state.restorePendingOutput(output, start);
             try host_state.appendOutput(output, allocator, text);
             if (colors.special_palette[idx]) |color| try appendColorOsc(allocator, output, color);
@@ -346,7 +346,7 @@ fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.Array
         else => colors.foreground,
     };
     const text = formatOscReply(encode_buf, "\x1b]{d};", .{osc});
-    const start = host_state.count32(output.items);
+    const start = host_state.byteCount(output.items);
     errdefer host_state.restorePendingOutput(output, start);
     try host_state.appendOutput(output, allocator, text);
     try appendColorOsc(allocator, output, color);
@@ -355,7 +355,7 @@ fn appendXtermSpecialColorReply(allocator: std.mem.Allocator, output: *std.Array
 
 fn appendXtermDynamicColorReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, colors: TerminalColorState, key: DynamicKey) host_state.ApplyError!void {
     const text = formatOscReply(encode_buf, "\x1b]{d};", .{dynamicCommandForKey(key)});
-    const start = host_state.count32(output.items);
+    const start = host_state.byteCount(output.items);
     errdefer host_state.restorePendingOutput(output, start);
     try host_state.appendOutput(output, allocator, text);
     if (dynamicColor(colors, key)) |color| try appendColorOsc(allocator, output, color);

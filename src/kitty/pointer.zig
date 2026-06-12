@@ -68,7 +68,7 @@ pub const Stack = struct {
     }
 
     pub fn appendQuery(self: *const Stack, allocator: std.mem.Allocator, output: *std.ArrayList(u8), names: []const u8) host_state.ApplyError!void {
-        const start = host_state.count32(output.items);
+        const start = host_state.byteCount(output.items);
         errdefer host_state.restorePendingOutput(output, start);
         try host_state.appendOutput(output, allocator, "\x1b]22;");
         var first = true;

@@ -128,7 +128,7 @@ fn isKeyFormatResource(resource: u8) bool {
 
 fn appendDecrqssReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Screen, request: []const u8) host_state.ApplyError!void {
     if (decrqssPayload(encode_buf, screen, request)) |payload| {
-        const start = host_state.count32(output.items);
+        const start = host_state.byteCount(output.items);
         errdefer host_state.restorePendingOutput(output, start);
         try host_state.appendOutput(output, allocator, "\x1bP1$r");
         try host_state.appendOutput(output, allocator, payload);
@@ -186,7 +186,7 @@ pub fn appendTermcapInvalidReport(allocator: std.mem.Allocator, output: *std.Arr
 }
 
 pub fn appendResourceInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), request: []const u8) host_state.ApplyError!void {
-    const start = host_state.count32(output.items);
+    const start = host_state.byteCount(output.items);
     errdefer host_state.restorePendingOutput(output, start);
     try host_state.appendOutput(output, allocator, "\x1bP0+R");
     try host_state.appendOutput(output, allocator, request);
@@ -264,7 +264,7 @@ pub fn appendCursorInformationReport(
 }
 
 pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid) host_state.ApplyError!void {
-    const start = host_state.count32(output.items);
+    const start = host_state.byteCount(output.items);
     errdefer host_state.restorePendingOutput(output, start);
     try host_state.appendOutput(output, allocator, "\x1bP2$u");
     var first = true;
@@ -307,7 +307,7 @@ pub fn appendSelectedGraphicRenditionReport(
         return;
     };
 
-    const start = host_state.count32(output.items);
+    const start = host_state.byteCount(output.items);
     errdefer host_state.restorePendingOutput(output, start);
     try host_state.appendOutput(output, allocator, "\x1b[");
     var first = true;

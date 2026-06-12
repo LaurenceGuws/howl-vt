@@ -43,7 +43,12 @@ comptime {
     std.debug.assert(hyperlink_target_max_count > 0);
 }
 
-pub fn count32(items: anytype) u32 {
+pub fn byteCount(bytes: []const u8) u32 {
+    std.debug.assert(bytes.len <= std.math.maxInt(u32));
+    return @intCast(bytes.len);
+}
+
+fn hyperlinkCount(items: []const []u8) u32 {
     std.debug.assert(items.len <= std.math.maxInt(u32));
     return @intCast(items.len);
 }
@@ -96,12 +101,12 @@ pub fn appendPendingOutput(vt: anytype, bytes: []const u8) ApplyError!void {
 }
 
 pub fn appendOutput(output: *std.ArrayList(u8), allocator: std.mem.Allocator, bytes: []const u8) ApplyError!void {
-    try ensureAppendBound(count32(output.items), count32(bytes), pending_output_max_bytes);
+    try ensureAppendBound(byteCount(output.items), byteCount(bytes), pending_output_max_bytes);
     try output.appendSlice(allocator, bytes);
 }
 
 pub fn replaceOwned(allocator: std.mem.Allocator, current: *?[]u8, next: []const u8, max_len: u32) ApplyError![]const u8 {
-    try ensureRetainedBound(count32(next), max_len);
+    try ensureRetainedBound(byteCount(next), max_len);
     const owned = try allocator.dupe(u8, next);
     if (current.*) |old| allocator.free(old);
     current.* = owned;
@@ -109,14 +114,14 @@ pub fn replaceOwned(allocator: std.mem.Allocator, current: *?[]u8, next: []const
 }
 
 pub fn replaceClipboard(vt: anytype, payload: []const u8) ApplyError!void {
-    try ensureRetainedBound(count32(payload), retained_payload_max_bytes);
+    try ensureRetainedBound(byteCount(payload), retained_payload_max_bytes);
     const owned = try vt.allocator.dupe(u8, payload);
     if (vt.host.pending_clipboard) |req| vt.allocator.free(req.raw);
     vt.host.pending_clipboard = .{ .raw = owned };
 }
 
 pub fn replaceDcsPayload(vt: anytype, payload: action_vocabulary.DcsPayload) ApplyError!void {
-    try ensureRetainedBound(count32(payload.payload), retained_payload_max_bytes);
+    try ensureRetainedBound(byteCount(payload.payload), retained_payload_max_bytes);
     const owned = try vt.allocator.dupe(u8, payload.payload);
     if (vt.host.dcs_payload) |old| vt.allocator.free(old.payload);
     vt.host.dcs_payload = .{ .kind = payload.kind, .payload = owned };
@@ -126,18 +131,18 @@ pub fn internHyperlink(vt: anytype, uri: []const u8) ApplyError!u32 {
     for (vt.host.hyperlink_targets.items, 0..) |existing, idx| {
         if (std.mem.eql(u8, existing, uri)) return @intCast(idx + 1);
     }
-    try ensureRetainedBound(count32(uri), retained_metadata_max_bytes);
-    if (count32(vt.host.hyperlink_targets.items) >= hyperlink_target_max_count) {
+    try ensureRetainedBound(byteCount(uri), retained_metadata_max_bytes);
+    if (hyperlinkCount(vt.host.hyperlink_targets.items) >= hyperlink_target_max_count) {
         return error.ConsequenceLimit;
     }
     const owned = try vt.allocator.dupe(u8, uri);
     errdefer vt.allocator.free(owned);
     try vt.host.hyperlink_targets.append(vt.allocator, owned);
-    return count32(vt.host.hyperlink_targets.items);
+    return hyperlinkCount(vt.host.hyperlink_targets.items);
 }
 
 pub fn restorePendingOutput(output: *std.ArrayList(u8), len: u32) void {
-    std.debug.assert(len <= count32(output.items));
+    std.debug.assert(len <= byteCount(output.items));
     output.items.len = len;
 }
 
