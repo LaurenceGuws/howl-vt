@@ -32,7 +32,7 @@ fn chunkLen(rand: std.Random, remaining: CaseOffset, max_chunk_len: ChunkLen) Ca
     return 1 + rand.uintLessThan(CaseOffset, @min(remaining, @as(CaseOffset, max_chunk_len)));
 }
 
-pub const Options = struct {
+pub const DeterminismOptions = struct {
     iterations: IterationCount = 32,
     ops_per_case: OpCount = 64,
     max_chunk_len: ChunkLen = 32,
@@ -186,7 +186,7 @@ const ParserOutput = struct {
     }
 };
 
-pub fn defaultOptions(events_max: ?OpCount) Options {
+pub fn defaultOptions(events_max: ?OpCount) DeterminismOptions {
     return .{
         .iterations = 32,
         .ops_per_case = events_max orelse 64,
@@ -219,7 +219,7 @@ fn copyFixedU8(data: []const u8) [parser_mod.max_intermediates]u8 {
     return out;
 }
 
-pub fn runDeterminism(gpa: std.mem.Allocator, seed: u64, options: Options) !void {
+pub fn runDeterminism(gpa: std.mem.Allocator, seed: u64, options: DeterminismOptions) !void {
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
 
