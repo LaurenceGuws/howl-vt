@@ -41,109 +41,84 @@ pub const RectChecksumRequest = struct {
 
 pub fn apply(vt: anytype, report_action: ReportAction) host_state.ApplyError!void {
     var scratch: input_encode.Scratch = .{};
+    const allocator = vt.allocator;
+    const pending_output = &vt.host.pending_output;
+    const encode_buf = scratch.buf[0..];
     const active = vt.screen_state.activeConst();
     const deccir_charset = vt.deccirCharsetState();
-    const ctx = Context{
-        .allocator = vt.allocator,
-        .pending_output = &vt.host.pending_output,
-        .encode_buf = scratch.buf[0..],
-        .active_screen = active,
-        .render_view = .{
-            .rows = active.rows,
-            .cols = active.cols,
-            .cursor_row = active.cursor_row,
-            .cursor_col = active.cursor_col,
-        },
-        .ansi_modes = .{
-            .keyboard_action_mode = vt.modes.keyboard_action_mode,
-            .insert_mode = active.insert_mode,
-            .send_receive_mode = vt.modes.send_receive_mode,
-            .newline_mode = vt.modes.newline_mode,
-        },
-        .dec_modes = .{
-            .application_cursor_keys = vt.modes.application_cursor_keys,
-            .application_keypad = vt.modes.application_keypad,
-            .auto_wrap = active.auto_wrap,
-            .left_right_margin_mode = active.left_right_margin_mode,
-            .cursor_visible = active.cursor_visible,
-            .alt_active = vt.screen_state.alt_active,
-            .mouse_tracking = vt.modes.mouse_tracking,
-            .mouse_protocol = vt.modes.mouse_protocol,
-            .focus_reporting = vt.modes.focus_reporting,
-            .bracketed_paste = vt.modes.bracketed_paste,
-            .synchronized_output = vt.modes.synchronized_output,
-            .kitty_clipboard = vt.modes.kitty_clipboard,
-        },
-        .modify_other_keys = vt.modes.modify_other_keys,
-        .key_format = vt.modes.key_format,
-        .xtchecksum_flags = &vt.xtchecksum_flags,
-        .deccir_charset = .{
-            .gl_index = deccir_charset.gl_index,
-            .g0_designation = deccir_charset.g0_designation,
-            .g1_designation = deccir_charset.g1_designation,
-        },
-        .color_stack_depth = vt.kitty.global.color_stack.len,
+    const render_view = CursorReportView{
+        .rows = active.rows,
+        .cols = active.cols,
+        .cursor_row = active.cursor_row,
+        .cursor_col = active.cursor_col,
     };
-    try applyWithContext(ctx, report_action);
-}
+    const ansi_modes = TerminalModeNs.AnsiView{
+        .keyboard_action_mode = vt.modes.keyboard_action_mode,
+        .insert_mode = active.insert_mode,
+        .send_receive_mode = vt.modes.send_receive_mode,
+        .newline_mode = vt.modes.newline_mode,
+    };
+    const dec_modes = TerminalModeNs.DecView{
+        .application_cursor_keys = vt.modes.application_cursor_keys,
+        .application_keypad = vt.modes.application_keypad,
+        .auto_wrap = active.auto_wrap,
+        .left_right_margin_mode = active.left_right_margin_mode,
+        .cursor_visible = active.cursor_visible,
+        .alt_active = vt.screen_state.alt_active,
+        .mouse_tracking = vt.modes.mouse_tracking,
+        .mouse_protocol = vt.modes.mouse_protocol,
+        .focus_reporting = vt.modes.focus_reporting,
+        .bracketed_paste = vt.modes.bracketed_paste,
+        .synchronized_output = vt.modes.synchronized_output,
+        .kitty_clipboard = vt.modes.kitty_clipboard,
+    };
+    const charset_view = CharsetReportView{
+        .gl_index = deccir_charset.gl_index,
+        .g0_designation = deccir_charset.g0_designation,
+        .g1_designation = deccir_charset.g1_designation,
+    };
 
-const Context = struct {
-    allocator: std.mem.Allocator,
-    pending_output: *std.ArrayList(u8),
-    encode_buf: []u8,
-    active_screen: *const Screen,
-    render_view: CursorReportView,
-    ansi_modes: TerminalModeNs.AnsiView,
-    dec_modes: TerminalModeNs.DecView,
-    modify_other_keys: i8,
-    key_format: [8]u16,
-    xtchecksum_flags: *u16,
-    deccir_charset: CharsetReportView,
-    color_stack_depth: u8,
-};
-
-fn applyWithContext(ctx: Context, report_action: ReportAction) host_state.ApplyError!void {
     switch (report_action) {
-        .ansi_mode_query => |mode| try appendAnsiModeReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, mode, TerminalModeNs.ansiModeStateForView(ctx.ansi_modes, mode)),
-        .modify_other_keys_query => try appendModifyOtherKeysReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.modify_other_keys),
-        .key_format_query => |resource| if (isKeyFormatResource(resource)) try appendKeyFormatReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, resource, ctx.key_format[resource]),
-        .dec_mode_query => |mode| try appendDecModeReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, mode, TerminalModeNs.decModeStateForView(ctx.dec_modes, mode)),
-        .dcs_request_status => |request| try appendDecrqssReply(ctx, request),
-        .dcs_request_termcap => try appendTermcapInvalidReport(ctx.allocator, ctx.pending_output),
-        .dcs_request_resource => |request| try appendResourceInvalidReport(ctx.allocator, ctx.pending_output, request),
-        .device_status_report => try appendPendingOutput(ctx, "\x1b[0n"),
-        .dec_device_status_report => |param| try LocatorNs.appendDeviceStatusReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, param),
-        .cursor_position_report => try appendCursorPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
-        .dec_cursor_position_report => try appendDecCursorPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
-        .primary_device_attributes => try appendPendingOutput(ctx, "\x1b[?62;22c"),
-        .secondary_device_attributes => try appendPendingOutput(ctx, "\x1b[>1;10;0c"),
-        .tertiary_device_attributes => try appendPendingOutput(ctx, "\x1bP!|00000000\x1b\\"),
-        .xtversion => try appendXtVersionReport(ctx.allocator, ctx.pending_output),
-        .xttitlepos => try appendTitleStackPositionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, 0, 0),
-        .xtchecksum => |flags| ctx.xtchecksum_flags.* = flags,
+        .ansi_mode_query => |mode| try appendAnsiModeReport(allocator, pending_output, encode_buf, mode, TerminalModeNs.ansiModeStateForView(ansi_modes, mode)),
+        .modify_other_keys_query => try appendModifyOtherKeysReport(allocator, pending_output, encode_buf, vt.modes.modify_other_keys),
+        .key_format_query => |resource| if (isKeyFormatResource(resource)) try appendKeyFormatReport(allocator, pending_output, encode_buf, resource, vt.modes.key_format[resource]),
+        .dec_mode_query => |mode| try appendDecModeReport(allocator, pending_output, encode_buf, mode, TerminalModeNs.decModeStateForView(dec_modes, mode)),
+        .dcs_request_status => |request| try appendDecrqssReply(allocator, pending_output, encode_buf, active, request),
+        .dcs_request_termcap => try appendTermcapInvalidReport(allocator, pending_output),
+        .dcs_request_resource => |request| try appendResourceInvalidReport(allocator, pending_output, request),
+        .device_status_report => try host_state.appendOutput(pending_output, allocator, "\x1b[0n"),
+        .dec_device_status_report => |param| try LocatorNs.appendDeviceStatusReport(allocator, pending_output, encode_buf, param),
+        .cursor_position_report => try appendCursorPositionReport(allocator, pending_output, encode_buf, render_view),
+        .dec_cursor_position_report => try appendDecCursorPositionReport(allocator, pending_output, encode_buf, render_view),
+        .primary_device_attributes => try host_state.appendOutput(pending_output, allocator, "\x1b[?62;22c"),
+        .secondary_device_attributes => try host_state.appendOutput(pending_output, allocator, "\x1b[>1;10;0c"),
+        .tertiary_device_attributes => try host_state.appendOutput(pending_output, allocator, "\x1bP!|00000000\x1b\\"),
+        .xtversion => try appendXtVersionReport(allocator, pending_output),
+        .xttitlepos => try appendTitleStackPositionReport(allocator, pending_output, encode_buf, 0, 0),
+        .xtchecksum => |flags| vt.xtchecksum_flags = flags,
         .rect_checksum_request => |req| try appendRectChecksumReport(
-            ctx.allocator,
-            ctx.pending_output,
-            ctx.encode_buf,
+            allocator,
+            pending_output,
+            encode_buf,
             .{ .request_id = req.request_id },
-            computeRectChecksum(ctx.active_screen, ctx.xtchecksum_flags.*, req.page, req.area),
+            computeRectChecksum(active, vt.xtchecksum_flags, req.page, req.area),
         ),
-        .selected_graphic_rendition_report => |area| try appendSelectedGraphicRenditionReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.active_screen, area),
+        .selected_graphic_rendition_report => |area| try appendSelectedGraphicRenditionReport(allocator, pending_output, encode_buf, active, area),
         .presentation_state_report => |kind| {
             switch (kind) {
-                1 => try appendCursorInformationReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, .{
-                    .cursor = ctx.render_view,
-                    .current_attrs = ctx.active_screen.current_attrs,
-                    .origin_mode = ctx.active_screen.origin_mode,
-                    .wrap_pending = ctx.active_screen.wrap_pending,
-                }, ctx.deccir_charset),
-                2 => try appendTabStopReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.active_screen),
-                else => try appendPendingOutput(ctx, "\x1bP0$u\x1b\\"),
+                1 => try appendCursorInformationReport(allocator, pending_output, encode_buf, .{
+                    .cursor = render_view,
+                    .current_attrs = active.current_attrs,
+                    .origin_mode = active.origin_mode,
+                    .wrap_pending = active.wrap_pending,
+                }, charset_view),
+                2 => try appendTabStopReport(allocator, pending_output, encode_buf, active),
+                else => try host_state.appendOutput(pending_output, allocator, "\x1bP0$u\x1b\\"),
             }
         },
-        .displayed_extent_report => try appendDisplayedExtentReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.render_view),
-        .parameters_report => |kind| try appendTerminalParametersReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, kind),
-        .xtreportcolors => try appendColorStackReport(ctx.allocator, ctx.pending_output, ctx.encode_buf, ctx.color_stack_depth),
+        .displayed_extent_report => try appendDisplayedExtentReport(allocator, pending_output, encode_buf, render_view),
+        .parameters_report => |kind| try appendTerminalParametersReport(allocator, pending_output, encode_buf, kind),
+        .xtreportcolors => try appendColorStackReport(allocator, pending_output, encode_buf, vt.kitty.global.color_stack.len),
     }
 }
 
@@ -151,31 +126,26 @@ fn isKeyFormatResource(resource: u8) bool {
     return resource <= 4 or resource == 6 or resource == 7;
 }
 
-fn appendPendingOutput(ctx: Context, bytes: []const u8) host_state.ApplyError!void {
-    try host_state.appendOutput(ctx.pending_output, ctx.allocator, bytes);
-}
-
-fn appendDecrqssReply(ctx: Context, request: []const u8) host_state.ApplyError!void {
-    if (decrqssPayload(ctx, request)) |payload| {
-        const start = host_state.count32(ctx.pending_output.items);
-        errdefer host_state.restorePendingOutput(ctx.pending_output, start);
-        try host_state.appendOutput(ctx.pending_output, ctx.allocator, "\x1bP1$r");
-        try host_state.appendOutput(ctx.pending_output, ctx.allocator, payload);
-        try host_state.appendOutput(ctx.pending_output, ctx.allocator, "\x1b\\");
+fn appendDecrqssReply(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Screen, request: []const u8) host_state.ApplyError!void {
+    if (decrqssPayload(encode_buf, screen, request)) |payload| {
+        const start = host_state.count32(output.items);
+        errdefer host_state.restorePendingOutput(output, start);
+        try host_state.appendOutput(output, allocator, "\x1bP1$r");
+        try host_state.appendOutput(output, allocator, payload);
+        try host_state.appendOutput(output, allocator, "\x1b\\");
         return;
     }
-    try appendPendingOutput(ctx, "\x1bP0$r\x1b\\");
+    try host_state.appendOutput(output, allocator, "\x1bP0$r\x1b\\");
 }
 
-fn decrqssPayload(ctx: Context, request: []const u8) ?[]const u8 {
-    const screen = ctx.active_screen;
+fn decrqssPayload(encode_buf: []u8, screen: *const Screen, request: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, request, "r")) {
         const bottom = if (screen.rows == 0) @as(u16, 0) else @min(screen.scroll_bottom, screen.rows - 1);
-        return std.fmt.bufPrint(ctx.encode_buf, "{d};{d}r", .{ screen.scroll_top + 1, bottom + 1 }) catch null;
+        return std.fmt.bufPrint(encode_buf, "{d};{d}r", .{ screen.scroll_top + 1, bottom + 1 }) catch null;
     }
     if (std.mem.eql(u8, request, "s")) {
         const right = if (screen.left_right_margin_mode) screen.right_margin else screen.cols -| 1;
-        return std.fmt.bufPrint(ctx.encode_buf, "{d};{d}s", .{ screen.left_margin + 1, right + 1 }) catch null;
+        return std.fmt.bufPrint(encode_buf, "{d};{d}s", .{ screen.left_margin + 1, right + 1 }) catch null;
     }
     if (std.mem.eql(u8, request, " q")) {
         const style = screen.cursor_style;
@@ -184,15 +154,15 @@ fn decrqssPayload(ctx: Context, request: []const u8) ?[]const u8 {
             .underline => if (style.blink) 3 else 4,
             .bar => if (style.blink) 5 else 6,
         };
-        return std.fmt.bufPrint(ctx.encode_buf, "{d} q", .{value}) catch null;
+        return std.fmt.bufPrint(encode_buf, "{d} q", .{value}) catch null;
     }
     if (std.mem.eql(u8, request, "\"q")) {
         const value: u8 = if (screen.current_attrs.protected) 1 else 0;
-        return std.fmt.bufPrint(ctx.encode_buf, "{d}\"q", .{value}) catch null;
+        return std.fmt.bufPrint(encode_buf, "{d}\"q", .{value}) catch null;
     }
     if (std.mem.eql(u8, request, "*x")) {
         const value: u8 = if (screen.attr_change_extent_rect) 2 else 0;
-        return std.fmt.bufPrint(ctx.encode_buf, "{d}*x", .{value}) catch null;
+        return std.fmt.bufPrint(encode_buf, "{d}*x", .{value}) catch null;
     }
     return null;
 }
