@@ -622,7 +622,7 @@ pub const Parser = struct {
         }
     }
 
-    fn consumeCsiDispatch(self: *Parser, byte: u8) ?Action {
+fn consumeCsiDispatch(self: *Parser, byte: u8) ?Action {
         std.debug.assert(byte >= 0x40);
         std.debug.assert(byte <= 0x7E);
 
@@ -656,3 +656,124 @@ pub const Parser = struct {
         return .{ .csi_dispatch = action };
     }
 };
+
+fn expectPhaseTags(phases: PhaseActions, exit_tag: ?std.meta.Tag(Action), transition_tag: ?std.meta.Tag(Action), entry_tag: ?std.meta.Tag(Action)) !void {
+    const expected = [_]?std.meta.Tag(Action){ exit_tag, transition_tag, entry_tag };
+    for (phases, expected) |phase, maybe_tag| {
+        if (maybe_tag) |tag| {
+            try std.testing.expect(phase != null);
+            try std.testing.expectEqual(tag, std.meta.activeTag(phase.?));
+        } else {
+            try std.testing.expectEqual(@as(?Action, null), phase);
+        }
+    }
+}
+
+test "parser control spine orders populated phase slots in one next call" {
+    var parser = try Parser.init(std.testing.allocator);
+    defer parser.deinit();
+
+    _ = parser.next(0x1B);
+    _ = parser.next('P');
+    _ = parser.next('1');
+    _ = parser.next(';');
+    _ = parser.next('2');
+
+    const hook = parser.next('q');
+    try expectPhaseTags(hook, null, null, .dcs_hook);
+    try std.testing.expectEqual(ParseState.dcs_passthrough, parser.state);
+
+    const apc_start = parser.next(0x9F);
+    try expectPhaseTags(apc_start, .dcs_unhook, null, .apc_start);
+    try std.testing.expectEqual(ParseState.sos_pm_apc_string, parser.state);
+    try std.testing.expectEqual(@as(u3, 1), parser.activeControlCount());
+    try std.testing.expect(parser.apc.active());
+    try std.testing.expect(!parser.dcs.active());
+}
+
+test "parser keeps active string controls exclusive" {
+    var parser = try Parser.init(std.testing.allocator);
+    defer parser.deinit();
+
+    _ = parser.next(0x1B);
+    _ = parser.next(']');
+    try std.testing.expectEqual(@as(u3, 1), parser.activeControlCount());
+    try std.testing.expect(parser.osc.active());
+    try std.testing.expect(!parser.apc.active());
+    try std.testing.expect(!parser.dcs.active());
+    try std.testing.expect(!parser.pm.active());
+
+    parser.state = .escape;
+    _ = parser.entryPhase(.escape, 0x1B);
+    try std.testing.expectEqual(@as(u3, 0), parser.activeControlCount());
+    try std.testing.expect(!parser.osc.active());
+    try std.testing.expect(!parser.apc.active());
+    try std.testing.expect(!parser.dcs.active());
+    try std.testing.expect(!parser.pm.active());
+
+    parser.reset();
+    _ = parser.next(0x1B);
+    _ = parser.next('_');
+    try std.testing.expectEqual(@as(u3, 1), parser.activeControlCount());
+    try std.testing.expect(!parser.osc.active());
+    try std.testing.expect(parser.apc.active());
+    try std.testing.expect(!parser.dcs.active());
+    try std.testing.expect(!parser.pm.active());
+}
+
+test "parser assembles CSI params and separators" {
+    var parser = try Parser.init(std.testing.allocator);
+    defer parser.deinit();
+
+    _ = parser.next(0x1B);
+    _ = parser.next('[');
+    _ = parser.next('1');
+    _ = parser.next(':');
+    _ = parser.next('2');
+    _ = parser.next(';');
+    _ = parser.next('3');
+
+    const phases = parser.next('m');
+    try expectPhaseTags(phases, null, .csi_dispatch, null);
+
+    const csi = phases[1].?.csi_dispatch;
+    try std.testing.expectEqual(@as(u8, 'm'), csi.final);
+    try std.testing.expectEqual(@as(u8, 3), csi.count);
+    try std.testing.expectEqual(@as(usize, 3), csi.params.len);
+    try std.testing.expectEqual(@as(i32, 1), csi.params[0]);
+    try std.testing.expectEqual(@as(i32, 2), csi.params[1]);
+    try std.testing.expectEqual(@as(i32, 3), csi.params[2]);
+    try std.testing.expect(csi.separators.isSet(0));
+    try std.testing.expect(!csi.separators.isSet(1));
+    try std.testing.expect(!csi.separators.isSet(2));
+}
+
+test "parser DCS hook stays on the hook boundary" {
+    var parser = try Parser.init(std.testing.allocator);
+    defer parser.deinit();
+
+    _ = parser.next(0x1B);
+    _ = parser.next('P');
+    _ = parser.next('1');
+    _ = parser.next('$');
+
+    const hook_phases = parser.next('q');
+    try expectPhaseTags(hook_phases, null, null, .dcs_hook);
+
+    const hook = hook_phases[2].?.dcs_hook;
+    try std.testing.expectEqual(@as(u8, 'q'), hook.final);
+    try std.testing.expectEqual(@as(u8, 1), hook.count);
+    try std.testing.expectEqual(@as(usize, 1), hook.params.len);
+    try std.testing.expectEqual(@as(i32, 1), hook.params[0]);
+    try std.testing.expectEqual(@as(u8, 1), hook.intermediates_len);
+    try std.testing.expectEqual(@as(usize, 1), hook.intermediates.len);
+    try std.testing.expectEqual(@as(u8, '$'), hook.intermediates[0]);
+
+    const put = parser.next('x');
+    try expectPhaseTags(put, null, .dcs_put, null);
+    try std.testing.expectEqual(@as(u8, 'x'), put[1].?.dcs_put);
+
+    _ = parser.next(0x1B);
+    const unhook = parser.next('\\');
+    try expectPhaseTags(unhook, .dcs_unhook, null, null);
+}
