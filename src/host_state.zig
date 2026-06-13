@@ -3,7 +3,7 @@ const locator = @import("locator.zig");
 const osc_color = @import("osc_color.zig");
 const action_vocabulary = @import("vocabulary.zig");
 const osc = @import("osc.zig");
-const parser = @import("parser/main.zig");
+const parser = @import("parser.zig");
 
 const LocatorNs = locator;
 const OscColorNs = osc_color;

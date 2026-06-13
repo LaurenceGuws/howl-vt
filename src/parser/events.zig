@@ -1,4 +1,4 @@
-const parser_mod = @import("main.zig");
+const parser_mod = @import("../parser.zig");
 
 /// Parser output event.
 pub const StyleChange = struct {

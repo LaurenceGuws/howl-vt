@@ -1,7 +1,7 @@
 const std = @import("std");
 const parsed_events = @import("parser/events.zig");
 const route = @import("route.zig");
-const parser_mod = @import("parser/main.zig");
+const parser_mod = @import("parser.zig");
 const terminal_mod = @import("terminal.zig");
 
 const Event = parsed_events.Event;

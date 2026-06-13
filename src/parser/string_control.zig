@@ -1,5 +1,5 @@
 const std = @import("std");
-const parser_mod = @import("main.zig");
+const parser_mod = @import("../parser.zig");
 
 const ByteLimit = u32;
 

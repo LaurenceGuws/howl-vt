@@ -1,5 +1,5 @@
 const std = @import("std");
-const parser_mod = @import("main.zig");
+const parser_mod = @import("../parser.zig");
 
 pub fn appendOwnedPhases(allocator: std.mem.Allocator, arena: std.mem.Allocator, actions: *std.ArrayList(parser_mod.Action), phases: parser_mod.PhaseActions) error{OutOfMemory}!void {
     for (phases) |phase| {

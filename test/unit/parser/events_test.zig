@@ -1,6 +1,6 @@
 const std = @import("std");
 const events_mod = @import("../../../src/parser/events.zig");
-const parser_mod = @import("../../../src/parser/main.zig");
+const parser_mod = @import("../../../src/parser.zig");
 
 const ParserApi = parser_mod.Parser;
 const Event = events_mod.Event;

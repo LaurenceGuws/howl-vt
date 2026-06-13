@@ -1,7 +1,7 @@
 const std = @import("std");
-const parse_table = @import("parse_table.zig");
-const string_control_mod = @import("string_control.zig");
-const utf8_mod = @import("utf8.zig");
+const parse_table = @import("parser/parse_table.zig");
+const string_control_mod = @import("parser/string_control.zig");
+const utf8_mod = @import("parser/utf8.zig");
 
 const ParseState = parse_table.ParseState;
 const TransitionAction = parse_table.TransitionAction;
