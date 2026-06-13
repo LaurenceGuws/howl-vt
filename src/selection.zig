@@ -1,5 +1,5 @@
 const std = @import("std");
-const screen_mod = @import("../screen.zig");
+const screen_mod = @import("screen.zig");
 
 const Screen = screen_mod.Screen;
 

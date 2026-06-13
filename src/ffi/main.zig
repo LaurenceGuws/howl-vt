@@ -1,5 +1,5 @@
 const std = @import("std");
-const host_state = @import("../host/state.zig");
+const host_state = @import("../host_state.zig");
 const input_encode = @import("../input/encode.zig");
 
 const bytes = @import("bytes.zig");

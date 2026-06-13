@@ -1,6 +1,6 @@
 const std = @import("std");
 const screen_mod = @import("screen.zig");
-const host_state = @import("host/state.zig");
+const host_state = @import("host_state.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;

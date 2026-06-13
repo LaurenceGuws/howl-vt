@@ -3,7 +3,7 @@ const vocabulary = @import("../vocabulary.zig");
 const kitty_color = @import("color.zig");
 const kitty_state = @import("state.zig");
 const input_encode = @import("../input/encode.zig");
-const host_state = @import("../host/state.zig");
+const host_state = @import("../host_state.zig");
 
 const KittyNotificationCommand = vocabulary.KittyNotificationCommand;
 const KittyShellMark = vocabulary.KittyShellMark;

@@ -1,7 +1,7 @@
 const std = @import("std");
 const action_vocabulary = @import("vocabulary.zig");
 const input_mouse = @import("input/mouse.zig");
-const host_state = @import("host/state.zig");
+const host_state = @import("host_state.zig");
 
 const format_output_max_bytes = 40;
 

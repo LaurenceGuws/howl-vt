@@ -1,8 +1,8 @@
 const events = @import("vocabulary.zig");
-const intermediate = @import("csi/intermediate.zig");
-const leader = @import("csi/leader.zig");
-const plain = @import("csi/plain.zig");
-const private = @import("csi/private.zig");
+const intermediate = @import("csi_intermediate.zig");
+const leader = @import("csi_leader.zig");
+const plain = @import("csi_plain.zig");
+const private = @import("csi_private.zig");
 
 const SemanticEvent = events.SemanticEvent;
 const CsiSeparatorList = events.CsiSeparatorList;

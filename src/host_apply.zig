@@ -1,17 +1,17 @@
 const std = @import("std");
-const locator = @import("../locator.zig");
-const osc_color = @import("../osc_color.zig");
-const screen = @import("../screen.zig");
-const kitty_color = @import("../kitty/color.zig");
-const input_encode = @import("../input/encode.zig");
-const vocabulary = @import("../vocabulary.zig");
+const locator = @import("locator.zig");
+const osc_color = @import("osc_color.zig");
+const screen = @import("screen.zig");
+const kitty_color = @import("kitty/color.zig");
+const input_encode = @import("input/encode.zig");
+const vocabulary = @import("vocabulary.zig");
 
 const ScreenNs = screen.Screen;
 const LocatorNs = locator;
 const OscColorNs = osc_color;
 const DcsPayload = vocabulary.DcsPayload;
 const HostAction = vocabulary.HostAction;
-const HostState = @import("state.zig");
+const HostState = @import("host_state.zig");
 
 pub fn apply(vt: anytype, action: HostAction) HostState.ApplyError!void {
     var scratch: input_encode.Scratch = .{};

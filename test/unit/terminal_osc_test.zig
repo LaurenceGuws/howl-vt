@@ -1,5 +1,5 @@
 const std = @import("std");
-const host_state = @import("../../src/host/state.zig");
+const host_state = @import("../../src/host_state.zig");
 const kitty_state = @import("../../src/kitty/state.zig");
 const terminal_mod = @import("../../src/terminal.zig");
 const screen_mod = @import("../../src/screen.zig");

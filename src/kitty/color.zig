@@ -1,6 +1,6 @@
 const std = @import("std");
 const osc_color = @import("../osc_color.zig");
-const host_state = @import("../host/state.zig");
+const host_state = @import("../host_state.zig");
 
 const OscColor = osc_color;
 

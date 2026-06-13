@@ -1,5 +1,5 @@
 const std = @import("std");
-const host_state = @import("../host/state.zig");
+const host_state = @import("../host_state.zig");
 
 const format_output_max_bytes = 16;
 

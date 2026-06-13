@@ -1,5 +1,5 @@
 const events = @import("vocabulary.zig");
-const host_apply = @import("host/apply.zig");
+const host_apply = @import("host_apply.zig");
 const kitty_apply = @import("kitty/apply.zig");
 const mode_apply = @import("mode.zig");
 const report_apply = @import("report.zig");
@@ -9,7 +9,7 @@ const csi = @import("csi.zig");
 const dcs = @import("dcs.zig");
 const esc = @import("esc.zig");
 const osc = @import("osc.zig");
-const host_state = @import("host/state.zig");
+const host_state = @import("host_state.zig");
 
 /// Parsed-event alias for action mapping.
 const Event = parsed_events.Event;

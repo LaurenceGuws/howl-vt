@@ -1,6 +1,6 @@
 const std = @import("std");
-const screen_set = @import("../screen_set.zig");
-const state = @import("state.zig");
+const screen_set = @import("screen_set.zig");
+const state = @import("selection.zig");
 
 pub const Range = struct {
     start: u16,

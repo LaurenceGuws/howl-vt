@@ -1,4 +1,4 @@
-const host_state = @import("../host/state.zig");
+const host_state = @import("../host_state.zig");
 const bytes = @import("bytes.zig");
 const handle = @import("handle.zig");
 const status = @import("status.zig");
