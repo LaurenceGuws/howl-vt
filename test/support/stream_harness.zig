@@ -1,4 +1,4 @@
-const terminal_mod = @import("../../src/terminal/terminal.zig");
+const terminal_mod = @import("../../src/terminal.zig");
 
 const Terminal = terminal_mod.Terminal;
 

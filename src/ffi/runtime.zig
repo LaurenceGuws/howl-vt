@@ -1,5 +1,5 @@
 const std = @import("std");
-const terminal = @import("../terminal/terminal.zig");
+const terminal = @import("../terminal.zig");
 const handle = @import("handle.zig");
 const status = @import("status.zig");
 

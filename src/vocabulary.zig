@@ -1,4 +1,4 @@
-const parser_mod = @import("terminal/parser/main.zig");
+const parser_mod = @import("parser/main.zig");
 
 const csi_max_params = parser_mod.max_params;
 pub const CsiSeparatorList = parser_mod.CsiSeparatorList;

@@ -1,4 +1,4 @@
-const action_vocabulary = @import("../../vocabulary.zig");
+const action_vocabulary = @import("../vocabulary.zig");
 
 const ScreenAction = action_vocabulary.ScreenAction;
 

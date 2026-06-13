@@ -1,8 +1,8 @@
 const std = @import("std");
 const action_vocabulary = @import("../../src/vocabulary.zig");
 const route = @import("../../src/route.zig");
-const parser_mod = @import("../../src/terminal/parser/main.zig");
-const parsed_events = @import("../../src/terminal/parser/events.zig");
+const parser_mod = @import("../../src/parser/main.zig");
+const parsed_events = @import("../../src/parser/events.zig");
 
 const Event = parsed_events.Event;
 const EraseMode = action_vocabulary.EraseMode;

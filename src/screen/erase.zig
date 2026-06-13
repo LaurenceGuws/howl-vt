@@ -1,5 +1,5 @@
 const cell_mod = @import("cell.zig");
-const events = @import("../../vocabulary.zig");
+const events = @import("../vocabulary.zig");
 
 const EraseMode = events.EraseMode;
 

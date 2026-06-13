@@ -1,5 +1,5 @@
 const std = @import("std");
-const screen_mod = @import("terminal/screen.zig");
+const screen_mod = @import("screen.zig");
 const action_vocabulary = @import("vocabulary.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");

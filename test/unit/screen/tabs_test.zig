@@ -1,5 +1,5 @@
 const std = @import("std");
-const screen_mod = @import("../../../src/terminal/screen.zig");
+const screen_mod = @import("../../../src/screen.zig");
 const action_vocabulary = @import("../../../src/vocabulary.zig");
 
 const Grid = screen_mod.Screen;
