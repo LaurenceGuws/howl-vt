@@ -1,4 +1,4 @@
-const action_vocabulary = @import("../../action/vocabulary.zig");
+const action_vocabulary = @import("../../vocabulary.zig");
 const style_mod = @import("style.zig");
 const cell = @import("cell.zig");
 

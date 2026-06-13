@@ -1,10 +1,10 @@
 const std = @import("std");
-const screen_mod = @import("../terminal/screen.zig");
-const action_vocabulary = @import("../action/vocabulary.zig");
+const screen_mod = @import("terminal/screen.zig");
+const action_vocabulary = @import("vocabulary.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
-const input_encode = @import("../input/encode.zig");
-const host_state = @import("../host/state.zig");
+const input_encode = @import("input/encode.zig");
+const host_state = @import("host/state.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;

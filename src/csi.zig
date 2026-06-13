@@ -1,4 +1,4 @@
-const events = @import("../action/vocabulary.zig");
+const events = @import("vocabulary.zig");
 const intermediate = @import("csi/intermediate.zig");
 const leader = @import("csi/leader.zig");
 const plain = @import("csi/plain.zig");

@@ -1,6 +1,6 @@
 const std = @import("std");
-const action_vocabulary = @import("../action/vocabulary.zig");
-const input_mouse = @import("../input/mouse.zig");
+const action_vocabulary = @import("vocabulary.zig");
+const input_mouse = @import("input/mouse.zig");
 
 const ModeAction = action_vocabulary.ModeAction;
 

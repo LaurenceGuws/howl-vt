@@ -1,5 +1,5 @@
 const std = @import("std");
-const vocabulary = @import("../action/vocabulary.zig");
+const vocabulary = @import("../vocabulary.zig");
 
 pub fn parseShellMark(payload: []const u8) ?vocabulary.KittyShellMark {
     if (payload.len == 0) return null;

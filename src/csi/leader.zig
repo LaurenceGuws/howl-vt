@@ -1,4 +1,4 @@
-const events = @import("../../action/vocabulary.zig");
+const events = @import("../vocabulary.zig");
 const params_mod = @import("params.zig");
 
 const SemanticEvent = events.SemanticEvent;

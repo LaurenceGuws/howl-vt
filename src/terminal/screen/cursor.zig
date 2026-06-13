@@ -1,4 +1,4 @@
-const action_vocabulary = @import("../../action/vocabulary.zig");
+const action_vocabulary = @import("../../vocabulary.zig");
 
 pub const CursorShape = action_vocabulary.SemanticEvent.CursorShape;
 pub const CursorStyle = action_vocabulary.SemanticEvent.CursorStyle;

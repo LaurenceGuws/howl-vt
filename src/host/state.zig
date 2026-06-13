@@ -1,8 +1,8 @@
 const std = @import("std");
-const locator = @import("../control/locator.zig");
-const osc_color = @import("../control/osc_color.zig");
-const action_vocabulary = @import("../action/vocabulary.zig");
-const osc = @import("../xterm/osc.zig");
+const locator = @import("../locator.zig");
+const osc_color = @import("../osc_color.zig");
+const action_vocabulary = @import("../vocabulary.zig");
+const osc = @import("../osc.zig");
 const parser = @import("../terminal/parser/main.zig");
 
 const LocatorNs = locator;

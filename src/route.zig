@@ -1,15 +1,15 @@
 const events = @import("vocabulary.zig");
-const host_apply = @import("../host/apply.zig");
-const kitty_apply = @import("../kitty/apply.zig");
-const mode_apply = @import("../control/mode.zig");
-const report_apply = @import("../control/report.zig");
-const parsed_events = @import("../terminal/parser/events.zig");
-const c0 = @import("../xterm/c0.zig");
-const csi = @import("../xterm/csi.zig");
-const dcs = @import("../xterm/dcs.zig");
-const esc = @import("../xterm/esc.zig");
-const osc = @import("../xterm/osc.zig");
-const host_state = @import("../host/state.zig");
+const host_apply = @import("host/apply.zig");
+const kitty_apply = @import("kitty/apply.zig");
+const mode_apply = @import("mode.zig");
+const report_apply = @import("report.zig");
+const parsed_events = @import("terminal/parser/events.zig");
+const c0 = @import("c0.zig");
+const csi = @import("csi.zig");
+const dcs = @import("dcs.zig");
+const esc = @import("esc.zig");
+const osc = @import("osc.zig");
+const host_state = @import("host/state.zig");
 
 /// Parsed-event alias for action mapping.
 const Event = parsed_events.Event;

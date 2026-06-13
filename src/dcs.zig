@@ -1,4 +1,4 @@
-const parsed_events = @import("../terminal/parser/events.zig");
+const parsed_events = @import("terminal/parser/events.zig");
 
 pub fn requestStatusPayload(data: []const u8) ?[]const u8 {
     if (data.len >= 2 and data[0] == '$' and data[1] == 'q') return data[2..];
@@ -15,7 +15,7 @@ pub fn requestResourcePayload(data: []const u8) ?[]const u8 {
     return null;
 }
 
-const events = @import("../action/vocabulary.zig");
+const events = @import("vocabulary.zig");
 const std = @import("std");
 const SemanticEvent = events.SemanticEvent;
 const DcsEvent = @FieldType(parsed_events.Event, "dcs");

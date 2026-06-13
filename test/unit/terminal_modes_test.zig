@@ -1,5 +1,5 @@
 const std = @import("std");
-const action_vocabulary = @import("../../src/action/vocabulary.zig");
+const action_vocabulary = @import("../../src/vocabulary.zig");
 const host_state = @import("../../src/host/state.zig");
 const screen_capture = @import("../support/screen_capture.zig");
 const screen_set = @import("../../src/terminal/screen_set.zig");

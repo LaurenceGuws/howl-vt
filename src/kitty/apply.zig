@@ -1,5 +1,5 @@
 const std = @import("std");
-const vocabulary = @import("../action/vocabulary.zig");
+const vocabulary = @import("../vocabulary.zig");
 const kitty_color = @import("color.zig");
 const kitty_state = @import("state.zig");
 const input_encode = @import("../input/encode.zig");

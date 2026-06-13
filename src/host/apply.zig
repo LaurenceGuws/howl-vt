@@ -1,10 +1,10 @@
 const std = @import("std");
-const locator = @import("../control/locator.zig");
-const osc_color = @import("../control/osc_color.zig");
+const locator = @import("../locator.zig");
+const osc_color = @import("../osc_color.zig");
 const screen = @import("../terminal/screen.zig");
 const kitty_color = @import("../kitty/color.zig");
 const input_encode = @import("../input/encode.zig");
-const vocabulary = @import("../action/vocabulary.zig");
+const vocabulary = @import("../vocabulary.zig");
 
 const ScreenNs = screen.Screen;
 const LocatorNs = locator;

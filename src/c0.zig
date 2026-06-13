@@ -21,7 +21,7 @@ pub const C0 = enum(u8) {
     _,
 };
 
-const events = @import("../action/vocabulary.zig");
+const events = @import("vocabulary.zig");
 const SemanticEvent = events.SemanticEvent;
 
 pub fn fromByte(byte: u8) C0 {

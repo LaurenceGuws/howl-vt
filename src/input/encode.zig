@@ -1,5 +1,5 @@
 const std = @import("std");
-const locator = @import("../control/locator.zig");
+const locator = @import("../locator.zig");
 const encoded_owner = @import("encoded.zig");
 const keyboard = @import("keyboard.zig");
 const mouse = @import("mouse.zig");
