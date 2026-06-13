@@ -1,7 +1,7 @@
 const std = @import("std");
-const screen_mod = @import("screen.zig");
-const action_vocabulary = @import("action/vocabulary.zig");
-const parser_mod = @import("parser/main.zig");
+const screen_mod = @import("../../src/screen.zig");
+const action_vocabulary = @import("../../src/action/vocabulary.zig");
+const parser_mod = @import("../../src/parser/main.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
@@ -134,7 +134,6 @@ test "screen: erase ops no-op without cell buffer" {
     s.apply(SemanticEvent{ .erase_display = EraseMode.all });
     try std.testing.expectEqual(@as(u16, 3), s.cursor_col);
 }
-
 
 test "screen: DECSTBM and IL shift rows down inside region" {
     const gpa = std.testing.allocator;
@@ -274,7 +273,6 @@ test "screen: RI scrolls region down at top margin" {
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(2, 0));
 }
 
-
 test "screen: erase_line uses current background for empty cells" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 1, 5);
@@ -351,7 +349,6 @@ test "screen: SR respects horizontal margins" {
     try std.testing.expectEqual(@as(u21, 'C'), s.cellAt(0, 3));
     try std.testing.expectEqual(@as(u21, 'E'), s.cellAt(0, 4));
 }
-
 
 test "screen: DECSCA protects cells from selective erase" {
     const gpa = std.testing.allocator;

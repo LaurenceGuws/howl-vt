@@ -1,7 +1,7 @@
 const std = @import("std");
-const terminal_mod = @import("../terminal.zig");
+const terminal_mod = @import("../src/terminal.zig");
 const pty_feed_record = @import("pty_feed_record.zig");
-const stream_harness = @import("stream_harness.zig");
+const stream_harness = @import("../test/support/stream_harness.zig");
 
 const RunCount = u32;
 
@@ -350,7 +350,7 @@ fn runSnapshotWorkload(io: std.Io, base_allocator: std.mem.Allocator, fixture: [
         const start = nowNs(io);
         var j: RunCount = 0;
         while (j < snapshot_calls_per_run) : (j += 1) {
-            var snap = try @import("screen_capture.zig").Capture.captureFromScreen(
+            var snap = try @import("../test/support/screen_capture.zig").Capture.captureFromScreen(
                 terminal.allocator,
                 terminal.screen_state.activeConst(),
                 terminal.screen_state.activeSelectionConst().state(),

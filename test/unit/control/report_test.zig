@@ -1,7 +1,7 @@
 const std = @import("std");
-const route = @import("../action/route.zig");
-const parser_mod = @import("../parser/main.zig");
-const parsed_events = @import("../parser/events.zig");
+const route = @import("../../../src/action/route.zig");
+const parser_mod = @import("../../../src/parser/main.zig");
+const parsed_events = @import("../../../src/parser/events.zig");
 
 const Event = parsed_events.Event;
 const process = route.process;
@@ -61,7 +61,12 @@ test "report mapping: checksum and report request families" {
     try std.testing.expectEqual(@as(u16, 3), process(Event{ .style_change = .{ .final = 'y', .params = params[0..], .separators = empty_separators, .param_count = 1, .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1 } }).?.xtchecksum);
     intermediates[0] = '*';
     params = [_]i32{0} ** csi_max_params;
-    params[0] = 7; params[1] = 1; params[2] = 2; params[3] = 3; params[4] = 4; params[5] = 5;
+    params[0] = 7;
+    params[1] = 1;
+    params[2] = 2;
+    params[3] = 3;
+    params[4] = 4;
+    params[5] = 5;
     const crc = process(Event{ .style_change = .{ .final = 'y', .params = params[0..], .separators = empty_separators, .param_count = 6, .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1 } }).?.rect_checksum_request;
     try std.testing.expectEqual(@as(u16, 7), crc.request_id);
     try std.testing.expectEqual(@as(u16, 1), crc.page);
@@ -74,7 +79,10 @@ test "report mapping: XTREPORTSGR maps selected graphic rendition report" {
     var intermediates = [_]u8{0} ** 4;
     intermediates[0] = '#';
     var params = [_]i32{0} ** csi_max_params;
-    params[0] = 1; params[1] = 2; params[2] = 3; params[3] = 4;
+    params[0] = 1;
+    params[1] = 2;
+    params[2] = 3;
+    params[3] = 4;
     const sgr = process(Event{ .style_change = .{ .final = '|', .params = params[0..], .separators = empty_separators, .param_count = 4, .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1 } }).?.selected_graphic_rendition_report;
     try std.testing.expectEqual(@as(u16, 0), sgr.top);
     try std.testing.expectEqual(@as(u16, 1), sgr.left);

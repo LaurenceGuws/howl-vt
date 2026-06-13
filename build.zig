@@ -20,18 +20,25 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     internal_mod.addOptions("vt_options", module_options);
-    const mod_tests = add_test_artifact(b, "test-unit", internal_mod);
+    const unit_test_mod = b.createModule(.{
+        .root_source_file = b.path("test_unit.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    unit_test_mod.addOptions("vt_options", module_options);
+    const mod_tests = add_test_artifact(b, "test-unit", unit_test_mod);
     const run_mod_tests = add_test_run_artifact(b, mod_tests);
 
     const abi_mod = b.createModule(.{
-        .root_source_file = b.path("src/test/abi.zig"),
+        .root_source_file = b.path("test_abi.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
     abi_mod.addIncludePath(b.path("include"));
     const abi_ffi_mod = b.createModule(.{
-        .root_source_file = b.path("src/ffi.zig"),
+        .root_source_file = b.path("test_ffi.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -71,7 +78,7 @@ pub fn build(b: *std.Build) void {
     b.installFile("include/howl_vt.h", "include/howl_vt.h");
 
     const simulation_module = b.createModule(.{
-        .root_source_file = b.path("src/simulation/main.zig"),
+        .root_source_file = b.path("simulation/main.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -90,7 +97,7 @@ pub fn build(b: *std.Build) void {
     simulation_step.dependOn(&run_simulation.step);
 
     const baseline_mod = b.createModule(.{
-        .root_source_file = b.path("src/terminal_benchmark_main.zig"),
+        .root_source_file = b.path("benchmark_m7_baseline.zig"),
         .target = target,
         .optimize = .ReleaseFast,
         .link_libc = true,

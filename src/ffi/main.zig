@@ -1,16 +1,16 @@
 const std = @import("std");
-const host_state = @import("host/state.zig");
-const input_encode = @import("input/encode.zig");
+const host_state = @import("../host/state.zig");
+const input_encode = @import("../input/encode.zig");
 
-const bytes = @import("ffi/bytes.zig");
-const handle = @import("ffi/handle.zig");
-const host_output = @import("ffi/host_output.zig");
-const input = @import("ffi/input.zig");
-const lifecycle = @import("ffi/lifecycle.zig");
-const runtime = @import("ffi/runtime.zig");
-const selection = @import("ffi/selection.zig");
-const status = @import("ffi/status.zig");
-const surface = @import("ffi/surface.zig");
+const bytes = @import("bytes.zig");
+const handle = @import("handle.zig");
+const host_output = @import("host_output.zig");
+const input = @import("input.zig");
+const lifecycle = @import("lifecycle.zig");
+const runtime = @import("runtime.zig");
+const selection = @import("selection.zig");
+const status = @import("status.zig");
+const surface = @import("surface.zig");
 
 pub const HowlVtCallStatus = status.HowlVtCallStatus;
 pub const HowlVtTerminal = handle.HowlVtTerminal;

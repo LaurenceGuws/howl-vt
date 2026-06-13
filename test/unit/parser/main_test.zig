@@ -1,6 +1,6 @@
 const std = @import("std");
-const owned_actions = @import("owned_actions.zig");
-const parser_mod = @import("main.zig");
+const owned_actions = @import("../../../src/parser/owned_actions.zig");
+const parser_mod = @import("../../../src/parser/main.zig");
 
 const Parser = parser_mod.Parser;
 const Action = parser_mod.Action;

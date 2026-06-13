@@ -1,4 +1,4 @@
-const ffi = @import("ffi.zig");
+const ffi = @import("ffi/main.zig");
 
 comptime {
     @export(&ffi.terminalInit, .{ .name = "howl_vt_terminal_init" });

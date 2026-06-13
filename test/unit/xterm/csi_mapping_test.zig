@@ -1,8 +1,8 @@
 const std = @import("std");
-const action_vocabulary = @import("../action/vocabulary.zig");
-const route = @import("../action/route.zig");
-const parser_mod = @import("../parser/main.zig");
-const parsed_events = @import("../parser/events.zig");
+const action_vocabulary = @import("../../../src/action/vocabulary.zig");
+const route = @import("../../../src/action/route.zig");
+const parser_mod = @import("../../../src/parser/main.zig");
+const parsed_events = @import("../../../src/parser/events.zig");
 
 const Event = parsed_events.Event;
 const EraseMode = action_vocabulary.EraseMode;
@@ -176,18 +176,37 @@ test "csi mapping: protection, rectangular ops, and margins" {
     var intermediates = [_]u8{0} ** 4;
     intermediates[0] = '$';
     const fill = process(Event{ .style_change = .{
-        .final = 'x', .params = params[0..], .separators = empty_separators, .param_count = 5,
-        .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1,
+        .final = 'x',
+        .params = params[0..],
+        .separators = empty_separators,
+        .param_count = 5,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates[0..],
+        .intermediates_len = 1,
     } }).?;
     try std.testing.expectEqual(@as(u21, 88), fill.rect_fill.ch);
     try std.testing.expectEqual(@as(u16, 0), fill.rect_fill.area.top);
     try std.testing.expectEqual(@as(u16, 1), fill.rect_fill.area.left);
 
     params = [_]i32{0} ** csi_max_params;
-    params[0] = 1; params[1] = 1; params[2] = 2; params[3] = 2; params[4] = 1; params[5] = 3; params[6] = 4; params[7] = 1;
+    params[0] = 1;
+    params[1] = 1;
+    params[2] = 2;
+    params[3] = 2;
+    params[4] = 1;
+    params[5] = 3;
+    params[6] = 4;
+    params[7] = 1;
     const copy = process(Event{ .style_change = .{
-        .final = 'v', .params = params[0..], .separators = empty_separators, .param_count = 8,
-        .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1,
+        .final = 'v',
+        .params = params[0..],
+        .separators = empty_separators,
+        .param_count = 8,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates[0..],
+        .intermediates_len = 1,
     } }).?;
     try std.testing.expectEqual(@as(u16, 2), copy.rect_copy.dest_top);
     try std.testing.expectEqual(@as(u16, 3), copy.rect_copy.dest_left);
@@ -195,37 +214,71 @@ test "csi mapping: protection, rectangular ops, and margins" {
     intermediates[0] = '\'';
     const insert_params = [_]i32{2} ++ [_]i32{0} ** (csi_max_params - 1);
     try std.testing.expectEqual(@as(u16, 2), process(Event{ .style_change = .{
-        .final = '}', .params = insert_params[0..], .separators = empty_separators, .param_count = 1,
-        .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1,
+        .final = '}',
+        .params = insert_params[0..],
+        .separators = empty_separators,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates[0..],
+        .intermediates_len = 1,
     } }).?.insert_columns);
 
     const delete_params = [_]i32{3} ++ [_]i32{0} ** (csi_max_params - 1);
     try std.testing.expectEqual(@as(u16, 3), process(Event{ .style_change = .{
-        .final = '~', .params = delete_params[0..], .separators = empty_separators, .param_count = 1,
-        .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1,
+        .final = '~',
+        .params = delete_params[0..],
+        .separators = empty_separators,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates[0..],
+        .intermediates_len = 1,
     } }).?.delete_columns);
 
     params = [_]i32{0} ** csi_max_params;
-    params[0] = 1; params[1] = 1; params[2] = 2; params[3] = 2; params[4] = 1;
+    params[0] = 1;
+    params[1] = 1;
+    params[2] = 2;
+    params[3] = 2;
+    params[4] = 1;
     intermediates[0] = '$';
     const change = process(Event{ .style_change = .{
-        .final = 'r', .params = params[0..], .separators = empty_separators, .param_count = 5,
-        .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1,
+        .final = 'r',
+        .params = params[0..],
+        .separators = empty_separators,
+        .param_count = 5,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates[0..],
+        .intermediates_len = 1,
     } }).?;
     try std.testing.expect(!change.rect_attrs_change.reverse);
     try std.testing.expectEqual(@as(u16, 1), change.rect_attrs_change.attrs.params[0]);
 
     const reverse = process(Event{ .style_change = .{
-        .final = 't', .params = params[0..], .separators = empty_separators, .param_count = 5,
-        .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1,
+        .final = 't',
+        .params = params[0..],
+        .separators = empty_separators,
+        .param_count = 5,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates[0..],
+        .intermediates_len = 1,
     } }).?;
     try std.testing.expect(reverse.rect_attrs_change.reverse);
 
     intermediates[0] = '*';
     const extent_params = [_]i32{2} ++ [_]i32{0} ** (csi_max_params - 1);
     try std.testing.expect(process(Event{ .style_change = .{
-        .final = 'x', .params = extent_params[0..], .separators = empty_separators, .param_count = 1,
-        .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1,
+        .final = 'x',
+        .params = extent_params[0..],
+        .separators = empty_separators,
+        .param_count = 1,
+        .leader = 0,
+        .private = false,
+        .intermediates = intermediates[0..],
+        .intermediates_len = 1,
     } }).?.attr_change_extent_rect);
 
     const margins = process(makeStyleChange('s', 2, 4, 2)).?;
@@ -256,8 +309,14 @@ test "csi mapping: mode query, save restore, and erase families" {
     var intermediates = [_]u8{0} ** 4;
     intermediates[0] = '$';
     const decrqm = process(Event{ .style_change = .{
-        .final = 'p', .params = params[0..], .separators = empty_separators, .param_count = 1,
-        .leader = '?', .private = true, .intermediates = intermediates[0..], .intermediates_len = 1,
+        .final = 'p',
+        .params = params[0..],
+        .separators = empty_separators,
+        .param_count = 1,
+        .leader = '?',
+        .private = true,
+        .intermediates = intermediates[0..],
+        .intermediates_len = 1,
     } }).?;
     try std.testing.expectEqual(@as(u16, 1004), decrqm.dec_mode_query);
 

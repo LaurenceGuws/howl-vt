@@ -1,7 +1,7 @@
 const std = @import("std");
-const screen_mod = @import("../screen.zig");
-const action_vocabulary = @import("../action/vocabulary.zig");
-const history_mod = @import("history.zig");
+const screen_mod = @import("../../../src/screen.zig");
+const action_vocabulary = @import("../../../src/action/vocabulary.zig");
+const history_mod = @import("../../../src/screen/history.zig");
 
 const Grid = screen_mod.Screen;
 const SemanticEvent = action_vocabulary.SemanticEvent;

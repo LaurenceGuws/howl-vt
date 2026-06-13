@@ -1,6 +1,6 @@
 const std = @import("std");
-const terminal_mod = @import("terminal.zig");
-const stream_harness = @import("test/stream_harness.zig");
+const terminal_mod = @import("../../src/terminal.zig");
+const stream_harness = @import("../support/stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;
 const StreamHarness = stream_harness.Harness;

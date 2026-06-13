@@ -28,18 +28,7 @@ test {
     _ = parser;
     _ = parser_owned_actions;
     _ = screen;
-    _ = @import("screen/cursor_test.zig");
-    _ = @import("screen/history_test.zig");
-    _ = @import("screen/resize_test.zig");
-    _ = @import("screen/tabs_test.zig");
-    _ = @import("screen/write_test.zig");
-    _ = @import("control/report_test.zig");
     _ = screen_set;
     _ = selection;
     _ = terminal;
-    _ = @import("parser/csi_test.zig");
-    _ = @import("parser/events_test.zig");
-    _ = @import("parser/main_test.zig");
-    _ = @import("parser/string_control_test.zig");
-    _ = @import("xterm/csi_mapping_test.zig");
 }

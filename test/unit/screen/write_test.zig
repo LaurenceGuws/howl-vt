@@ -1,7 +1,7 @@
 const std = @import("std");
-const screen_mod = @import("../screen.zig");
-const action_vocabulary = @import("../action/vocabulary.zig");
-const parser_mod = @import("../parser/main.zig");
+const screen_mod = @import("../../../src/screen.zig");
+const action_vocabulary = @import("../../../src/action/vocabulary.zig");
+const parser_mod = @import("../../../src/parser/main.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
