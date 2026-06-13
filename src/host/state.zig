@@ -3,7 +3,7 @@ const locator = @import("../control/locator.zig");
 const osc_color = @import("../control/osc_color.zig");
 const action_vocabulary = @import("../action/vocabulary.zig");
 const osc = @import("../xterm/osc.zig");
-const parser = @import("../parser/main.zig");
+const parser = @import("../terminal/parser/main.zig");
 
 const LocatorNs = locator;
 const OscColorNs = osc_color;

@@ -1,6 +1,6 @@
 const std = @import("std");
 const events = @import("../../action/vocabulary.zig");
-const parser_mod = @import("../../parser/main.zig");
+const parser_mod = @import("../../terminal/parser/main.zig");
 
 const SemanticEvent = events.SemanticEvent;
 const csi_max_params = parser_mod.max_params;

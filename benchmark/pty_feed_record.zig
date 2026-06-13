@@ -1,6 +1,6 @@
 const std = @import("std");
 const screen_capture = @import("../test/support/screen_capture.zig");
-const terminal_mod = @import("../src/terminal.zig");
+const terminal_mod = @import("../src/terminal/terminal.zig");
 const stream_harness = @import("../test/support/stream_harness.zig");
 
 const record_header = "howl-pty-vt-hex-v1";

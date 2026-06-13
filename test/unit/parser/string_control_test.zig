@@ -1,7 +1,7 @@
 const std = @import("std");
-const owned_actions = @import("../../../src/parser/owned_actions.zig");
-const parser_mod = @import("../../../src/parser/main.zig");
-const string_control = @import("../../../src/parser/string_control.zig");
+const owned_actions = @import("../../../src/terminal/parser/owned_actions.zig");
+const parser_mod = @import("../../../src/terminal/parser/main.zig");
+const string_control = @import("../../../src/terminal/parser/string_control.zig");
 
 const Parser = parser_mod.Parser;
 const OscTerminator = parser_mod.OscTerminator;

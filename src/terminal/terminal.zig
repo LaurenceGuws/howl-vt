@@ -1,13 +1,13 @@
 const std = @import("std");
-const mode = @import("control/mode.zig");
+const mode = @import("../control/mode.zig");
 const screen = @import("screen.zig");
-const host_state = @import("host/state.zig");
-const kitty_state = @import("kitty/state.zig");
+const host_state = @import("../host/state.zig");
+const kitty_state = @import("../kitty/state.zig");
 const parser_mod = @import("parser/main.zig");
 const selection = @import("selection/state.zig");
 const screen_set = @import("screen_set.zig");
 const stream_terminal = @import("stream_terminal.zig");
-const surface_publication = @import("surface/publication.zig");
+const surface_publication = @import("publication.zig");
 
 const ScreenNs = screen.Screen;
 const TerminalModeNs = mode;

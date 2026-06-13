@@ -1,4 +1,4 @@
-const terminal = @import("../terminal.zig");
+const terminal = @import("../terminal/terminal.zig");
 
 pub const HowlVtTerminal = opaque {};
 pub const VtHandle = ?*HowlVtTerminal;

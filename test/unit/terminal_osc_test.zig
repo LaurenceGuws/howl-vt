@@ -1,8 +1,8 @@
 const std = @import("std");
 const host_state = @import("../../src/host/state.zig");
 const kitty_state = @import("../../src/kitty/state.zig");
-const terminal_mod = @import("../../src/terminal.zig");
-const screen_mod = @import("../../src/screen.zig");
+const terminal_mod = @import("../../src/terminal/terminal.zig");
+const screen_mod = @import("../../src/terminal/screen.zig");
 const stream_harness = @import("../support/stream_harness.zig");
 
 const HostState = host_state;

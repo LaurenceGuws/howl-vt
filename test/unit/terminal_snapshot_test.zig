@@ -1,8 +1,8 @@
 const std = @import("std");
 const screen_capture = @import("../support/screen_capture.zig");
-const screen_set = @import("../../src/screen_set.zig");
-const selection = @import("../../src/selection/state.zig");
-const terminal_mod = @import("../../src/terminal.zig");
+const screen_set = @import("../../src/terminal/screen_set.zig");
+const selection = @import("../../src/terminal/selection/state.zig");
+const terminal_mod = @import("../../src/terminal/terminal.zig");
 const stream_harness = @import("../support/stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;

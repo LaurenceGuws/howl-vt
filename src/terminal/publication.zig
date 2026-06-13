@@ -1,5 +1,5 @@
 const std = @import("std");
-const screen_set = @import("../screen_set.zig");
+const screen_set = @import("screen_set.zig");
 
 pub const Publication = struct {
     seq: u64 = 1,

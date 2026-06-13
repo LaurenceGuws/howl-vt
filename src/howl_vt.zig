@@ -5,17 +5,12 @@ const input_encoded = @import("input/encoded.zig");
 const input_event = @import("input/event.zig");
 const input_keyboard = @import("input/keyboard.zig");
 const input_mouse = @import("input/mouse.zig");
-const parser = @import("parser/main.zig");
-const parser_owned_actions = @import("parser/owned_actions.zig");
-const screen = @import("screen.zig");
-const screen_set = @import("screen_set.zig");
-const selection = @import("selection/state.zig");
-const terminal = @import("terminal.zig");
+const terminal_core = @import("terminal/main.zig");
 
-pub const Parser = parser;
-pub const ParserOwnedActions = parser_owned_actions;
-pub const ScreenSet = screen_set;
-pub const Terminal = terminal.Terminal;
+pub const Parser = terminal_core.Parser;
+pub const ParserOwnedActions = terminal_core.ParserOwnedActions;
+pub const ScreenSet = terminal_core.ScreenSet;
+pub const Terminal = terminal_core.Terminal;
 
 test {
     _ = action_route;
@@ -25,10 +20,5 @@ test {
     _ = input_event;
     _ = input_keyboard;
     _ = input_mouse;
-    _ = parser;
-    _ = parser_owned_actions;
-    _ = screen;
-    _ = screen_set;
-    _ = selection;
-    _ = terminal;
+    _ = terminal_core;
 }
