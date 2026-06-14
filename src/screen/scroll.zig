@@ -3,23 +3,23 @@ const cell = @import("cell.zig");
 pub fn lineFeed(self: anytype) void {
     if (self.rows == 0) return;
     const bottom = self.scrollBottom();
-    if (self.cursor_row < bottom) {
-        self.cursor_row += 1;
+    if (self.cursor.row < bottom) {
+        self.cursor.setRowByClient(self.cursor.row + 1);
         return;
     }
-    if (self.cursor_row == bottom) {
+    if (self.cursor.row == bottom) {
         scrollUpRegion(self, self.scroll_top, bottom, 1);
         return;
     }
-    if (self.cursor_row < self.rows - 1) self.cursor_row += 1;
+    if (self.cursor.row < self.rows - 1) self.cursor.setRowByClient(self.cursor.row + 1);
 }
 
 pub fn reverseIndex(self: anytype) void {
     if (self.rows == 0) return;
-    if (self.cursor_row == self.scroll_top) {
+    if (self.cursor.row == self.scroll_top) {
         scrollDownRegion(self, self.scroll_top, self.scrollBottom(), 1);
     } else {
-        self.cursor_row = self.cursor_row -| 1;
+        self.cursor.setRowByClient(self.cursor.row -| 1);
     }
 }
 
@@ -37,14 +37,14 @@ pub fn scrollUp(self: anytype) void {
 
 pub fn insertLines(self: anytype, count: u16) void {
     const bottom = self.scrollBottom();
-    if (self.cursor_row < self.scroll_top or self.cursor_row > bottom) return;
-    scrollDownRegion(self, self.cursor_row, bottom, count);
+    if (self.cursor.row < self.scroll_top or self.cursor.row > bottom) return;
+    scrollDownRegion(self, self.cursor.row, bottom, count);
 }
 
 pub fn deleteLines(self: anytype, count: u16) void {
     const bottom = self.scrollBottom();
-    if (self.cursor_row < self.scroll_top or self.cursor_row > bottom) return;
-    scrollUpRegion(self, self.cursor_row, bottom, count);
+    if (self.cursor.row < self.scroll_top or self.cursor.row > bottom) return;
+    scrollUpRegion(self, self.cursor.row, bottom, count);
 }
 
 pub fn scrollUpRegion(self: anytype, top: u16, bottom: u16, count: u16) void {

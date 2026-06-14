@@ -69,14 +69,15 @@ pub fn eraseMode(v: i32) events.EraseMode {
     };
 }
 
-pub fn cursorStyle(param: u16) SemanticEvent.CursorStyle {
+pub fn cursorStyle(param: u16) SemanticEvent.CursorStyleCommand {
     return switch (param) {
-        2 => .{ .shape = .block, .blink = false },
-        3 => .{ .shape = .underline, .blink = true },
-        4 => .{ .shape = .underline, .blink = false },
-        5 => .{ .shape = .bar, .blink = true },
-        6 => .{ .shape = .bar, .blink = false },
-        else => .{ .shape = .block, .blink = true },
+        0, 1 => .{ .program_override = .{ .shape = .block, .blink = true } },
+        2 => .{ .program_override = .{ .shape = .block, .blink = false } },
+        3 => .{ .program_override = .{ .shape = .underline, .blink = true } },
+        4 => .{ .program_override = .{ .shape = .underline, .blink = false } },
+        5 => .{ .program_override = .{ .shape = .bar, .blink = true } },
+        6 => .{ .program_override = .{ .shape = .bar, .blink = false } },
+        else => .{ .program_override = .{ .shape = .block, .blink = true } },
     };
 }
 

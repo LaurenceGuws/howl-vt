@@ -16,24 +16,24 @@ pub fn writeCell(self: anytype, cp: u21) void {
     const right = self.rightBoundary();
     if (self.wrap_pending) {
         self.wrap_pending = false;
-        if (self.cursor_col == right) {
-            self.setRowWrapped(self.cursor_row, true);
+        if (self.cursor.col == right) {
+            self.setRowWrapped(self.cursor.row, true);
             self.lineFeed();
-            self.cursor_col = if (self.left_right_margin_mode) self.left_margin else 0;
+            self.cursor.setColByClient(if (self.left_right_margin_mode) self.left_margin else 0);
         }
     }
     if (self.insert_mode) self.insertChars(1);
     if (self.cells) |c| {
-        const start = self.rowStart(self.cursor_row);
-        self.markDirtyCols(self.cursor_row, self.cursor_col, self.cursor_col);
-        c[@intCast(start + @as(u32, self.cursor_col))] = .{
+        const start = self.rowStart(self.cursor.row);
+        self.markDirtyCols(self.cursor.row, self.cursor.col, self.cursor.col);
+        c[@intCast(start + @as(u32, self.cursor.col))] = .{
             .codepoint = cp,
             .attrs = self.current_attrs,
         };
     }
     self.last_graphic_codepoint = cp;
-    if (self.cursor_col < right) {
-        self.cursor_col += 1;
+    if (self.cursor.col < right) {
+        self.cursor.setColByClient(self.cursor.col + 1);
     } else if (self.auto_wrap) {
         self.wrap_pending = true;
     }
@@ -57,10 +57,10 @@ fn appendCombiningToLeadCell(self: anytype, cp: u21) bool {
 
 fn previousLeadCellPos(self: anytype) ?struct { row: u16, col: u16 } {
     const right = self.rightBoundary();
-    if (self.wrap_pending) return .{ .row = self.cursor_row, .col = right };
+    if (self.wrap_pending) return .{ .row = self.cursor.row, .col = right };
 
-    if (self.cursor_col == 0) return null;
-    return .{ .row = self.cursor_row, .col = self.cursor_col - 1 };
+    if (self.cursor.col == 0) return null;
+    return .{ .row = self.cursor.row, .col = self.cursor.col - 1 };
 }
 
 fn isTrailingCombiningCodepoint(cp: u21) bool {

@@ -408,27 +408,25 @@ fn rebuildResizeAuthority(self: anytype, allocator: std.mem.Allocator, lines: Lo
 
 fn restoreCursor(self: anytype, rows: u16, cols: u16, reflow: ReflowState, viewport: ViewportState) void {
     if (rows == 0 or cols == 0 or viewport.total_rows == 0) {
-        self.cursor_row = 0;
-        self.cursor_col = 0;
+        self.cursor.setPositionStructural(0, 0);
         self.wrap_pending = false;
-        std.debug.assert(self.cursor_row == 0);
-        std.debug.assert(self.cursor_col == 0);
+        std.debug.assert(self.cursor.row == 0);
+        std.debug.assert(self.cursor.col == 0);
         std.debug.assert(self.wrap_pending == false);
         return;
     }
 
     const last_visible_row = viewport.visible_start + viewport.visible_rows_kept - 1;
     const clamped_cursor_row = std.math.clamp(reflow.global_cursor_row, viewport.visible_start, last_visible_row);
-    self.cursor_row = @intCast(clamped_cursor_row - viewport.visible_start);
-    self.cursor_col = @min(reflow.global_cursor_col, cols - 1);
-    self.wrap_pending = reflow.next_wrap_pending and self.cursor_row < rows and self.cursor_col == cols - 1;
+    self.cursor.setPositionStructural(@intCast(clamped_cursor_row - viewport.visible_start), @min(reflow.global_cursor_col, cols - 1));
+    self.wrap_pending = reflow.next_wrap_pending and self.cursor.row < rows and self.cursor.col == cols - 1;
 
     std.debug.assert(viewport.visible_rows_kept > 0);
     std.debug.assert(clamped_cursor_row >= viewport.visible_start);
     std.debug.assert(clamped_cursor_row <= last_visible_row);
-    std.debug.assert(self.cursor_row < rows);
-    std.debug.assert(self.cursor_col < cols);
-    if (self.wrap_pending) std.debug.assert(self.cursor_col == cols - 1);
+    std.debug.assert(self.cursor.row < rows);
+    std.debug.assert(self.cursor.col < cols);
+    if (self.wrap_pending) std.debug.assert(self.cursor.col == cols - 1);
 }
 
 fn freeOldStorage(allocator: std.mem.Allocator, old: anytype) void {

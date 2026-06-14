@@ -93,7 +93,7 @@ pub fn appendSourceRowToLogicalLines(
     cursor_offset: *u32,
 ) !void {
     const wrapped = self.rowWrapped(row_index);
-    const is_cursor_row = row_index == self.cursor_row;
+    const is_cursor_row = row_index == self.cursor.row;
     const content_len = sourceRowContentLen(self, row_index, cols);
 
     if (is_cursor_row) {
@@ -303,10 +303,10 @@ fn sourceRowContentLen(self: anytype, row_index: u16, cols: u16) u16 {
 
 fn cursorOffsetInRow(self: anytype, cols: u16) u32 {
     if (cols == 0) return 0;
-    if (self.wrap_pending and self.cursor_col == cols - 1) {
+    if (self.wrap_pending and self.cursor.col == cols - 1) {
         return cols;
     }
-    return self.cursor_col;
+    return self.cursor.col;
 }
 
 fn cloneAuthorityLine(allocator: std.mem.Allocator, cells: []const Cell) !HistoryLine {

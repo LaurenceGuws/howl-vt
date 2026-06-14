@@ -24,9 +24,9 @@ test "screen write: reset clears cursor wrap and cells" {
     s.apply(SemanticEvent{ .write_text = "abcdef" });
     try std.testing.expectEqual(@as(u21, 'a'), s.cellAt(0, 0));
     s.reset();
-    try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
-    try std.testing.expectEqual(@as(u16, 0), s.cursor_col);
-    try std.testing.expect(s.cursor_visible);
+    try std.testing.expectEqual(@as(u16, 0), s.cursor.row);
+    try std.testing.expectEqual(@as(u16, 0), s.cursor.col);
+    try std.testing.expect(s.cursor.visible);
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 0));
 }
@@ -117,16 +117,16 @@ test "screen write: wrapping and exact-fill behavior remain explicit" {
     var s = try Grid.initWithCells(gpa, 4, 5);
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "abcdefgh" });
-    try std.testing.expectEqual(@as(u16, 1), s.cursor_row);
-    try std.testing.expectEqual(@as(u16, 3), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor.row);
+    try std.testing.expectEqual(@as(u16, 3), s.cursor.col);
     try std.testing.expectEqual(@as(u21, 'f'), s.cellAt(1, 0));
 
     var exact = try Grid.initWithCells(gpa, 2, 5);
     defer exact.deinit(gpa);
     exact.apply(SemanticEvent{ .write_text = "abcde" });
-    try std.testing.expectEqual(@as(u16, 4), exact.cursor_col);
+    try std.testing.expectEqual(@as(u16, 4), exact.cursor.col);
     exact.apply(SemanticEvent{ .write_text = "f" });
-    try std.testing.expectEqual(@as(u16, 1), exact.cursor_row);
+    try std.testing.expectEqual(@as(u16, 1), exact.cursor.row);
     try std.testing.expectEqual(@as(u21, 'f'), exact.cellAt(1, 0));
 
     var combining = try Grid.initWithCells(gpa, 2, 2);
@@ -147,7 +147,7 @@ test "screen write: wrapping and exact-fill behavior remain explicit" {
     defer nowrap.deinit(gpa);
     nowrap.apply(SemanticEvent{ .auto_wrap = false });
     nowrap.apply(SemanticEvent{ .write_text = "abcdefg" });
-    try std.testing.expectEqual(@as(u16, 0), nowrap.cursor_row);
+    try std.testing.expectEqual(@as(u16, 0), nowrap.cursor.row);
     try std.testing.expectEqual(@as(u21, 'g'), nowrap.cellAt(0, 4));
 }
 

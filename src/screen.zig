@@ -31,6 +31,7 @@ pub const Screen = struct {
     pub const Cell = cell.Cell;
     pub const CursorShape = cursor.CursorShape;
     pub const CursorStyle = cursor.CursorStyle;
+    pub const SemanticCursor = cursor.SemanticCursor;
     pub const default_cursor_style = cursor.default_cursor_style;
     pub const default_fg = color.default_fg;
     pub const default_bg = color.default_bg;
@@ -48,12 +49,8 @@ pub const Screen = struct {
     allocator: ?std.mem.Allocator,
     rows: u16,
     cols: u16,
-    cursor_row: u16,
-    cursor_col: u16,
+    cursor: SemanticCursor,
     wrap_pending: bool,
-    cursor_visible: bool,
-    cursor_style_default: CursorStyle,
-    cursor_style: CursorStyle,
     auto_wrap: bool,
     origin_mode: bool,
     insert_mode: bool,
@@ -109,12 +106,8 @@ pub const Screen = struct {
             .allocator = allocator,
             .rows = rows,
             .cols = cols,
-            .cursor_row = 0,
-            .cursor_col = 0,
+            .cursor = cursor.SemanticCursor.init(cursor_style_default),
             .wrap_pending = false,
-            .cursor_visible = true,
-            .cursor_style_default = cursor_style_default,
-            .cursor_style = cursor_style_default,
             .auto_wrap = true,
             .origin_mode = false,
             .insert_mode = false,
@@ -260,11 +253,8 @@ pub const Screen = struct {
 
     /// Reset visible grid state to defaults.
     pub fn reset(self: *Screen) void {
-        self.cursor_row = 0;
-        self.cursor_col = 0;
+        self.cursor.reset();
         self.wrap_pending = false;
-        self.cursor_visible = true;
-        self.cursor_style = self.cursor_style_default;
         self.auto_wrap = true;
         self.origin_mode = false;
         self.insert_mode = false;
@@ -286,9 +276,7 @@ pub const Screen = struct {
     }
 
     pub fn setDefaultCursorStyle(self: *Screen, style: CursorStyle) void {
-        const current_matches_default = std.meta.eql(self.cursor_style, self.cursor_style_default);
-        self.cursor_style_default = style;
-        if (current_matches_default) self.cursor_style = style;
+        self.cursor.setDefaultStyle(style);
     }
 
     pub fn peekDirtyRows(self: *const Screen) ?DirtyRows {

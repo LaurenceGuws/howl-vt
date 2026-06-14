@@ -37,6 +37,8 @@ pub fn applyScreen(self: anytype, event: ScreenAction) void {
         => applyTabState(self, event),
         .cursor_visible,
         .cursor_style,
+        .cursor_color,
+        .cursor_text_color,
         .auto_wrap,
         .origin_mode,
         .insert_mode,
@@ -76,25 +78,22 @@ pub fn applyScreen(self: anytype, event: ScreenAction) void {
 fn applyCursorMove(self: anytype, event: ScreenAction) void {
     self.wrap_pending = false;
     switch (event) {
-        .cursor_up => |n| self.cursor_row = self.cursor_row -| n,
-        .cursor_down => |n| self.cursor_row = @min(self.cursor_row +| n, self.rows -| 1),
-        .cursor_forward => |n| self.cursor_col = @min(self.cursor_col +| n, self.rightBoundary()),
-        .cursor_back => |n| self.cursor_col = @max(self.cursor_col -| n, self.leftBoundary()),
+        .cursor_up => |n| self.cursor.setRowByClient(self.cursor.row -| n),
+        .cursor_down => |n| self.cursor.setRowByClient(@min(self.cursor.row +| n, self.rows -| 1)),
+        .cursor_forward => |n| self.cursor.setColByClient(@min(self.cursor.col +| n, self.rightBoundary())),
+        .cursor_back => |n| self.cursor.setColByClient(@max(self.cursor.col -| n, self.leftBoundary())),
         .cursor_next_line => |n| {
-            self.cursor_row = @min(self.cursor_row +| n, self.rows -| 1);
-            self.cursor_col = self.lineHomeCol();
+            self.cursor.setPositionByClient(@min(self.cursor.row +| n, self.rows -| 1), self.lineHomeCol());
         },
         .cursor_prev_line => |n| {
-            self.cursor_row = self.cursor_row -| n;
-            self.cursor_col = self.lineHomeCol();
+            self.cursor.setPositionByClient(self.cursor.row -| n, self.lineHomeCol());
         },
         .cursor_horizontal_absolute => |col| {
-            self.cursor_col = @min(self.resolveAbsoluteCol(col), self.rightBoundary());
+            self.cursor.setColByClient(@min(self.resolveAbsoluteCol(col), self.rightBoundary()));
         },
-        .cursor_vertical_absolute => |row| self.cursor_row = @min(row, self.rows -| 1),
+        .cursor_vertical_absolute => |row| self.cursor.setRowByClient(@min(row, self.rows -| 1)),
         .cursor_position => |pos| {
-            self.cursor_row = @min(self.resolveAbsoluteRow(pos.row), self.rows -| 1);
-            self.cursor_col = @min(self.resolveAbsoluteCol(pos.col), self.rightBoundary());
+            self.cursor.setPositionByClient(@min(self.resolveAbsoluteRow(pos.row), self.rows -| 1), @min(self.resolveAbsoluteCol(pos.col), self.rightBoundary()));
         },
         else => unreachable,
     }
@@ -116,17 +115,17 @@ fn applyFlowMove(self: anytype, event: ScreenAction) void {
     self.wrap_pending = false;
     switch (event) {
         .line_feed => {
-            self.setRowWrapped(self.cursor_row, false);
+            self.setRowWrapped(self.cursor.row, false);
             self.lineFeed();
         },
         .next_line => {
-            self.setRowWrapped(self.cursor_row, false);
-            self.cursor_col = 0;
+            self.setRowWrapped(self.cursor.row, false);
+            self.cursor.setColByClient(0);
             self.lineFeed();
         },
         .reverse_index => self.reverseIndex(),
-        .carriage_return => self.cursor_col = 0,
-        .backspace => self.cursor_col = self.cursor_col -| 1,
+        .carriage_return => self.cursor.setColByClient(0),
+        .backspace => self.cursor.setColByClient(self.cursor.col -| 1),
         .horizontal_tab => self.horizontalTabForward(1),
         .horizontal_tab_forward => |count| self.horizontalTabForward(count),
         .horizontal_tab_back => |count| self.horizontalTabBack(count),
@@ -146,8 +145,13 @@ fn applyTabState(self: anytype, event: ScreenAction) void {
 
 fn applyScreenState(self: anytype, event: ScreenAction) void {
     switch (event) {
-        .cursor_visible => |visible| self.cursor_visible = visible,
-        .cursor_style => |cursor_style| self.cursor_style = cursor_style,
+        .cursor_visible => |visible| self.cursor.visible = visible,
+        .cursor_style => |cursor_style| switch (cursor_style) {
+            .restore_default => self.cursor.restoreDefaultStyle(),
+            .program_override => |style| self.cursor.setProgramStyle(style),
+        },
+        .cursor_color => |value| self.cursor.cursor_color = rgbColorIn(value),
+        .cursor_text_color => |value| self.cursor.cursor_text_color = rgbColorIn(value),
         .auto_wrap => |enabled| {
             self.auto_wrap = enabled;
             if (!enabled) self.wrap_pending = false;
@@ -155,8 +159,7 @@ fn applyScreenState(self: anytype, event: ScreenAction) void {
         .origin_mode => |enabled| {
             self.origin_mode = enabled;
             self.wrap_pending = false;
-            self.cursor_row = if (enabled) self.scroll_top else 0;
-            self.cursor_col = self.lineHomeCol();
+            self.cursor.setPositionByClient(if (enabled) self.scroll_top else 0, self.lineHomeCol());
         },
         .insert_mode => |enabled| self.insert_mode = enabled,
         .character_protection => |enabled| self.current_attrs.protected = enabled,
@@ -165,6 +168,11 @@ fn applyScreenState(self: anytype, event: ScreenAction) void {
         .set_left_right_margins => |margins| self.setLeftRightMargins(margins.left, margins.right),
         else => unreachable,
     }
+}
+
+fn rgbColorIn(value: ?action_vocabulary.RgbColor) ?@import("color.zig").Rgb {
+    const rgb = value orelse return null;
+    return .{ .r = rgb.r, .g = rgb.g, .b = rgb.b };
 }
 
 fn applyLineEdit(self: anytype, event: ScreenAction) void {

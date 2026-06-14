@@ -100,7 +100,7 @@ pub fn decModeState(vt: anytype, mode: u16) u8 {
         .application_keypad = vt.modes.application_keypad,
         .auto_wrap = active_state.auto_wrap,
         .left_right_margin_mode = active_state.left_right_margin_mode,
-        .cursor_visible = active_state.cursor_visible,
+        .cursor_visible = active_state.cursor.visible,
         .alt_active = vt.screen_state.alt_active,
         .mouse_tracking = vt.modes.mouse_tracking,
         .mouse_protocol = vt.modes.mouse_protocol,

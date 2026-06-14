@@ -127,10 +127,10 @@ pub const Set = struct {
     pub fn enterAlt(self: *Set, clear_alt: bool, save_cursor: bool) void {
         if (save_cursor) {
             self.saved_primary_cursor = .{
-                .row = self.primary.cursor_row,
-                .col = self.primary.cursor_col,
+                .row = self.primary.cursor.row,
+                .col = self.primary.cursor.col,
                 .wrap_pending = self.primary.wrap_pending,
-                .cursor_visible = self.primary.cursor_visible,
+                .cursor_visible = self.primary.cursor.visible,
             };
             std.debug.assert(self.saved_primary_cursor != null);
         }
@@ -146,12 +146,11 @@ pub const Set = struct {
         self.activeSelection().clear();
         if (restore_cursor) {
             if (self.saved_primary_cursor) |saved| {
-                self.primary.cursor_row = @min(saved.row, self.primary.rows -| 1);
-                self.primary.cursor_col = @min(saved.col, self.primary.cols -| 1);
+                self.primary.cursor.setPositionStructural(@min(saved.row, self.primary.rows -| 1), @min(saved.col, self.primary.cols -| 1));
                 self.primary.wrap_pending = saved.wrap_pending;
-                self.primary.cursor_visible = saved.cursor_visible;
-                std.debug.assert(self.primary.cursor_row < self.primary.rows or self.primary.rows == 0);
-                std.debug.assert(self.primary.cursor_col < self.primary.cols or self.primary.cols == 0);
+                self.primary.cursor.visible = saved.cursor_visible;
+                std.debug.assert(self.primary.cursor.row < self.primary.rows or self.primary.rows == 0);
+                std.debug.assert(self.primary.cursor.col < self.primary.cols or self.primary.cols == 0);
             }
             self.saved_primary_cursor = null;
         }
@@ -172,7 +171,7 @@ pub fn visibleView(screen_state: *const Set, scrollback_offset: u32) View {
     const rows_count: u32 = active.rows;
     const total_rows = history_count + rows_count;
     const start = if (total_rows >= rows_count + offset) total_rows - rows_count - offset else 0;
-    const cursor_visible = active.cursor_visible and offset == 0;
+    const cursor_visible = active.cursor.visible and offset == 0;
     std.debug.assert(offset <= history_count);
     std.debug.assert(total_rows >= rows_count);
     std.debug.assert(start + rows_count <= total_rows);
@@ -180,11 +179,11 @@ pub fn visibleView(screen_state: *const Set, scrollback_offset: u32) View {
     return .{
         .rows = active.rows,
         .cols = active.cols,
-        .cursor_row = active.cursor_row,
-        .cursor_col = active.cursor_col,
+        .cursor_row = active.cursor.row,
+        .cursor_col = active.cursor.col,
         .cursor_visible = cursor_visible,
-        .cursor_shape = active.cursor_style.shape,
-        .cursor_blink = active.cursor_style.blink,
+        .cursor_shape = active.cursor.effective_shape,
+        .cursor_blink = active.cursor.blink_intent,
         .is_alternate_screen = screen_state.alt_active,
         .scrollback_offset = offset,
         .history_count = history_count,

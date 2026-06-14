@@ -8,22 +8,22 @@ pub fn eraseDisplay(self: anytype, mode: EraseMode) void {
     if (self.rows == 0 or self.cols == 0) return;
     switch (mode) {
         .cursor_to_end => {
-            self.markDirtyRows(self.cursor_row, self.rows -| 1);
-            self.clearRowRange(self.cursor_row, self.cursor_col, self.cols);
-            var r = self.cursor_row + 1;
+            self.markDirtyRows(self.cursor.row, self.rows -| 1);
+            self.clearRowRange(self.cursor.row, self.cursor.col, self.cols);
+            var r = self.cursor.row + 1;
             while (r < self.rows) : (r += 1) {
                 self.clearRowRange(r, 0, self.cols);
                 self.setRowWrapped(r, false);
             }
         },
         .start_to_cursor => {
-            self.markDirtyRows(0, self.cursor_row);
+            self.markDirtyRows(0, self.cursor.row);
             var r: u16 = 0;
-            while (r < self.cursor_row) : (r += 1) {
+            while (r < self.cursor.row) : (r += 1) {
                 self.clearRowRange(r, 0, self.cols);
                 self.setRowWrapped(r, false);
             }
-            self.clearRowRange(self.cursor_row, 0, self.cursor_col + 1);
+            self.clearRowRange(self.cursor.row, 0, self.cursor.col + 1);
         },
         .all => {
             self.markAllRowsDirty();
@@ -40,17 +40,17 @@ pub fn eraseLine(self: anytype, mode: EraseMode) void {
     if (self.rows == 0 or self.cols == 0) return;
     switch (mode) {
         .cursor_to_end => {
-            self.markDirtyCols(self.cursor_row, self.cursor_col, self.cols -| 1);
-            self.clearRowRange(self.cursor_row, self.cursor_col, self.cols);
+            self.markDirtyCols(self.cursor.row, self.cursor.col, self.cols -| 1);
+            self.clearRowRange(self.cursor.row, self.cursor.col, self.cols);
         },
         .start_to_cursor => {
-            self.markDirtyCols(self.cursor_row, 0, self.cursor_col);
-            self.clearRowRange(self.cursor_row, 0, self.cursor_col + 1);
+            self.markDirtyCols(self.cursor.row, 0, self.cursor.col);
+            self.clearRowRange(self.cursor.row, 0, self.cursor.col + 1);
         },
         .all => {
-            self.markDirtyRow(self.cursor_row);
-            self.clearRowRange(self.cursor_row, 0, self.cols);
-            self.setRowWrapped(self.cursor_row, false);
+            self.markDirtyRow(self.cursor.row);
+            self.clearRowRange(self.cursor.row, 0, self.cols);
+            self.setRowWrapped(self.cursor.row, false);
         },
         .scrollback => {},
     }
@@ -58,17 +58,17 @@ pub fn eraseLine(self: anytype, mode: EraseMode) void {
 
 pub fn eraseChars(self: anytype, count: u16) void {
     if (self.rows == 0 or self.cols == 0) return;
-    const amount = @min(@max(count, 1), self.rightBoundary() - self.cursor_col + 1);
-    self.markDirtyCols(self.cursor_row, self.cursor_col, self.cursor_col + amount - 1);
-    self.clearRowRange(self.cursor_row, self.cursor_col, self.cursor_col + amount);
+    const amount = @min(@max(count, 1), self.rightBoundary() - self.cursor.col + 1);
+    self.markDirtyCols(self.cursor.row, self.cursor.col, self.cursor.col + amount - 1);
+    self.clearRowRange(self.cursor.row, self.cursor.col, self.cursor.col + amount);
 }
 
 pub fn selectiveEraseDisplay(self: anytype, mode: EraseMode) void {
     if (self.rows == 0 or self.cols == 0) return;
     switch (mode) {
         .cursor_to_end => {
-            self.selectiveClearRowRange(self.cursor_row, self.cursor_col, self.cols);
-            var row = self.cursor_row + 1;
+            self.selectiveClearRowRange(self.cursor.row, self.cursor.col, self.cols);
+            var row = self.cursor.row + 1;
             while (row < self.rows) : (row += 1) {
                 self.selectiveClearRowRange(row, 0, self.cols);
                 self.setRowWrapped(row, false);
@@ -76,11 +76,11 @@ pub fn selectiveEraseDisplay(self: anytype, mode: EraseMode) void {
         },
         .start_to_cursor => {
             var row: u16 = 0;
-            while (row < self.cursor_row) : (row += 1) {
+            while (row < self.cursor.row) : (row += 1) {
                 self.selectiveClearRowRange(row, 0, self.cols);
                 self.setRowWrapped(row, false);
             }
-            self.selectiveClearRowRange(self.cursor_row, 0, self.cursor_col + 1);
+            self.selectiveClearRowRange(self.cursor.row, 0, self.cursor.col + 1);
         },
         .all => {
             var row: u16 = 0;
@@ -96,11 +96,11 @@ pub fn selectiveEraseDisplay(self: anytype, mode: EraseMode) void {
 pub fn selectiveEraseLine(self: anytype, mode: EraseMode) void {
     if (self.rows == 0 or self.cols == 0) return;
     switch (mode) {
-        .cursor_to_end => self.selectiveClearRowRange(self.cursor_row, self.cursor_col, self.cols),
-        .start_to_cursor => self.selectiveClearRowRange(self.cursor_row, 0, self.cursor_col + 1),
+        .cursor_to_end => self.selectiveClearRowRange(self.cursor.row, self.cursor.col, self.cols),
+        .start_to_cursor => self.selectiveClearRowRange(self.cursor.row, 0, self.cursor.col + 1),
         .all => {
-            self.selectiveClearRowRange(self.cursor_row, 0, self.cols);
-            self.setRowWrapped(self.cursor_row, false);
+            self.selectiveClearRowRange(self.cursor.row, 0, self.cols);
+            self.setRowWrapped(self.cursor.row, false);
         },
         .scrollback => {},
     }

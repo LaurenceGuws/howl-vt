@@ -198,8 +198,8 @@ test "snapshot: parity with direct screen state" {
     const screen = terminal.screen_state.activeConst();
     try std.testing.expectEqual(screen.rows, snap.rows);
     try std.testing.expectEqual(screen.cols, snap.cols);
-    try std.testing.expectEqual(screen.cursor_row, snap.cursor_row);
-    try std.testing.expectEqual(screen.cursor_col, snap.cursor_col);
-    try std.testing.expectEqual(screen.cursor_visible, snap.cursor_visible);
+    try std.testing.expectEqual(screen.cursor.row, snap.cursor_row);
+    try std.testing.expectEqual(screen.cursor.col, snap.cursor_col);
+    try std.testing.expectEqual(screen.cursor.visible, snap.cursor_visible);
     try std.testing.expectEqual(screen.auto_wrap, snap.auto_wrap);
 }

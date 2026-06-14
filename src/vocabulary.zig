@@ -29,6 +29,12 @@ pub const TerminalColorControlCommand = struct {
     payload: []const u8,
 };
 
+pub const RgbColor = struct {
+    r: u8,
+    g: u8,
+    b: u8,
+};
+
 pub const KeyFormatChange = struct {
     resource: ?u8,
     value: ?u16,
@@ -82,6 +88,11 @@ pub const SemanticEvent = union(enum) {
     pub const CursorStyle = struct {
         shape: CursorShape,
         blink: bool,
+    };
+
+    pub const CursorStyleCommand = union(enum) {
+        restore_default,
+        program_override: CursorStyle,
     };
 
     pub const ModeParams = struct {
@@ -140,7 +151,9 @@ pub const SemanticEvent = union(enum) {
     tab_clear_current,
     tab_clear_all,
     cursor_visible: bool,
-    cursor_style: CursorStyle,
+    cursor_style: CursorStyleCommand,
+    cursor_color: ?RgbColor,
+    cursor_text_color: ?RgbColor,
     auto_wrap: bool,
     origin_mode: bool,
     insert_mode: bool,
@@ -279,7 +292,9 @@ pub const ScreenAction = union(enum) {
     tab_clear_current,
     tab_clear_all,
     cursor_visible: bool,
-    cursor_style: SemanticEvent.CursorStyle,
+    cursor_style: SemanticEvent.CursorStyleCommand,
+    cursor_color: ?RgbColor,
+    cursor_text_color: ?RgbColor,
     auto_wrap: bool,
     origin_mode: bool,
     insert_mode: bool,

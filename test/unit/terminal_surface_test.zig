@@ -211,9 +211,12 @@ test "alternate screen 1049 restores primary cursor" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
+    try stream.nextSlice("\x1b[3;4H");
+    const before_enter = activeScreen(&terminal).cursor.position_changed_by_client_at;
     try stream.nextSlice("\x1b[3;4H\x1b[?1049h\x1b[2;2H\x1b[?1049l");
-    try std.testing.expectEqual(@as(u16, 2), activeScreen(&terminal).cursor_row);
-    try std.testing.expectEqual(@as(u16, 3), activeScreen(&terminal).cursor_col);
+    try std.testing.expectEqual(@as(u16, 2), activeScreen(&terminal).cursor.row);
+    try std.testing.expectEqual(@as(u16, 3), activeScreen(&terminal).cursor.col);
+    try std.testing.expectEqual(before_enter, activeScreen(&terminal).cursor.position_changed_by_client_at);
 }
 
 test "alternate screen switches mark active viewport fully dirty" {

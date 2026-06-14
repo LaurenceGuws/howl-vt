@@ -9,6 +9,7 @@ const csi = @import("csi.zig");
 const dcs = @import("dcs.zig");
 const esc = @import("esc.zig");
 const osc = @import("osc.zig");
+const osc_color = @import("osc_color.zig");
 const host_state = @import("host_state.zig");
 
 /// Parsed-event alias for action mapping.
@@ -38,12 +39,20 @@ pub fn process(event: Event) ?SemanticEvent {
         .text => |s| return SemanticEvent{ .write_text = s },
         .codepoint => |cp| return SemanticEvent{ .write_codepoint = cp },
         .control => |c| return c0.process(c0.fromByte(c)),
-        .osc => |osc_event| return osc.process(osc_event),
+        .osc => |osc_event| return processOscEvent(osc_event),
         .esc_dispatch => |esc_dispatch| return esc.process(esc_dispatch.final),
         .apc => return null,
         .dcs => |dcs_data| return dcs.process(dcs_data),
         .pm, .invalid_sequence => return null,
     }
+}
+
+fn processOscEvent(osc_event: anytype) ?SemanticEvent {
+    const semantic = osc.process(osc_event) orelse return null;
+    if (semantic == .color_control) {
+        if (osc_color.cursorColorEvent(semantic.color_control)) |cursor_event| return cursor_event;
+    }
+    return semantic;
 }
 
 pub fn apply(vt: anytype, event: Event) host_state.ApplyError!EventEffect {
@@ -65,7 +74,21 @@ pub fn apply(vt: anytype, event: Event) host_state.ApplyError!EventEffect {
 
     const semantic = process(event) orelse return .{ .changed = false, .title_changed = false };
     const changed = try applySemantic(vt, semantic);
+    if (legacyCursorColorControl(event)) |host_action| {
+        try host_apply.apply(vt, host_action);
+    }
     return .{ .changed = changed, .title_changed = semantic == .title_set };
+}
+
+fn legacyCursorColorControl(event: Event) ?HostAction {
+    const osc_event = switch (event) {
+        .osc => |value| value,
+        else => return null,
+    };
+    const semantic = osc.process(osc_event) orelse return null;
+    if (semantic != .color_control) return null;
+    if (osc_color.cursorColorEvent(semantic.color_control) == null) return null;
+    return .{ .color_control = semantic.color_control };
 }
 
 fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!bool {
@@ -120,6 +143,8 @@ pub fn screenAction(event: SemanticEvent) ?ScreenAction {
         .tab_clear_all => .tab_clear_all,
         .cursor_visible => |v| ScreenAction{ .cursor_visible = v },
         .cursor_style => |v| ScreenAction{ .cursor_style = v },
+        .cursor_color => |v| ScreenAction{ .cursor_color = v },
+        .cursor_text_color => |v| ScreenAction{ .cursor_text_color = v },
         .auto_wrap => |v| ScreenAction{ .auto_wrap = v },
         .origin_mode => |v| ScreenAction{ .origin_mode = v },
         .insert_mode => |v| ScreenAction{ .insert_mode = v },

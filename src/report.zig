@@ -49,8 +49,8 @@ pub fn apply(vt: anytype, report_action: ReportAction) host_state.ApplyError!voi
     const render_view = CursorReportView{
         .rows = active.rows,
         .cols = active.cols,
-        .cursor_row = active.cursor_row,
-        .cursor_col = active.cursor_col,
+        .cursor_row = active.cursor.row,
+        .cursor_col = active.cursor.col,
     };
     const ansi_modes = TerminalModeNs.AnsiView{
         .keyboard_action_mode = vt.modes.keyboard_action_mode,
@@ -63,7 +63,7 @@ pub fn apply(vt: anytype, report_action: ReportAction) host_state.ApplyError!voi
         .application_keypad = vt.modes.application_keypad,
         .auto_wrap = active.auto_wrap,
         .left_right_margin_mode = active.left_right_margin_mode,
-        .cursor_visible = active.cursor_visible,
+        .cursor_visible = active.cursor.visible,
         .alt_active = vt.screen_state.alt_active,
         .mouse_tracking = vt.modes.mouse_tracking,
         .mouse_protocol = vt.modes.mouse_protocol,
@@ -148,7 +148,7 @@ fn decrqssPayload(encode_buf: []u8, screen: *const Screen, request: []const u8) 
         return std.fmt.bufPrint(encode_buf, "{d};{d}s", .{ screen.left_margin + 1, right + 1 }) catch null;
     }
     if (std.mem.eql(u8, request, " q")) {
-        const style = screen.cursor_style;
+        const style = screen.cursor.effectiveStyle();
         const value: u8 = switch (style.shape) {
             .block => if (style.blink) 1 else 2,
             .underline => if (style.blink) 3 else 4,
@@ -484,4 +484,32 @@ fn formatOutput(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []con
 
 fn colorEq(a: Grid.Color, b: Grid.Color) bool {
     return a.kind == b.kind and a.value == b.value;
+}
+
+test "cursor style report payload reads semantic cursor owner" {
+    var screen = Screen.init(2, 2);
+    screen.setDefaultCursorStyle(.{ .shape = .underline, .blink = false });
+    screen.apply(.{ .cursor_style = .{ .program_override = .{ .shape = .bar, .blink = true } } });
+
+    var encode_buf: [64]u8 = undefined;
+    const overridden = decrqssPayload(encode_buf[0..], &screen, " q").?;
+    try std.testing.expectEqualStrings("5 q", overridden);
+
+    screen.apply(.{ .cursor_style = .{ .program_override = .{ .shape = .block, .blink = true } } });
+    const block_blink = decrqssPayload(encode_buf[0..], &screen, " q").?;
+    try std.testing.expectEqualStrings("1 q", block_blink);
+}
+
+test "cursor position report payload names semantic cursor position" {
+    var output = std.ArrayList(u8).empty;
+    defer output.deinit(std.testing.allocator);
+    var encode_buf: [64]u8 = undefined;
+
+    try appendCursorPositionReport(std.testing.allocator, &output, encode_buf[0..], .{
+        .rows = 24,
+        .cols = 80,
+        .cursor_row = 2,
+        .cursor_col = 4,
+    });
+    try std.testing.expectEqualStrings("\x1b[3;5R", output.items);
 }

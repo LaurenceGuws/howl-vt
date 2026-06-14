@@ -1,10 +1,12 @@
 const std = @import("std");
 const screen_mod = @import("screen.zig");
 const host_state = @import("host_state.zig");
+const vocabulary = @import("vocabulary.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
 const Rgb = Screen.Rgb;
+const SemanticEvent = vocabulary.SemanticEvent;
 const osc_reply_max_bytes = 8;
 const color_osc_max_bytes = 16;
 
@@ -115,6 +117,13 @@ pub fn resetXtermDynamicColor(colors: *TerminalColorState, command: u16, payload
     resetDynamicColor(colors, key);
 }
 
+pub fn cursorColorEvent(command: vocabulary.TerminalColorControlCommand) ?SemanticEvent {
+    if (command.command == 12) return cursorColorEventFromDynamicPayload(command.payload, .cursor);
+    if (command.command == 112 and command.payload.len == 0) return .{ .cursor_color = null };
+    if (command.command == 21) return cursorColorEventFromKittyPayload(command.payload);
+    return null;
+}
+
 pub fn parseColor(value: []const u8) ?Rgb {
     const color_text = stripAlpha(std.mem.trim(u8, value, " \t\r\n"));
     if (color_text.len == 0) return null;
@@ -204,6 +213,40 @@ fn dynamicKeyForCommand(command: u16) ?DynamicKey {
         17 => .selection_background,
         18 => .tektronix_cursor,
         19 => .selection_foreground,
+        else => null,
+    };
+}
+
+fn cursorColorEventFromDynamicPayload(payload: []const u8, key: SpecialKey) ?SemanticEvent {
+    var parts = std.mem.splitScalar(u8, payload, ';');
+    const value = parts.next() orelse return null;
+    if (std.mem.eql(u8, value, "?")) return null;
+    return cursorColorEventForValue(key, value);
+}
+
+fn cursorColorEventFromKittyPayload(payload: []const u8) ?SemanticEvent {
+    const split = std.mem.indexOfScalar(u8, payload, '=') orelse return null;
+    const key_text = payload[0..split];
+    const value = payload[split + 1 ..];
+    const key = specialColorKey(key_text) orelse return null;
+    switch (key) {
+        .cursor, .cursor_text => return cursorColorEventForValue(key, value),
+        .foreground, .background, .selection_background, .selection_foreground => return null,
+    }
+}
+
+fn cursorColorEventForValue(key: SpecialKey, value: []const u8) ?SemanticEvent {
+    if (std.mem.eql(u8, value, "?")) return null;
+    if (value.len == 0) return switch (key) {
+        .cursor => .{ .cursor_color = null },
+        .cursor_text => .{ .cursor_text_color = null },
+        else => null,
+    };
+    const parsed = parseColor(value) orelse return null;
+    const rgb = vocabulary.RgbColor{ .r = parsed.r, .g = parsed.g, .b = parsed.b };
+    return switch (key) {
+        .cursor => .{ .cursor_color = rgb },
+        .cursor_text => .{ .cursor_text_color = rgb },
         else => null,
     };
 }
@@ -492,4 +535,20 @@ fn parseHexNibble(byte: u8) ?u8 {
         'A'...'F' => byte - 'A' + 10,
         else => null,
     };
+}
+
+test "cursor color control mutates semantic cursor owner through screen apply" {
+    var screen = Screen.init(2, 2);
+
+    const cursor_event = cursorColorEvent(.{ .command = 12, .payload = "#010203" }).?;
+    screen.apply(cursor_event);
+    try std.testing.expectEqual(@as(?Rgb, .{ .r = 1, .g = 2, .b = 3 }), screen.cursor.cursor_color);
+
+    const cursor_text_event = cursorColorEvent(.{ .command = 21, .payload = "cursor_text=#040506" }).?;
+    screen.apply(cursor_text_event);
+    try std.testing.expectEqual(@as(?Rgb, .{ .r = 4, .g = 5, .b = 6 }), screen.cursor.cursor_text_color);
+
+    const reset_event = cursorColorEvent(.{ .command = 112, .payload = "" }).?;
+    screen.apply(reset_event);
+    try std.testing.expectEqual(@as(?Rgb, null), screen.cursor.cursor_color);
 }

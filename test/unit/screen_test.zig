@@ -24,13 +24,13 @@ test "screen: erase_line mode 0 clears from cursor to end of line" {
     var s = try Grid.initWithCells(gpa, 4, 10);
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "helloworld" });
-    s.cursor_col = 5;
+    s.cursor.setColByClient(5);
     s.apply(SemanticEvent{ .erase_line = .cursor_to_end });
     try std.testing.expectEqual(@as(u21, 'h'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'e'), s.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 5));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 9));
-    try std.testing.expectEqual(@as(u16, 5), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 5), s.cursor.col);
 }
 
 test "screen: erase_line mode 1 clears from start to cursor" {
@@ -38,12 +38,12 @@ test "screen: erase_line mode 1 clears from start to cursor" {
     var s = try Grid.initWithCells(gpa, 4, 10);
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "helloworld" });
-    s.cursor_col = 4;
+    s.cursor.setColByClient(4);
     s.apply(SemanticEvent{ .erase_line = .start_to_cursor });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 4));
     try std.testing.expectEqual(@as(u21, 'w'), s.cellAt(0, 5));
-    try std.testing.expectEqual(@as(u16, 4), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 4), s.cursor.col);
 }
 
 test "screen: erase_line mode 2 clears full line" {
@@ -51,88 +51,78 @@ test "screen: erase_line mode 2 clears full line" {
     var s = try Grid.initWithCells(gpa, 4, 10);
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "helloworld" });
-    s.cursor_col = 3;
+    s.cursor.setColByClient(3);
     s.apply(SemanticEvent{ .erase_line = .all });
     for (0..10) |i| {
         try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, @intCast(i)));
     }
-    try std.testing.expectEqual(@as(u16, 3), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 3), s.cursor.col);
 }
 
 test "screen: erase_display mode 0 clears from cursor to end of screen" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 3, 5);
     defer s.deinit(gpa);
-    s.cursor_row = 0;
-    s.cursor_col = 0;
+    s.cursor.setPositionByClient(0, 0);
     s.apply(SemanticEvent{ .write_text = "AAAAA" });
-    s.cursor_row = 1;
-    s.cursor_col = 0;
+    s.cursor.setPositionByClient(1, 0);
     s.apply(SemanticEvent{ .write_text = "BBBBB" });
-    s.cursor_row = 2;
-    s.cursor_col = 0;
+    s.cursor.setPositionByClient(2, 0);
     s.apply(SemanticEvent{ .write_text = "CCCCC" });
-    s.cursor_row = 1;
-    s.cursor_col = 2;
+    s.cursor.setPositionByClient(1, 2);
     s.apply(SemanticEvent{ .erase_display = .cursor_to_end });
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 1));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 2));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(2, 0));
-    try std.testing.expectEqual(@as(u16, 1), s.cursor_row);
-    try std.testing.expectEqual(@as(u16, 2), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor.row);
+    try std.testing.expectEqual(@as(u16, 2), s.cursor.col);
 }
 
 test "screen: erase_display mode 1 clears from start to cursor" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 3, 5);
     defer s.deinit(gpa);
-    s.cursor_row = 0;
-    s.cursor_col = 0;
+    s.cursor.setPositionByClient(0, 0);
     s.apply(SemanticEvent{ .write_text = "AAAAA" });
-    s.cursor_row = 1;
-    s.cursor_col = 0;
+    s.cursor.setPositionByClient(1, 0);
     s.apply(SemanticEvent{ .write_text = "BBBBB" });
-    s.cursor_row = 2;
-    s.cursor_col = 0;
+    s.cursor.setPositionByClient(2, 0);
     s.apply(SemanticEvent{ .write_text = "CCCCC" });
-    s.cursor_row = 1;
-    s.cursor_col = 2;
+    s.cursor.setPositionByClient(1, 2);
     s.apply(SemanticEvent{ .erase_display = .start_to_cursor });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 2));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 3));
     try std.testing.expectEqual(@as(u21, 'C'), s.cellAt(2, 0));
-    try std.testing.expectEqual(@as(u16, 1), s.cursor_row);
-    try std.testing.expectEqual(@as(u16, 2), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor.row);
+    try std.testing.expectEqual(@as(u16, 2), s.cursor.col);
 }
 
 test "screen: erase_display mode 2 clears entire screen" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 3, 5);
     defer s.deinit(gpa);
-    s.cursor_row = 1;
-    s.cursor_col = 2;
+    s.cursor.setPositionByClient(1, 2);
     s.apply(SemanticEvent{ .write_text = "AB" });
-    s.cursor_row = 1;
-    s.cursor_col = 2;
+    s.cursor.setPositionByClient(1, 2);
     s.apply(SemanticEvent{ .erase_display = .all });
     for (0..3) |r| {
         for (0..5) |c_| {
             try std.testing.expectEqual(@as(u21, 0), s.cellAt(@intCast(r), @intCast(c_)));
         }
     }
-    try std.testing.expectEqual(@as(u16, 1), s.cursor_row);
-    try std.testing.expectEqual(@as(u16, 2), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor.row);
+    try std.testing.expectEqual(@as(u16, 2), s.cursor.col);
 }
 
 test "screen: erase ops no-op without cell buffer" {
     var s = Grid.init(4, 10);
-    s.cursor_col = 3;
+    s.cursor.setColByClient(3);
     s.apply(SemanticEvent{ .erase_line = EraseMode.all });
     s.apply(SemanticEvent{ .erase_display = EraseMode.all });
-    try std.testing.expectEqual(@as(u16, 3), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 3), s.cursor.col);
 }
 
 test "screen: DECSTBM and IL shift rows down inside region" {
@@ -210,7 +200,7 @@ test "screen: ICH inserts blanks and shifts suffix right" {
     defer s.deinit(gpa);
 
     s.apply(SemanticEvent{ .write_text = "abcdef" });
-    s.cursor_col = 2;
+    s.cursor.setColByClient(2);
     s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
     s.apply(SemanticEvent{ .insert_chars = 2 });
 
@@ -224,7 +214,7 @@ test "screen: ICH inserts blanks and shifts suffix right" {
     try std.testing.expectEqual(@as(u21, 'f'), s.cellAt(0, 7));
     const blank = s.cellInfoAt(0, 2);
     try std.testing.expectEqual(Grid.Color.rgbComponents(40, 44, 52), blank.attrs.bg);
-    try std.testing.expectEqual(@as(u16, 2), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 2), s.cursor.col);
 }
 
 test "screen: REP repeats last written codepoint" {
@@ -239,7 +229,7 @@ test "screen: REP repeats last written codepoint" {
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 2));
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 3));
-    try std.testing.expectEqual(@as(u16, 4), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 4), s.cursor.col);
 }
 
 test "screen: REP is no-op without preceding codepoint" {
@@ -249,7 +239,7 @@ test "screen: REP is no-op without preceding codepoint" {
 
     s.apply(SemanticEvent{ .repeat_preceding = 3 });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
-    try std.testing.expectEqual(@as(u16, 0), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 0), s.cursor.col);
 }
 
 test "screen: RI scrolls region down at top margin" {
@@ -293,10 +283,10 @@ test "screen: ECH uses current background without moving cursor" {
     defer s.deinit(gpa);
 
     s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
-    s.cursor_col = 2;
+    s.cursor.setColByClient(2);
     s.apply(SemanticEvent{ .erase_chars = 3 });
 
-    try std.testing.expectEqual(@as(u16, 2), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 2), s.cursor.col);
     var col: u16 = 2;
     while (col < 5) : (col += 1) {
         const cell = s.cellInfoAt(0, col);
@@ -361,8 +351,7 @@ test "screen: DECSCA protects cells from selective erase" {
     s.apply(SemanticEvent{ .character_protection = false });
     s.apply(SemanticEvent{ .write_text = "CDEF" });
 
-    s.cursor_row = 1;
-    s.cursor_col = 2;
+    s.cursor.setPositionByClient(1, 2);
     s.apply(SemanticEvent{ .selective_erase_display = .all });
 
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
@@ -463,7 +452,7 @@ test "screen: DECIC and DECDC shift columns inside scroll region" {
     s.apply(SemanticEvent{ .write_text = "KLMNO" });
 
     s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
-    s.cursor_col = 1;
+    s.cursor.setColByClient(1);
     s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
     s.apply(SemanticEvent{ .insert_columns = 2 });
 
@@ -567,12 +556,12 @@ test "screen: DECOM with DECSLRM makes cursor addressing margin-relative" {
     s.apply(SemanticEvent{ .left_right_margin_mode = true });
     s.apply(SemanticEvent{ .set_left_right_margins = .{ .left = 1, .right = 2 } });
 
-    try std.testing.expectEqual(@as(u16, 1), s.cursor_row);
-    try std.testing.expectEqual(@as(u16, 1), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor.row);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor.col);
 
     s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    try std.testing.expectEqual(@as(u16, 1), s.cursor_row);
-    try std.testing.expectEqual(@as(u16, 1), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor.row);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor.col);
 }
 
 test "screen: SU scrolls only within configured region" {

@@ -27,10 +27,9 @@ test "screen history: scrollUp captures row to history" {
     var s = try Grid.initWithCellsAndHistory(gpa, 2, 10, 10);
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "abc" });
-    s.cursor_row = 1;
-    s.cursor_col = 0;
+    s.cursor.setPositionByClient(1, 0);
     s.apply(SemanticEvent{ .write_text = "xyz" });
-    s.cursor_col = 0;
+    s.cursor.setColByClient(0);
     s.apply(SemanticEvent.line_feed);
     try std.testing.expectEqual(@as(u32, 1), s.history_count);
     const h = s.history.?;
@@ -49,11 +48,10 @@ test "screen history: capacity limits with wraparound" {
     var row_num: u21 = '1';
     var i: u16 = 0;
     while (i < 5) : (i += 1) {
-        s.cursor_col = 0;
-        s.cursor_row = 0;
+        s.cursor.setPositionByClient(0, 0);
         for (0..2) |_| s.apply(SemanticEvent{ .write_codepoint = row_num });
         if (i < 4) {
-            s.cursor_row = 1;
+            s.cursor.setRowByClient(1);
             s.apply(SemanticEvent.line_feed);
         }
         row_num += 1;
@@ -70,7 +68,7 @@ test "screen history: reset does not truncate history" {
     var s = try Grid.initWithCellsAndHistory(gpa, 2, 5, 10);
     defer s.deinit(gpa);
     s.apply(SemanticEvent{ .write_text = "test1" });
-    s.cursor_row = 1;
+    s.cursor.setRowByClient(1);
     s.apply(SemanticEvent.line_feed);
     try std.testing.expectEqual(@as(u32, 1), s.history_count);
     s.reset();

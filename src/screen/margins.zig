@@ -2,8 +2,7 @@ pub fn setScrollRegion(self: anytype, top: u16, bottom: ?u16) void {
     if (self.rows == 0) {
         self.scroll_top = 0;
         self.scroll_bottom = 0;
-        self.cursor_row = 0;
-        self.cursor_col = 0;
+        self.cursor.setPositionByClient(0, 0);
         return;
     }
 
@@ -13,8 +12,7 @@ pub fn setScrollRegion(self: anytype, top: u16, bottom: ?u16) void {
 
     self.scroll_top = new_top;
     self.scroll_bottom = new_bottom;
-    self.cursor_row = if (self.origin_mode) self.scroll_top else 0;
-    self.cursor_col = self.lineHomeCol();
+    self.cursor.setPositionByClient(if (self.origin_mode) self.scroll_top else 0, self.lineHomeCol());
 }
 
 pub fn setLeftRightMode(self: anytype, enabled: bool) void {
@@ -33,6 +31,5 @@ pub fn setLeftRightMargins(self: anytype, left: u16, right: ?u16) void {
     self.left_margin = new_left;
     self.right_margin = new_right;
     self.wrap_pending = false;
-    self.cursor_row = if (self.origin_mode) self.scroll_top else 0;
-    self.cursor_col = self.lineHomeCol();
+    self.cursor.setPositionByClient(if (self.origin_mode) self.scroll_top else 0, self.lineHomeCol());
 }

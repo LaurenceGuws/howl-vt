@@ -293,14 +293,14 @@ test "csi mapping: cursor style, save restore aliases, and invalid sequence" {
     try std.testing.expect(process(makeStyleChange('s', 0, 0, 0)).? == .save_cursor);
     try std.testing.expect(process(makeStyleChange('u', 0, 0, 0)).? == .restore_cursor);
     var sem = process(makeStyleChangeWithParamAndIntermediate('q', 0, ' ')).?;
-    try std.testing.expectEqual(SemanticEvent.CursorShape.block, sem.cursor_style.shape);
-    try std.testing.expect(sem.cursor_style.blink);
+    try std.testing.expectEqual(SemanticEvent.CursorShape.block, sem.cursor_style.program_override.shape);
+    try std.testing.expect(sem.cursor_style.program_override.blink);
     sem = process(makeStyleChangeWithParamAndIntermediate('q', 4, ' ')).?;
-    try std.testing.expectEqual(SemanticEvent.CursorShape.underline, sem.cursor_style.shape);
-    try std.testing.expect(!sem.cursor_style.blink);
+    try std.testing.expectEqual(SemanticEvent.CursorShape.underline, sem.cursor_style.program_override.shape);
+    try std.testing.expect(!sem.cursor_style.program_override.blink);
     sem = process(makeStyleChangeWithParamAndIntermediate('q', 5, ' ')).?;
-    try std.testing.expectEqual(SemanticEvent.CursorShape.bar, sem.cursor_style.shape);
-    try std.testing.expect(sem.cursor_style.blink);
+    try std.testing.expectEqual(SemanticEvent.CursorShape.bar, sem.cursor_style.program_override.shape);
+    try std.testing.expect(sem.cursor_style.program_override.blink);
 }
 
 test "csi mapping: mode query, save restore, and erase families" {

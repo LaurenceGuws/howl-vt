@@ -24,20 +24,20 @@ pub fn horizontalForward(self: anytype, count: u16) void {
     if (self.cols == 0) return;
     var remaining = count;
     while (remaining > 0) : (remaining -= 1) {
-        if (self.cursor_col >= self.cols - 1) break;
-        var col = self.cursor_col + 1;
+        if (self.cursor.col >= self.cols - 1) break;
+        var col = self.cursor.col + 1;
         while (col < self.cols and !isStop(self, col)) : (col += 1) {}
-        self.cursor_col = if (col < self.cols) col else self.cols - 1;
+        self.cursor.setColByClient(if (col < self.cols) col else self.cols - 1);
     }
 }
 
 pub fn horizontalBack(self: anytype, count: u16) void {
     var remaining = count;
     while (remaining > 0) : (remaining -= 1) {
-        if (self.cursor_col == 0) break;
-        var col = self.cursor_col - 1;
+        if (self.cursor.col == 0) break;
+        var col = self.cursor.col - 1;
         while (col > 0 and !isStop(self, col)) : (col -= 1) {}
-        self.cursor_col = if (isStop(self, col)) col else 0;
+        self.cursor.setColByClient(if (isStop(self, col)) col else 0);
     }
 }
 
@@ -50,13 +50,13 @@ pub fn isStop(self: anytype, col: u16) bool {
 
 pub fn setStop(self: anytype) void {
     if (self.tab_stops) |stops| {
-        if (self.cursor_col < stops.len) stops[self.cursor_col] = true;
+        if (self.cursor.col < stops.len) stops[self.cursor.col] = true;
     }
 }
 
 pub fn clearCurrentStop(self: anytype) void {
     if (self.tab_stops) |stops| {
-        if (self.cursor_col < stops.len) stops[self.cursor_col] = false;
+        if (self.cursor.col < stops.len) stops[self.cursor.col] = false;
     }
 }
 

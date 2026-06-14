@@ -39,8 +39,7 @@ test "screen resize: row-only resize preserves live bottom and restores from his
     s.apply(SemanticEvent{ .write_text = "CCCC" });
     s.apply(SemanticEvent{ .cursor_position = .{ .row = 3, .col = 0 } });
     s.apply(SemanticEvent{ .write_text = "PROM" });
-    s.cursor_row = 3;
-    s.cursor_col = 3;
+    s.cursor.setPositionByClient(3, 3);
 
     try s.resize(gpa, 2, 4);
 
@@ -49,7 +48,7 @@ test "screen resize: row-only resize preserves live bottom and restores from his
     try std.testing.expectEqual(@as(u21, 'A'), s.historyRowAt(1, 0));
     try std.testing.expectEqual(@as(u21, 'C'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'P'), s.cellAt(1, 0));
-    try std.testing.expectEqual(@as(u16, 1), s.cursor_row);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor.row);
 
     try s.resize(gpa, 4, 4);
 
@@ -59,7 +58,7 @@ test "screen resize: row-only resize preserves live bottom and restores from his
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 0));
     try std.testing.expectEqual(@as(u21, 'C'), s.cellAt(2, 0));
     try std.testing.expectEqual(@as(u21, 'P'), s.cellAt(3, 0));
-    try std.testing.expectEqual(@as(u16, 3), s.cursor_row);
+    try std.testing.expectEqual(@as(u16, 3), s.cursor.row);
 }
 
 test "screen resize: column resize reflows wrapped content into history and viewport" {
@@ -101,8 +100,9 @@ test "screen resize: column resize preserves exact-fill cursor wrap state" {
     s.apply(SemanticEvent{ .write_text = "ABCD" });
 
     try std.testing.expect(s.wrap_pending);
-    try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
-    try std.testing.expectEqual(@as(u16, 3), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 0), s.cursor.row);
+    try std.testing.expectEqual(@as(u16, 3), s.cursor.col);
+    try std.testing.expectEqual(@as(u64, 3), s.cursor.position_changed_by_client_at);
 
     try s.resize(gpa, 1, 2);
 
@@ -111,9 +111,10 @@ test "screen resize: column resize preserves exact-fill cursor wrap state" {
     try std.testing.expectEqual(@as(u21, 'B'), s.historyRowAt(0, 1));
     try std.testing.expectEqual(@as(u21, 'C'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'D'), s.cellAt(0, 1));
-    try std.testing.expectEqual(@as(u16, 0), s.cursor_row);
-    try std.testing.expectEqual(@as(u16, 1), s.cursor_col);
+    try std.testing.expectEqual(@as(u16, 0), s.cursor.row);
+    try std.testing.expectEqual(@as(u16, 1), s.cursor.col);
     try std.testing.expect(s.wrap_pending);
+    try std.testing.expectEqual(@as(u64, 3), s.cursor.position_changed_by_client_at);
 }
 
 test "screen resize: canonical logical content survives reflow when projected history saturates" {
