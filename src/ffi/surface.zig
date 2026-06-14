@@ -21,6 +21,21 @@ pub const FfiRgb8 = extern struct {
     b: u8 = 0,
 };
 
+pub const max_extra_cursors = 256;
+
+pub const FfiExtraCursor = extern struct {
+    row: u16 = 0,
+    col: u16 = 0,
+    rows: u16 = 0,
+    cols: u16 = 0,
+    shape: u8 = 0,
+    mode: u8 = 0,
+    shape_follows_main: u8 = 0,
+    color_follows_main: u8 = 0,
+    cursor_color: FfiColor = .{},
+    text_color: FfiColor = .{},
+};
+
 pub const FfiRenderColorState = extern struct {
     foreground: FfiRgb8 = .{},
     background: FfiRgb8 = .{},
@@ -74,11 +89,15 @@ pub const FfiSurfaceCellSpan = extern struct {
 };
 
 pub const FfiCursor = extern struct {
-    row: u16,
-    col: u16,
-    visible: u8,
-    shape: u8,
-    blink: u8,
+    row: u16 = 0,
+    col: u16 = 0,
+    visible: u8 = 0,
+    shape: u8 = 0,
+    blink: u8 = 0,
+    reserved0: u8 = 0,
+    position_changed_by_client_at_ms: u64 = 0,
+    cell_cols: u16 = 1,
+    cell_rows: u16 = 1,
 };
 
 pub const FfiSurface = extern struct {
@@ -93,6 +112,10 @@ pub const FfiSurface = extern struct {
     dirty_cols_start: bytes.FfiU16Span,
     dirty_cols_end: bytes.FfiU16Span,
     cursor: FfiCursor,
+    cursor_color: FfiColor = .{},
+    cursor_text_color: FfiColor = .{},
+    extra_cursor_count: u16 = 0,
+    extra_cursors: [max_extra_cursors]FfiExtraCursor = [_]FfiExtraCursor{.{}} ** max_extra_cursors,
     colors: FfiRenderColorState = .{},
     selection: selection_ffi.FfiSelection = .{},
 };
@@ -128,7 +151,11 @@ pub const FfiSurfaceResult = extern struct {
         .dirty_rows = .{ .ptr = null, .len = 0 },
         .dirty_cols_start = .{ .ptr = null, .len = 0 },
         .dirty_cols_end = .{ .ptr = null, .len = 0 },
-        .cursor = .{ .row = 0, .col = 0, .visible = 0, .shape = 0, .blink = 0 },
+        .cursor = .{},
+        .cursor_color = .{},
+        .cursor_text_color = .{},
+        .extra_cursor_count = 0,
+        .extra_cursors = [_]FfiExtraCursor{.{}} ** max_extra_cursors,
         .colors = .{},
         .selection = .{},
     },
@@ -192,6 +219,7 @@ fn cellOut(value: screen.Screen.Cell) FfiSurfaceCell {
 
 fn surfaceResult(vt: *terminal.Terminal, view: screen_set.View, selected: ?terminal_selection.TerminalSelection, snapshot_seq: u64, dirty_generation: u64, cells_ptr: ?[*]FfiSurfaceCell, dirty_rows_ptr: ?[*]u8, cols_start_ptr: ?[*]u16, cols_end_ptr: ?[*]u16) FfiSurfaceResult {
     const colors = renderColorStateOut(host_state.terminalColorState(vt));
+    const cursor = vt.screen_state.activeConst().cursor;
     return .{
         .status = @intFromEnum(status.HowlVtCallStatus.ok),
         .history_count = view.history_count,
@@ -214,7 +242,15 @@ fn surfaceResult(vt: *terminal.Terminal, view: screen_set.View, selected: ?termi
                 .visible = boolByte(view.cursor_visible),
                 .shape = @intFromEnum(view.cursor_shape),
                 .blink = boolByte(view.cursor_blink),
+                .reserved0 = 0,
+                .position_changed_by_client_at_ms = cursor.position_changed_by_client_at,
+                .cell_cols = 1,
+                .cell_rows = 1,
             },
+            .cursor_color = if (cursor.cursor_color) |value| .{ .kind = 2, .value = (@as(u32, value.r) << 16) | (@as(u32, value.g) << 8) | value.b } else .{},
+            .cursor_text_color = if (cursor.cursor_text_color) |value| .{ .kind = 2, .value = (@as(u32, value.r) << 16) | (@as(u32, value.g) << 8) | value.b } else .{},
+            .extra_cursor_count = 0,
+            .extra_cursors = [_]FfiExtraCursor{.{}} ** max_extra_cursors,
             .colors = colors,
             .selection = selection_ffi.selectionOut(selected),
         },
@@ -408,6 +444,32 @@ test "vt ffi surface copy carries render color state" {
     try std.testing.expectEqual(FfiRgb8{ .r = 7, .g = 8, .b = 9 }, surface.source.colors.background);
     try std.testing.expectEqual(FfiRgb8{ .r = 10, .g = 11, .b = 12 }, surface.source.colors.cursor);
     try std.testing.expectEqual(FfiRgb8{ .r = 1, .g = 2, .b = 3 }, surface.source.colors.palette[1]);
+}
+
+test "vt ffi surface exports widened primary cursor truth and empty aggregates" {
+    const lifecycle = @import("lifecycle.zig");
+    const vt_handle = lifecycle.terminalInit(2, 2, 0);
+    defer lifecycle.terminalDeinit(vt_handle);
+    try std.testing.expect(vt_handle != null);
+
+    const source_bytes = "\x1b[2;2H\x1b]12;#010203\x1b\\\x1b]21;cursor_text=#040506\x1b\\";
+    try std.testing.expectEqual(@as(i32, 0), lifecycle.terminalFeed(vt_handle, source_bytes.ptr, source_bytes.len).status);
+
+    var cells: [4]FfiSurfaceCell = undefined;
+    var dirty_rows: [2]u8 = undefined;
+    var cols_start: [2]u16 = undefined;
+    var cols_end: [2]u16 = undefined;
+    const surface = terminalCopySurface(vt_handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), surface.status);
+    try std.testing.expectEqual(@as(u16, 1), surface.source.cursor.row);
+    try std.testing.expectEqual(@as(u16, 1), surface.source.cursor.col);
+    try std.testing.expectEqual(@as(u64, 2), surface.source.cursor.position_changed_by_client_at_ms);
+    try std.testing.expectEqual(@as(u16, 1), surface.source.cursor.cell_cols);
+    try std.testing.expectEqual(@as(u16, 1), surface.source.cursor.cell_rows);
+    try std.testing.expectEqual(FfiColor{ .kind = 2, .value = 0x010203 }, surface.source.cursor_color);
+    try std.testing.expectEqual(FfiColor{ .kind = 2, .value = 0x040506 }, surface.source.cursor_text_color);
+    try std.testing.expectEqual(@as(u16, 0), surface.source.extra_cursor_count);
 }
 
 test "vt ffi surface copy preserves semantic cell color identity" {

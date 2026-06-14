@@ -16,6 +16,7 @@ enum {
     HOWL_VT_PENDING_OUTPUT_MAX_BYTES = 1024 * 1024,
     HOWL_VT_CLIPBOARD_SCRATCH_MAX_BYTES = 1024 * 1024,
     HOWL_VT_INPUT_ENCODE_MAX_BYTES = 64,
+    HOWL_VT_MAX_EXTRA_CURSORS = 256,
 };
 
 typedef enum {
@@ -157,7 +158,24 @@ typedef struct {
     uint8_t visible;
     uint8_t shape;
     uint8_t blink;
+    uint8_t reserved0;
+    uint64_t position_changed_by_client_at_ms;
+    uint16_t cell_cols;
+    uint16_t cell_rows;
 } HowlVtCursor;
+
+typedef struct {
+    uint16_t row;
+    uint16_t col;
+    uint16_t rows;
+    uint16_t cols;
+    uint8_t shape;
+    uint8_t mode;
+    uint8_t shape_follows_main;
+    uint8_t color_follows_main;
+    HowlVtColor cursor_color;
+    HowlVtColor text_color;
+} HowlVtExtraCursor;
 
 typedef struct {
     uint8_t shape;
@@ -199,6 +217,10 @@ typedef struct {
     HowlVtU16Span dirty_cols_start;
     HowlVtU16Span dirty_cols_end;
     HowlVtCursor cursor;
+    HowlVtColor cursor_color;
+    HowlVtColor cursor_text_color;
+    uint16_t extra_cursor_count;
+    HowlVtExtraCursor extra_cursors[HOWL_VT_MAX_EXTRA_CURSORS];
     HowlVtRenderColorState colors;
     HowlVtSelection selection;
 } HowlVtSurface;
