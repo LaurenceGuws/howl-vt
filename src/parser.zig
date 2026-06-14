@@ -192,7 +192,7 @@ pub const DcsHook = struct {
     intermediates_len: u8,
 };
 
-const CsiActionData = struct {
+pub const CsiAction = struct {
     // Borrowed parser-owned slices. Callers that retain them past the next
     // `Parser.next` call must copy.
     final: u8,
@@ -204,8 +204,6 @@ const CsiActionData = struct {
     intermediates: []const u8,
     intermediates_len: u8,
 };
-
-pub const CsiAction = CsiActionData;
 
 pub const Action = union(enum) {
     print: u21,
@@ -516,18 +514,27 @@ pub const Parser = struct {
                 break :osc_put null;
             },
             .put => put: {
-                const payload_byte = self.bufferedPut(&self.dcs, byte) orelse break :put null;
-                break :put .{ .dcs_put = payload_byte };
+                const result = self.dcs.feed(byte) orelse break :put null;
+                break :put switch (result) {
+                    .put => |payload_byte| .{ .dcs_put = payload_byte },
+                    .finish => unreachable,
+                };
             },
             .apc_put => apc_put: {
                 break :apc_put switch (self.sosPmApcKind()) {
                     .apc => apc: {
-                        const payload_byte = self.bufferedPut(&self.apc, byte) orelse break :apc null;
-                        break :apc .{ .apc_put = payload_byte };
+                        const result = self.apc.feed(byte) orelse break :apc null;
+                        break :apc switch (result) {
+                            .put => |payload_byte| .{ .apc_put = payload_byte },
+                            .finish => unreachable,
+                        };
                     },
                     .pm => pm: {
-                        const payload_byte = self.bufferedPut(&self.pm, byte) orelse break :pm null;
-                        break :pm .{ .pm_put = payload_byte };
+                        const result = self.pm.feed(byte) orelse break :pm null;
+                        break :pm switch (result) {
+                            .put => |payload_byte| .{ .pm_put = payload_byte },
+                            .finish => unreachable,
+                        };
                     },
                 };
             },
@@ -542,15 +549,6 @@ pub const Parser = struct {
                 },
                 else => unreachable,
             },
-        };
-    }
-
-    fn bufferedPut(self: *Parser, control: anytype, byte: u8) ?u8 {
-        _ = self;
-        const result = control.feed(byte) orelse return null;
-        return switch (result) {
-            .put => |payload_byte| payload_byte,
-            .finish => unreachable,
         };
     }
 
@@ -622,7 +620,7 @@ pub const Parser = struct {
         }
     }
 
-fn consumeCsiDispatch(self: *Parser, byte: u8) ?Action {
+    fn consumeCsiDispatch(self: *Parser, byte: u8) ?Action {
         std.debug.assert(byte >= 0x40);
         std.debug.assert(byte <= 0x7E);
 
@@ -643,7 +641,7 @@ fn consumeCsiDispatch(self: *Parser, byte: u8) ?Action {
         var final_count = self.csi_count;
         if (self.csi_in_param) final_count += 1;
         const intermediates_len = self.intermediates_len - intermediate_start;
-        const action = CsiActionData{
+        const action = CsiAction{
             .final = byte,
             .params = self.csi_params[0..final_count],
             .separators = self.csi_separators,
