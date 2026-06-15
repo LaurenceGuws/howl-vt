@@ -152,8 +152,6 @@ const VtDigest = struct {
     hash: u64,
     rows: u16,
     cols: u16,
-    cursor_row: u16,
-    cursor_col: u16,
     history_count: u32,
     alt_active: bool,
 };
@@ -384,10 +382,6 @@ fn digestTerminal(terminal: *const Terminal) VtDigest {
 
     hashValue(&hasher, view.rows);
     hashValue(&hasher, view.cols);
-    hashValue(&hasher, view.cursor_row);
-    hashValue(&hasher, view.cursor_col);
-    hashValue(&hasher, view.cursor_visible);
-    hashValue(&hasher, @intFromEnum(view.cursor_shape));
     hashValue(&hasher, view.is_alternate_screen);
 
     var row: u16 = 0;
@@ -412,8 +406,6 @@ fn digestTerminal(terminal: *const Terminal) VtDigest {
         .hash = hasher.final(),
         .rows = view.rows,
         .cols = view.cols,
-        .cursor_row = view.cursor_row,
-        .cursor_col = view.cursor_col,
         .history_count = history_count,
         .alt_active = view.is_alternate_screen,
     };

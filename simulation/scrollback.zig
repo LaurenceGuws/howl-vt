@@ -43,8 +43,6 @@ pub const ChurnStep = union(enum) {
 pub const CoreStateSummary = struct {
     rows: u16,
     cols: u16,
-    cursor_row: u16,
-    cursor_col: u16,
     wrap_pending: bool,
     history_count: u32,
     history_capacity: u16,
@@ -61,8 +59,6 @@ pub const PreservationOptions = struct {
 pub const InvariantError = error{
     RowBelowMinimum,
     ColBelowMinimum,
-    CursorRowOutOfBounds,
-    CursorColOutOfBounds,
 };
 
 pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: ScenarioOpCount) !RunSummary {
@@ -254,8 +250,6 @@ fn ensureCoreInvariants(vt: *const Terminal) InvariantError!void {
     const s = vt.screen_state.activeConst();
     if (s.rows < RowsMin) return error.RowBelowMinimum;
     if (s.cols < ColsMin) return error.ColBelowMinimum;
-    if (s.cursor_row >= s.rows) return error.CursorRowOutOfBounds;
-    if (s.cursor_col >= s.cols) return error.CursorColOutOfBounds;
 }
 
 fn hashStructural(vt: *const Terminal) u64 {
@@ -263,8 +257,6 @@ fn hashStructural(vt: *const Terminal) u64 {
     const s = vt.screen_state.activeConst();
     h.update(std.mem.asBytes(&s.rows));
     h.update(std.mem.asBytes(&s.cols));
-    h.update(std.mem.asBytes(&s.cursor_row));
-    h.update(std.mem.asBytes(&s.cursor_col));
     h.update(std.mem.asBytes(&s.wrap_pending));
     const history_count = screen_set.visibleView(&vt.screen_state, 0).history_count;
     const history_capacity = screen_set.historyCapacity(&vt.screen_state);
@@ -367,8 +359,6 @@ fn summarizeCoreState(vt: *const Terminal) CoreStateSummary {
     return .{
         .rows = s.rows,
         .cols = s.cols,
-        .cursor_row = s.cursor_row,
-        .cursor_col = s.cursor_col,
         .wrap_pending = s.wrap_pending,
         .history_count = screen_set.visibleView(&vt.screen_state, 0).history_count,
         .history_capacity = screen_set.historyCapacity(&vt.screen_state),
@@ -377,13 +367,11 @@ fn summarizeCoreState(vt: *const Terminal) CoreStateSummary {
 
 fn logBreakpoint(index: ScenarioOpCount, before: CoreStateSummary, step: ChurnStep, expected: u64, actual: u64, after: CoreStateSummary) void {
     std.debug.print(
-        "scrollback simulation breakpoint at step {d}\nstate before: rows={d} cols={d} cursor=({d},{d}) wrap_pending={} history={d}/{d}\n",
+        "scrollback simulation breakpoint at step {d}\nstate before: rows={d} cols={d} wrap_pending={} history={d}/{d}\n",
         .{
             index,
             before.rows,
             before.cols,
-            before.cursor_row,
-            before.cursor_col,
             before.wrap_pending,
             before.history_count,
             before.history_capacity,
@@ -398,12 +386,10 @@ fn logBreakpoint(index: ScenarioOpCount, before: CoreStateSummary, step: ChurnSt
     }
     std.debug.print("expected output hash: {d}\nactual output hash: {d}\n", .{ expected, actual });
     std.debug.print(
-        "state after: rows={d} cols={d} cursor=({d},{d}) wrap_pending={} history={d}/{d}\n",
+        "state after: rows={d} cols={d} wrap_pending={} history={d}/{d}\n",
         .{
             after.rows,
             after.cols,
-            after.cursor_row,
-            after.cursor_col,
             after.wrap_pending,
             after.history_count,
             after.history_capacity,
