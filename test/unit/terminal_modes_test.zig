@@ -369,9 +369,9 @@ test "extended report queries append host output" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    write(&stream, "\x1bH\x1b[=c\x1b[\"v\x1b[0x\x1b[1x\x1b[2$w");
+    write(&stream, "\x1bH\x1b[=c\x1b[\"v\x1b[0x\x1b[1x");
 
-    try std.testing.expectEqualStrings("\x1bP!|00000000\x1b\\\x1b[4;18;1;1;1\"w\x1b[2;1;1;128;128;1;0x\x1b[3;1;1;128;128;1;0x\x1bP2$u1/9/17\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqualStrings("\x1bP!|00000000\x1b\\\x1b[4;18;1;1;1\"w\x1b[2;1;1;128;128;1;0x\x1b[3;1;1;128;128;1;0x", pendingOutput(&terminal));
 }
 
 test "ANSI mode queries and XTREPORTCOLORS append host output" {
@@ -491,7 +491,7 @@ test "locator button and filter events append DECLRP" {
     try std.testing.expectEqualStrings("\x1b[10;0;4;4;0&w", pendingOutput(&terminal));
 }
 
-test "DECCIR reports default cursor information" {
+test "DECCIR cursor information request is not supported" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.initWithCells(allocator, 3, 10);
     defer terminal.deinit();
@@ -499,62 +499,7 @@ test "DECCIR reports default cursor information" {
     defer stream.deinit();
 
     write(&stream, "\x1b[1$w");
-    try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;0;2;@;BBBB\x1b\\", pendingOutput(&terminal));
-}
-
-test "DECCIR reports cursor position and rendition bits" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 5, 10);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    write(&stream, "\x1b[3;7H\x1b[1m\x1b[4m\x1b[1$w");
-    try std.testing.expectEqualStrings("\x1bP1$u3;7;1;C;@;@;0;2;@;BBBB\x1b\\", pendingOutput(&terminal));
-}
-
-test "DECCIR reports protection origin and wrap flags" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 1, 5);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    write(&stream, "\x1b[1\"q\x1b[?6hABCDE\x1b[1$w");
-    try std.testing.expectEqualStrings("\x1bP1$u1;5;1;@;A;I;0;2;@;BBBB\x1b\\", pendingOutput(&terminal));
-}
-
-test "DECCIR reports charset designation and GL shift" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 10);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    write(&stream, "\x1b(0\x1b[1$w");
-    try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;0;2;@;0BBB\x1b\\", pendingOutput(&terminal));
-
-    clearPendingOutput(&terminal);
-    write(&stream, "\x1b)0\x0E\x1b[1$w");
-    try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;1;2;@;00BB\x1b\\", pendingOutput(&terminal));
-}
-
-test "DECCIR reports charset designation and GL shift across slices" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 10);
-    defer terminal.deinit();
-    var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
-
-    write(&stream, "\x1b(0");
-    write(&stream, "\x1b[1$w");
-    try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;0;2;@;0BBB\x1b\\", pendingOutput(&terminal));
-
-    clearPendingOutput(&terminal);
-    write(&stream, "\x1b)0");
-    write(&stream, "\x0E");
-    write(&stream, "\x1b[1$w");
-    try std.testing.expectEqualStrings("\x1bP1$u1;1;1;@;@;@;1;2;@;00BB\x1b\\", pendingOutput(&terminal));
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
 }
 
 test "DECXCPR appends DEC cursor position report" {

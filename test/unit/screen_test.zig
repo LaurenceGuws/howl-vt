@@ -6,8 +6,12 @@ const parser_mod = @import("../../src/parser.zig");
 const Screen = screen_mod.Screen;
 const Grid = Screen;
 const EraseMode = action_vocabulary.EraseMode;
-const SemanticEvent = action_vocabulary.SemanticEvent;
+const SemanticEvent = action_vocabulary.ScreenAction;
 const csi_max_params = parser_mod.max_params;
+
+fn apply(screen: *Screen, event: SemanticEvent) void {
+    screen.applyScreen(event);
+}
 
 fn emptySeparators() parser_mod.CsiSeparatorList {
     return parser_mod.CsiSeparatorList.initEmpty();
@@ -23,9 +27,9 @@ test "screen: erase_line mode 0 clears from cursor to end of line" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 4, 10);
     defer s.deinit(gpa);
-    s.apply(SemanticEvent{ .write_text = "helloworld" });
+    apply(&s, SemanticEvent{ .write_text = "helloworld" });
     s.cursor.setColByClient(5);
-    s.apply(SemanticEvent{ .erase_line = .cursor_to_end });
+    apply(&s, SemanticEvent{ .erase_line = .cursor_to_end });
     try std.testing.expectEqual(@as(u21, 'h'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'e'), s.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 5));
@@ -37,9 +41,9 @@ test "screen: erase_line mode 1 clears from start to cursor" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 4, 10);
     defer s.deinit(gpa);
-    s.apply(SemanticEvent{ .write_text = "helloworld" });
+    apply(&s, SemanticEvent{ .write_text = "helloworld" });
     s.cursor.setColByClient(4);
-    s.apply(SemanticEvent{ .erase_line = .start_to_cursor });
+    apply(&s, SemanticEvent{ .erase_line = .start_to_cursor });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 4));
     try std.testing.expectEqual(@as(u21, 'w'), s.cellAt(0, 5));
@@ -50,9 +54,9 @@ test "screen: erase_line mode 2 clears full line" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 4, 10);
     defer s.deinit(gpa);
-    s.apply(SemanticEvent{ .write_text = "helloworld" });
+    apply(&s, SemanticEvent{ .write_text = "helloworld" });
     s.cursor.setColByClient(3);
-    s.apply(SemanticEvent{ .erase_line = .all });
+    apply(&s, SemanticEvent{ .erase_line = .all });
     for (0..10) |i| {
         try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, @intCast(i)));
     }
@@ -64,13 +68,13 @@ test "screen: erase_display mode 0 clears from cursor to end of screen" {
     var s = try Grid.initWithCells(gpa, 3, 5);
     defer s.deinit(gpa);
     s.cursor.setPositionByClient(0, 0);
-    s.apply(SemanticEvent{ .write_text = "AAAAA" });
+    apply(&s, SemanticEvent{ .write_text = "AAAAA" });
     s.cursor.setPositionByClient(1, 0);
-    s.apply(SemanticEvent{ .write_text = "BBBBB" });
+    apply(&s, SemanticEvent{ .write_text = "BBBBB" });
     s.cursor.setPositionByClient(2, 0);
-    s.apply(SemanticEvent{ .write_text = "CCCCC" });
+    apply(&s, SemanticEvent{ .write_text = "CCCCC" });
     s.cursor.setPositionByClient(1, 2);
-    s.apply(SemanticEvent{ .erase_display = .cursor_to_end });
+    apply(&s, SemanticEvent{ .erase_display = .cursor_to_end });
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 1));
@@ -85,13 +89,13 @@ test "screen: erase_display mode 1 clears from start to cursor" {
     var s = try Grid.initWithCells(gpa, 3, 5);
     defer s.deinit(gpa);
     s.cursor.setPositionByClient(0, 0);
-    s.apply(SemanticEvent{ .write_text = "AAAAA" });
+    apply(&s, SemanticEvent{ .write_text = "AAAAA" });
     s.cursor.setPositionByClient(1, 0);
-    s.apply(SemanticEvent{ .write_text = "BBBBB" });
+    apply(&s, SemanticEvent{ .write_text = "BBBBB" });
     s.cursor.setPositionByClient(2, 0);
-    s.apply(SemanticEvent{ .write_text = "CCCCC" });
+    apply(&s, SemanticEvent{ .write_text = "CCCCC" });
     s.cursor.setPositionByClient(1, 2);
-    s.apply(SemanticEvent{ .erase_display = .start_to_cursor });
+    apply(&s, SemanticEvent{ .erase_display = .start_to_cursor });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 2));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 3));
@@ -105,9 +109,9 @@ test "screen: erase_display mode 2 clears entire screen" {
     var s = try Grid.initWithCells(gpa, 3, 5);
     defer s.deinit(gpa);
     s.cursor.setPositionByClient(1, 2);
-    s.apply(SemanticEvent{ .write_text = "AB" });
+    apply(&s, SemanticEvent{ .write_text = "AB" });
     s.cursor.setPositionByClient(1, 2);
-    s.apply(SemanticEvent{ .erase_display = .all });
+    apply(&s, SemanticEvent{ .erase_display = .all });
     for (0..3) |r| {
         for (0..5) |c_| {
             try std.testing.expectEqual(@as(u21, 0), s.cellAt(@intCast(r), @intCast(c_)));
@@ -120,8 +124,8 @@ test "screen: erase_display mode 2 clears entire screen" {
 test "screen: erase ops no-op without cell buffer" {
     var s = Grid.init(4, 10);
     s.cursor.setColByClient(3);
-    s.apply(SemanticEvent{ .erase_line = EraseMode.all });
-    s.apply(SemanticEvent{ .erase_display = EraseMode.all });
+    apply(&s, SemanticEvent{ .erase_line = EraseMode.all });
+    apply(&s, SemanticEvent{ .erase_display = EraseMode.all });
     try std.testing.expectEqual(@as(u16, 3), s.cursor.col);
 }
 
@@ -130,18 +134,18 @@ test "screen: DECSTBM and IL shift rows down inside region" {
     var s = try Grid.initWithCells(gpa, 4, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "AAAA" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "BBBB" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "CCCC" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 3, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "DDDD" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "AAAA" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "BBBB" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "CCCC" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 3, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "DDDD" });
 
-    s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 3 } });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .insert_lines = 1 });
+    apply(&s, SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 3 } });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .insert_lines = 1 });
 
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 0));
@@ -154,18 +158,18 @@ test "screen: DECSTBM and DL shift rows up inside region" {
     var s = try Grid.initWithCells(gpa, 4, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "AAAA" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "BBBB" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "CCCC" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 3, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "DDDD" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "AAAA" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "BBBB" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "CCCC" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 3, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "DDDD" });
 
-    s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 3 } });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .delete_lines = 1 });
+    apply(&s, SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 3 } });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .delete_lines = 1 });
 
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'C'), s.cellAt(1, 0));
@@ -178,14 +182,14 @@ test "screen: DCH deletes chars and clears tail" {
     var s = try Grid.initWithCells(gpa, 1, 8);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .write_text = "reset" });
-    s.apply(SemanticEvent.backspace);
-    s.apply(SemanticEvent.backspace);
-    s.apply(SemanticEvent.backspace);
-    s.apply(SemanticEvent.backspace);
-    s.apply(SemanticEvent.backspace);
-    s.apply(SemanticEvent{ .delete_chars = 3 });
-    s.apply(SemanticEvent{ .write_text = "ll" });
+    apply(&s, SemanticEvent{ .write_text = "reset" });
+    apply(&s, SemanticEvent.backspace);
+    apply(&s, SemanticEvent.backspace);
+    apply(&s, SemanticEvent.backspace);
+    apply(&s, SemanticEvent.backspace);
+    apply(&s, SemanticEvent.backspace);
+    apply(&s, SemanticEvent{ .delete_chars = 3 });
+    apply(&s, SemanticEvent{ .write_text = "ll" });
 
     try std.testing.expectEqual(@as(u21, 'l'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'l'), s.cellAt(0, 1));
@@ -199,10 +203,10 @@ test "screen: ICH inserts blanks and shifts suffix right" {
     var s = try Grid.initWithCells(gpa, 1, 8);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .write_text = "abcdef" });
+    apply(&s, SemanticEvent{ .write_text = "abcdef" });
     s.cursor.setColByClient(2);
     s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
-    s.apply(SemanticEvent{ .insert_chars = 2 });
+    apply(&s, SemanticEvent{ .insert_chars = 2 });
 
     try std.testing.expectEqual(@as(u21, 'a'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'b'), s.cellAt(0, 1));
@@ -222,8 +226,8 @@ test "screen: REP repeats last written codepoint" {
     var s = try Grid.initWithCells(gpa, 1, 6);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .write_text = "A" });
-    s.apply(SemanticEvent{ .repeat_preceding = 3 });
+    apply(&s, SemanticEvent{ .write_text = "A" });
+    apply(&s, SemanticEvent{ .repeat_preceding = 3 });
 
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 1));
@@ -237,7 +241,7 @@ test "screen: REP is no-op without preceding codepoint" {
     var s = try Grid.initWithCells(gpa, 1, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .repeat_preceding = 3 });
+    apply(&s, SemanticEvent{ .repeat_preceding = 3 });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u16, 0), s.cursor.col);
 }
@@ -247,16 +251,16 @@ test "screen: RI scrolls region down at top margin" {
     var s = try Grid.initWithCells(gpa, 3, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "AAAA" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "BBBB" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "CCCC" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "AAAA" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "BBBB" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "CCCC" });
 
-    s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent.reverse_index);
+    apply(&s, SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent.reverse_index);
 
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 0));
@@ -269,8 +273,8 @@ test "screen: erase_line uses current background for empty cells" {
     defer s.deinit(gpa);
 
     s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
-    s.apply(SemanticEvent{ .write_text = "~" });
-    s.apply(SemanticEvent{ .erase_line = .cursor_to_end });
+    apply(&s, SemanticEvent{ .write_text = "~" });
+    apply(&s, SemanticEvent{ .erase_line = .cursor_to_end });
 
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 1));
     const cell = s.cellInfoAt(0, 1);
@@ -284,7 +288,7 @@ test "screen: ECH uses current background without moving cursor" {
 
     s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
     s.cursor.setColByClient(2);
-    s.apply(SemanticEvent{ .erase_chars = 3 });
+    apply(&s, SemanticEvent{ .erase_chars = 3 });
 
     try std.testing.expectEqual(@as(u16, 2), s.cursor.col);
     var col: u16 = 2;
@@ -300,15 +304,15 @@ test "screen: SL shifts scroll-region rows left" {
     var s = try Grid.initWithCells(gpa, 3, 5);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "ABCDE" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "FGHIJ" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "KLMNO" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "ABCDE" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "FGHIJ" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "KLMNO" });
 
-    s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
-    s.apply(SemanticEvent{ .shift_left_columns = 2 });
+    apply(&s, SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
+    apply(&s, SemanticEvent{ .shift_left_columns = 2 });
 
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));
@@ -328,10 +332,10 @@ test "screen: SR respects horizontal margins" {
     var s = try Grid.initWithCells(gpa, 1, 5);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .write_text = "ABCDE" });
-    s.apply(SemanticEvent{ .left_right_margin_mode = true });
-    s.apply(SemanticEvent{ .set_left_right_margins = .{ .left = 1, .right = 3 } });
-    s.apply(SemanticEvent{ .shift_right_columns = 1 });
+    apply(&s, SemanticEvent{ .write_text = "ABCDE" });
+    apply(&s, SemanticEvent{ .left_right_margin_mode = true });
+    apply(&s, SemanticEvent{ .set_left_right_margins = .{ .left = 1, .right = 3 } });
+    apply(&s, SemanticEvent{ .shift_right_columns = 1 });
 
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 1));
@@ -345,14 +349,14 @@ test "screen: DECSCA protects cells from selective erase" {
     var s = try Grid.initWithCells(gpa, 2, 3);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .write_text = "A" });
-    s.apply(SemanticEvent{ .character_protection = true });
-    s.apply(SemanticEvent{ .write_text = "B" });
-    s.apply(SemanticEvent{ .character_protection = false });
-    s.apply(SemanticEvent{ .write_text = "CDEF" });
+    apply(&s, SemanticEvent{ .write_text = "A" });
+    apply(&s, SemanticEvent{ .character_protection = true });
+    apply(&s, SemanticEvent{ .write_text = "B" });
+    apply(&s, SemanticEvent{ .character_protection = false });
+    apply(&s, SemanticEvent{ .write_text = "CDEF" });
 
     s.cursor.setPositionByClient(1, 2);
-    s.apply(SemanticEvent{ .selective_erase_display = .all });
+    apply(&s, SemanticEvent{ .selective_erase_display = .all });
 
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));
@@ -365,14 +369,14 @@ test "screen: DECERA clips rectangle to viewport" {
     var s = try Grid.initWithCells(gpa, 3, 3);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "ABC" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "DEF" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "GHI" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "ABC" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "DEF" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "GHI" });
 
-    s.apply(SemanticEvent{ .rect_erase = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 } });
+    apply(&s, SemanticEvent{ .rect_erase = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 } });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 1));
@@ -385,18 +389,18 @@ test "screen: DECSERA preserves protected cells" {
     var s = try Grid.initWithCells(gpa, 3, 3);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "ABC" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "D" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 1 } });
-    s.apply(SemanticEvent{ .character_protection = true });
-    s.apply(SemanticEvent{ .write_text = "E" });
-    s.apply(SemanticEvent{ .character_protection = false });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 2 } });
-    s.apply(SemanticEvent{ .write_text = "FGHI" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "ABC" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "D" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 1 } });
+    apply(&s, SemanticEvent{ .character_protection = true });
+    apply(&s, SemanticEvent{ .write_text = "E" });
+    apply(&s, SemanticEvent{ .character_protection = false });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 2 } });
+    apply(&s, SemanticEvent{ .write_text = "FGHI" });
 
-    s.apply(SemanticEvent{ .rect_selective_erase = .{ .top = 0, .left = 0, .bottom = 2, .right = 2 } });
+    apply(&s, SemanticEvent{ .rect_selective_erase = .{ .top = 0, .left = 0, .bottom = 2, .right = 2 } });
     try std.testing.expectEqual(@as(u21, 'E'), s.cellAt(1, 1));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(2, 2));
 }
@@ -407,7 +411,7 @@ test "screen: DECFRA fills clipped rectangle with current attrs" {
     defer s.deinit(gpa);
 
     s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
-    s.apply(SemanticEvent{ .rect_fill = .{ .area = .{ .top = 1, .left = 1, .bottom = 9, .right = 9 }, .ch = 'X' } });
+    apply(&s, SemanticEvent{ .rect_fill = .{ .area = .{ .top = 1, .left = 1, .bottom = 9, .right = 9 }, .ch = 'X' } });
 
     try std.testing.expectEqual(@as(u21, 'X'), s.cellAt(1, 1));
     try std.testing.expectEqual(@as(u21, 'X'), s.cellAt(2, 2));
@@ -420,13 +424,13 @@ test "screen: DECCRA copies overlapping rectangle through temporary buffer" {
     var s = try Grid.initWithCells(gpa, 3, 7);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "ABC" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "DEF" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "GHI" });
-    s.apply(SemanticEvent{ .rect_copy = .{
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "ABC" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "DEF" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "GHI" });
+    apply(&s, SemanticEvent{ .rect_copy = .{
         .area = .{ .top = 0, .left = 0, .bottom = 2, .right = 2 },
         .source_page = 1,
         .dest_top = 0,
@@ -444,24 +448,24 @@ test "screen: DECIC and DECDC shift columns inside scroll region" {
     var s = try Grid.initWithCells(gpa, 3, 5);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "ABCDE" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "FGHIJ" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "KLMNO" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "ABCDE" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "FGHIJ" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "KLMNO" });
 
-    s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
+    apply(&s, SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
     s.cursor.setColByClient(1);
     s.current_attrs.bg = Grid.Color.rgbComponents(40, 44, 52);
-    s.apply(SemanticEvent{ .insert_columns = 2 });
+    apply(&s, SemanticEvent{ .insert_columns = 2 });
 
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 1));
     try std.testing.expectEqual(@as(u21, 'G'), s.cellAt(1, 3));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(2, 1));
 
-    s.apply(SemanticEvent{ .delete_columns = 1 });
+    apply(&s, SemanticEvent{ .delete_columns = 1 });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 1));
     try std.testing.expectEqual(@as(u21, 'G'), s.cellAt(1, 2));
     try std.testing.expectEqual(@as(u21, 'L'), s.cellAt(2, 2));
@@ -472,9 +476,9 @@ test "screen: DECCARA stream mode spans full middle rows" {
     var s = try Grid.initWithCells(gpa, 3, 3);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "ABCDEFGHI" });
-    s.apply(SemanticEvent{ .rect_attrs_change = .{
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "ABCDEFGHI" });
+    apply(&s, SemanticEvent{ .rect_attrs_change = .{
         .area = .{ .top = 0, .left = 1, .bottom = 2, .right = 1 },
         .attrs = .{ .params = .{1} ++ [_]u16{0} ** (csi_max_params - 1), .param_count = 1 },
         .reverse = false,
@@ -494,9 +498,9 @@ test "screen: DECSACE rectangle mode constrains DECCARA to exact bounds" {
     var s = try Grid.initWithCells(gpa, 3, 3);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .write_text = "ABCDEFGHI" });
-    s.apply(SemanticEvent{ .attr_change_extent_rect = true });
-    s.apply(SemanticEvent{ .rect_attrs_change = .{
+    apply(&s, SemanticEvent{ .write_text = "ABCDEFGHI" });
+    apply(&s, SemanticEvent{ .attr_change_extent_rect = true });
+    apply(&s, SemanticEvent{ .rect_attrs_change = .{
         .area = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 },
         .attrs = .{ .params = .{1} ++ [_]u16{0} ** (csi_max_params - 1), .param_count = 1 },
         .reverse = false,
@@ -514,9 +518,9 @@ test "screen: DECRARA toggles supported attrs" {
     defer s.deinit(gpa);
 
     const underline_params = [_]i32{4};
-    s.apply(SemanticEvent{ .sgr = .{ .params = underline_params[0..], .separators = emptySeparators() } });
-    s.apply(SemanticEvent{ .write_text = "ABCDEF" });
-    s.apply(SemanticEvent{ .rect_attrs_change = .{
+    apply(&s, SemanticEvent{ .sgr = .{ .params = underline_params[0..], .separators = emptySeparators() } });
+    apply(&s, SemanticEvent{ .write_text = "ABCDEF" });
+    apply(&s, SemanticEvent{ .rect_attrs_change = .{
         .area = .{ .top = 0, .left = 0, .bottom = 1, .right = 1 },
         .attrs = .{ .params = .{ 1, 4 } ++ [_]u16{0} ** (csi_max_params - 2), .param_count = 2 },
         .reverse = true,
@@ -534,9 +538,9 @@ test "screen: DECLRMM and DECSLRM wrap inside horizontal margins" {
     var s = try Grid.initWithCells(gpa, 3, 3);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .left_right_margin_mode = true });
-    s.apply(SemanticEvent{ .set_left_right_margins = .{ .left = 1, .right = null } });
-    s.apply(SemanticEvent{ .write_text = "ABCDEFG" });
+    apply(&s, SemanticEvent{ .left_right_margin_mode = true });
+    apply(&s, SemanticEvent{ .set_left_right_margins = .{ .left = 1, .right = null } });
+    apply(&s, SemanticEvent{ .write_text = "ABCDEFG" });
 
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));
@@ -551,15 +555,15 @@ test "screen: DECLRMM and DECSLRM wrap inside horizontal margins" {
 
 test "screen: DECOM with DECSLRM makes cursor addressing margin-relative" {
     var s = Grid.init(4, 4);
-    s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
-    s.apply(SemanticEvent{ .origin_mode = true });
-    s.apply(SemanticEvent{ .left_right_margin_mode = true });
-    s.apply(SemanticEvent{ .set_left_right_margins = .{ .left = 1, .right = 2 } });
+    apply(&s, SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 2 } });
+    apply(&s, SemanticEvent{ .origin_mode = true });
+    apply(&s, SemanticEvent{ .left_right_margin_mode = true });
+    apply(&s, SemanticEvent{ .set_left_right_margins = .{ .left = 1, .right = 2 } });
 
     try std.testing.expectEqual(@as(u16, 1), s.cursor.row);
     try std.testing.expectEqual(@as(u16, 1), s.cursor.col);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
     try std.testing.expectEqual(@as(u16, 1), s.cursor.row);
     try std.testing.expectEqual(@as(u16, 1), s.cursor.col);
 }
@@ -569,17 +573,17 @@ test "screen: SU scrolls only within configured region" {
     var s = try Grid.initWithCells(gpa, 4, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "AAAA" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "BBBB" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "CCCC" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 3, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "DDDD" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "AAAA" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "BBBB" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "CCCC" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 3, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "DDDD" });
 
-    s.apply(SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 3 } });
-    s.apply(SemanticEvent{ .scroll_up_lines = 1 });
+    apply(&s, SemanticEvent{ .set_scroll_region = .{ .top = 1, .bottom = 3 } });
+    apply(&s, SemanticEvent{ .scroll_up_lines = 1 });
 
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'C'), s.cellAt(1, 0));

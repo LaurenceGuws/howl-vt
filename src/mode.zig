@@ -150,10 +150,10 @@ pub fn setDecMode(vt: anytype, mode: u16, enabled: bool) void {
     switch (mode) {
         1 => vt.modes.application_cursor_keys = enabled,
         5 => vt.modes.reverse_screen_mode = enabled,
-        6 => active_state.apply(.{ .origin_mode = enabled }),
-        7 => active_state.apply(.{ .auto_wrap = enabled }),
-        69 => active_state.apply(.{ .left_right_margin_mode = enabled }),
-        25 => active_state.apply(.{ .cursor_visible = enabled }),
+        6 => active_state.applyScreen(.{ .origin_mode = enabled }),
+        7 => active_state.applyScreen(.{ .auto_wrap = enabled }),
+        69 => active_state.applyScreen(.{ .left_right_margin_mode = enabled }),
+        25 => active_state.applyScreen(.{ .cursor_visible = enabled }),
         66 => vt.modes.application_keypad = enabled,
         47 => vt.switchScreenMode(enabled, false, false),
         1047 => vt.switchScreenMode(enabled, true, false),
@@ -177,7 +177,7 @@ pub fn setAnsiModes(vt: anytype, modes: []const u16, enabled: bool) void {
     const active_state = vt.screen_state.active();
     for (modes) |mode| switch (mode) {
         2 => vt.modes.keyboard_action_mode = enabled,
-        4 => active_state.apply(.{ .insert_mode = enabled }),
+        4 => active_state.applyScreen(.{ .insert_mode = enabled }),
         12 => vt.modes.send_receive_mode = enabled,
         20 => vt.modes.newline_mode = enabled,
         else => {},

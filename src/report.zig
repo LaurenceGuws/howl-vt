@@ -22,30 +22,16 @@ pub const CursorReportView = struct {
     cursor_col: u16,
 };
 
-pub const CharsetReportView = struct {
-    gl_index: u8,
-    g0_designation: u8,
-    g1_designation: u8,
-};
-
-pub const CursorInformationView = struct {
-    cursor: CursorReportView,
-    current_attrs: Screen.CellAttrs,
-    origin_mode: bool,
-    wrap_pending: bool,
-};
-
 pub const RectChecksumRequest = struct {
     request_id: u16,
 };
 
-pub fn apply(vt: anytype, report_action: ReportAction) host_state.ApplyError!void {
+pub fn apply(vt: anytype, event: ReportAction) host_state.ApplyError!void {
     var scratch: input_encode.Scratch = .{};
     const allocator = vt.allocator;
     const pending_output = &vt.host.pending_output;
     const encode_buf = scratch.buf[0..];
     const active = vt.screen_state.activeConst();
-    const deccir_charset = vt.deccirCharsetState();
     const render_view = CursorReportView{
         .rows = active.rows,
         .cols = active.cols,
@@ -73,13 +59,7 @@ pub fn apply(vt: anytype, report_action: ReportAction) host_state.ApplyError!voi
         .synchronized_output = vt.modes.synchronized_output,
         .kitty_clipboard = vt.modes.kitty_clipboard,
     };
-    const charset_view = CharsetReportView{
-        .gl_index = deccir_charset.gl_index,
-        .g0_designation = deccir_charset.g0_designation,
-        .g1_designation = deccir_charset.g1_designation,
-    };
-
-    switch (report_action) {
+    switch (event) {
         .ansi_mode_query => |mode| try appendAnsiModeReport(allocator, pending_output, encode_buf, mode, TerminalModeNs.ansiModeStateForView(ansi_modes, mode)),
         .modify_other_keys_query => try appendModifyOtherKeysReport(allocator, pending_output, encode_buf, vt.modes.modify_other_keys),
         .key_format_query => |resource| if (isKeyFormatResource(resource)) try appendKeyFormatReport(allocator, pending_output, encode_buf, resource, vt.modes.key_format[resource]),
@@ -105,18 +85,6 @@ pub fn apply(vt: anytype, report_action: ReportAction) host_state.ApplyError!voi
             computeRectChecksum(active, vt.xtchecksum_flags, req.page, req.area),
         ),
         .selected_graphic_rendition_report => |area| try appendSelectedGraphicRenditionReport(allocator, pending_output, encode_buf, active, area),
-        .presentation_state_report => |kind| {
-            switch (kind) {
-                1 => try appendCursorInformationReport(allocator, pending_output, encode_buf, .{
-                    .cursor = render_view,
-                    .current_attrs = active.current_attrs,
-                    .origin_mode = active.origin_mode,
-                    .wrap_pending = active.wrap_pending,
-                }, charset_view),
-                2 => try appendTabStopReport(allocator, pending_output, encode_buf, active),
-                else => try host_state.appendOutput(pending_output, allocator, "\x1bP0$u\x1b\\"),
-            }
-        },
         .displayed_extent_report => try appendDisplayedExtentReport(allocator, pending_output, encode_buf, render_view),
         .parameters_report => |kind| try appendTerminalParametersReport(allocator, pending_output, encode_buf, kind),
         .xtreportcolors => try appendColorStackReport(allocator, pending_output, encode_buf, vt.kitty.global.color_stack.len),
@@ -222,46 +190,6 @@ pub fn appendAnsiModeReport(allocator: std.mem.Allocator, output: *std.ArrayList
 
 pub fn appendColorStackReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, depth: u8) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[{d};{d}#Q", .{ depth, depth });
-    try host_state.appendOutput(output, allocator, text);
-}
-
-pub fn appendCursorInformationReport(
-    allocator: std.mem.Allocator,
-    output: *std.ArrayList(u8),
-    encode_buf: []u8,
-    view: CursorInformationView,
-    charset: CharsetReportView,
-) host_state.ApplyError!void {
-    const attrs = view.current_attrs;
-
-    var srend_bits: u8 = 0;
-    if (attrs.bold) srend_bits |= 1;
-    if (attrs.underline) srend_bits |= 2;
-    if (attrs.blink) srend_bits |= 4;
-    if (attrs.reverse) srend_bits |= 8;
-    const srend: u8 = 0x40 + srend_bits;
-
-    const satt: u8 = if (attrs.protected) 0x41 else 0x40;
-
-    var sflag_bits: u8 = 0;
-    if (view.origin_mode) sflag_bits |= 1;
-    if (view.wrap_pending) sflag_bits |= 8;
-    const sflag: u8 = 0x40 + sflag_bits;
-
-    const text = formatOutput(
-        encode_buf,
-        "\x1bP1$u{d};{d};1;{c};{c};{c};{d};2;@;{c}{c}BB\x1b\\",
-        .{
-            view.cursor.cursor_row + 1,
-            view.cursor.cursor_col + 1,
-            srend,
-            satt,
-            sflag,
-            charset.gl_index,
-            charset.g0_designation,
-            charset.g1_designation,
-        },
-    );
     try host_state.appendOutput(output, allocator, text);
 }
 
@@ -491,17 +419,17 @@ fn colorEq(a: Grid.Color, b: Grid.Color) bool {
 test "cursor style report payload reads semantic cursor owner" {
     var screen = Screen.init(2, 2);
     screen.setDefaultCursorStyle(.{ .shape = .underline, .blink = false });
-    screen.apply(.{ .cursor_style = .{ .program_override = .{ .shape = .bar, .blink = true } } });
+    screen.applyScreen(.{ .cursor_style = .{ .program_override = .{ .shape = .bar, .blink = true } } });
 
     var encode_buf: [64]u8 = undefined;
     const overridden = decrqssPayload(encode_buf[0..], &screen, " q").?;
     try std.testing.expectEqualStrings("5 q", overridden);
 
-    screen.apply(.{ .cursor_style = .{ .program_override = .{ .shape = .block, .blink = true } } });
+    screen.applyScreen(.{ .cursor_style = .{ .program_override = .{ .shape = .block, .blink = true } } });
     const block_blink = decrqssPayload(encode_buf[0..], &screen, " q").?;
     try std.testing.expectEqualStrings("0 q", block_blink);
 
-    screen.apply(.{ .cursor_style = .{ .program_override = .{ .shape = .none, .blink = false } } });
+    screen.applyScreen(.{ .cursor_style = .{ .program_override = .{ .shape = .none, .blink = false } } });
     const no_shape = decrqssPayload(encode_buf[0..], &screen, " q").?;
     try std.testing.expectEqualStrings("1 q", no_shape);
 }

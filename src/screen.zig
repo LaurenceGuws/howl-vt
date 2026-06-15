@@ -1,5 +1,4 @@
 const std = @import("std");
-const action_route = @import("route.zig");
 const action_vocabulary = @import("vocabulary.zig");
 const parser_mod = @import("parser.zig");
 const cell = @import("screen/cell.zig");
@@ -333,12 +332,6 @@ pub const Screen = struct {
         if (@as(u32, @intCast(endpoint_row)) < oldest_row) return true;
         if (@as(u32, @intCast(endpoint_row)) >= newest_row_exclusive) return true;
         return false;
-    }
-
-    /// Apply one terminal event to screen state.
-    pub fn apply(self: *Screen, event: SemanticEvent) void {
-        const screen_action = action_route.screenAction(event) orelse return;
-        self.applyScreen(screen_action);
     }
 
     pub fn applyScreen(self: *Screen, event: ScreenAction) void {

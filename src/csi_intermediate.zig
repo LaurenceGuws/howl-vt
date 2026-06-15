@@ -45,7 +45,6 @@ fn processDollar(final: u8, params: []const i32) ?SemanticEvent {
         'x' => rectFill(params),
         'z' => SemanticEvent{ .rect_erase = params_mod.rectArea(params, 0) },
         '{' => SemanticEvent{ .rect_selective_erase = params_mod.rectArea(params, 0) },
-        'w' => SemanticEvent{ .presentation_state_report = params_mod.paramAtOrDefault0(params, 0) },
         else => null,
     };
 }

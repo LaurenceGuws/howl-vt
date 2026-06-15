@@ -541,14 +541,14 @@ test "cursor color control mutates semantic cursor owner through screen apply" {
     var screen = Screen.init(2, 2);
 
     const cursor_event = cursorColorEvent(.{ .command = 12, .payload = "#010203" }).?;
-    screen.apply(cursor_event);
+    screen.applyScreen(.{ .cursor_color = cursor_event.cursor_color });
     try std.testing.expectEqual(@as(?Rgb, .{ .r = 1, .g = 2, .b = 3 }), screen.cursor.cursor_color);
 
     const cursor_text_event = cursorColorEvent(.{ .command = 21, .payload = "cursor_text=#040506" }).?;
-    screen.apply(cursor_text_event);
+    screen.applyScreen(.{ .cursor_text_color = cursor_text_event.cursor_text_color });
     try std.testing.expectEqual(@as(?Rgb, .{ .r = 4, .g = 5, .b = 6 }), screen.cursor.cursor_text_color);
 
     const reset_event = cursorColorEvent(.{ .command = 112, .payload = "" }).?;
-    screen.apply(reset_event);
+    screen.applyScreen(.{ .cursor_color = reset_event.cursor_color });
     try std.testing.expectEqual(@as(?Rgb, null), screen.cursor.cursor_color);
 }

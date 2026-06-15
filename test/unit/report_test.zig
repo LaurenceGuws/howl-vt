@@ -53,9 +53,6 @@ test "report mapping: checksum and report request families" {
     var params = [_]i32{0} ** csi_max_params;
     intermediates[0] = '"';
     try std.testing.expect(process(Event{ .style_change = .{ .final = 'v', .params = params[0..], .separators = empty_separators, .param_count = 0, .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1 } }).? == .displayed_extent_report);
-    intermediates[0] = '$';
-    params[0] = 2;
-    try std.testing.expectEqual(@as(u16, 2), process(Event{ .style_change = .{ .final = 'w', .params = params[0..], .separators = empty_separators, .param_count = 1, .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1 } }).?.presentation_state_report);
     intermediates[0] = '#';
     params[0] = 3;
     try std.testing.expectEqual(@as(u16, 3), process(Event{ .style_change = .{ .final = 'y', .params = params[0..], .separators = empty_separators, .param_count = 1, .leader = 0, .private = false, .intermediates = intermediates[0..], .intermediates_len = 1 } }).?.xtchecksum);

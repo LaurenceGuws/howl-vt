@@ -4,7 +4,11 @@ const action_vocabulary = @import("../../../src/vocabulary.zig");
 const history_mod = @import("../../../src/screen/history.zig");
 
 const Grid = screen_mod.Screen;
-const SemanticEvent = action_vocabulary.SemanticEvent;
+const SemanticEvent = action_vocabulary.ScreenAction;
+
+fn apply(screen: *Grid, event: SemanticEvent) void {
+    screen.applyScreen(event);
+}
 
 fn canonicalLogicalStream(allocator: std.mem.Allocator, screen: *const Grid) ![]u21 {
     var logical_lines = try history_mod.collectLogicalLines(screen, allocator, screen.rows);
@@ -31,14 +35,14 @@ test "screen resize: row-only resize preserves live bottom and restores from his
     var s = try Grid.initWithCellsAndHistory(gpa, 4, 4, 8);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "AAAA" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "BBBB" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "CCCC" });
-    s.apply(SemanticEvent{ .cursor_position = .{ .row = 3, .col = 0 } });
-    s.apply(SemanticEvent{ .write_text = "PROM" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "AAAA" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "BBBB" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "CCCC" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 3, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "PROM" });
     s.cursor.setPositionByClient(3, 3);
 
     try s.resize(gpa, 2, 4);
@@ -66,7 +70,7 @@ test "screen resize: column resize reflows wrapped content into history and view
     var s = try Grid.initWithCellsAndHistory(gpa, 2, 4, 8);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .write_text = "ABCDEFGHIJ" });
+    apply(&s, SemanticEvent{ .write_text = "ABCDEFGHIJ" });
 
     try std.testing.expectEqual(@as(u32, 1), s.historyCount());
     try std.testing.expectEqual(@as(u21, 'A'), s.historyRowAt(0, 0));
@@ -97,7 +101,7 @@ test "screen resize: column resize preserves exact-fill cursor wrap state" {
     var s = try Grid.initWithCellsAndHistory(gpa, 1, 4, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .write_text = "ABCD" });
+    apply(&s, SemanticEvent{ .write_text = "ABCD" });
 
     try std.testing.expect(s.wrap_pending);
     try std.testing.expectEqual(@as(u16, 0), s.cursor.row);
@@ -122,7 +126,7 @@ test "screen resize: canonical logical content survives reflow when projected hi
     var s = try Grid.initWithCellsAndHistory(gpa, 2, 6, 4);
     defer s.deinit(gpa);
 
-    s.apply(SemanticEvent{ .write_text = "AAAAAA\nBBBBBB\nCCCCCC\nDDDDDD\nEEEEEE" });
+    apply(&s, SemanticEvent{ .write_text = "AAAAAA\nBBBBBB\nCCCCCC\nDDDDDD\nEEEEEE" });
     const before = try canonicalLogicalStream(gpa, &s);
     defer gpa.free(before);
 
