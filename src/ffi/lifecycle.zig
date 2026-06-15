@@ -30,6 +30,7 @@ fn cursorStyleIn(value: FfiCursorStyle) ?screen.Screen.CursorStyle {
         0 => .block,
         1 => .underline,
         2 => .bar,
+        3 => .none,
         else => return null,
     };
     return .{ .shape = shape, .blink = value.blink != 0 };

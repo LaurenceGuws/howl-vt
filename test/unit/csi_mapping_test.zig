@@ -157,6 +157,7 @@ test "csi mapping: positioning, tab, erase, and reset semantics" {
     try std.testing.expectEqual(@as(u16, 1), process(makeStyleChange('X', 0, 0, 0)).?.erase_chars);
     try std.testing.expectEqual(@as(u16, 3), process(makeStyleChangeWithParamAndIntermediate('@', 3, ' ')).?.shift_left_columns);
     try std.testing.expectEqual(@as(u16, 1), process(makeStyleChangeWithIntermediate('A', ' ')).?.shift_right_columns);
+    try std.testing.expectEqual(SemanticEvent.CursorShape.none, process(makeStyleChangeWithParamAndIntermediate('q', 7, ' ')).?.cursor_style.program_override.shape);
 }
 
 test "csi mapping: protection, rectangular ops, and margins" {

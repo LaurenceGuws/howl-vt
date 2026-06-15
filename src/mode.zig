@@ -31,8 +31,6 @@ pub const ModeState = struct {
 
 pub fn apply(vt: anytype, mode_action: ModeAction) void {
     switch (mode_action) {
-        .enter_alt_screen => |opts| enterAltScreen(vt, opts.clear, opts.save_cursor),
-        .exit_alt_screen => |opts| exitAltScreen(vt, opts.restore_cursor),
         .application_cursor_keys => |enabled| vt.modes.application_cursor_keys = enabled,
         .application_keypad => |enabled| vt.modes.application_keypad = enabled,
         .ansi_mode_set => |modes| setAnsiModes(vt, modes.params[0..modes.param_count], true),
@@ -152,9 +150,9 @@ pub fn setDecMode(vt: anytype, mode: u16, enabled: bool) void {
         69 => active_state.apply(.{ .left_right_margin_mode = enabled }),
         25 => active_state.apply(.{ .cursor_visible = enabled }),
         66 => vt.modes.application_keypad = enabled,
-        47 => if (enabled) enterAltScreen(vt, false, false) else exitAltScreen(vt, false),
-        1047 => if (enabled) enterAltScreen(vt, true, false) else exitAltScreen(vt, false),
-        1049 => if (enabled) enterAltScreen(vt, true, true) else exitAltScreen(vt, true),
+        47 => vt.switchScreenMode(enabled, false, false),
+        1047 => vt.switchScreenMode(enabled, true, false),
+        1049 => vt.switchScreenMode(enabled, true, true),
         9 => vt.modes.mouse_tracking = if (enabled) .x10 else .off,
         1000 => vt.modes.mouse_tracking = if (enabled) .normal else .off,
         1002 => vt.modes.mouse_tracking = if (enabled) .button_event else .off,
@@ -179,14 +177,6 @@ pub fn setAnsiModes(vt: anytype, modes: []const u16, enabled: bool) void {
         20 => vt.modes.newline_mode = enabled,
         else => {},
     };
-}
-
-pub fn enterAltScreen(vt: anytype, clear_alt: bool, save_cursor: bool) void {
-    vt.screen_state.enterAlt(clear_alt, save_cursor);
-}
-
-pub fn exitAltScreen(vt: anytype, restore_cursor: bool) void {
-    vt.screen_state.exitAlt(restore_cursor);
 }
 
 pub fn decModeStateForView(view: DecView, mode: u16) u8 {

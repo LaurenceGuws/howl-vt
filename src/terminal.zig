@@ -8,6 +8,7 @@ const selection = @import("selection.zig");
 const screen_set = @import("screen_set.zig");
 const stream_terminal = @import("stream_terminal.zig");
 const surface_publication = @import("publication.zig");
+const savepoint_mod = @import("terminal/savepoint.zig");
 
 const ScreenNs = screen.Screen;
 const TerminalModeNs = mode;
@@ -32,6 +33,8 @@ pub const Terminal = struct {
     gl_index: u8 = 0,
     g0_designation: u8 = 'B',
     g1_designation: u8 = 'B',
+    primary_savepoint: savepoint_mod.Savepoint = .{},
+    alternate_savepoint: savepoint_mod.Savepoint = .{},
     dirty_generation: u64 = 1,
     surface_publication: surface_publication.Publication = .{},
 
@@ -147,8 +150,72 @@ pub const Terminal = struct {
 
     pub fn resetScreen(self: *Terminal) void {
         self.screen_state.reset();
+        self.primary_savepoint.clear();
+        self.alternate_savepoint.clear();
+        self.gl_index = 0;
+        self.g0_designation = 'B';
+        self.g1_designation = 'B';
         self.kitty.resetTerminalState(self.allocator);
         self.host.resetTerminalState();
+    }
+
+    pub fn saveCursor(self: *Terminal) void {
+        const active = self.screen_state.activeConst();
+        const savepoint = self.activeSavepoint();
+        savepoint.* = .{
+            .valid = true,
+            .row = active.cursor.row,
+            .col = active.cursor.col,
+            .style = active.cursor.effectiveStyle(),
+            .current_attrs = active.current_attrs,
+            .origin_mode = active.origin_mode,
+            .auto_wrap = active.auto_wrap,
+            .gl_index = self.gl_index,
+            .g0_designation = self.g0_designation,
+            .g1_designation = self.g1_designation,
+        };
+    }
+
+    pub fn restoreCursor(self: *Terminal) void {
+        const active = self.screen_state.active();
+        const savepoint = self.activeSavepointConst();
+        active.wrap_pending = false;
+        if (!savepoint.valid) {
+            active.cursor.setPositionStructural(0, 0);
+            active.origin_mode = false;
+            self.gl_index = 0;
+            self.g0_designation = 'B';
+            self.g1_designation = 'B';
+            return;
+        }
+
+        active.origin_mode = savepoint.origin_mode;
+        active.auto_wrap = savepoint.auto_wrap;
+        active.current_attrs = savepoint.current_attrs;
+        active.cursor.setProgramStyle(savepoint.style);
+        restoreCursorPosition(active, savepoint.row, savepoint.col);
+        self.gl_index = savepoint.gl_index;
+        self.g0_designation = savepoint.g0_designation;
+        self.g1_designation = savepoint.g1_designation;
+    }
+
+    pub fn switchScreenMode(self: *Terminal, enable_alt: bool, clear_alt: bool, save_restore_cursor: bool) void {
+        if (enable_alt) {
+            if (self.screen_state.alt_active) return;
+            if (save_restore_cursor) self.saveCursor();
+            self.screen_state.alt_active = true;
+            self.screen_state.activeSelection().clear();
+            if (clear_alt) self.screen_state.alternate.clearVisibleCells();
+            self.screen_state.alternate.resetCursorForAltEntry();
+            self.screen_state.alternate.markAllRowsDirty();
+            return;
+        }
+
+        if (!self.screen_state.alt_active) return;
+        self.screen_state.alt_active = false;
+        self.screen_state.activeSelection().clear();
+        if (save_restore_cursor) self.restoreCursor();
+        self.screen_state.primary.markAllRowsDirty();
     }
 
     pub fn ackSurface(self: *Terminal, snapshot_seq: u64) bool {
@@ -245,6 +312,27 @@ pub const Terminal = struct {
         if (row < 0) return row;
         const absolute = @as(u64, self.screen_state.activeConst().historyRowBase()) + @as(u64, @intCast(row));
         return std.math.cast(i32, absolute) orelse std.math.maxInt(i32);
+    }
+
+    fn activeSavepoint(self: *Terminal) *savepoint_mod.Savepoint {
+        return if (self.screen_state.alt_active) &self.alternate_savepoint else &self.primary_savepoint;
+    }
+
+    fn activeSavepointConst(self: *const Terminal) *const savepoint_mod.Savepoint {
+        return if (self.screen_state.alt_active) &self.alternate_savepoint else &self.primary_savepoint;
+    }
+
+    fn restoreCursorPosition(active: *ScreenNs, row: u16, col: u16) void {
+        if (active.rows == 0 or active.cols == 0) {
+            active.cursor.setPositionStructural(0, 0);
+            return;
+        }
+
+        const top = if (active.origin_mode) active.scroll_top else 0;
+        const bottom = if (active.origin_mode) @min(active.scroll_bottom, active.rows - 1) else active.rows - 1;
+        const bounded_row = @max(top, @min(row, bottom));
+        const bounded_col = @min(col, active.cols - 1);
+        active.cursor.setPositionStructural(bounded_row, bounded_col);
     }
 
     pub const SurfacePublication = struct {

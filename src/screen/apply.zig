@@ -17,8 +17,6 @@ pub fn applyScreen(self: anytype, event: ScreenAction) void {
         .write_text,
         .write_codepoint,
         .repeat_preceding,
-        .save_cursor,
-        .restore_cursor,
         .sgr,
         => applyRetainedState(self, event),
         .line_feed,
@@ -104,8 +102,6 @@ fn applyRetainedState(self: anytype, event: ScreenAction) void {
         .write_text => |s| self.writeText(s),
         .write_codepoint => |cp| self.writeCell(cp),
         .repeat_preceding => |count| self.repeatPreceding(count),
-        .save_cursor => self.saveCursor(),
-        .restore_cursor => self.restoreCursor(),
         .sgr => |sgr| self.applySgr(sgr.params, sgr.separators),
         else => unreachable,
     }

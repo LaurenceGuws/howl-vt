@@ -464,12 +464,20 @@ test "vt ffi surface exports widened primary cursor truth and empty aggregates" 
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), surface.status);
     try std.testing.expectEqual(@as(u16, 1), surface.source.cursor.row);
     try std.testing.expectEqual(@as(u16, 1), surface.source.cursor.col);
-    try std.testing.expectEqual(@as(u64, 2), surface.source.cursor.position_changed_by_client_at_ms);
+    try std.testing.expectEqual(@as(u64, 1), surface.source.cursor.position_changed_by_client_at_ms);
     try std.testing.expectEqual(@as(u16, 1), surface.source.cursor.cell_cols);
     try std.testing.expectEqual(@as(u16, 1), surface.source.cursor.cell_rows);
     try std.testing.expectEqual(FfiColor{ .kind = 2, .value = 0x010203 }, surface.source.cursor_color);
     try std.testing.expectEqual(FfiColor{ .kind = 2, .value = 0x040506 }, surface.source.cursor_text_color);
     try std.testing.expectEqual(@as(u16, 0), surface.source.extra_cursor_count);
+
+    try std.testing.expectEqual(@as(u8, 0), surface.source.cursor.shape);
+    try std.testing.expectEqual(@as(u8, 1), surface.source.cursor.visible);
+
+    try std.testing.expectEqual(@as(i32, 0), lifecycle.terminalFeed(vt_handle, "\x1b[7 q".ptr, 6).status);
+    const no_shape = terminalCopySurface(vt_handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
+    try std.testing.expectEqual(@as(u8, 3), no_shape.source.cursor.shape);
+    try std.testing.expectEqual(@as(u8, 1), no_shape.source.cursor.visible);
 }
 
 test "vt ffi surface copy preserves semantic cell color identity" {

@@ -96,6 +96,25 @@ fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!bool {
         vt.resetScreen();
         return true;
     }
+    switch (event) {
+        .save_cursor => {
+            vt.saveCursor();
+            return true;
+        },
+        .restore_cursor => {
+            vt.restoreCursor();
+            return true;
+        },
+        .enter_alt_screen => |opts| {
+            vt.switchScreenMode(true, opts.clear, opts.save_cursor);
+            return true;
+        },
+        .exit_alt_screen => |opts| {
+            vt.switchScreenMode(false, false, opts.restore_cursor);
+            return true;
+        },
+        else => {},
+    }
     if (reportAction(event)) |report_action| {
         try report_apply.apply(vt, report_action);
         return true;
@@ -148,8 +167,6 @@ pub fn screenAction(event: SemanticEvent) ?ScreenAction {
         .auto_wrap => |v| ScreenAction{ .auto_wrap = v },
         .origin_mode => |v| ScreenAction{ .origin_mode = v },
         .insert_mode => |v| ScreenAction{ .insert_mode = v },
-        .save_cursor => .save_cursor,
-        .restore_cursor => .restore_cursor,
         .sgr => |v| ScreenAction{ .sgr = .{ .params = v.params, .separators = v.separators } },
         .insert_lines => |v| ScreenAction{ .insert_lines = v },
         .delete_lines => |v| ScreenAction{ .delete_lines = v },
@@ -213,8 +230,6 @@ fn reportAction(event: SemanticEvent) ?ReportAction {
 
 fn modeAction(event: SemanticEvent) ?ModeAction {
     return switch (event) {
-        .enter_alt_screen => |v| ModeAction{ .enter_alt_screen = .{ .clear = v.clear, .save_cursor = v.save_cursor } },
-        .exit_alt_screen => |v| ModeAction{ .exit_alt_screen = .{ .restore_cursor = v.restore_cursor } },
         .application_cursor_keys => |v| ModeAction{ .application_cursor_keys = v },
         .application_keypad => |v| ModeAction{ .application_keypad = v },
         .ansi_mode_set => |v| ModeAction{ .ansi_mode_set = v },

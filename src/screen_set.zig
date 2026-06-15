@@ -76,19 +76,11 @@ pub const SurfaceSnapshot = struct {
 };
 
 pub const Set = struct {
-    const CursorSnapshot = struct {
-        row: u16,
-        col: u16,
-        wrap_pending: bool,
-        cursor_visible: bool,
-    };
-
     primary: Screen,
     alternate: Screen,
     primary_selection: SelectionState = SelectionState.init(),
     alternate_selection: SelectionState = SelectionState.init(),
     alt_active: bool = false,
-    saved_primary_cursor: ?CursorSnapshot = null,
 
     pub fn init(primary: Screen, alternate: Screen) Set {
         return .{ .primary = primary, .alternate = alternate };
@@ -122,40 +114,6 @@ pub const Set = struct {
     pub fn setCellPixelSize(self: *Set, width: u32, height: u32) void {
         self.primary.setCellPixelSize(width, height);
         self.alternate.setCellPixelSize(width, height);
-    }
-
-    pub fn enterAlt(self: *Set, clear_alt: bool, save_cursor: bool) void {
-        if (save_cursor) {
-            self.saved_primary_cursor = .{
-                .row = self.primary.cursor.row,
-                .col = self.primary.cursor.col,
-                .wrap_pending = self.primary.wrap_pending,
-                .cursor_visible = self.primary.cursor.visible,
-            };
-            std.debug.assert(self.saved_primary_cursor != null);
-        }
-        if (clear_alt) self.alternate.reset();
-        self.alt_active = true;
-        self.activeSelection().clear();
-        self.alternate.markAllRowsDirty();
-        std.debug.assert(self.alt_active);
-    }
-
-    pub fn exitAlt(self: *Set, restore_cursor: bool) void {
-        self.alt_active = false;
-        self.activeSelection().clear();
-        if (restore_cursor) {
-            if (self.saved_primary_cursor) |saved| {
-                self.primary.cursor.setPositionStructural(@min(saved.row, self.primary.rows -| 1), @min(saved.col, self.primary.cols -| 1));
-                self.primary.wrap_pending = saved.wrap_pending;
-                self.primary.cursor.visible = saved.cursor_visible;
-                std.debug.assert(self.primary.cursor.row < self.primary.rows or self.primary.rows == 0);
-                std.debug.assert(self.primary.cursor.col < self.primary.cols or self.primary.cols == 0);
-            }
-            self.saved_primary_cursor = null;
-        }
-        self.primary.markAllRowsDirty();
-        std.debug.assert(!self.alt_active);
     }
 
     pub fn deinit(self: *Set, allocator: std.mem.Allocator) void {

@@ -77,7 +77,7 @@ pub fn cursorStyle(param: u16) SemanticEvent.CursorStyleCommand {
         4 => .{ .program_override = .{ .shape = .underline, .blink = false } },
         5 => .{ .program_override = .{ .shape = .bar, .blink = true } },
         6 => .{ .program_override = .{ .shape = .bar, .blink = false } },
-        else => .{ .program_override = .{ .shape = .block, .blink = true } },
+        else => .{ .program_override = .{ .shape = .none, .blink = (param & 1) == 1 } },
     };
 }
 

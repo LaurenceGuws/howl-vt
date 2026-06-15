@@ -34,19 +34,6 @@ test "screen cursor: origin mode makes cursor positioning relative to scroll reg
     try std.testing.expectEqual(@as(u16, 4), s.cursor.row);
 }
 
-test "screen cursor: save and restore preserves position and wrap" {
-    var s = Screen.init(4, 8);
-    s.cursor.setPositionByClient(1, 5);
-    s.wrap_pending = true;
-    s.apply(.save_cursor);
-    s.cursor.setPositionByClient(3, 0);
-    s.wrap_pending = false;
-    s.apply(.restore_cursor);
-    try std.testing.expectEqual(@as(u16, 1), s.cursor.row);
-    try std.testing.expectEqual(@as(u16, 5), s.cursor.col);
-    try std.testing.expect(s.wrap_pending);
-}
-
 test "screen cursor: directional and absolute moves clamp correctly" {
     var s = Screen.init(24, 80);
     s.cursor.setRowByClient(5);

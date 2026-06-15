@@ -74,11 +74,6 @@ pub const Screen = struct {
     history_lines_start: u32,
     open_history_line: ?HistoryLine,
     open_history_reuse_slot: ?u32,
-    saved_cursor: ?struct {
-        row: u16,
-        col: u16,
-        wrap_pending: bool,
-    },
     last_graphic_codepoint: ?u21,
     current_attrs: CellAttrs,
     dirty_state: dirty.DirtyState,
@@ -131,7 +126,6 @@ pub const Screen = struct {
             .history_lines_start = 0,
             .open_history_line = null,
             .open_history_reuse_slot = null,
-            .saved_cursor = null,
             .last_graphic_codepoint = null,
             .current_attrs = default_cell_attrs,
             .dirty_state = dirty_state,
@@ -266,7 +260,6 @@ pub const Screen = struct {
         self.row_origin = 0;
         self.scroll_top = 0;
         self.scroll_bottom = self.rows -| 1;
-        self.saved_cursor = null;
         self.last_graphic_codepoint = null;
         self.current_attrs = default_cell_attrs;
         self.markAllRowsDirty();
@@ -375,16 +368,20 @@ pub const Screen = struct {
         return cursor.resolveAbsoluteCol(self, col);
     }
 
-    pub fn saveCursor(self: *Screen) void {
-        cursor.save(self);
-    }
-
-    pub fn restoreCursor(self: *Screen) void {
-        cursor.restore(self);
-    }
-
     pub fn lineHomeCol(self: *const Screen) u16 {
         return cursor.lineHomeCol(self);
+    }
+
+    pub fn clearVisibleCells(self: *Screen) void {
+        if (self.cells) |cells| @memset(cells, default_cell);
+        if (self.row_wraps) |row_wraps| @memset(row_wraps, false);
+        self.markAllRowsDirty();
+    }
+
+    pub fn resetCursorForAltEntry(self: *Screen) void {
+        self.cursor.reset();
+        self.wrap_pending = false;
+        self.current_attrs = default_cell_attrs;
     }
 
     pub fn leftBoundary(self: *const Screen) u16 {

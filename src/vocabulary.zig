@@ -83,6 +83,7 @@ pub const SemanticEvent = union(enum) {
         block,
         underline,
         bar,
+        none,
     };
 
     pub const CursorStyle = struct {
@@ -298,8 +299,6 @@ pub const ScreenAction = union(enum) {
     auto_wrap: bool,
     origin_mode: bool,
     insert_mode: bool,
-    save_cursor,
-    restore_cursor,
     sgr: struct {
         params: []const i32,
         separators: CsiSeparatorList,
@@ -360,8 +359,6 @@ pub const ReportAction = union(enum) {
 };
 
 pub const ModeAction = union(enum) {
-    enter_alt_screen: struct { clear: bool, save_cursor: bool },
-    exit_alt_screen: struct { restore_cursor: bool },
     application_cursor_keys: bool,
     application_keypad: bool,
     ansi_mode_set: SemanticEvent.ModeParams,

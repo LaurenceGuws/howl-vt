@@ -150,6 +150,7 @@ fn decrqssPayload(encode_buf: []u8, screen: *const Screen, request: []const u8) 
     if (std.mem.eql(u8, request, " q")) {
         const style = screen.cursor.effectiveStyle();
         const value: u8 = switch (style.shape) {
+            .none => 1,
             .block => if (style.blink) 1 else 2,
             .underline => if (style.blink) 3 else 4,
             .bar => if (style.blink) 5 else 6,
@@ -498,6 +499,10 @@ test "cursor style report payload reads semantic cursor owner" {
     screen.apply(.{ .cursor_style = .{ .program_override = .{ .shape = .block, .blink = true } } });
     const block_blink = decrqssPayload(encode_buf[0..], &screen, " q").?;
     try std.testing.expectEqualStrings("1 q", block_blink);
+
+    screen.apply(.{ .cursor_style = .{ .program_override = .{ .shape = .none, .blink = false } } });
+    const no_shape = decrqssPayload(encode_buf[0..], &screen, " q").?;
+    try std.testing.expectEqualStrings("1 q", no_shape);
 }
 
 test "cursor position report payload names semantic cursor position" {

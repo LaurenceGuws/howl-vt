@@ -152,6 +152,13 @@ typedef struct {
     size_t len;
 } HowlVtU16Span;
 
+enum {
+    HOWL_VT_CURSOR_SHAPE_BLOCK = 0,
+    HOWL_VT_CURSOR_SHAPE_UNDERLINE = 1,
+    HOWL_VT_CURSOR_SHAPE_BEAM = 2,
+    HOWL_VT_CURSOR_SHAPE_NONE = 3,
+};
+
 typedef struct {
     uint16_t row;
     uint16_t col;

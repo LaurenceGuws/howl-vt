@@ -104,21 +104,6 @@ pub fn resolveAbsoluteCol(self: anytype, col: u16) u16 {
     return self.left_margin + @min(col, region_len);
 }
 
-pub fn save(self: anytype) void {
-    self.saved_cursor = .{
-        .row = self.cursor.row,
-        .col = self.cursor.col,
-        .wrap_pending = self.wrap_pending,
-    };
-}
-
-pub fn restore(self: anytype) void {
-    if (self.saved_cursor) |saved| {
-        self.cursor.setPositionByClient(@min(saved.row, self.rows -| 1), @min(saved.col, rightBoundary(self)));
-        self.wrap_pending = saved.wrap_pending;
-    }
-}
-
 pub fn lineHomeCol(self: anytype) u16 {
     return if (self.origin_mode and self.left_right_margin_mode) self.left_margin else 0;
 }
