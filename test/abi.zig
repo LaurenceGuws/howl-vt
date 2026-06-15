@@ -22,6 +22,10 @@ comptime {
 
     std.debug.assert(c.HOWL_VT_INPUT_ENCODE_MAX_BYTES == 64);
     std.debug.assert(c.HOWL_VT_TITLE_MAX_BYTES == 1024);
+    std.debug.assert(c.HOWL_VT_CURSOR_SHAPE_BLOCK == 0);
+    std.debug.assert(c.HOWL_VT_CURSOR_SHAPE_UNDERLINE == 1);
+    std.debug.assert(c.HOWL_VT_CURSOR_SHAPE_BEAM == 2);
+    std.debug.assert(c.HOWL_VT_CURSOR_SHAPE_NONE == 3);
 }
 
 test "vt abi null handles report missing-handle contract" {
