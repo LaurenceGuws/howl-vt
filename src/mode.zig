@@ -12,6 +12,7 @@ pub const ModeState = struct {
     keyboard_action_mode: bool = false,
     application_cursor_keys: bool = false,
     application_keypad: bool = false,
+    reverse_screen_mode: bool = false,
     send_receive_mode: bool = false,
     newline_mode: bool = false,
     modify_other_keys: i8 = 0,
@@ -33,6 +34,7 @@ pub fn apply(vt: anytype, mode_action: ModeAction) void {
     switch (mode_action) {
         .application_cursor_keys => |enabled| vt.modes.application_cursor_keys = enabled,
         .application_keypad => |enabled| vt.modes.application_keypad = enabled,
+        .reverse_screen_mode => |enabled| vt.modes.reverse_screen_mode = enabled,
         .ansi_mode_set => |modes| setAnsiModes(vt, modes.params[0..modes.param_count], true),
         .ansi_mode_reset => |modes| setAnsiModes(vt, modes.params[0..modes.param_count], false),
         .modify_other_keys_set => |value| vt.modes.modify_other_keys = value,
@@ -72,6 +74,7 @@ pub const SavedDecMode = struct {
 pub const DecView = struct {
     application_cursor_keys: bool,
     application_keypad: bool,
+    reverse_screen_mode: bool,
     auto_wrap: bool,
     left_right_margin_mode: bool,
     cursor_visible: bool,
@@ -96,6 +99,7 @@ pub fn decModeState(vt: anytype, mode: u16) u8 {
     return decModeStateForView(.{
         .application_cursor_keys = vt.modes.application_cursor_keys,
         .application_keypad = vt.modes.application_keypad,
+        .reverse_screen_mode = vt.modes.reverse_screen_mode,
         .auto_wrap = active_state.auto_wrap,
         .left_right_margin_mode = active_state.left_right_margin_mode,
         .cursor_visible = active_state.cursor.visible,
@@ -145,6 +149,7 @@ pub fn setDecMode(vt: anytype, mode: u16, enabled: bool) void {
     const active_state = vt.screen_state.active();
     switch (mode) {
         1 => vt.modes.application_cursor_keys = enabled,
+        5 => vt.modes.reverse_screen_mode = enabled,
         6 => active_state.apply(.{ .origin_mode = enabled }),
         7 => active_state.apply(.{ .auto_wrap = enabled }),
         69 => active_state.apply(.{ .left_right_margin_mode = enabled }),
@@ -182,6 +187,7 @@ pub fn setAnsiModes(vt: anytype, modes: []const u16, enabled: bool) void {
 pub fn decModeStateForView(view: DecView, mode: u16) u8 {
     return switch (mode) {
         1 => boolToDecModeState(view.application_cursor_keys),
+        5 => boolToDecModeState(view.reverse_screen_mode),
         7 => boolToDecModeState(view.auto_wrap),
         69 => boolToDecModeState(view.left_right_margin_mode),
         66 => boolToDecModeState(view.application_keypad),
@@ -241,7 +247,7 @@ pub fn savedDecModeState(saved_modes: []const SavedDecMode, saved_count: SavedDe
 
 pub fn canSetDecMode(mode: u16) bool {
     return switch (mode) {
-        1, 6, 7, 9, 25, 47, 66, 69, 1047, 1049, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004, 2026, 5522 => true,
+        1, 5, 6, 7, 9, 25, 47, 66, 69, 1047, 1049, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004, 2026, 5522 => true,
         else => false,
     };
 }

@@ -12,6 +12,7 @@ pub const Savepoint = struct {
     valid: bool = false,
     cursor: CursorSavepoint = .{},
     current_attrs: Screen.CellAttrs = Screen.default_cell_attrs,
+    reverse_screen_mode: bool = false,
     origin_mode: bool = false,
     auto_wrap: bool = true,
     gl_index: u8 = 0,

@@ -63,6 +63,7 @@ fn modeToggle(final: u8, mode: i32) ?SemanticEvent {
 
 fn basicModeToggle(final: u8, mode: i32) ?SemanticEvent {
     return switch (mode) {
+        5 => boolEvent(final, .{ .reverse_screen_mode = true }, .{ .reverse_screen_mode = false }),
         25 => boolEvent(final, .{ .cursor_visible = true }, .{ .cursor_visible = false }),
         7 => boolEvent(final, .{ .auto_wrap = true }, .{ .auto_wrap = false }),
         6 => boolEvent(final, .{ .origin_mode = true }, .{ .origin_mode = false }),

@@ -155,6 +155,7 @@ pub const SemanticEvent = union(enum) {
     cursor_style: CursorStyleCommand,
     cursor_color: ?RgbColor,
     cursor_text_color: ?RgbColor,
+    reverse_screen_mode: bool,
     auto_wrap: bool,
     origin_mode: bool,
     insert_mode: bool,
@@ -361,6 +362,7 @@ pub const ReportAction = union(enum) {
 pub const ModeAction = union(enum) {
     application_cursor_keys: bool,
     application_keypad: bool,
+    reverse_screen_mode: bool,
     ansi_mode_set: SemanticEvent.ModeParams,
     ansi_mode_reset: SemanticEvent.ModeParams,
     modify_other_keys_set: i8,

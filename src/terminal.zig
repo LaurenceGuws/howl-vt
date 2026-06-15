@@ -170,6 +170,7 @@ pub const Terminal = struct {
                 .style = active.cursor.effectiveStyle(),
             },
             .current_attrs = active.current_attrs,
+            .reverse_screen_mode = self.modes.reverse_screen_mode,
             .origin_mode = active.origin_mode,
             .auto_wrap = active.auto_wrap,
             .gl_index = self.gl_index,
@@ -184,6 +185,7 @@ pub const Terminal = struct {
         active.wrap_pending = false;
         if (!savepoint.valid) {
             active.cursor.setPositionStructural(0, 0);
+            self.modes.reverse_screen_mode = false;
             active.origin_mode = false;
             self.gl_index = 0;
             self.g0_designation = 'B';
@@ -191,6 +193,7 @@ pub const Terminal = struct {
             return;
         }
 
+        self.modes.reverse_screen_mode = savepoint.reverse_screen_mode;
         active.origin_mode = savepoint.origin_mode;
         active.auto_wrap = savepoint.auto_wrap;
         active.current_attrs = savepoint.current_attrs;

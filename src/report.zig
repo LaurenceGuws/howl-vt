@@ -61,6 +61,7 @@ pub fn apply(vt: anytype, report_action: ReportAction) host_state.ApplyError!voi
     const dec_modes = TerminalModeNs.DecView{
         .application_cursor_keys = vt.modes.application_cursor_keys,
         .application_keypad = vt.modes.application_keypad,
+        .reverse_screen_mode = vt.modes.reverse_screen_mode,
         .auto_wrap = active.auto_wrap,
         .left_right_margin_mode = active.left_right_margin_mode,
         .cursor_visible = active.cursor.visible,

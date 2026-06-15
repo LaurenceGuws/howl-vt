@@ -37,9 +37,10 @@ test "terminal cursor: restore without prior save homes and clears charset state
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try stream.nextSlice("\x1b[?6h\x1b[?7l\x1b)0\x1b8");
+    try stream.nextSlice("\x1b[?5h\x1b[?6h\x1b[?7l\x1b)0\x1b8");
     try std.testing.expectEqual(@as(u16, 0), active(&terminal).cursor.row);
     try std.testing.expectEqual(@as(u16, 0), active(&terminal).cursor.col);
+    try std.testing.expect(!terminal.modes.reverse_screen_mode);
     try std.testing.expect(!active(&terminal).origin_mode);
     try std.testing.expect(!active(&terminal).auto_wrap);
     try std.testing.expectEqual(@as(u8, 0), terminal.gl_index);
@@ -85,6 +86,7 @@ test "terminal cursor: savepoint restores Kitty cursor payload and leaves visibi
     active_screen.cursor.setPositionByClient(2, 5);
     active_screen.cursor.setProgramStyle(.{ .shape = .bar, .blink = false });
     active_screen.current_attrs.bold = true;
+    terminal.modes.reverse_screen_mode = true;
     active_screen.origin_mode = true;
     active_screen.auto_wrap = false;
     active_screen.cursor.visible = false;
@@ -98,6 +100,7 @@ test "terminal cursor: savepoint restores Kitty cursor payload and leaves visibi
     active_screen.cursor.setPositionByClient(0, 0);
     active_screen.cursor.setProgramStyle(.{ .shape = .block, .blink = true });
     active_screen.current_attrs.bold = false;
+    terminal.modes.reverse_screen_mode = false;
     active_screen.origin_mode = false;
     active_screen.auto_wrap = true;
     active_screen.cursor.visible = true;
@@ -114,6 +117,7 @@ test "terminal cursor: savepoint restores Kitty cursor payload and leaves visibi
     try std.testing.expectEqual(.bar, active(&terminal).cursor.effective_shape);
     try std.testing.expect(!active(&terminal).cursor.blink_intent);
     try std.testing.expect(active(&terminal).current_attrs.bold);
+    try std.testing.expect(terminal.modes.reverse_screen_mode);
     try std.testing.expect(active(&terminal).origin_mode);
     try std.testing.expect(!active(&terminal).auto_wrap);
     try std.testing.expect(active(&terminal).cursor.visible);

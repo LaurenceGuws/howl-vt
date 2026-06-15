@@ -232,6 +232,7 @@ fn modeAction(event: SemanticEvent) ?ModeAction {
     return switch (event) {
         .application_cursor_keys => |v| ModeAction{ .application_cursor_keys = v },
         .application_keypad => |v| ModeAction{ .application_keypad = v },
+        .reverse_screen_mode => |v| ModeAction{ .reverse_screen_mode = v },
         .ansi_mode_set => |v| ModeAction{ .ansi_mode_set = v },
         .ansi_mode_reset => |v| ModeAction{ .ansi_mode_reset = v },
         .modify_other_keys_set => |v| ModeAction{ .modify_other_keys_set = v },
