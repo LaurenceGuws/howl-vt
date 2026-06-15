@@ -379,7 +379,7 @@ pub const Screen = struct {
     }
 
     pub fn resetCursorForAltEntry(self: *Screen) void {
-        self.cursor.reset();
+        self.cursor.resetForAltEntry();
         self.wrap_pending = false;
         self.current_attrs = default_cell_attrs;
     }

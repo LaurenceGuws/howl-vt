@@ -2,11 +2,15 @@ const screen_mod = @import("../screen.zig");
 
 const Screen = screen_mod.Screen;
 
-pub const Savepoint = struct {
-    valid: bool = false,
+pub const CursorSavepoint = struct {
     row: u16 = 0,
     col: u16 = 0,
     style: Screen.CursorStyle = Screen.default_cursor_style,
+};
+
+pub const Savepoint = struct {
+    valid: bool = false,
+    cursor: CursorSavepoint = .{},
     current_attrs: Screen.CellAttrs = Screen.default_cell_attrs,
     origin_mode: bool = false,
     auto_wrap: bool = true,

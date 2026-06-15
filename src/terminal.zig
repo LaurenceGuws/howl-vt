@@ -164,9 +164,11 @@ pub const Terminal = struct {
         const savepoint = self.activeSavepoint();
         savepoint.* = .{
             .valid = true,
-            .row = active.cursor.row,
-            .col = active.cursor.col,
-            .style = active.cursor.effectiveStyle(),
+            .cursor = .{
+                .row = active.cursor.row,
+                .col = active.cursor.col,
+                .style = active.cursor.effectiveStyle(),
+            },
             .current_attrs = active.current_attrs,
             .origin_mode = active.origin_mode,
             .auto_wrap = active.auto_wrap,
@@ -192,8 +194,8 @@ pub const Terminal = struct {
         active.origin_mode = savepoint.origin_mode;
         active.auto_wrap = savepoint.auto_wrap;
         active.current_attrs = savepoint.current_attrs;
-        active.cursor.setProgramStyle(savepoint.style);
-        restoreCursorPosition(active, savepoint.row, savepoint.col);
+        active.cursor.restoreSavedStyle(savepoint.cursor.style);
+        restoreCursorPosition(active, savepoint.cursor.row, savepoint.cursor.col);
         self.gl_index = savepoint.gl_index;
         self.g0_designation = savepoint.g0_designation;
         self.g1_designation = savepoint.g1_designation;

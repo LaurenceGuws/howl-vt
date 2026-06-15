@@ -302,6 +302,9 @@ test "csi mapping: cursor style, save restore aliases, and invalid sequence" {
     sem = process(makeStyleChangeWithParamAndIntermediate('q', 5, ' ')).?;
     try std.testing.expectEqual(SemanticEvent.CursorShape.bar, sem.cursor_style.program_override.shape);
     try std.testing.expect(sem.cursor_style.program_override.blink);
+    sem = process(makeStyleChangeWithParamAndIntermediate('q', 7, ' ')).?;
+    try std.testing.expectEqual(SemanticEvent.CursorShape.none, sem.cursor_style.program_override.shape);
+    try std.testing.expect(sem.cursor_style.program_override.blink);
 }
 
 test "csi mapping: mode query, save restore, and erase families" {

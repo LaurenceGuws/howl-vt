@@ -117,3 +117,23 @@ test "screen cursor: client movement advances position_changed_by_client_at" {
     s.apply(SemanticEvent{ .cursor_forward = 1 });
     try std.testing.expectEqual(@as(u64, 2), s.cursor.position_changed_by_client_at);
 }
+
+test "screen cursor: alt entry reset keeps visibility and colors outside Kitty cursor payload" {
+    var s = Grid.init(4, 4);
+    s.cursor.visible = false;
+    s.cursor.cursor_color = .{ .r = 1, .g = 2, .b = 3 };
+    s.cursor.cursor_text_color = .{ .r = 4, .g = 5, .b = 6 };
+    s.cursor.setPositionByClient(2, 3);
+    s.cursor.setProgramStyle(.{ .shape = .bar, .blink = false });
+
+    s.resetCursorForAltEntry();
+
+    try std.testing.expectEqual(@as(u16, 0), s.cursor.row);
+    try std.testing.expectEqual(@as(u16, 0), s.cursor.col);
+    try std.testing.expectEqual(.none, s.cursor.effective_shape);
+    try std.testing.expect(s.cursor.blink_intent);
+    try std.testing.expectEqual(@as(?SemanticEvent.CursorStyle, null), s.cursor.program_override_style);
+    try std.testing.expect(!s.cursor.visible);
+    try std.testing.expectEqual(@as(?Screen.Rgb, .{ .r = 1, .g = 2, .b = 3 }), s.cursor.cursor_color);
+    try std.testing.expectEqual(@as(?Screen.Rgb, .{ .r = 4, .g = 5, .b = 6 }), s.cursor.cursor_text_color);
+}

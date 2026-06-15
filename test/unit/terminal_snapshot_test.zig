@@ -41,6 +41,8 @@ test "snapshot: capture from simple text" {
     try std.testing.expectEqual(@as(u16, 0), snap.cursor_row);
     try std.testing.expectEqual(@as(u16, 5), snap.cursor_col);
     try std.testing.expectEqual(true, snap.cursor_visible);
+    try std.testing.expectEqual(@as(@TypeOf(snap.cursor_shape), .block), snap.cursor_shape);
+    try std.testing.expectEqual(true, snap.cursor_blink);
     try std.testing.expectEqual(true, snap.auto_wrap);
     try std.testing.expectEqual(@as(u21, 'H'), snap.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'E'), snap.cellAt(0, 1));
@@ -71,6 +73,8 @@ test "snapshot: determinism across identical state" {
     try std.testing.expectEqual(snap1.cursor_row, snap2.cursor_row);
     try std.testing.expectEqual(snap1.cursor_col, snap2.cursor_col);
     try std.testing.expectEqual(snap1.cursor_visible, snap2.cursor_visible);
+    try std.testing.expectEqual(snap1.cursor_shape, snap2.cursor_shape);
+    try std.testing.expectEqual(snap1.cursor_blink, snap2.cursor_blink);
     try std.testing.expectEqual(snap1.auto_wrap, snap2.auto_wrap);
 
     if (snap1.cells != null and snap2.cells != null) {
@@ -201,5 +205,7 @@ test "snapshot: parity with direct screen state" {
     try std.testing.expectEqual(screen.cursor.row, snap.cursor_row);
     try std.testing.expectEqual(screen.cursor.col, snap.cursor_col);
     try std.testing.expectEqual(screen.cursor.visible, snap.cursor_visible);
+    try std.testing.expectEqual(screen.cursor.effective_shape, snap.cursor_shape);
+    try std.testing.expectEqual(screen.cursor.blink_intent, snap.cursor_blink);
     try std.testing.expectEqual(screen.auto_wrap, snap.auto_wrap);
 }

@@ -39,6 +39,15 @@ pub const SemanticCursor = struct {
         self.* = init(default_style);
     }
 
+    pub fn resetForAltEntry(self: *SemanticCursor) void {
+        self.row = 0;
+        self.col = 0;
+        self.effective_shape = .none;
+        self.blink_intent = true;
+        self.program_override_style = null;
+        self.position_changed_by_client_at = 0;
+    }
+
     pub fn effectiveStyle(self: *const SemanticCursor) CursorStyle {
         return .{ .shape = self.effective_shape, .blink = self.blink_intent };
     }
@@ -50,6 +59,11 @@ pub const SemanticCursor = struct {
 
     pub fn setProgramStyle(self: *SemanticCursor, style: CursorStyle) void {
         self.program_override_style = style;
+        self.applyStyle(style);
+    }
+
+    pub fn restoreSavedStyle(self: *SemanticCursor, style: CursorStyle) void {
+        self.program_override_style = if (style.shape == self.default_style.shape and style.blink == self.default_style.blink) null else style;
         self.applyStyle(style);
     }
 
