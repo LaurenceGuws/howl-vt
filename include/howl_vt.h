@@ -28,6 +28,72 @@ typedef enum {
     HOWL_VT_CALL_LIMIT_REACHED = -5,
 } HowlVtCallStatus;
 
+typedef struct HowlVtRenderState HowlVtRenderState;
+typedef HowlVtRenderState *HowlVtRenderStateHandle;
+typedef struct HowlVtRenderStateRowIterator HowlVtRenderStateRowIterator;
+typedef HowlVtRenderStateRowIterator *HowlVtRenderStateRowIteratorHandle;
+typedef struct HowlVtRenderStateRowCells HowlVtRenderStateRowCells;
+typedef HowlVtRenderStateRowCells *HowlVtRenderStateRowCellsHandle;
+
+typedef enum {
+    HOWL_VT_RENDER_STATE_DIRTY_FALSE = 0,
+    HOWL_VT_RENDER_STATE_DIRTY_PARTIAL = 1,
+    HOWL_VT_RENDER_STATE_DIRTY_FULL = 2,
+} HowlVtRenderStateDirty;
+
+typedef enum {
+    HOWL_VT_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR = 0,
+    HOWL_VT_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK = 1,
+    HOWL_VT_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE = 2,
+    HOWL_VT_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK_HOLLOW = 3,
+} HowlVtRenderStateCursorVisualStyle;
+
+typedef enum {
+    HOWL_VT_RENDER_STATE_DATA_INVALID = 0,
+    HOWL_VT_RENDER_STATE_DATA_COLS = 1,
+    HOWL_VT_RENDER_STATE_DATA_ROWS = 2,
+    HOWL_VT_RENDER_STATE_DATA_DIRTY = 3,
+    HOWL_VT_RENDER_STATE_DATA_ROW_ITERATOR = 4,
+    HOWL_VT_RENDER_STATE_DATA_COLOR_BACKGROUND = 5,
+    HOWL_VT_RENDER_STATE_DATA_COLOR_FOREGROUND = 6,
+    HOWL_VT_RENDER_STATE_DATA_COLOR_CURSOR = 7,
+    HOWL_VT_RENDER_STATE_DATA_COLOR_CURSOR_HAS_VALUE = 8,
+    HOWL_VT_RENDER_STATE_DATA_COLOR_PALETTE = 9,
+    HOWL_VT_RENDER_STATE_DATA_CURSOR_VISUAL_STYLE = 10,
+    HOWL_VT_RENDER_STATE_DATA_CURSOR_VISIBLE = 11,
+    HOWL_VT_RENDER_STATE_DATA_CURSOR_BLINKING = 12,
+    HOWL_VT_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE = 13,
+    HOWL_VT_RENDER_STATE_DATA_CURSOR_VIEWPORT_X = 14,
+    HOWL_VT_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y = 15,
+    HOWL_VT_RENDER_STATE_DATA_CURSOR_VIEWPORT_WIDE_TAIL = 16,
+    HOWL_VT_RENDER_STATE_DATA_SNAPSHOT_SEQ = 17,
+    HOWL_VT_RENDER_STATE_DATA_DIRTY_GENERATION = 18,
+    HOWL_VT_RENDER_STATE_DATA_HISTORY_COUNT = 19,
+    HOWL_VT_RENDER_STATE_DATA_SCROLLBACK_OFFSET = 20,
+    HOWL_VT_RENDER_STATE_DATA_SCROLL_ROW = 21,
+    HOWL_VT_RENDER_STATE_DATA_IS_ALTERNATE_SCREEN = 22,
+} HowlVtRenderStateData;
+
+typedef enum { HOWL_VT_RENDER_STATE_OPTION_DIRTY = 0 } HowlVtRenderStateOption;
+
+typedef enum {
+    HOWL_VT_RENDER_STATE_ROW_DATA_INVALID = 0,
+    HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY = 1,
+    HOWL_VT_RENDER_STATE_ROW_DATA_CELLS = 2,
+    HOWL_VT_RENDER_STATE_ROW_DATA_SELECTION = 3,
+    HOWL_VT_RENDER_STATE_ROW_DATA_HIGHLIGHT_COUNT = 4,
+    HOWL_VT_RENDER_STATE_ROW_DATA_HIGHLIGHT = 5,
+} HowlVtRenderStateRowData;
+
+typedef enum { HOWL_VT_RENDER_STATE_ROW_OPTION_DIRTY = 0 } HowlVtRenderStateRowOption;
+
+typedef enum {
+    HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_INVALID = 0,
+    HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_CELL = 1,
+    HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_SELECTED = 2,
+    HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_HIGHLIGHTED = 3,
+} HowlVtRenderStateRowCellsData;
+
 enum {
     HOWL_VT_MOD_NONE = 0,
     HOWL_VT_MOD_SHIFT = 1,
@@ -97,6 +163,32 @@ typedef struct {
     uint8_t g;
     uint8_t b;
 } HowlVtRgb8;
+
+typedef struct {
+    size_t size;
+    uint16_t start_col;
+    uint16_t end_col;
+} HowlVtRenderStateRowSelection;
+
+typedef struct {
+    size_t size;
+    uint8_t tag;
+    uint8_t reserved0;
+    uint16_t index;
+    uint16_t start_col;
+    uint16_t end_col;
+} HowlVtRenderStateRowHighlight;
+
+typedef struct {
+    size_t size;
+    HowlVtRgb8 background;
+    HowlVtRgb8 foreground;
+    HowlVtRgb8 cursor;
+    uint8_t cursor_has_value;
+    uint8_t reserved0;
+    uint16_t reserved1;
+    HowlVtRgb8 palette[256];
+} HowlVtRenderStateColors;
 
 typedef struct {
     HowlVtRgb8 foreground;
@@ -289,6 +381,74 @@ typedef struct {
     uint16_t reserved1;
     HowlVtRuntimeObligation obligation;
 } HowlVtRuntimeProgressResult;
+
+HowlVtCallStatus howl_vt_render_state_init(HowlVtRenderStateHandle *out_state);
+void howl_vt_render_state_deinit(HowlVtRenderStateHandle state);
+HowlVtCallStatus howl_vt_render_state_update(
+    HowlVtRenderStateHandle state,
+    HowlVtHandle terminal,
+    uint64_t scrollback_offset
+);
+HowlVtCallStatus howl_vt_render_state_ack(HowlVtRenderStateHandle state, HowlVtHandle terminal);
+HowlVtCallStatus howl_vt_render_state_get(
+    HowlVtRenderStateHandle state,
+    HowlVtRenderStateData data,
+    void *out
+);
+HowlVtCallStatus howl_vt_render_state_get_multi(
+    HowlVtRenderStateHandle state,
+    size_t count,
+    const HowlVtRenderStateData *keys,
+    void **values,
+    size_t *out_written
+);
+HowlVtCallStatus howl_vt_render_state_set(
+    HowlVtRenderStateHandle state,
+    HowlVtRenderStateOption option,
+    const void *value
+);
+HowlVtCallStatus howl_vt_render_state_colors_get(
+    HowlVtRenderStateHandle state,
+    HowlVtRenderStateColors *out_colors
+);
+HowlVtCallStatus howl_vt_render_state_row_iterator_init(
+    HowlVtRenderStateRowIteratorHandle *out_iterator
+);
+void howl_vt_render_state_row_iterator_deinit(HowlVtRenderStateRowIteratorHandle iterator);
+uint8_t howl_vt_render_state_row_iterator_next(HowlVtRenderStateRowIteratorHandle iterator);
+HowlVtCallStatus howl_vt_render_state_row_get(
+    HowlVtRenderStateRowIteratorHandle iterator,
+    HowlVtRenderStateRowData data,
+    void *out
+);
+HowlVtCallStatus howl_vt_render_state_row_get_multi(
+    HowlVtRenderStateRowIteratorHandle iterator,
+    size_t count,
+    const HowlVtRenderStateRowData *keys,
+    void **values,
+    size_t *out_written
+);
+HowlVtCallStatus howl_vt_render_state_row_set(
+    HowlVtRenderStateRowIteratorHandle iterator,
+    HowlVtRenderStateRowOption option,
+    const void *value
+);
+HowlVtCallStatus howl_vt_render_state_row_cells_init(HowlVtRenderStateRowCellsHandle *out_cells);
+void howl_vt_render_state_row_cells_deinit(HowlVtRenderStateRowCellsHandle cells);
+uint8_t howl_vt_render_state_row_cells_next(HowlVtRenderStateRowCellsHandle cells);
+HowlVtCallStatus howl_vt_render_state_row_cells_select(HowlVtRenderStateRowCellsHandle cells, uint16_t col);
+HowlVtCallStatus howl_vt_render_state_row_cells_get(
+    HowlVtRenderStateRowCellsHandle cells,
+    HowlVtRenderStateRowCellsData data,
+    void *out
+);
+HowlVtCallStatus howl_vt_render_state_row_cells_get_multi(
+    HowlVtRenderStateRowCellsHandle cells,
+    size_t count,
+    const HowlVtRenderStateRowCellsData *keys,
+    void **values,
+    size_t *out_written
+);
 
 HowlVtHandle howl_vt_terminal_init(
     uint16_t rows,

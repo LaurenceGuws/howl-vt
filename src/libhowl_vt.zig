@@ -29,4 +29,24 @@ comptime {
     @export(&ffi.terminalEncodePaste, .{ .name = "howl_vt_terminal_encode_paste" });
     @export(&ffi.terminalAckSurface, .{ .name = "howl_vt_terminal_ack_surface" });
     @export(&ffi.terminalClearPendingOutput, .{ .name = "howl_vt_terminal_clear_pending_output" });
+    @export(&ffi.renderStateInit, .{ .name = "howl_vt_render_state_init" });
+    @export(&ffi.renderStateDeinit, .{ .name = "howl_vt_render_state_deinit" });
+    @export(&ffi.renderStateUpdate, .{ .name = "howl_vt_render_state_update" });
+    @export(&ffi.renderStateAck, .{ .name = "howl_vt_render_state_ack" });
+    @export(&ffi.renderStateGet, .{ .name = "howl_vt_render_state_get" });
+    @export(&ffi.renderStateGetMulti, .{ .name = "howl_vt_render_state_get_multi" });
+    @export(&ffi.renderStateSet, .{ .name = "howl_vt_render_state_set" });
+    @export(&ffi.renderStateColorsGet, .{ .name = "howl_vt_render_state_colors_get" });
+    @export(&ffi.renderStateRowIteratorInit, .{ .name = "howl_vt_render_state_row_iterator_init" });
+    @export(&ffi.renderStateRowIteratorDeinit, .{ .name = "howl_vt_render_state_row_iterator_deinit" });
+    @export(&ffi.renderStateRowIteratorNext, .{ .name = "howl_vt_render_state_row_iterator_next" });
+    @export(&ffi.renderStateRowGet, .{ .name = "howl_vt_render_state_row_get" });
+    @export(&ffi.renderStateRowGetMulti, .{ .name = "howl_vt_render_state_row_get_multi" });
+    @export(&ffi.renderStateRowSet, .{ .name = "howl_vt_render_state_row_set" });
+    @export(&ffi.renderStateRowCellsInit, .{ .name = "howl_vt_render_state_row_cells_init" });
+    @export(&ffi.renderStateRowCellsDeinit, .{ .name = "howl_vt_render_state_row_cells_deinit" });
+    @export(&ffi.renderStateRowCellsNext, .{ .name = "howl_vt_render_state_row_cells_next" });
+    @export(&ffi.renderStateRowCellsSelect, .{ .name = "howl_vt_render_state_row_cells_select" });
+    @export(&ffi.renderStateRowCellsGet, .{ .name = "howl_vt_render_state_row_cells_get" });
+    @export(&ffi.renderStateRowCellsGetMulti, .{ .name = "howl_vt_render_state_row_cells_get_multi" });
 }

@@ -11,6 +11,7 @@ const runtime = @import("runtime.zig");
 const selection = @import("selection.zig");
 const status = @import("status.zig");
 const surface = @import("surface.zig");
+const render_state = @import("render_state.zig");
 
 pub const HowlVtCallStatus = status.HowlVtCallStatus;
 pub const HowlVtTerminal = handle.HowlVtTerminal;
@@ -44,6 +45,23 @@ pub const FfiSelectionResult = selection.FfiSelectionResult;
 pub const FfiRuntimeObligation = runtime.FfiRuntimeObligation;
 pub const FfiRuntimeObligationResult = runtime.FfiRuntimeObligationResult;
 pub const FfiRuntimeProgressResult = runtime.FfiRuntimeProgressResult;
+
+pub const FfiRenderState = render_state.FfiRenderState;
+pub const FfiRenderStateHandle = render_state.FfiRenderStateHandle;
+pub const FfiRowIterator = render_state.FfiRowIterator;
+pub const FfiRowIteratorHandle = render_state.FfiRowIteratorHandle;
+pub const FfiRowCells = render_state.FfiRowCells;
+pub const FfiRowCellsHandle = render_state.FfiRowCellsHandle;
+pub const FfiDirty = render_state.FfiDirty;
+pub const FfiCursorVisualStyle = render_state.FfiCursorVisualStyle;
+pub const FfiData = render_state.FfiData;
+pub const FfiOption = render_state.FfiOption;
+pub const FfiRowData = render_state.FfiRowData;
+pub const FfiRowOption = render_state.FfiRowOption;
+pub const FfiRowCellsData = render_state.FfiRowCellsData;
+pub const FfiRowSelection = render_state.FfiRowSelection;
+pub const FfiRowHighlight = render_state.FfiRowHighlight;
+pub const FfiColors = render_state.FfiColors;
 
 pub const terminalInit = lifecycle.terminalInit;
 pub const terminalInitWithOptions = lifecycle.terminalInitWithOptions;
@@ -79,6 +97,27 @@ pub const terminalEncodePasteEnd = input.terminalEncodePasteEnd;
 pub const terminalEncodeMouse = input.terminalEncodeMouse;
 pub const terminalEncodePaste = input.terminalEncodePaste;
 
+pub const renderStateInit = render_state.renderStateInit;
+pub const renderStateDeinit = render_state.renderStateDeinit;
+pub const renderStateUpdate = render_state.renderStateUpdate;
+pub const renderStateAck = render_state.renderStateAck;
+pub const renderStateGet = render_state.renderStateGet;
+pub const renderStateGetMulti = render_state.renderStateGetMulti;
+pub const renderStateSet = render_state.renderStateSet;
+pub const renderStateColorsGet = render_state.renderStateColorsGet;
+pub const renderStateRowIteratorInit = render_state.renderStateRowIteratorInit;
+pub const renderStateRowIteratorDeinit = render_state.renderStateRowIteratorDeinit;
+pub const renderStateRowIteratorNext = render_state.renderStateRowIteratorNext;
+pub const renderStateRowGet = render_state.renderStateRowGet;
+pub const renderStateRowGetMulti = render_state.renderStateRowGetMulti;
+pub const renderStateRowSet = render_state.renderStateRowSet;
+pub const renderStateRowCellsInit = render_state.renderStateRowCellsInit;
+pub const renderStateRowCellsDeinit = render_state.renderStateRowCellsDeinit;
+pub const renderStateRowCellsNext = render_state.renderStateRowCellsNext;
+pub const renderStateRowCellsSelect = render_state.renderStateRowCellsSelect;
+pub const renderStateRowCellsGet = render_state.renderStateRowCellsGet;
+pub const renderStateRowCellsGetMulti = render_state.renderStateRowCellsGetMulti;
+
 comptime {
     std.debug.assert(host_state.title_max_bytes == 1024);
     std.debug.assert(host_state.pending_output_max_bytes == 1024 * 1024);
@@ -86,6 +125,7 @@ comptime {
     std.debug.assert(@sizeOf(input_encode.Scratch) == 64);
     std.debug.assert(@sizeOf(FfiRgb8) == 3);
     std.debug.assert(@sizeOf(FfiRenderColorState) == 777);
+    std.debug.assert(@sizeOf(FfiColors) == 792);
 }
 
 test {
@@ -98,4 +138,5 @@ test {
     _ = selection;
     _ = status;
     _ = surface;
+    _ = render_state;
 }
