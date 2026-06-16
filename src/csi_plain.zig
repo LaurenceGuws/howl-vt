@@ -1,8 +1,9 @@
-const events = @import("vocabulary.zig");
+const csi_params = @import("csi_params.zig");
+const events = @import("semantic_event.zig");
 const params_mod = @import("csi_params.zig");
 
 const SemanticEvent = events.SemanticEvent;
-const CsiSeparatorList = events.CsiSeparatorList;
+const CsiSeparatorList = csi_params.CsiSeparatorList;
 
 pub fn process(final: u8, params: []const i32, separators: CsiSeparatorList, intermediates: []const u8) ?SemanticEvent {
     switch (final) {

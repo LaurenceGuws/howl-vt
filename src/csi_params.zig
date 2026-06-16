@@ -1,16 +1,29 @@
 const std = @import("std");
-const events = @import("vocabulary.zig");
 const parser_mod = @import("parser.zig");
+const cursor_mod = @import("screen/cursor.zig");
+const erase = @import("screen/erase.zig");
+const rect = @import("screen/rect.zig");
 
-const SemanticEvent = events.SemanticEvent;
 const csi_max_params = parser_mod.max_params;
+
+pub const CsiSeparatorList = parser_mod.CsiSeparatorList;
+
+pub const ModeParams = struct {
+    params: [csi_max_params]u16,
+    param_count: u8,
+};
+
+pub const AttrParams = struct {
+    params: [csi_max_params]u16,
+    param_count: u8,
+};
 
 fn count32(items: anytype) u32 {
     std.debug.assert(items.len <= std.math.maxInt(u32));
     return @intCast(items.len);
 }
 
-pub fn optionalRectArea(params: []const i32) SemanticEvent.OptionalRectArea {
+pub fn optionalRectArea(params: []const i32) rect.OptionalRectArea {
     return .{
         .top = if (params.len >= 1 and params[0] > 0) paramOrDefault1(params[0]) - 1 else null,
         .left = if (params.len >= 2 and params[1] > 0) paramOrDefault1(params[1]) - 1 else null,
@@ -19,7 +32,7 @@ pub fn optionalRectArea(params: []const i32) SemanticEvent.OptionalRectArea {
     };
 }
 
-pub fn rectArea(params: []const i32, start_idx: u8) SemanticEvent.RectArea {
+pub fn rectArea(params: []const i32, start_idx: u8) rect.RectArea {
     const start = @as(u32, start_idx);
     const param_len = count32(params);
     return .{
@@ -30,7 +43,7 @@ pub fn rectArea(params: []const i32, start_idx: u8) SemanticEvent.RectArea {
     };
 }
 
-pub fn attrParams(params: []const i32, start_idx: u8) SemanticEvent.AttrParams {
+pub fn attrParams(params: []const i32, start_idx: u8) AttrParams {
     var out = [_]u16{0} ** csi_max_params;
     const param_len = count32(params);
     var idx: u8 = start_idx;
@@ -60,7 +73,7 @@ pub fn keyFormatParamAtOrDefault0(params: []const i32, idx: u8) u8 {
     return @intCast(@min(paramAtOrDefault0(params, idx), std.math.maxInt(u8)));
 }
 
-pub fn eraseMode(v: i32) events.EraseMode {
+pub fn eraseMode(v: i32) erase.EraseMode {
     return switch (v) {
         1 => .start_to_cursor,
         2 => .all,
@@ -69,7 +82,7 @@ pub fn eraseMode(v: i32) events.EraseMode {
     };
 }
 
-pub fn cursorStyle(param: u16) SemanticEvent.CursorStyleCommand {
+pub fn cursorStyle(param: u16) cursor_mod.CursorStyleCommand {
     return switch (param) {
         0, 1 => .{ .program_override = .{ .shape = .block, .blink = true } },
         2 => .{ .program_override = .{ .shape = .block, .blink = false } },
@@ -81,7 +94,7 @@ pub fn cursorStyle(param: u16) SemanticEvent.CursorStyleCommand {
     };
 }
 
-pub fn collectParams(params: []const i32) SemanticEvent.ModeParams {
+pub fn collectParams(params: []const i32) ModeParams {
     var out = [_]u16{0} ** csi_max_params;
     const n = @min(count32(params), csi_max_params);
     var idx: u8 = 0;

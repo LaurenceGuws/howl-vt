@@ -1,7 +1,11 @@
 const cell_mod = @import("cell.zig");
-const events = @import("../vocabulary.zig");
 
-const EraseMode = events.EraseMode;
+pub const EraseMode = enum(u2) {
+    cursor_to_end = 0,
+    start_to_cursor = 1,
+    all = 2,
+    scrollback = 3,
+};
 
 pub fn eraseDisplay(self: anytype, mode: EraseMode) void {
     const c = self.cells orelse return;

@@ -1,7 +1,8 @@
 const std = @import("std");
+const dcs_payload = @import("dcs_payload.zig");
+const legacy_control = @import("legacy_control.zig");
 const locator = @import("locator.zig");
 const osc_color = @import("osc_color.zig");
-const action_vocabulary = @import("vocabulary.zig");
 const osc = @import("osc.zig");
 const parser = @import("parser.zig");
 
@@ -57,7 +58,7 @@ pub const State = struct {
     // Host consequence retention is heap-backed today, but every retained path
     // is bounded by this file's product capacity constants before allocation.
     pub const DcsPayloadOwned = struct {
-        kind: action_vocabulary.DcsPayloadKind,
+        kind: dcs_payload.DcsPayloadKind,
         payload: []u8,
     };
 
@@ -69,7 +70,7 @@ pub const State = struct {
     locator: LocatorNs.Locator = .{},
     media_copy_request: ?u16 = null,
     dcs_payload: ?DcsPayloadOwned = null,
-    legacy_control: ?action_vocabulary.LegacyControlKind = null,
+    legacy_control: ?legacy_control.LegacyControlKind = null,
 
     pub fn init() State {
         return .{
@@ -120,7 +121,7 @@ pub fn replaceClipboard(vt: anytype, payload: []const u8) ApplyError!void {
     vt.host.pending_clipboard = .{ .raw = owned };
 }
 
-pub fn replaceDcsPayload(vt: anytype, payload: action_vocabulary.DcsPayload) ApplyError!void {
+pub fn replaceDcsPayload(vt: anytype, payload: dcs_payload.DcsPayload) ApplyError!void {
     try ensureRetainedBound(byteCount(payload.payload), retained_payload_max_bytes);
     const owned = try vt.allocator.dupe(u8, payload.payload);
     if (vt.host.dcs_payload) |old| vt.allocator.free(old.payload);
@@ -205,7 +206,7 @@ pub fn mediaCopyRequest(vt: anytype) ?u16 {
     return vt.host.media_copy_request;
 }
 
-pub fn dcsPayloadKind(vt: anytype) ?action_vocabulary.DcsPayloadKind {
+pub fn dcsPayloadKind(vt: anytype) ?dcs_payload.DcsPayloadKind {
     if (vt.host.dcs_payload) |payload| return payload.kind;
     return null;
 }
@@ -215,7 +216,7 @@ pub fn dcsPayload(vt: anytype) ?[]const u8 {
     return null;
 }
 
-pub fn legacyControl(vt: anytype) ?action_vocabulary.LegacyControlKind {
+pub fn legacyControl(vt: anytype) ?legacy_control.LegacyControlKind {
     return vt.host.legacy_control;
 }
 

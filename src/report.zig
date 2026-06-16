@@ -1,6 +1,6 @@
 const std = @import("std");
 const screen_mod = @import("screen.zig");
-const action_vocabulary = @import("vocabulary.zig");
+const rect = @import("screen/rect.zig");
 const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
 const input_encode = @import("input/encode.zig");
@@ -9,8 +9,32 @@ const host_state = @import("host_state.zig");
 const Screen = screen_mod.Screen;
 const Grid = Screen;
 const LocatorNs = locator;
-const ReportAction = action_vocabulary.ReportAction;
 const TerminalModeNs = mode_mod;
+
+pub const ReportAction = union(enum) {
+    ansi_mode_query: u16,
+    modify_other_keys_query,
+    key_format_query: u8,
+    dec_mode_query: u16,
+    dcs_request_status: []const u8,
+    dcs_request_termcap: []const u8,
+    dcs_request_resource: []const u8,
+    device_status_report,
+    dec_device_status_report: u16,
+    cursor_position_report,
+    dec_cursor_position_report,
+    primary_device_attributes,
+    secondary_device_attributes,
+    tertiary_device_attributes,
+    xtversion,
+    xttitlepos,
+    xtchecksum: u16,
+    rect_checksum_request: struct { request_id: u16, page: u16, area: rect.RectArea },
+    selected_graphic_rendition_report: rect.RectArea,
+    displayed_extent_report,
+    parameters_report: u16,
+    xtreportcolors,
+};
 
 const xtversion_text = "howl-vt dev";
 const format_output_max_bytes = 64;
@@ -230,7 +254,7 @@ pub fn appendSelectedGraphicRenditionReport(
     output: *std.ArrayList(u8),
     encode_buf: []u8,
     screen: *const Grid,
-    area: action_vocabulary.SemanticEvent.RectArea,
+    area: rect.RectArea,
 ) host_state.ApplyError!void {
     const common = commonAttrsForRect(screen, area) orelse {
         try host_state.appendOutput(output, allocator, "\x1b[0m");
@@ -258,7 +282,7 @@ pub fn appendSelectedGraphicRenditionReport(
     try host_state.appendOutput(output, allocator, "m");
 }
 
-pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: action_vocabulary.SemanticEvent.RectArea) u16 {
+pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: rect.RectArea) u16 {
     if (page != 1) return 0;
     const bounds = screen.rectBounds(area) orelse return 0;
     var sum: u16 = 0;
@@ -299,7 +323,7 @@ const CommonAttrs = struct {
     bg: Grid.Color,
 };
 
-fn commonAttrsForRect(screen: *const Grid, area: action_vocabulary.SemanticEvent.RectArea) ?CommonAttrs {
+fn commonAttrsForRect(screen: *const Grid, area: rect.RectArea) ?CommonAttrs {
     const bounds = screen.rectBounds(area) orelse return null;
     const first_cell = screen.cellInfoAt(bounds.top, bounds.left);
     var common = CommonAttrs{

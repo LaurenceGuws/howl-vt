@@ -1,12 +1,13 @@
 const std = @import("std");
 const screen_mod = @import("screen.zig");
 const host_state = @import("host_state.zig");
-const vocabulary = @import("vocabulary.zig");
+const semantic_event = @import("semantic_event.zig");
+const terminal_color_control = @import("terminal_color_control.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
 const Rgb = Screen.Rgb;
-const SemanticEvent = vocabulary.SemanticEvent;
+const SemanticEvent = semantic_event.SemanticEvent;
 const osc_reply_max_bytes = 8;
 const color_osc_max_bytes = 16;
 
@@ -117,7 +118,7 @@ pub fn resetXtermDynamicColor(colors: *TerminalColorState, command: u16, payload
     resetDynamicColor(colors, key);
 }
 
-pub fn cursorColorEvent(command: vocabulary.TerminalColorControlCommand) ?SemanticEvent {
+pub fn cursorColorEvent(command: terminal_color_control.TerminalColorControlCommand) ?SemanticEvent {
     if (command.command == 12) return cursorColorEventFromDynamicPayload(command.payload, .cursor);
     if (command.command == 112 and command.payload.len == 0) return .{ .cursor_color = null };
     if (command.command == 21) return cursorColorEventFromKittyPayload(command.payload);
@@ -242,8 +243,7 @@ fn cursorColorEventForValue(key: SpecialKey, value: []const u8) ?SemanticEvent {
         .cursor_text => .{ .cursor_text_color = null },
         else => null,
     };
-    const parsed = parseColor(value) orelse return null;
-    const rgb = vocabulary.RgbColor{ .r = parsed.r, .g = parsed.g, .b = parsed.b };
+    const rgb = parseColor(value) orelse return null;
     return switch (key) {
         .cursor => .{ .cursor_color = rgb },
         .cursor_text => .{ .cursor_text_color = rgb },

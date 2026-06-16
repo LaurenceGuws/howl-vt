@@ -1,12 +1,14 @@
 const std = @import("std");
-const action_vocabulary = @import("../../src/vocabulary.zig");
+const erase = @import("../../src/screen/erase.zig");
 const route = @import("../../src/route.zig");
+const semantic_event = @import("../../src/semantic_event.zig");
 const parser_mod = @import("../../src/parser.zig");
 const parsed_events = @import("../../src/parser/events.zig");
 
 const Event = parsed_events.Event;
-const EraseMode = action_vocabulary.EraseMode;
-const SemanticEvent = action_vocabulary.SemanticEvent;
+const EraseMode = erase.EraseMode;
+const SemanticEvent = semantic_event.SemanticEvent;
+const Screen = @import("../../src/screen.zig").Screen;
 const process = route.process;
 const csi_max_params = parser_mod.max_params;
 const empty_params = [_]i32{0} ** csi_max_params;
@@ -157,7 +159,7 @@ test "csi mapping: positioning, tab, erase, and reset semantics" {
     try std.testing.expectEqual(@as(u16, 1), process(makeStyleChange('X', 0, 0, 0)).?.erase_chars);
     try std.testing.expectEqual(@as(u16, 3), process(makeStyleChangeWithParamAndIntermediate('@', 3, ' ')).?.shift_left_columns);
     try std.testing.expectEqual(@as(u16, 1), process(makeStyleChangeWithIntermediate('A', ' ')).?.shift_right_columns);
-    try std.testing.expectEqual(SemanticEvent.CursorShape.none, process(makeStyleChangeWithParamAndIntermediate('q', 7, ' ')).?.cursor_style.program_override.shape);
+    try std.testing.expectEqual(Screen.CursorShape.none, process(makeStyleChangeWithParamAndIntermediate('q', 7, ' ')).?.cursor_style.program_override.shape);
 }
 
 test "csi mapping: protection, rectangular ops, and margins" {
@@ -294,16 +296,16 @@ test "csi mapping: cursor style, save restore aliases, and invalid sequence" {
     try std.testing.expect(process(makeStyleChange('s', 0, 0, 0)).? == .save_cursor);
     try std.testing.expect(process(makeStyleChange('u', 0, 0, 0)).? == .restore_cursor);
     var sem = process(makeStyleChangeWithParamAndIntermediate('q', 0, ' ')).?;
-    try std.testing.expectEqual(SemanticEvent.CursorShape.block, sem.cursor_style.program_override.shape);
+    try std.testing.expectEqual(Screen.CursorShape.block, sem.cursor_style.program_override.shape);
     try std.testing.expect(sem.cursor_style.program_override.blink);
     sem = process(makeStyleChangeWithParamAndIntermediate('q', 4, ' ')).?;
-    try std.testing.expectEqual(SemanticEvent.CursorShape.underline, sem.cursor_style.program_override.shape);
+    try std.testing.expectEqual(Screen.CursorShape.underline, sem.cursor_style.program_override.shape);
     try std.testing.expect(!sem.cursor_style.program_override.blink);
     sem = process(makeStyleChangeWithParamAndIntermediate('q', 5, ' ')).?;
-    try std.testing.expectEqual(SemanticEvent.CursorShape.bar, sem.cursor_style.program_override.shape);
+    try std.testing.expectEqual(Screen.CursorShape.bar, sem.cursor_style.program_override.shape);
     try std.testing.expect(sem.cursor_style.program_override.blink);
     sem = process(makeStyleChangeWithParamAndIntermediate('q', 7, ' ')).?;
-    try std.testing.expectEqual(SemanticEvent.CursorShape.none, sem.cursor_style.program_override.shape);
+    try std.testing.expectEqual(Screen.CursorShape.none, sem.cursor_style.program_override.shape);
     try std.testing.expect(sem.cursor_style.program_override.blink);
 }
 

@@ -1,12 +1,13 @@
 const std = @import("std");
 const action_route = @import("../../src/route.zig");
-const action_vocabulary = @import("../../src/vocabulary.zig");
+const erase = @import("../../src/screen/erase.zig");
+const semantic_event = @import("../../src/semantic_event.zig");
 const parser_mod = @import("../../src/parser.zig");
 const parsed_events = @import("../../src/parser/events.zig");
 
 const Event = parsed_events.Event;
-const EraseMode = action_vocabulary.EraseMode;
-const SemanticEvent = action_vocabulary.SemanticEvent;
+const EraseMode = erase.EraseMode;
+const SemanticEvent = semantic_event.SemanticEvent;
 const process = action_route.process;
 const csi_max_params = parser_mod.max_params;
 const empty_params = [_]i32{0} ** csi_max_params;

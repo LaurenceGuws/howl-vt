@@ -1,8 +1,22 @@
-const action_vocabulary = @import("../vocabulary.zig");
 const color = @import("color.zig");
 
-pub const CursorShape = action_vocabulary.SemanticEvent.CursorShape;
-pub const CursorStyle = action_vocabulary.SemanticEvent.CursorStyle;
+pub const CursorShape = enum {
+    block,
+    underline,
+    bar,
+    none,
+};
+
+pub const CursorStyle = struct {
+    shape: CursorShape,
+    blink: bool,
+};
+
+pub const CursorStyleCommand = union(enum) {
+    restore_default,
+    program_override: CursorStyle,
+};
+
 pub const Rgb = color.Rgb;
 
 pub const default_cursor_style = CursorStyle{ .shape = .block, .blink = true };

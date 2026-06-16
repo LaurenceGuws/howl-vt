@@ -1,6 +1,6 @@
 const std = @import("std");
-const action_vocabulary = @import("vocabulary.zig");
 const input_mouse = @import("input/mouse.zig");
+const rect = @import("screen/rect.zig");
 const host_state = @import("host_state.zig");
 
 const format_output_max_bytes = 40;
@@ -40,7 +40,7 @@ pub fn setReporting(state: *Locator, mode: u16, unit: u16) void {
     state.coordinate_unit = unit;
 }
 
-pub fn setFilter(state: *Locator, area: action_vocabulary.SemanticEvent.OptionalRectArea) void {
+pub fn setFilter(state: *Locator, area: rect.OptionalRectArea) void {
     const row = state.last_row orelse 0;
     const col = state.last_col orelse 0;
     const top = area.top orelse row;
@@ -100,8 +100,8 @@ pub fn handleMouseEvent(state: *Locator, allocator: std.mem.Allocator, output: *
 
     if (state.mode == .disabled) return;
 
-    if (state.filter_rect) |rect| {
-        if (row < rect.top or row > rect.bottom or col < rect.left or col > rect.right) {
+    if (state.filter_rect) |filter| {
+        if (row < filter.top or row > filter.bottom or col < filter.left or col > filter.right) {
             appendReport(state, allocator, output, encode_buf, 10, event.buttons_down, row, col) catch unreachable;
             state.filter_rect = null;
             return;

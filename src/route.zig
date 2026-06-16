@@ -1,4 +1,4 @@
-const events = @import("vocabulary.zig");
+const events = @import("semantic_event.zig");
 const host_apply = @import("host_apply.zig");
 const kitty_apply = @import("kitty/apply.zig");
 const mode_apply = @import("mode.zig");
@@ -16,11 +16,9 @@ const host_state = @import("host_state.zig");
 const Event = parsed_events.Event;
 pub const SemanticEvent = events.SemanticEvent;
 
-const ScreenAction = events.ScreenAction;
-const ReportAction = events.ReportAction;
-const ModeAction = events.ModeAction;
-const KittyAction = events.KittyAction;
-const HostAction = events.HostAction;
+const ModeAction = mode_apply.ModeAction;
+const KittyAction = kitty_apply.KittyAction;
+const HostAction = host_apply.HostAction;
 
 pub const EventEffect = struct {
     changed: bool,
@@ -270,7 +268,6 @@ fn modeAction(event: SemanticEvent) ?ModeAction {
         else => null,
     };
 }
-
 
 fn kittyAction(event: SemanticEvent) ?KittyAction {
     return switch (event) {

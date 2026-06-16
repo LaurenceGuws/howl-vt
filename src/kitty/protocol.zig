@@ -1,7 +1,34 @@
 const std = @import("std");
-const vocabulary = @import("../vocabulary.zig");
 
-pub fn parseShellMark(payload: []const u8) ?vocabulary.KittyShellMark {
+pub const KittyShellMark = struct {
+    kind: u8,
+    status: ?i32,
+    metadata: []const u8,
+};
+
+pub const KittyNotificationCommand = struct {
+    metadata: []const u8,
+    payload: []const u8,
+};
+
+pub const KittyPointerShapeCommand = struct {
+    action: u8,
+    names: []const u8,
+};
+
+pub const KittyColorStackCommand = enum {
+    push,
+    pop,
+};
+
+pub const KittyMultipleCursorCommand = enum {
+    support_query,
+    clear_all,
+    cursor_query,
+    color_query,
+};
+
+pub fn parseShellMark(payload: []const u8) ?KittyShellMark {
     if (payload.len == 0) return null;
     const separator = std.mem.indexOfScalar(u8, payload, ';') orelse payload.len;
     const kind = payload[0];
@@ -10,7 +37,7 @@ pub fn parseShellMark(payload: []const u8) ?vocabulary.KittyShellMark {
     return .{ .kind = kind, .status = status, .metadata = metadata };
 }
 
-pub fn parseNotification(payload: []const u8) ?vocabulary.KittyNotificationCommand {
+pub fn parseNotification(payload: []const u8) ?KittyNotificationCommand {
     const separator = std.mem.indexOfScalar(u8, payload, ';') orelse return null;
     return .{
         .metadata = payload[0..separator],
@@ -18,7 +45,7 @@ pub fn parseNotification(payload: []const u8) ?vocabulary.KittyNotificationComma
     };
 }
 
-pub fn parsePointerShape(payload: []const u8) vocabulary.KittyPointerShapeCommand {
+pub fn parsePointerShape(payload: []const u8) KittyPointerShapeCommand {
     if (payload.len == 0) return .{ .action = '=', .names = "" };
     const action = switch (payload[0]) {
         '=', '>', '<', '?' => payload[0],

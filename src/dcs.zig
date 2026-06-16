@@ -15,7 +15,7 @@ pub fn requestResourcePayload(data: []const u8) ?[]const u8 {
     return null;
 }
 
-const events = @import("vocabulary.zig");
+const events = @import("semantic_event.zig");
 const std = @import("std");
 const SemanticEvent = events.SemanticEvent;
 const DcsEvent = @FieldType(parsed_events.Event, "dcs");

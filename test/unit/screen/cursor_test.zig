@@ -1,10 +1,10 @@
 const std = @import("std");
 const screen_mod = @import("../../../src/screen.zig");
-const action_vocabulary = @import("../../../src/vocabulary.zig");
+const screen_apply = @import("../../../src/screen/apply.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
-const SemanticEvent = action_vocabulary.ScreenAction;
+const SemanticEvent = screen_apply.ScreenAction;
 
 fn apply(screen: *Screen, event: SemanticEvent) void {
     screen.applyScreen(event);
@@ -101,11 +101,11 @@ test "screen cursor: DECSCUSR override and default restore update semantic style
     apply(&s, SemanticEvent{ .cursor_style = .{ .program_override = .{ .shape = .bar, .blink = false } } });
     try std.testing.expectEqual(.bar, s.cursor.effective_shape);
     try std.testing.expect(!s.cursor.blink_intent);
-    try std.testing.expectEqual(@as(?action_vocabulary.SemanticEvent.CursorStyle, .{ .shape = .bar, .blink = false }), s.cursor.program_override_style);
+    try std.testing.expectEqual(@as(?Screen.CursorStyle, .{ .shape = .bar, .blink = false }), s.cursor.program_override_style);
     apply(&s, SemanticEvent{ .cursor_style = .restore_default });
     try std.testing.expectEqual(.underline, s.cursor.effective_shape);
     try std.testing.expect(!s.cursor.blink_intent);
-    try std.testing.expectEqual(@as(?action_vocabulary.SemanticEvent.CursorStyle, null), s.cursor.program_override_style);
+    try std.testing.expectEqual(@as(?Screen.CursorStyle, null), s.cursor.program_override_style);
 }
 
 test "screen cursor: client movement advances position_changed_by_client_at" {
@@ -136,7 +136,7 @@ test "screen cursor: alt entry reset keeps visibility and colors outside Kitty c
     try std.testing.expectEqual(@as(u16, 0), s.cursor.col);
     try std.testing.expectEqual(.none, s.cursor.effective_shape);
     try std.testing.expect(s.cursor.blink_intent);
-    try std.testing.expectEqual(@as(?action_vocabulary.SemanticEvent.CursorStyle, null), s.cursor.program_override_style);
+    try std.testing.expectEqual(@as(?Screen.CursorStyle, null), s.cursor.program_override_style);
     try std.testing.expect(!s.cursor.visible);
     try std.testing.expectEqual(@as(?Screen.Rgb, .{ .r = 1, .g = 2, .b = 3 }), s.cursor.cursor_color);
     try std.testing.expectEqual(@as(?Screen.Rgb, .{ .r = 4, .g = 5, .b = 6 }), s.cursor.cursor_text_color);

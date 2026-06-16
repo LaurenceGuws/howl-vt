@@ -1,17 +1,33 @@
 const std = @import("std");
+const csi_params = @import("csi_params.zig");
+const dcs_payload = @import("dcs_payload.zig");
+const legacy_control = @import("legacy_control.zig");
 const locator = @import("locator.zig");
 const osc_color = @import("osc_color.zig");
+const rect = @import("screen/rect.zig");
 const screen = @import("screen.zig");
 const kitty_color = @import("kitty/color.zig");
 const input_encode = @import("input/encode.zig");
-const vocabulary = @import("vocabulary.zig");
+const terminal_color_control = @import("terminal_color_control.zig");
 
-const ScreenNs = screen.Screen;
 const LocatorNs = locator;
 const OscColorNs = osc_color;
-const DcsPayload = vocabulary.DcsPayload;
-const HostAction = vocabulary.HostAction;
 const HostState = @import("host_state.zig");
+
+pub const HostAction = union(enum) {
+    title_set: []const u8,
+    color_control: terminal_color_control.TerminalColorControlCommand,
+    hyperlink_set: []const u8,
+    hyperlink_clear,
+    clipboard_set: []const u8,
+    locator_reporting: struct { mode: u16, unit: u16 },
+    locator_filter: rect.OptionalRectArea,
+    locator_events: csi_params.ModeParams,
+    locator_request: u16,
+    media_copy_request: u16,
+    dcs_payload: dcs_payload.DcsPayload,
+    legacy_control: legacy_control.LegacyControlKind,
+};
 
 pub fn apply(vt: anytype, action: HostAction) HostState.ApplyError!void {
     var scratch: input_encode.Scratch = .{};

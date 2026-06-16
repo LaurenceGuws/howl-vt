@@ -1,11 +1,31 @@
-const action_vocabulary = @import("../vocabulary.zig");
 const style_mod = @import("style.zig");
 const cell = @import("cell.zig");
 
-const SemanticEvent = action_vocabulary.SemanticEvent;
 const Cell = cell.Cell;
 
-pub fn changeAttrs(self: anytype, area: SemanticEvent.RectArea, attrs: []const u16, reverse: bool) void {
+pub const RectArea = struct {
+    top: u16,
+    left: u16,
+    bottom: ?u16,
+    right: ?u16,
+};
+
+pub const OptionalRectArea = struct {
+    top: ?u16,
+    left: ?u16,
+    bottom: ?u16,
+    right: ?u16,
+};
+
+pub const RectCopy = struct {
+    area: RectArea,
+    source_page: u16,
+    dest_top: u16,
+    dest_left: u16,
+    dest_page: u16,
+};
+
+pub fn changeAttrs(self: anytype, area: RectArea, attrs: []const u16, reverse: bool) void {
     const c = self.cells orelse return;
     if (attrs.len == 0) return;
     const bounds = self.rectBounds(area) orelse return;
@@ -23,7 +43,7 @@ pub fn changeAttrs(self: anytype, area: SemanticEvent.RectArea, attrs: []const u
     }
 }
 
-pub fn erase(self: anytype, area: SemanticEvent.RectArea, selective: bool) void {
+pub fn erase(self: anytype, area: RectArea, selective: bool) void {
     const bounds = self.rectBounds(area) orelse return;
     self.markDirtyRows(bounds.top, bounds.bottom);
     var row = bounds.top;
@@ -37,7 +57,7 @@ pub fn erase(self: anytype, area: SemanticEvent.RectArea, selective: bool) void 
     }
 }
 
-pub fn fill(self: anytype, area: SemanticEvent.RectArea, ch: u21) void {
+pub fn fill(self: anytype, area: RectArea, ch: u21) void {
     const c = self.cells orelse return;
     const bounds = self.rectBounds(area) orelse return;
     self.markDirtyRows(bounds.top, bounds.bottom);
@@ -51,7 +71,7 @@ pub fn fill(self: anytype, area: SemanticEvent.RectArea, ch: u21) void {
     }
 }
 
-pub fn copy(self: anytype, req: SemanticEvent.RectCopy) void {
+pub fn copy(self: anytype, req: RectCopy) void {
     const c = self.cells orelse return;
     _ = c;
     if (req.source_page != 1 or req.dest_page != 1) return;

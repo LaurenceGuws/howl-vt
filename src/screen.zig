@@ -1,6 +1,6 @@
 const std = @import("std");
-const action_vocabulary = @import("vocabulary.zig");
 const parser_mod = @import("parser.zig");
+const semantic_event = @import("semantic_event.zig");
 const cell = @import("screen/cell.zig");
 const color = @import("screen/color.zig");
 const cursor = @import("screen/cursor.zig");
@@ -17,8 +17,8 @@ const style_mod = @import("screen/style.zig");
 const tabs = @import("screen/tabs.zig");
 const write = @import("screen/write.zig");
 
-const SemanticEvent = action_vocabulary.SemanticEvent;
-const ScreenAction = action_vocabulary.ScreenAction;
+const SemanticEvent = semantic_event.SemanticEvent;
+const ScreenAction = screen_apply.ScreenAction;
 const HistoryLine = history_mod.HistoryLine;
 
 /// Terminal screen state for cursor, cells, margins, and history.
@@ -39,7 +39,7 @@ pub const Screen = struct {
     pub const default_cell = cell.default_cell;
     pub const isCellContinuation = cell.isCellContinuation;
     pub const DirtyRows = dirty.DirtyRows;
-    pub const EraseMode = action_vocabulary.EraseMode;
+    pub const EraseMode = erase.EraseMode;
     pub const CellPixelSize = struct {
         width: u32,
         height: u32,
@@ -412,7 +412,7 @@ pub const Screen = struct {
         erase.eraseChars(self, count);
     }
 
-    pub fn changeRectAttrs(self: *Screen, area: SemanticEvent.RectArea, attrs: []const u16, reverse: bool) void {
+    pub fn changeRectAttrs(self: *Screen, area: rect.RectArea, attrs: []const u16, reverse: bool) void {
         rect.changeAttrs(self, area, attrs, reverse);
     }
 
@@ -424,15 +424,15 @@ pub const Screen = struct {
         erase.selectiveEraseLine(self, mode);
     }
 
-    pub fn eraseRect(self: *Screen, area: SemanticEvent.RectArea, selective: bool) void {
+    pub fn eraseRect(self: *Screen, area: rect.RectArea, selective: bool) void {
         rect.erase(self, area, selective);
     }
 
-    pub fn fillRect(self: *Screen, area: SemanticEvent.RectArea, ch: u21) void {
+    pub fn fillRect(self: *Screen, area: rect.RectArea, ch: u21) void {
         rect.fill(self, area, ch);
     }
 
-    pub fn copyRect(self: *Screen, req: SemanticEvent.RectCopy) void {
+    pub fn copyRect(self: *Screen, req: rect.RectCopy) void {
         rect.copy(self, req);
     }
 
@@ -588,7 +588,7 @@ pub const Screen = struct {
         erase.selectiveClearRowRange(self, row, start_col, end_col_exclusive);
     }
 
-    pub fn rectBounds(self: *const Screen, area: SemanticEvent.RectArea) ?RectBounds {
+    pub fn rectBounds(self: *const Screen, area: rect.RectArea) ?RectBounds {
         if (self.rows == 0 or self.cols == 0) return null;
         const row_base: u16 = if (self.origin_mode) self.scroll_top else 0;
         const row_limit: u16 = if (self.origin_mode) self.scrollBottom() else self.rows - 1;

@@ -21,7 +21,8 @@ pub const C0 = enum(u8) {
     _,
 };
 
-const events = @import("vocabulary.zig");
+const events = @import("semantic_event.zig");
+const legacy_control = @import("legacy_control.zig");
 const SemanticEvent = events.SemanticEvent;
 
 pub fn fromByte(byte: u8) C0 {
@@ -74,10 +75,10 @@ test "c0 maps line and cursor stream controls" {
 }
 
 test "c0 legacy controls map host-neutral state" {
-    try std.testing.expectEqual(events.LegacyControlKind.tek_point_plot, process(.file_separator).?.legacy_control);
-    try std.testing.expectEqual(events.LegacyControlKind.tek_graph, process(.group_separator).?.legacy_control);
-    try std.testing.expectEqual(events.LegacyControlKind.tek_incremental_plot, process(.record_separator).?.legacy_control);
-    try std.testing.expectEqual(events.LegacyControlKind.tek_alpha, process(.unit_separator).?.legacy_control);
+    try std.testing.expectEqual(legacy_control.LegacyControlKind.tek_point_plot, process(.file_separator).?.legacy_control);
+    try std.testing.expectEqual(legacy_control.LegacyControlKind.tek_graph, process(.group_separator).?.legacy_control);
+    try std.testing.expectEqual(legacy_control.LegacyControlKind.tek_incremental_plot, process(.record_separator).?.legacy_control);
+    try std.testing.expectEqual(legacy_control.LegacyControlKind.tek_alpha, process(.unit_separator).?.legacy_control);
 }
 
 test "c0 ignores unsupported controls" {

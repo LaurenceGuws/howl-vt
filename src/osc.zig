@@ -1,5 +1,5 @@
 const std = @import("std");
-const events = @import("vocabulary.zig");
+const events = @import("semantic_event.zig");
 const parser_mod = @import("parser.zig");
 const kitty = @import("kitty/protocol.zig");
 

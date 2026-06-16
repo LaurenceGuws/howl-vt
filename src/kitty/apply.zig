@@ -1,13 +1,26 @@
 const std = @import("std");
-const vocabulary = @import("../vocabulary.zig");
 const kitty_color = @import("color.zig");
+const kitty_protocol = @import("protocol.zig");
 const kitty_state = @import("state.zig");
 const input_encode = @import("../input/encode.zig");
 const host_state = @import("../host_state.zig");
 
-const KittyNotificationCommand = vocabulary.KittyNotificationCommand;
-const KittyShellMark = vocabulary.KittyShellMark;
-const KittyAction = vocabulary.KittyAction;
+const KittyNotificationCommand = kitty_protocol.KittyNotificationCommand;
+const KittyShellMark = kitty_protocol.KittyShellMark;
+
+pub const KittyAction = union(enum) {
+    kitty_keyboard_set: struct { flags: u32, mode: u8 },
+    kitty_keyboard_query,
+    kitty_keyboard_push: u32,
+    kitty_keyboard_pop: u16,
+    kitty_shell_mark: kitty_protocol.KittyShellMark,
+    kitty_notification: kitty_protocol.KittyNotificationCommand,
+    kitty_pointer_shape: kitty_protocol.KittyPointerShapeCommand,
+    kitty_color_stack: kitty_protocol.KittyColorStackCommand,
+    kitty_multiple_cursor: kitty_protocol.KittyMultipleCursorCommand,
+    kitty_file_transfer: []const u8,
+    kitty_text_size: []const u8,
+};
 
 pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!bool {
     var scratch: input_encode.Scratch = .{};
