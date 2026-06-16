@@ -60,12 +60,44 @@ pub const FfiColors = extern struct {
     palette: [256]surface.FfiRgb8 = [_]surface.FfiRgb8{.{}} ** 256,
 };
 
+pub const FfiSurfaceCell = surface.FfiSurfaceCell;
+
 fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
 }
 
 fn rgbOut(value: render_state.RenderState.Rgb8) surface.FfiRgb8 {
     return .{ .r = value.r, .g = value.g, .b = value.b };
+}
+
+fn colorOut(value: render_state.RenderState.Color) surface.FfiColor {
+    return .{ .kind = @intFromEnum(value.kind), .value = value.value };
+}
+
+fn cellOut(value: render_state.RenderState.Cell) surface.FfiSurfaceCell {
+    return .{
+        .codepoint = value.codepoint,
+        .combining_len = value.combining_len,
+        .combining = value.combining,
+        .flags = .{ .continuation = boolByte(value.continuation) },
+        .fg_color = colorOut(value.fg_color),
+        .bg_color = colorOut(value.bg_color),
+        .underline_color = colorOut(value.underline_color),
+        .underline_style = @intFromEnum(value.underline_style),
+        .attrs = .{
+            .bold = boolByte(value.bold),
+            .dim = boolByte(value.dim),
+            .italic = boolByte(value.italic),
+            .underline = boolByte(value.underline),
+            .underline_color_set = boolByte(value.underline_color.kind != .default),
+            .blink = boolByte(value.blink),
+            .inverse = boolByte(value.inverse),
+            .invisible = boolByte(value.invisible),
+            .strikethrough = boolByte(value.strikethrough),
+            .selected = 0,
+        },
+        .link_id = value.link_id,
+    };
 }
 
 fn renderStateFromHandle(state: FfiRenderStateHandle) ?*RenderStateBox {
@@ -199,17 +231,15 @@ pub fn renderStateDeinit(state: FfiRenderStateHandle) callconv(.c) void {
 
 pub fn renderStateUpdate(state: FfiRenderStateHandle, vt_handle: handle.VtHandle, scrollback_offset: u64) callconv(.c) i32 {
     const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
-    if (handle.vtFromHandle(vt_handle) == null) return @intFromEnum(status.HowlVtCallStatus.missing_handle);
-    owned.state.scrollback_offset = scrollback_offset;
-    owned.state.update();
+    const vt = handle.vtFromHandle(vt_handle) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
+    owned.state.update(std.heap.c_allocator, vt, scrollback_offset) catch return @intFromEnum(status.HowlVtCallStatus.failed);
     return @intFromEnum(status.HowlVtCallStatus.ok);
 }
 
 pub fn renderStateAck(state: FfiRenderStateHandle, vt_handle: handle.VtHandle) callconv(.c) i32 {
     const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
-    if (handle.vtFromHandle(vt_handle) == null) return @intFromEnum(status.HowlVtCallStatus.missing_handle);
-    owned.state.ack();
-    return @intFromEnum(status.HowlVtCallStatus.ok);
+    const vt = handle.vtFromHandle(vt_handle) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
+    return if (owned.state.ack(vt)) @intFromEnum(status.HowlVtCallStatus.ok) else @intFromEnum(status.HowlVtCallStatus.invalid_argument);
 }
 
 pub fn renderStateGet(state: FfiRenderStateHandle, data: c_int, out: ?*anyopaque) callconv(.c) i32 {
@@ -313,12 +343,29 @@ pub fn renderStateRowIteratorNext(iterator: FfiRowIteratorHandle) callconv(.c) u
     return 0;
 }
 
+fn currentRow(iterator: *RowIteratorBox) ?*render_state.RenderState.Row {
+    if (!iterator.has_row) return null;
+    const state = iterator.state orelse return null;
+    std.debug.assert(iterator.row > 0);
+    const index = iterator.row - 1;
+    if (index >= state.rows_storage.items.len) return null;
+    return &state.rows_storage.items[index];
+}
+
 pub fn renderStateRowGet(iterator: FfiRowIteratorHandle, data: c_int, out: ?*anyopaque) callconv(.c) i32 {
     const owned = rowIteratorFromHandle(iterator) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
-    _ = rowDataIn(data) orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
-    if (!owned.has_row) return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
-    _ = out orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
-    return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    const valid = rowDataIn(data) orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    const row = currentRow(owned) orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    return switch (valid) {
+        .invalid => unreachable,
+        .dirty => writeOut(u8, out, boolByte(row.dirty)),
+        .cells => blk: {
+            const cells = std.heap.c_allocator.create(RowCellsBox) catch break :blk @intFromEnum(status.HowlVtCallStatus.failed);
+            cells.* = .{ .row = row };
+            break :blk writeOut(FfiRowCellsHandle, out, @as(FfiRowCellsHandle, @ptrCast(cells)));
+        },
+        .selection, .highlight_count, .highlight => @intFromEnum(status.HowlVtCallStatus.invalid_argument),
+    };
 }
 
 pub fn renderStateRowGetMulti(iterator: FfiRowIteratorHandle, count: usize, keys: ?[*]const c_int, values: ?[*]?*anyopaque, out_written: ?*usize) callconv(.c) i32 {
@@ -338,10 +385,15 @@ pub fn renderStateRowGetMulti(iterator: FfiRowIteratorHandle, count: usize, keys
 
 pub fn renderStateRowSet(iterator: FfiRowIteratorHandle, option: c_int, value: ?*const anyopaque) callconv(.c) i32 {
     const owned = rowIteratorFromHandle(iterator) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
-    _ = rowOptionIn(option) orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
-    if (!owned.has_row) return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
-    _ = value orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
-    return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    const valid = rowOptionIn(option) orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    const row = currentRow(owned) orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    return switch (valid) {
+        .dirty => blk: {
+            const dirty_ptr: *const u8 = @ptrCast(@alignCast(value orelse break :blk @intFromEnum(status.HowlVtCallStatus.invalid_argument)));
+            row.dirty = dirty_ptr.* != 0;
+            break :blk @intFromEnum(status.HowlVtCallStatus.ok);
+        },
+    };
 }
 
 pub fn renderStateRowCellsInit(out_cells: ?*FfiRowCellsHandle) callconv(.c) i32 {
@@ -382,10 +434,19 @@ pub fn renderStateRowCellsSelect(cells: FfiRowCellsHandle, col: u16) callconv(.c
 
 pub fn renderStateRowCellsGet(cells: FfiRowCellsHandle, data: c_int, out: ?*anyopaque) callconv(.c) i32 {
     const owned = rowCellsFromHandle(cells) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
-    _ = rowCellsDataIn(data) orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    const valid = rowCellsDataIn(data) orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    const row = owned.row orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
     if (!owned.has_cell) return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
-    _ = out orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
-    return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    std.debug.assert(owned.col > 0);
+    const index = owned.col - 1;
+    if (index >= row.cells.len) return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    const cell = row.cells[index];
+    return switch (valid) {
+        .invalid => unreachable,
+        .cell => writeOut(surface.FfiSurfaceCell, out, cellOut(cell)),
+        .selected => writeOut(u8, out, boolByte(cell.selected)),
+        .highlighted => writeOut(u8, out, boolByte(cell.highlighted)),
+    };
 }
 
 pub fn renderStateRowCellsGetMulti(cells: FfiRowCellsHandle, count: usize, keys: ?[*]const c_int, values: ?[*]?*anyopaque, out_written: ?*usize) callconv(.c) i32 {
@@ -478,4 +539,90 @@ test "render_state ffi row iterator empty before update" {
     defer renderStateRowIteratorDeinit(iterator);
     try std.testing.expect(iterator != null);
     try std.testing.expectEqual(@as(u8, 0), renderStateRowIteratorNext(iterator));
+}
+
+test "render_state ffi update exposes row and cell iteration" {
+    const lifecycle = @import("lifecycle.zig");
+    const vt_handle = lifecycle.terminalInit(2, 4, 8);
+    defer lifecycle.terminalDeinit(vt_handle);
+    try std.testing.expect(vt_handle != null);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), lifecycle.terminalFeed(vt_handle, "abcd".ptr, 4).status);
+
+    var state: FfiRenderStateHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateInit(&state));
+    defer renderStateDeinit(state);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle, 0));
+
+    var rows: u16 = 0;
+    var cols: u16 = 0;
+    var dirty: c_int = 0;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateGet(state, @intFromEnum(FfiData.rows), &rows));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateGet(state, @intFromEnum(FfiData.cols), &cols));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateGet(state, @intFromEnum(FfiData.dirty), &dirty));
+    try std.testing.expectEqual(@as(u16, 2), rows);
+    try std.testing.expectEqual(@as(u16, 4), cols);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(FfiDirty.full)), dirty);
+
+    var iterator: FfiRowIteratorHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateGet(state, @intFromEnum(FfiData.row_iterator), @ptrCast(&iterator)));
+    defer renderStateRowIteratorDeinit(iterator);
+
+    var row_count: u16 = 0;
+    var cell_count: u16 = 0;
+    while (renderStateRowIteratorNext(iterator) != 0) : (row_count += 1) {
+        var cells: FfiRowCellsHandle = null;
+        try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator, @intFromEnum(FfiRowData.cells), @ptrCast(&cells)));
+        defer renderStateRowCellsDeinit(cells);
+        while (renderStateRowCellsNext(cells) != 0) : (cell_count += 1) {
+            var cell: surface.FfiSurfaceCell = .{};
+            try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsGet(cells, @intFromEnum(FfiRowCellsData.cell), &cell));
+            if (cell_count == 0) try std.testing.expectEqual(@as(u32, 'a'), cell.codepoint);
+            if (cell_count == 3) try std.testing.expectEqual(@as(u32, 'd'), cell.codepoint);
+        }
+    }
+    try std.testing.expectEqual(rows, row_count);
+    try std.testing.expectEqual(@as(u16, rows * cols), cell_count);
+}
+
+test "render_state ffi cells expose full copied surface facts" {
+    const lifecycle = @import("lifecycle.zig");
+    const vt_handle = lifecycle.terminalInit(1, 4, 4);
+    defer lifecycle.terminalDeinit(vt_handle);
+    try std.testing.expect(vt_handle != null);
+    const source = "\x1b]8;;https://example.com\x07\x1b[1;2;3;4;5;7;8;9;38;2;1;2;3;48;5;200;58;2;4;5;6mA\xcc\x81\x1b]8;;\x07";
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), lifecycle.terminalFeed(vt_handle, source.ptr, source.len).status);
+
+    var state: FfiRenderStateHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateInit(&state));
+    defer renderStateDeinit(state);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle, 0));
+
+    var iterator: FfiRowIteratorHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateGet(state, @intFromEnum(FfiData.row_iterator), @ptrCast(&iterator)));
+    defer renderStateRowIteratorDeinit(iterator);
+    try std.testing.expectEqual(@as(u8, 1), renderStateRowIteratorNext(iterator));
+
+    var cells: FfiRowCellsHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator, @intFromEnum(FfiRowData.cells), @ptrCast(&cells)));
+    defer renderStateRowCellsDeinit(cells);
+    try std.testing.expectEqual(@as(u8, 1), renderStateRowCellsNext(cells));
+
+    var cell: surface.FfiSurfaceCell = .{};
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsGet(cells, @intFromEnum(FfiRowCellsData.cell), &cell));
+    try std.testing.expectEqual(@as(u32, 'A'), cell.codepoint);
+    try std.testing.expectEqual(@as(u8, 1), cell.combining_len);
+    try std.testing.expectEqual(@as(u32, 0x0301), cell.combining[0]);
+    try std.testing.expectEqual(surface.FfiColor{ .kind = 2, .value = 0x010203 }, cell.fg_color);
+    try std.testing.expectEqual(surface.FfiColor{ .kind = 1, .value = 200 }, cell.bg_color);
+    try std.testing.expectEqual(surface.FfiColor{ .kind = 2, .value = 0x040506 }, cell.underline_color);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.bold);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.dim);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.italic);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.underline);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.underline_color_set);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.blink);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.inverse);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.invisible);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.strikethrough);
+    try std.testing.expect(cell.link_id != 0);
 }
