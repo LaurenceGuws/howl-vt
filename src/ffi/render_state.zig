@@ -203,6 +203,17 @@ fn rowCellsDataIn(value: c_int) ?FfiRowCellsData {
     };
 }
 
+fn underlineStyleIn(value: u8) ?render_state.RenderState.UnderlineStyle {
+    return switch (value) {
+        0 => .straight,
+        1 => .double,
+        2 => .curly,
+        3 => .dotted,
+        4 => .dashed,
+        else => null,
+    };
+}
+
 fn writeOut(comptime Value: type, out: ?*anyopaque, value: Value) i32 {
     const target: *Value = @ptrCast(@alignCast(out orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument)));
     target.* = value;
@@ -260,6 +271,13 @@ pub fn renderStateAck(state: FfiRenderStateHandle, vt_handle: handle.VtHandle) c
     const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
     const vt = handle.vtFromHandle(vt_handle) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
     return if (owned.state.ack(vt)) @intFromEnum(status.HowlVtCallStatus.ok) else @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+}
+
+pub fn renderStateUpdateHighlightsForHyperlink(state: FfiRenderStateHandle, tag: u8, row: u16, col: u16, underline_style: u8) callconv(.c) i32 {
+    const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
+    const style = underlineStyleIn(underline_style) orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
+    owned.state.updateHighlightsForHyperlink(tag, row, col, style);
+    return @intFromEnum(status.HowlVtCallStatus.ok);
 }
 
 pub fn renderStateGet(state: FfiRenderStateHandle, data: c_int, out: ?*anyopaque) callconv(.c) i32 {
@@ -497,12 +515,6 @@ pub fn testRenderStateClearDirty(state: FfiRenderStateHandle) i32 {
     const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
     owned.state.dirty = .false;
     for (owned.state.rows_storage.items) |*row| row.dirty = false;
-    return @intFromEnum(status.HowlVtCallStatus.ok);
-}
-
-pub fn testRenderStateUpdateHighlightsForHyperlink(state: FfiRenderStateHandle, tag: u8, row: u16, col: u16) i32 {
-    const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
-    owned.state.updateHighlightsForHyperlink(tag, row, col, .straight);
     return @intFromEnum(status.HowlVtCallStatus.ok);
 }
 

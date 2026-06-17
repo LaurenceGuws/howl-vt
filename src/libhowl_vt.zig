@@ -33,6 +33,7 @@ comptime {
     @export(&ffi.renderStateDeinit, .{ .name = "howl_vt_render_state_deinit" });
     @export(&ffi.renderStateUpdate, .{ .name = "howl_vt_render_state_update" });
     @export(&ffi.renderStateAck, .{ .name = "howl_vt_render_state_ack" });
+    @export(&ffi.renderStateUpdateHighlightsForHyperlink, .{ .name = "howl_vt_render_state_update_highlights_for_hyperlink" });
     @export(&ffi.renderStateGet, .{ .name = "howl_vt_render_state_get" });
     @export(&ffi.renderStateGetMulti, .{ .name = "howl_vt_render_state_get_multi" });
     @export(&ffi.renderStateSet, .{ .name = "howl_vt_render_state_set" });

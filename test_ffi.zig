@@ -42,6 +42,7 @@ pub const renderStateInit = ffi.renderStateInit;
 pub const renderStateDeinit = ffi.renderStateDeinit;
 pub const renderStateUpdate = ffi.renderStateUpdate;
 pub const renderStateAck = ffi.renderStateAck;
+pub const renderStateUpdateHighlightsForHyperlink = ffi.renderStateUpdateHighlightsForHyperlink;
 pub const renderStateGet = ffi.renderStateGet;
 pub const renderStateGetMulti = ffi.renderStateGetMulti;
 pub const renderStateSet = ffi.renderStateSet;
@@ -62,4 +63,3 @@ pub const renderStateRowCellsGetMulti = ffi.renderStateRowCellsGetMulti;
 const render_state = @import("src/ffi/render_state.zig");
 
 pub const testRenderStateClearDirty = render_state.testRenderStateClearDirty;
-pub const testRenderStateUpdateHighlightsForHyperlink = render_state.testRenderStateUpdateHighlightsForHyperlink;

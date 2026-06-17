@@ -79,6 +79,7 @@ pub const RenderState = struct {
         index: u16,
         start_col: u16,
         end_col: u16,
+        underline_style: UnderlineStyle = .straight,
     };
 
     pub const SelectionRange = struct {
@@ -214,7 +215,6 @@ pub const RenderState = struct {
     }
 
     pub fn updateHighlightsForHyperlink(self: *RenderState, tag: u8, row: u16, col: u16, underline_style: UnderlineStyle) void {
-        _ = underline_style;
         std.debug.assert(self.rows_storage.items.len == self.rows);
         self.clearHighlights(tag);
         if (row >= self.rows) return;
@@ -234,6 +234,7 @@ pub const RenderState = struct {
                 .index = 0,
                 .start_col = if (current_row == start.row) start.col else 0,
                 .end_col = if (current_row == end.row) end.col + 1 else @intCast(current.cells.len),
+                .underline_style = underline_style,
             };
             current.highlight_count = 1;
             current.dirty = true;
@@ -518,10 +519,27 @@ test "render_state hyperlink hover highlights contiguous linked cells and dirty 
     try std.testing.expectEqual(RenderState.Dirty.partial, state.dirty);
     try std.testing.expectEqual(@as(u16, 1), state.rows_storage.items[0].highlight_count);
     try std.testing.expectEqual(@as(u16, 1), state.rows_storage.items[1].highlight_count);
-    try std.testing.expectEqual(RenderState.Highlight{ .tag = 1, .index = 0, .start_col = 0, .end_col = 4 }, state.rows_storage.items[0].highlights[0]);
-    try std.testing.expectEqual(RenderState.Highlight{ .tag = 1, .index = 0, .start_col = 0, .end_col = 2 }, state.rows_storage.items[1].highlights[0]);
+    try std.testing.expectEqual(RenderState.Highlight{ .tag = 1, .index = 0, .start_col = 0, .end_col = 4, .underline_style = .straight }, state.rows_storage.items[0].highlights[0]);
+    try std.testing.expectEqual(RenderState.Highlight{ .tag = 1, .index = 0, .start_col = 0, .end_col = 2, .underline_style = .straight }, state.rows_storage.items[1].highlights[0]);
     try std.testing.expect(state.rows_storage.items[0].dirty);
     try std.testing.expect(state.rows_storage.items[1].dirty);
+}
+
+test "render_state hyperlink hover stores underline style without mutating cells" {
+    var vt = try terminal.Terminal.initWithCellsAndHistory(std.testing.allocator, 1, 4, 4);
+    defer vt.deinit();
+    const source = "\x1b]8;;https://example.com\x07abcd\x1b]8;;\x07";
+    try std.testing.expect((try vt.feed(source)).state_changed);
+
+    var state = RenderState.empty();
+    defer state.deinit(std.testing.allocator);
+    try state.update(std.testing.allocator, &vt, 0);
+    const before = state.rows_storage.items[0].cells[1];
+
+    state.updateHighlightsForHyperlink(1, 0, 1, .dashed);
+    try std.testing.expectEqual(RenderState.UnderlineStyle.dashed, state.rows_storage.items[0].highlights[0].underline_style);
+    try std.testing.expectEqual(before.underline_style, state.rows_storage.items[0].cells[1].underline_style);
+    try std.testing.expectEqual(before.underline, state.rows_storage.items[0].cells[1].underline);
 }
 
 test "render_state out of range hyperlink hover does not dirty empty highlights" {

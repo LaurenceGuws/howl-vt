@@ -101,6 +101,7 @@ pub const renderStateInit = render_state.renderStateInit;
 pub const renderStateDeinit = render_state.renderStateDeinit;
 pub const renderStateUpdate = render_state.renderStateUpdate;
 pub const renderStateAck = render_state.renderStateAck;
+pub const renderStateUpdateHighlightsForHyperlink = render_state.renderStateUpdateHighlightsForHyperlink;
 pub const renderStateGet = render_state.renderStateGet;
 pub const renderStateGetMulti = render_state.renderStateGetMulti;
 pub const renderStateSet = render_state.renderStateSet;

@@ -391,6 +391,13 @@ HowlVtCallStatus howl_vt_render_state_update(
     uint64_t scrollback_offset
 );
 HowlVtCallStatus howl_vt_render_state_ack(HowlVtRenderStateHandle state, HowlVtHandle terminal);
+HowlVtCallStatus howl_vt_render_state_update_highlights_for_hyperlink(
+    HowlVtRenderStateHandle state,
+    uint8_t tag,
+    uint16_t row,
+    uint16_t col,
+    uint8_t underline_style
+);
 HowlVtCallStatus howl_vt_render_state_get(
     HowlVtRenderStateHandle state,
     HowlVtRenderStateData data,

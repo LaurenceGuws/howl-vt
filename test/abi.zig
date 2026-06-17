@@ -114,7 +114,7 @@ test "vt abi render_state hover highlights ranges cells and dirty rows" {
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator_before, c.HOWL_VT_RENDER_STATE_ROW_DATA_HIGHLIGHT_COUNT, &count));
     try std.testing.expectEqual(@as(u16, 0), count);
 
-    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.testRenderStateUpdateHighlightsForHyperlink(state, 1, 0, 1));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateUpdateHighlightsForHyperlink(state, 1, 0, 1, 4));
     var dirty: c_int = c.HOWL_VT_RENDER_STATE_DIRTY_FALSE;
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateGet(state, c.HOWL_VT_RENDER_STATE_DATA_DIRTY, &dirty));
     try std.testing.expectEqual(@as(c_int, c.HOWL_VT_RENDER_STATE_DIRTY_PARTIAL), dirty);
@@ -157,7 +157,7 @@ test "vt abi render_state hover highlights ranges cells and dirty rows" {
     try std.testing.expectEqual(@as(u8, 0), highlighted);
 }
 
-test "vt abi render_state out of range hover leaves highlights and dirty false" {
+test "vt abi render_state public hover no-link and out-of-range leave highlights and dirty false" {
     const vt = ffi.terminalInit(1, 4, 4);
     defer ffi.terminalDeinit(vt);
     try std.testing.expect(vt != null);
@@ -166,7 +166,7 @@ test "vt abi render_state out of range hover leaves highlights and dirty false" 
     const state = try renderStateWithRows(vt);
     defer ffi.renderStateDeinit(state);
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.testRenderStateClearDirty(state));
-    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.testRenderStateUpdateHighlightsForHyperlink(state, 1, 99, 0));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateUpdateHighlightsForHyperlink(state, 1, 0, 0, 0));
 
     var dirty: c_int = c.HOWL_VT_RENDER_STATE_DIRTY_PARTIAL;
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateGet(state, c.HOWL_VT_RENDER_STATE_DATA_DIRTY, &dirty));
@@ -177,6 +177,16 @@ test "vt abi render_state out of range hover leaves highlights and dirty false" 
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY, &row_dirty));
     try std.testing.expectEqual(@as(u8, 0), row_dirty);
     var count: u16 = 99;
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_HIGHLIGHT_COUNT, &count));
+    try std.testing.expectEqual(@as(u16, 0), count);
+
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateUpdateHighlightsForHyperlink(state, 1, 99, 0, 0));
+
+    dirty = c.HOWL_VT_RENDER_STATE_DIRTY_PARTIAL;
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateGet(state, c.HOWL_VT_RENDER_STATE_DATA_DIRTY, &dirty));
+    try std.testing.expectEqual(@as(c_int, c.HOWL_VT_RENDER_STATE_DIRTY_FALSE), dirty);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY, &row_dirty));
+    try std.testing.expectEqual(@as(u8, 0), row_dirty);
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_HIGHLIGHT_COUNT, &count));
     try std.testing.expectEqual(@as(u16, 0), count);
 }
@@ -211,6 +221,7 @@ test "vt abi render_state missing handles report missing-handle" {
     var dirty: c_int = c.HOWL_VT_RENDER_STATE_DIRTY_FALSE;
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.renderStateGet(null, c.HOWL_VT_RENDER_STATE_DATA_DIRTY, &dirty));
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.renderStateSet(null, c.HOWL_VT_RENDER_STATE_OPTION_DIRTY, &dirty));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.renderStateUpdateHighlightsForHyperlink(null, 1, 0, 0, 0));
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.renderStateColorsGet(null, null));
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.renderStateRowGet(null, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY, &dirty));
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.renderStateRowSet(null, c.HOWL_VT_RENDER_STATE_ROW_OPTION_DIRTY, &dirty));
@@ -227,6 +238,7 @@ test "vt abi render_state invalid enum status" {
     const invalid_dirty: c_int = 9999;
     try std.testing.expectEqual(c.HOWL_VT_CALL_INVALID_ARGUMENT, ffi.renderStateGet(state, invalid_data, &out));
     try std.testing.expectEqual(c.HOWL_VT_CALL_INVALID_ARGUMENT, ffi.renderStateSet(state, c.HOWL_VT_RENDER_STATE_OPTION_DIRTY, &invalid_dirty));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_INVALID_ARGUMENT, ffi.renderStateUpdateHighlightsForHyperlink(state, 1, 0, 0, 5));
 }
 
 test "vt abi render_state dirty get set" {
