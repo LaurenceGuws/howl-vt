@@ -14,6 +14,48 @@ comptime {
     std.debug.assert(@sizeOf(ffi.FfiSelectionResult) == @sizeOf(c.HowlVtSelectionResult));
     std.debug.assert(@sizeOf(ffi.FfiRowSelection) == @sizeOf(c.HowlVtRenderStateRowSelection));
     std.debug.assert(@sizeOf(ffi.FfiRowHighlight) == @sizeOf(c.HowlVtRenderStateRowHighlight));
+    std.debug.assert(@sizeOf(ffi.FfiRenderStateColor) == @sizeOf(c.HowlVtColor));
+    std.debug.assert(@sizeOf(ffi.FfiRenderStateRgb8) == @sizeOf(c.HowlVtRgb8));
+    std.debug.assert(@sizeOf(ffi.FfiRenderStateCellFlags) == @sizeOf(c.HowlVtRenderStateCellFlags));
+    std.debug.assert(@sizeOf(ffi.FfiRenderStateCellAttrs) == @sizeOf(c.HowlVtRenderStateCellAttrs));
+    std.debug.assert(@sizeOf(ffi.FfiRenderStateCell) == @sizeOf(c.HowlVtRenderStateCell));
+    std.debug.assert(@alignOf(ffi.FfiRenderStateCellFlags) == @alignOf(c.HowlVtRenderStateCellFlags));
+    std.debug.assert(@alignOf(ffi.FfiRenderStateCellAttrs) == @alignOf(c.HowlVtRenderStateCellAttrs));
+    std.debug.assert(@alignOf(ffi.FfiRenderStateCell) == @alignOf(c.HowlVtRenderStateCell));
+    std.debug.assert(@sizeOf(c.HowlVtRenderStateCellFlags) == 4);
+    std.debug.assert(@sizeOf(c.HowlVtRenderStateCellAttrs) == 10);
+    std.debug.assert(@sizeOf(c.HowlVtRenderStateCell) == 68);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellFlags, "continuation") == 0);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellFlags, "reserved0") == 1);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellFlags, "reserved1") == 2);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellFlags, "reserved2") == 3);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellAttrs, "bold") == 0);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellAttrs, "dim") == 1);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellAttrs, "italic") == 2);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellAttrs, "underline") == 3);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellAttrs, "underline_color_set") == 4);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellAttrs, "blink") == 5);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellAttrs, "inverse") == 6);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellAttrs, "invisible") == 7);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellAttrs, "strikethrough") == 8);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCellAttrs, "reserved0") == 9);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "codepoint") == 0);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "combining_len") == 4);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "reserved0") == 5);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "reserved1") == 6);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "reserved2") == 7);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "combining") == 8);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "flags") == 20);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "fg_color") == 24);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "bg_color") == 32);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "underline_color") == 40);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "underline_style") == 48);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "reserved3") == 49);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "reserved4") == 50);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "reserved5") == 51);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "attrs") == 52);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "reserved6") == 62);
+    std.debug.assert(@offsetOf(c.HowlVtRenderStateCell, "link_id") == 64);
     std.debug.assert(@sizeOf(ffi.FfiColors) == @sizeOf(c.HowlVtRenderStateColors));
 
     std.debug.assert(@intFromEnum(ffi.HowlVtCallStatus.ok) == c.HOWL_VT_CALL_OK);
@@ -51,6 +93,101 @@ comptime {
     std.debug.assert(@intFromEnum(ffi.FfiRowCellsData.cell) == c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_CELL);
     std.debug.assert(@intFromEnum(ffi.FfiRowCellsData.selected) == c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_SELECTED);
     std.debug.assert(@intFromEnum(ffi.FfiRowCellsData.highlighted) == c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_HIGHLIGHTED);
+}
+
+test "vt abi render_state fixed cell layout has no embedded selected or highlighted facts" {
+    var cell = c.HowlVtRenderStateCell{
+        .codepoint = 0,
+        .combining_len = 0,
+        .reserved0 = 0,
+        .reserved1 = 0,
+        .reserved2 = 0,
+        .combining = .{ 0, 0, 0 },
+        .flags = .{ .continuation = 0, .reserved0 = 0, .reserved1 = 0, .reserved2 = 0 },
+        .fg_color = .{ .kind = 0, .value = 0 },
+        .bg_color = .{ .kind = 0, .value = 0 },
+        .underline_color = .{ .kind = 0, .value = 0 },
+        .underline_style = 0,
+        .reserved3 = 0,
+        .reserved4 = 0,
+        .reserved5 = 0,
+        .attrs = .{ .bold = 0, .dim = 0, .italic = 0, .underline = 0, .underline_color_set = 0, .blink = 0, .inverse = 0, .invisible = 0, .strikethrough = 0, .reserved0 = 0 },
+        .reserved6 = 0,
+        .link_id = 0,
+    };
+    cell.attrs.reserved0 = 7;
+    try std.testing.expectEqual(@as(u8, 7), cell.attrs.reserved0);
+}
+
+test "vt abi render_state row cell reads copied facts through render-state cell" {
+    const vt = ffi.terminalInit(1, 4, 4);
+    defer ffi.terminalDeinit(vt);
+    try std.testing.expect(vt != null);
+    const source = "\x1b]8;;https://example.com\x07\x1b[1;2;3;4;5;7;8;9;38;2;1;2;3;48;5;200;58;2;4;5;6mA\xcc\x81\x1b]8;;\x07";
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, source.ptr, source.len).status);
+
+    const state = try renderStateWithRows(vt);
+    defer ffi.renderStateDeinit(state);
+    const iterator = try firstRowIterator(state);
+    defer ffi.renderStateRowIteratorDeinit(iterator);
+    const cells = try rowCells(iterator);
+    defer ffi.renderStateRowCellsDeinit(cells);
+    try std.testing.expectEqual(@as(u8, 1), ffi.renderStateRowCellsNext(cells));
+
+    var cell: ffi.FfiRenderStateCell = .{};
+    try std.testing.expectEqual(c.HOWL_VT_CALL_INVALID_ARGUMENT, ffi.renderStateRowCellsGet(cells, c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_CELL, null));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowCellsGet(cells, c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_CELL, &cell));
+    try std.testing.expectEqual(@as(u32, 'A'), cell.codepoint);
+    try std.testing.expectEqual(@as(u8, 1), cell.combining_len);
+    try std.testing.expectEqual(@as(u32, 0x0301), cell.combining[0]);
+    try std.testing.expectEqual(ffi.FfiRenderStateColor{ .kind = 2, .value = 0x010203 }, cell.fg_color);
+    try std.testing.expectEqual(ffi.FfiRenderStateColor{ .kind = 1, .value = 200 }, cell.bg_color);
+    try std.testing.expectEqual(ffi.FfiRenderStateColor{ .kind = 2, .value = 0x040506 }, cell.underline_color);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.bold);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.dim);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.italic);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.underline);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.underline_color_set);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.blink);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.inverse);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.invisible);
+    try std.testing.expectEqual(@as(u8, 1), cell.attrs.strikethrough);
+    try std.testing.expectEqual(@as(u8, 0), cell.attrs.reserved0);
+    try std.testing.expectEqual(@as(u16, 0), cell.reserved6);
+    try std.testing.expect(cell.link_id != 0);
+}
+
+test "vt abi render_state row cell get_multi writes render-state cell and first failure" {
+    const vt = ffi.terminalInit(1, 4, 4);
+    defer ffi.terminalDeinit(vt);
+    try std.testing.expect(vt != null);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, "abcd".ptr, 4).status);
+
+    const state = try renderStateWithRows(vt);
+    defer ffi.renderStateDeinit(state);
+    const iterator = try firstRowIterator(state);
+    defer ffi.renderStateRowIteratorDeinit(iterator);
+    const cells = try rowCells(iterator);
+    defer ffi.renderStateRowCellsDeinit(cells);
+    try std.testing.expectEqual(@as(u8, 1), ffi.renderStateRowCellsNext(cells));
+
+    var cell: ffi.FfiRenderStateCell = .{};
+    var selected: u8 = 99;
+    var written: usize = 99;
+    var keys = [_]c_int{ c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_CELL, c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_SELECTED };
+    var values = [_]?*anyopaque{ &cell, &selected };
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowCellsGetMulti(cells, keys.len, &keys, &values, &written));
+    try std.testing.expectEqual(@as(usize, 2), written);
+    try std.testing.expectEqual(@as(u32, 'a'), cell.codepoint);
+    try std.testing.expectEqual(@as(u8, 0), selected);
+
+    const invalid_data: c_int = 9999;
+    keys = [_]c_int{ c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_CELL, invalid_data };
+    cell = .{};
+    written = 99;
+    try std.testing.expectEqual(c.HOWL_VT_CALL_INVALID_ARGUMENT, ffi.renderStateRowCellsGetMulti(cells, keys.len, &keys, &values, &written));
+    try std.testing.expectEqual(@as(usize, 1), written);
+    try std.testing.expectEqual(@as(u32, 'a'), cell.codepoint);
 }
 
 fn renderStateWithRows(vt: anytype) !ffi.FfiRenderStateHandle {

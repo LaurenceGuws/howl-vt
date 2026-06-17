@@ -2,7 +2,6 @@ const std = @import("std");
 const render_state = @import("../render_state.zig");
 const handle = @import("handle.zig");
 const status = @import("status.zig");
-const surface = @import("surface.zig");
 
 pub const FfiRenderState = opaque {};
 pub const FfiRenderStateHandle = ?*FfiRenderState;
@@ -49,32 +48,64 @@ pub const FfiRowCellsData = enum(c_int) { invalid = 0, cell = 1, selected = 2, h
 
 pub const FfiRowSelection = extern struct { size: usize = @sizeOf(FfiRowSelection), start_col: u16 = 0, end_col: u16 = 0 };
 pub const FfiRowHighlight = extern struct { size: usize = @sizeOf(FfiRowHighlight), tag: u8 = 0, reserved0: u8 = 0, index: u16 = 0, start_col: u16 = 0, end_col: u16 = 0 };
+pub const FfiRenderStateColor = extern struct { kind: u8 = 0, value: u32 = 0 };
+pub const FfiRenderStateRgb8 = extern struct { r: u8 = 0, g: u8 = 0, b: u8 = 0 };
+pub const FfiRenderStateCellFlags = extern struct { continuation: u8 = 0, reserved0: u8 = 0, reserved1: u8 = 0, reserved2: u8 = 0 };
+pub const FfiRenderStateCellAttrs = extern struct {
+    bold: u8 = 0,
+    dim: u8 = 0,
+    italic: u8 = 0,
+    underline: u8 = 0,
+    underline_color_set: u8 = 0,
+    blink: u8 = 0,
+    inverse: u8 = 0,
+    invisible: u8 = 0,
+    strikethrough: u8 = 0,
+    reserved0: u8 = 0,
+};
+pub const FfiRenderStateCell = extern struct {
+    codepoint: u32 = 0,
+    combining_len: u8 = 0,
+    reserved0: u8 = 0,
+    reserved1: u8 = 0,
+    reserved2: u8 = 0,
+    combining: [3]u32 = [_]u32{0} ** 3,
+    flags: FfiRenderStateCellFlags = .{},
+    fg_color: FfiRenderStateColor = .{},
+    bg_color: FfiRenderStateColor = .{},
+    underline_color: FfiRenderStateColor = .{},
+    underline_style: u8 = 0,
+    reserved3: u8 = 0,
+    reserved4: u8 = 0,
+    reserved5: u8 = 0,
+    attrs: FfiRenderStateCellAttrs = .{},
+    reserved6: u16 = 0,
+    link_id: u32 = 0,
+};
 pub const FfiColors = extern struct {
     size: usize = @sizeOf(FfiColors),
-    background: surface.FfiRgb8 = .{},
-    foreground: surface.FfiRgb8 = .{},
-    cursor: surface.FfiRgb8 = .{},
+    background: FfiRenderStateRgb8 = .{},
+    foreground: FfiRenderStateRgb8 = .{},
+    cursor: FfiRenderStateRgb8 = .{},
     cursor_has_value: u8 = 0,
     reserved0: u8 = 0,
     reserved1: u16 = 0,
-    palette: [256]surface.FfiRgb8 = [_]surface.FfiRgb8{.{}} ** 256,
+    palette: [256]FfiRenderStateRgb8 = [_]FfiRenderStateRgb8{.{}} ** 256,
 };
-
-pub const FfiSurfaceCell = surface.FfiSurfaceCell;
 
 fn boolByte(value: bool) u8 {
     return if (value) 1 else 0;
 }
 
-fn rgbOut(value: render_state.RenderState.Rgb8) surface.FfiRgb8 {
+fn rgbOut(value: render_state.RenderState.Rgb8) FfiRenderStateRgb8 {
     return .{ .r = value.r, .g = value.g, .b = value.b };
 }
 
-fn colorOut(value: render_state.RenderState.Color) surface.FfiColor {
+fn colorOut(value: render_state.RenderState.Color) FfiRenderStateColor {
     return .{ .kind = @intFromEnum(value.kind), .value = value.value };
 }
 
-fn cellOut(value: render_state.RenderState.Cell) surface.FfiSurfaceCell {
+fn cellOut(value: render_state.RenderState.Cell) FfiRenderStateCell {
     return .{
         .codepoint = value.codepoint,
         .combining_len = value.combining_len,
@@ -94,7 +125,6 @@ fn cellOut(value: render_state.RenderState.Cell) surface.FfiSurfaceCell {
             .inverse = boolByte(value.inverse),
             .invisible = boolByte(value.invisible),
             .strikethrough = boolByte(value.strikethrough),
-            .selected = 0,
         },
         .link_id = value.link_id,
     };
@@ -292,9 +322,9 @@ pub fn renderStateGet(state: FfiRenderStateHandle, data: c_int, out: ?*anyopaque
             const iterator = rowIteratorForState(&owned.state) orelse break :blk @intFromEnum(status.HowlVtCallStatus.failed);
             break :blk writeOut(FfiRowIteratorHandle, out, iterator);
         },
-        .color_background => writeOut(surface.FfiRgb8, out, rgbOut(owned.state.colors.background)),
-        .color_foreground => writeOut(surface.FfiRgb8, out, rgbOut(owned.state.colors.foreground)),
-        .color_cursor => writeOut(surface.FfiRgb8, out, rgbOut(owned.state.colors.cursor orelse .{})),
+        .color_background => writeOut(FfiRenderStateRgb8, out, rgbOut(owned.state.colors.background)),
+        .color_foreground => writeOut(FfiRenderStateRgb8, out, rgbOut(owned.state.colors.foreground)),
+        .color_cursor => writeOut(FfiRenderStateRgb8, out, rgbOut(owned.state.colors.cursor orelse .{})),
         .color_cursor_has_value => writeOut(u8, out, boolByte(owned.state.colors.cursor != null)),
         .color_palette => return @intFromEnum(status.HowlVtCallStatus.invalid_argument),
         .cursor_visual_style => writeOut(FfiCursorVisualStyle, out, cursorVisualStyleOut(owned.state.cursor.visual_style)),
@@ -343,14 +373,14 @@ pub fn renderStateSet(state: FfiRenderStateHandle, option: c_int, value: ?*const
 pub fn renderStateColorsGet(state: FfiRenderStateHandle, out_colors: ?*FfiColors) callconv(.c) i32 {
     const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
     const out = out_colors orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
-    if (out.size < @offsetOf(FfiColors, "background") + @sizeOf(surface.FfiRgb8)) return @intFromEnum(status.HowlVtCallStatus.short_buffer);
+    if (out.size < @offsetOf(FfiColors, "background") + @sizeOf(FfiRenderStateRgb8)) return @intFromEnum(status.HowlVtCallStatus.short_buffer);
     const size = out.size;
     out.* = .{ .size = size };
     out.background = rgbOut(owned.state.colors.background);
-    if (size >= @offsetOf(FfiColors, "foreground") + @sizeOf(surface.FfiRgb8)) out.foreground = rgbOut(owned.state.colors.foreground);
-    if (size >= @offsetOf(FfiColors, "cursor") + @sizeOf(surface.FfiRgb8)) out.cursor = rgbOut(owned.state.colors.cursor orelse .{});
+    if (size >= @offsetOf(FfiColors, "foreground") + @sizeOf(FfiRenderStateRgb8)) out.foreground = rgbOut(owned.state.colors.foreground);
+    if (size >= @offsetOf(FfiColors, "cursor") + @sizeOf(FfiRenderStateRgb8)) out.cursor = rgbOut(owned.state.colors.cursor orelse .{});
     if (size >= @offsetOf(FfiColors, "cursor_has_value") + @sizeOf(u8)) out.cursor_has_value = boolByte(owned.state.colors.cursor != null);
-    if (size >= @offsetOf(FfiColors, "palette") + @sizeOf([256]surface.FfiRgb8)) {
+    if (size >= @offsetOf(FfiColors, "palette") + @sizeOf([256]FfiRenderStateRgb8)) {
         for (owned.state.colors.palette, 0..) |color, index| out.palette[index] = rgbOut(color);
     }
     return @intFromEnum(status.HowlVtCallStatus.ok);
@@ -483,7 +513,7 @@ pub fn renderStateRowCellsGet(cells: FfiRowCellsHandle, data: c_int, out: ?*anyo
     const cell = row.cells[index];
     return switch (valid) {
         .invalid => unreachable,
-        .cell => writeOut(surface.FfiSurfaceCell, out, cellOut(cell)),
+        .cell => writeOut(FfiRenderStateCell, out, cellOut(cell)),
         .selected => writeOut(u8, out, boolByte(if (row.selection) |selection| index >= selection.start_col and index < selection.end_col else false)),
         .highlighted => writeOut(u8, out, boolByte(cellHighlighted(row, index))),
     };
@@ -628,7 +658,7 @@ test "render_state ffi update exposes row and cell iteration" {
         try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator, @intFromEnum(FfiRowData.cells), @ptrCast(&cells)));
         defer renderStateRowCellsDeinit(cells);
         while (renderStateRowCellsNext(cells) != 0) : (cell_count += 1) {
-            var cell: surface.FfiSurfaceCell = .{};
+            var cell: FfiRenderStateCell = .{};
             try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsGet(cells, @intFromEnum(FfiRowCellsData.cell), &cell));
             if (cell_count == 0) try std.testing.expectEqual(@as(u32, 'a'), cell.codepoint);
             if (cell_count == 3) try std.testing.expectEqual(@as(u32, 'd'), cell.codepoint);
@@ -661,14 +691,14 @@ test "render_state ffi cells expose full copied surface facts" {
     defer renderStateRowCellsDeinit(cells);
     try std.testing.expectEqual(@as(u8, 1), renderStateRowCellsNext(cells));
 
-    var cell: surface.FfiSurfaceCell = .{};
+    var cell: FfiRenderStateCell = .{};
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsGet(cells, @intFromEnum(FfiRowCellsData.cell), &cell));
     try std.testing.expectEqual(@as(u32, 'A'), cell.codepoint);
     try std.testing.expectEqual(@as(u8, 1), cell.combining_len);
     try std.testing.expectEqual(@as(u32, 0x0301), cell.combining[0]);
-    try std.testing.expectEqual(surface.FfiColor{ .kind = 2, .value = 0x010203 }, cell.fg_color);
-    try std.testing.expectEqual(surface.FfiColor{ .kind = 1, .value = 200 }, cell.bg_color);
-    try std.testing.expectEqual(surface.FfiColor{ .kind = 2, .value = 0x040506 }, cell.underline_color);
+    try std.testing.expectEqual(FfiRenderStateColor{ .kind = 2, .value = 0x010203 }, cell.fg_color);
+    try std.testing.expectEqual(FfiRenderStateColor{ .kind = 1, .value = 200 }, cell.bg_color);
+    try std.testing.expectEqual(FfiRenderStateColor{ .kind = 2, .value = 0x040506 }, cell.underline_color);
     try std.testing.expectEqual(@as(u8, 1), cell.attrs.bold);
     try std.testing.expectEqual(@as(u8, 1), cell.attrs.dim);
     try std.testing.expectEqual(@as(u8, 1), cell.attrs.italic);

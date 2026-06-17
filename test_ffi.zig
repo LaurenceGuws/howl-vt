@@ -18,6 +18,11 @@ pub const FfiRowOption = ffi.FfiRowOption;
 pub const FfiRowCellsData = ffi.FfiRowCellsData;
 pub const FfiRowSelection = ffi.FfiRowSelection;
 pub const FfiRowHighlight = ffi.FfiRowHighlight;
+pub const FfiRenderStateColor = ffi.FfiRenderStateColor;
+pub const FfiRenderStateRgb8 = ffi.FfiRenderStateRgb8;
+pub const FfiRenderStateCellFlags = ffi.FfiRenderStateCellFlags;
+pub const FfiRenderStateCellAttrs = ffi.FfiRenderStateCellAttrs;
+pub const FfiRenderStateCell = ffi.FfiRenderStateCell;
 pub const FfiColors = ffi.FfiColors;
 pub const HowlVtCallStatus = ffi.HowlVtCallStatus;
 

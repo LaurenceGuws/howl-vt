@@ -61,6 +61,11 @@ pub const FfiRowOption = render_state.FfiRowOption;
 pub const FfiRowCellsData = render_state.FfiRowCellsData;
 pub const FfiRowSelection = render_state.FfiRowSelection;
 pub const FfiRowHighlight = render_state.FfiRowHighlight;
+pub const FfiRenderStateColor = render_state.FfiRenderStateColor;
+pub const FfiRenderStateRgb8 = render_state.FfiRenderStateRgb8;
+pub const FfiRenderStateCellFlags = render_state.FfiRenderStateCellFlags;
+pub const FfiRenderStateCellAttrs = render_state.FfiRenderStateCellAttrs;
+pub const FfiRenderStateCell = render_state.FfiRenderStateCell;
 pub const FfiColors = render_state.FfiColors;
 
 pub const terminalInit = lifecycle.terminalInit;
@@ -125,6 +130,11 @@ comptime {
     std.debug.assert(host_state.retained_payload_max_bytes == 1024 * 1024);
     std.debug.assert(@sizeOf(input_encode.Scratch) == 64);
     std.debug.assert(@sizeOf(FfiRgb8) == 3);
+    std.debug.assert(@sizeOf(FfiRenderStateRgb8) == 3);
+    std.debug.assert(@sizeOf(FfiRenderStateColor) == 8);
+    std.debug.assert(@sizeOf(FfiRenderStateCellFlags) == 4);
+    std.debug.assert(@sizeOf(FfiRenderStateCellAttrs) == 10);
+    std.debug.assert(@sizeOf(FfiRenderStateCell) == 68);
     std.debug.assert(@sizeOf(FfiRenderColorState) == 777);
     std.debug.assert(@sizeOf(FfiColors) == 792);
 }

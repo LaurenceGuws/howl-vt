@@ -166,6 +166,46 @@ typedef struct {
 } HowlVtRgb8;
 
 typedef struct {
+    uint8_t continuation;
+    uint8_t reserved0;
+    uint8_t reserved1;
+    uint8_t reserved2;
+} HowlVtRenderStateCellFlags;
+
+typedef struct {
+    uint8_t bold;
+    uint8_t dim;
+    uint8_t italic;
+    uint8_t underline;
+    uint8_t underline_color_set;
+    uint8_t blink;
+    uint8_t inverse;
+    uint8_t invisible;
+    uint8_t strikethrough;
+    uint8_t reserved0;
+} HowlVtRenderStateCellAttrs;
+
+typedef struct {
+    uint32_t codepoint;
+    uint8_t combining_len;
+    uint8_t reserved0;
+    uint8_t reserved1;
+    uint8_t reserved2;
+    uint32_t combining[3];
+    HowlVtRenderStateCellFlags flags;
+    HowlVtColor fg_color;
+    HowlVtColor bg_color;
+    HowlVtColor underline_color;
+    uint8_t underline_style;
+    uint8_t reserved3;
+    uint8_t reserved4;
+    uint8_t reserved5;
+    HowlVtRenderStateCellAttrs attrs;
+    uint16_t reserved6;
+    uint32_t link_id;
+} HowlVtRenderStateCell;
+
+typedef struct {
     size_t size;
     uint16_t start_col;
     uint16_t end_col;
