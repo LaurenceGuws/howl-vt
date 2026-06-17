@@ -5,4 +5,5 @@ pub const HowlVtCallStatus = enum(c_int) {
     failed = -3,
     short_buffer = -4,
     limit_reached = -5,
+    no_value = -6,
 };

@@ -30,6 +30,7 @@ pub const RenderState = struct {
         cells: []Cell = &.{},
         selection: ?SelectionRange = null,
         highlights: []Highlight = &.{},
+        highlight_count: u16 = 0,
     };
 
     pub const Cell = struct {
@@ -212,8 +213,32 @@ pub const RenderState = struct {
         return true;
     }
 
-    pub fn updateHighlightsForHyperlink(self: *RenderState) void {
+    pub fn updateHighlightsForHyperlink(self: *RenderState, tag: u8, row: u16, col: u16, underline_style: UnderlineStyle) void {
+        _ = underline_style;
         std.debug.assert(self.rows_storage.items.len == self.rows);
+        self.clearHighlights(tag);
+        if (row >= self.rows) return;
+        const row_cells = self.rows_storage.items[row].cells;
+        if (col >= row_cells.len) return;
+        const link_id = row_cells[col].link_id;
+        if (link_id == 0) return;
+
+        const start = self.hyperlinkHighlightStart(row, col, link_id);
+        const end = self.hyperlinkHighlightEnd(row, col, link_id);
+        var current_row = start.row;
+        while (current_row <= end.row) : (current_row += 1) {
+            const current = &self.rows_storage.items[current_row];
+            std.debug.assert(current.highlights.len >= 1);
+            current.highlights[0] = .{
+                .tag = tag,
+                .index = 0,
+                .start_col = if (current_row == start.row) start.col else 0,
+                .end_col = if (current_row == end.row) end.col + 1 else @intCast(current.cells.len),
+            };
+            current.highlight_count = 1;
+            current.dirty = true;
+        }
+        self.dirty = .partial;
     }
 
     pub fn rowCount(self: *const RenderState) u16 {
@@ -242,8 +267,70 @@ pub const RenderState = struct {
                 allocator.free(row.cells);
                 row.cells = try allocator.alloc(Cell, cols);
             }
+            if (row.highlights.len != 1) {
+                allocator.free(row.highlights);
+                row.highlights = try allocator.alloc(Highlight, 1);
+            }
             row.selection = null;
+            row.highlight_count = 0;
         }
+    }
+
+    fn clearHighlights(self: *RenderState, tag: u8) void {
+        for (self.rows_storage.items) |*row| {
+            if (row.highlight_count == 0) continue;
+            var write_index: u16 = 0;
+            for (row.highlights[0..row.highlight_count]) |highlight| {
+                if (highlight.tag == tag) continue;
+                row.highlights[write_index] = highlight;
+                write_index += 1;
+            }
+            row.highlight_count = write_index;
+        }
+    }
+
+    const HighlightPoint = struct { row: u16, col: u16 };
+
+    fn hyperlinkHighlightStart(self: *const RenderState, row: u16, col: u16, link_id: u32) HighlightPoint {
+        var current_row = row;
+        var current_col = col;
+        while (current_row > 0 or current_col > 0) {
+            if (current_col == 0) {
+                const previous_row = current_row - 1;
+                const previous_cells = self.rows_storage.items[previous_row].cells;
+                if (previous_cells.len == 0) break;
+                current_row = previous_row;
+                current_col = @intCast(previous_cells.len - 1);
+            } else {
+                current_col -= 1;
+            }
+            if (self.rows_storage.items[current_row].cells[current_col].link_id != link_id) {
+                if (current_col + 1 < self.rows_storage.items[current_row].cells.len) return .{ .row = current_row, .col = current_col + 1 };
+                return .{ .row = current_row + 1, .col = 0 };
+            }
+        }
+        return .{ .row = current_row, .col = current_col };
+    }
+
+    fn hyperlinkHighlightEnd(self: *const RenderState, row: u16, col: u16, link_id: u32) HighlightPoint {
+        var current_row = row;
+        var current_col = col;
+        while (current_row + 1 < self.rows or current_col + 1 < self.rows_storage.items[current_row].cells.len) {
+            if (current_col + 1 >= self.rows_storage.items[current_row].cells.len) {
+                current_row += 1;
+                current_col = 0;
+            } else {
+                current_col += 1;
+            }
+            if (self.rows_storage.items[current_row].cells[current_col].link_id != link_id) {
+                if (current_col == 0) {
+                    const previous_row = current_row - 1;
+                    return .{ .row = previous_row, .col = @intCast(self.rows_storage.items[previous_row].cells.len - 1) };
+                }
+                return .{ .row = current_row, .col = current_col - 1 };
+            }
+        }
+        return .{ .row = current_row, .col = current_col };
     }
 
     fn dirtyState(previous_rows: u16, previous_cols: u16, previous_alternate: bool, rows: u16, cols: u16, alternate: bool, dirty_rows: []const u8) Dirty {
@@ -413,4 +500,43 @@ test "render_state update preserves full surface cell facts" {
     try std.testing.expect(cell.invisible);
     try std.testing.expect(cell.strikethrough);
     try std.testing.expect(cell.link_id != 0);
+}
+
+test "render_state hyperlink hover highlights contiguous linked cells and dirty rows" {
+    var vt = try terminal.Terminal.initWithCellsAndHistory(std.testing.allocator, 2, 4, 4);
+    defer vt.deinit();
+    const source = "\x1b]8;;https://example.com\x07abcdef\x1b]8;;\x07";
+    try std.testing.expect((try vt.feed(source)).state_changed);
+
+    var state = RenderState.empty();
+    defer state.deinit(std.testing.allocator);
+    try state.update(std.testing.allocator, &vt, 0);
+    state.dirty = .false;
+    for (state.rows_storage.items) |*row| row.dirty = false;
+
+    state.updateHighlightsForHyperlink(1, 0, 1, .straight);
+    try std.testing.expectEqual(RenderState.Dirty.partial, state.dirty);
+    try std.testing.expectEqual(@as(u16, 1), state.rows_storage.items[0].highlight_count);
+    try std.testing.expectEqual(@as(u16, 1), state.rows_storage.items[1].highlight_count);
+    try std.testing.expectEqual(RenderState.Highlight{ .tag = 1, .index = 0, .start_col = 0, .end_col = 4 }, state.rows_storage.items[0].highlights[0]);
+    try std.testing.expectEqual(RenderState.Highlight{ .tag = 1, .index = 0, .start_col = 0, .end_col = 2 }, state.rows_storage.items[1].highlights[0]);
+    try std.testing.expect(state.rows_storage.items[0].dirty);
+    try std.testing.expect(state.rows_storage.items[1].dirty);
+}
+
+test "render_state out of range hyperlink hover does not dirty empty highlights" {
+    var vt = try terminal.Terminal.initWithCellsAndHistory(std.testing.allocator, 1, 4, 4);
+    defer vt.deinit();
+    try std.testing.expect((try vt.feed("abcd")).state_changed);
+
+    var state = RenderState.empty();
+    defer state.deinit(std.testing.allocator);
+    try state.update(std.testing.allocator, &vt, 0);
+    state.dirty = .false;
+    for (state.rows_storage.items) |*row| row.dirty = false;
+
+    state.updateHighlightsForHyperlink(1, 99, 0, .straight);
+    try std.testing.expectEqual(RenderState.Dirty.false, state.dirty);
+    try std.testing.expectEqual(@as(u16, 0), state.rows_storage.items[0].highlight_count);
+    try std.testing.expect(!state.rows_storage.items[0].dirty);
 }

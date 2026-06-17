@@ -209,6 +209,26 @@ fn writeOut(comptime Value: type, out: ?*anyopaque, value: Value) i32 {
     return @intFromEnum(status.HowlVtCallStatus.ok);
 }
 
+fn rowSelectionOut(out: ?*anyopaque, selection: ?render_state.RenderState.SelectionRange) i32 {
+    const target: *FfiRowSelection = @ptrCast(@alignCast(out orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument)));
+    if (target.size < @sizeOf(FfiRowSelection)) return @intFromEnum(status.HowlVtCallStatus.short_buffer);
+    const value = selection orelse return @intFromEnum(status.HowlVtCallStatus.no_value);
+    const size = target.size;
+    target.* = .{ .size = size, .start_col = value.start_col, .end_col = value.end_col };
+    return @intFromEnum(status.HowlVtCallStatus.ok);
+}
+
+fn rowHighlightOut(out: ?*anyopaque, row: *const render_state.RenderState.Row) i32 {
+    const target: *FfiRowHighlight = @ptrCast(@alignCast(out orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument)));
+    if (target.size < @sizeOf(FfiRowHighlight)) return @intFromEnum(status.HowlVtCallStatus.short_buffer);
+    if (target.index >= row.highlight_count) return @intFromEnum(status.HowlVtCallStatus.no_value);
+    const size = target.size;
+    const requested_index = target.index;
+    const value = row.highlights[requested_index];
+    target.* = .{ .size = size, .tag = value.tag, .index = requested_index, .start_col = value.start_col, .end_col = value.end_col };
+    return @intFromEnum(status.HowlVtCallStatus.ok);
+}
+
 fn rowIteratorForState(state: *render_state.RenderState) FfiRowIteratorHandle {
     const iterator = std.heap.c_allocator.create(RowIteratorBox) catch return null;
     iterator.* = .{ .state = state };
@@ -364,7 +384,9 @@ pub fn renderStateRowGet(iterator: FfiRowIteratorHandle, data: c_int, out: ?*any
             cells.* = .{ .row = row };
             break :blk writeOut(FfiRowCellsHandle, out, @as(FfiRowCellsHandle, @ptrCast(cells)));
         },
-        .selection, .highlight_count, .highlight => @intFromEnum(status.HowlVtCallStatus.invalid_argument),
+        .selection => rowSelectionOut(out, row.selection),
+        .highlight_count => writeOut(u16, out, row.highlight_count),
+        .highlight => rowHighlightOut(out, row),
     };
 }
 
@@ -425,7 +447,7 @@ pub fn renderStateRowCellsSelect(cells: FfiRowCellsHandle, col: u16) callconv(.c
     const owned = rowCellsFromHandle(cells) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
     const row = owned.row orelse return @intFromEnum(status.HowlVtCallStatus.invalid_argument);
     if (col < row.cells.len) {
-        owned.col = col;
+        owned.col = col + 1;
         owned.has_cell = true;
         return @intFromEnum(status.HowlVtCallStatus.ok);
     }
@@ -444,9 +466,16 @@ pub fn renderStateRowCellsGet(cells: FfiRowCellsHandle, data: c_int, out: ?*anyo
     return switch (valid) {
         .invalid => unreachable,
         .cell => writeOut(surface.FfiSurfaceCell, out, cellOut(cell)),
-        .selected => writeOut(u8, out, boolByte(cell.selected)),
-        .highlighted => writeOut(u8, out, boolByte(cell.highlighted)),
+        .selected => writeOut(u8, out, boolByte(if (row.selection) |selection| index >= selection.start_col and index < selection.end_col else false)),
+        .highlighted => writeOut(u8, out, boolByte(cellHighlighted(row, index))),
     };
+}
+
+fn cellHighlighted(row: *const render_state.RenderState.Row, col: u16) bool {
+    for (row.highlights[0..row.highlight_count]) |highlight| {
+        if (col >= highlight.start_col and col < highlight.end_col) return true;
+    }
+    return false;
 }
 
 pub fn renderStateRowCellsGetMulti(cells: FfiRowCellsHandle, count: usize, keys: ?[*]const c_int, values: ?[*]?*anyopaque, out_written: ?*usize) callconv(.c) i32 {
@@ -461,6 +490,19 @@ pub fn renderStateRowCellsGetMulti(cells: FfiRowCellsHandle, count: usize, keys:
         if (result != @intFromEnum(status.HowlVtCallStatus.ok)) return result;
         written.* = index + 1;
     }
+    return @intFromEnum(status.HowlVtCallStatus.ok);
+}
+
+pub fn testRenderStateClearDirty(state: FfiRenderStateHandle) i32 {
+    const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
+    owned.state.dirty = .false;
+    for (owned.state.rows_storage.items) |*row| row.dirty = false;
+    return @intFromEnum(status.HowlVtCallStatus.ok);
+}
+
+pub fn testRenderStateUpdateHighlightsForHyperlink(state: FfiRenderStateHandle, tag: u8, row: u16, col: u16) i32 {
+    const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
+    owned.state.updateHighlightsForHyperlink(tag, row, col, .straight);
     return @intFromEnum(status.HowlVtCallStatus.ok);
 }
 
@@ -625,4 +667,112 @@ test "render_state ffi cells expose full copied surface facts" {
     try std.testing.expectEqual(@as(u8, 1), cell.attrs.invisible);
     try std.testing.expectEqual(@as(u8, 1), cell.attrs.strikethrough);
     try std.testing.expect(cell.link_id != 0);
+}
+
+test "render_state ffi row selection and selected cell reads" {
+    const lifecycle = @import("lifecycle.zig");
+    const selection = @import("selection.zig");
+    const vt_handle = lifecycle.terminalInit(2, 4, 4);
+    defer lifecycle.terminalDeinit(vt_handle);
+    try std.testing.expect(vt_handle != null);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), lifecycle.terminalFeed(vt_handle, "abcd".ptr, 4).status);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), selection.terminalStartSelection(vt_handle, 0, 1));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), selection.terminalUpdateSelection(vt_handle, 0, 2));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), selection.terminalFinishSelection(vt_handle));
+
+    var state: FfiRenderStateHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateInit(&state));
+    defer renderStateDeinit(state);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle, 0));
+
+    var iterator: FfiRowIteratorHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateGet(state, @intFromEnum(FfiData.row_iterator), @ptrCast(&iterator)));
+    defer renderStateRowIteratorDeinit(iterator);
+    try std.testing.expectEqual(@as(u8, 1), renderStateRowIteratorNext(iterator));
+
+    var short_selection = FfiRowSelection{ .size = @offsetOf(FfiRowSelection, "start_col") };
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.short_buffer)), renderStateRowGet(iterator, @intFromEnum(FfiRowData.selection), &short_selection));
+    var row_selection = FfiRowSelection{};
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator, @intFromEnum(FfiRowData.selection), &row_selection));
+    try std.testing.expectEqual(@as(u16, 1), row_selection.start_col);
+    try std.testing.expectEqual(@as(u16, 3), row_selection.end_col);
+
+    var cells: FfiRowCellsHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator, @intFromEnum(FfiRowData.cells), @ptrCast(&cells)));
+    defer renderStateRowCellsDeinit(cells);
+    var selected: u8 = 99;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsSelect(cells, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsGet(cells, @intFromEnum(FfiRowCellsData.selected), &selected));
+    try std.testing.expectEqual(@as(u8, 0), selected);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsSelect(cells, 1));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsGet(cells, @intFromEnum(FfiRowCellsData.selected), &selected));
+    try std.testing.expectEqual(@as(u8, 1), selected);
+
+    try std.testing.expectEqual(@as(u8, 1), renderStateRowIteratorNext(iterator));
+    row_selection = .{};
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.no_value)), renderStateRowGet(iterator, @intFromEnum(FfiRowData.selection), &row_selection));
+}
+
+test "render_state ffi highlight reads and highlighted cells" {
+    const lifecycle = @import("lifecycle.zig");
+    const vt_handle = lifecycle.terminalInit(2, 4, 4);
+    defer lifecycle.terminalDeinit(vt_handle);
+    try std.testing.expect(vt_handle != null);
+    const source = "\x1b]8;;https://example.com\x07abcdef\x1b]8;;\x07";
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), lifecycle.terminalFeed(vt_handle, source.ptr, source.len).status);
+
+    var state: FfiRenderStateHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateInit(&state));
+    defer renderStateDeinit(state);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle, 0));
+    const owned = renderStateFromHandle(state).?;
+    owned.state.dirty = .false;
+    for (owned.state.rows_storage.items) |*row| row.dirty = false;
+
+    var iterator_before: FfiRowIteratorHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateGet(state, @intFromEnum(FfiData.row_iterator), @ptrCast(&iterator_before)));
+    defer renderStateRowIteratorDeinit(iterator_before);
+    try std.testing.expectEqual(@as(u8, 1), renderStateRowIteratorNext(iterator_before));
+    var count: u16 = 99;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator_before, @intFromEnum(FfiRowData.highlight_count), &count));
+    try std.testing.expectEqual(@as(u16, 0), count);
+
+    owned.state.updateHighlightsForHyperlink(1, 0, 1, .straight);
+    try std.testing.expectEqual(render_state.RenderState.Dirty.partial, owned.state.dirty);
+
+    var iterator_after: FfiRowIteratorHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateGet(state, @intFromEnum(FfiData.row_iterator), @ptrCast(&iterator_after)));
+    defer renderStateRowIteratorDeinit(iterator_after);
+    try std.testing.expectEqual(@as(u8, 1), renderStateRowIteratorNext(iterator_after));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator_after, @intFromEnum(FfiRowData.highlight_count), &count));
+    try std.testing.expectEqual(@as(u16, 1), count);
+    var highlight = FfiRowHighlight{ .index = 0 };
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator_after, @intFromEnum(FfiRowData.highlight), &highlight));
+    try std.testing.expectEqual(@as(u8, 1), highlight.tag);
+    try std.testing.expectEqual(@as(u16, 0), highlight.start_col);
+    try std.testing.expectEqual(@as(u16, 4), highlight.end_col);
+
+    var first_row_cells: FfiRowCellsHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator_after, @intFromEnum(FfiRowData.cells), @ptrCast(&first_row_cells)));
+    defer renderStateRowCellsDeinit(first_row_cells);
+    var highlighted: u8 = 99;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsSelect(first_row_cells, 3));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsGet(first_row_cells, @intFromEnum(FfiRowCellsData.highlighted), &highlighted));
+    try std.testing.expectEqual(@as(u8, 1), highlighted);
+
+    try std.testing.expectEqual(@as(u8, 1), renderStateRowIteratorNext(iterator_after));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator_after, @intFromEnum(FfiRowData.highlight), &highlight));
+    try std.testing.expectEqual(@as(u16, 0), highlight.start_col);
+    try std.testing.expectEqual(@as(u16, 2), highlight.end_col);
+    try std.testing.expect(owned.state.rows_storage.items[0].dirty);
+    try std.testing.expect(owned.state.rows_storage.items[1].dirty);
+    var second_row_cells: FfiRowCellsHandle = null;
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowGet(iterator_after, @intFromEnum(FfiRowData.cells), @ptrCast(&second_row_cells)));
+    defer renderStateRowCellsDeinit(second_row_cells);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsSelect(second_row_cells, 1));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsGet(second_row_cells, @intFromEnum(FfiRowCellsData.highlighted), &highlighted));
+    try std.testing.expectEqual(@as(u8, 1), highlighted);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsSelect(second_row_cells, 2));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateRowCellsGet(second_row_cells, @intFromEnum(FfiRowCellsData.highlighted), &highlighted));
+    try std.testing.expectEqual(@as(u8, 0), highlighted);
 }

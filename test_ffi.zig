@@ -28,6 +28,8 @@ pub const terminalResize = ffi.terminalResize;
 pub const terminalSetCellPixelSize = ffi.terminalSetCellPixelSize;
 pub const terminalAckSurface = ffi.terminalAckSurface;
 pub const terminalStartSelection = ffi.terminalStartSelection;
+pub const terminalUpdateSelection = ffi.terminalUpdateSelection;
+pub const terminalFinishSelection = ffi.terminalFinishSelection;
 pub const terminalFeed = ffi.terminalFeed;
 pub const terminalCopyTitle = ffi.terminalCopyTitle;
 pub const terminalQueryVisibleMeta = ffi.terminalQueryVisibleMeta;
@@ -56,3 +58,8 @@ pub const renderStateRowCellsNext = ffi.renderStateRowCellsNext;
 pub const renderStateRowCellsSelect = ffi.renderStateRowCellsSelect;
 pub const renderStateRowCellsGet = ffi.renderStateRowCellsGet;
 pub const renderStateRowCellsGetMulti = ffi.renderStateRowCellsGetMulti;
+
+const render_state = @import("src/ffi/render_state.zig");
+
+pub const testRenderStateClearDirty = render_state.testRenderStateClearDirty;
+pub const testRenderStateUpdateHighlightsForHyperlink = render_state.testRenderStateUpdateHighlightsForHyperlink;

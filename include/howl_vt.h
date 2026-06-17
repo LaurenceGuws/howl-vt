@@ -26,6 +26,7 @@ typedef enum {
     HOWL_VT_CALL_FAILED = -3,
     HOWL_VT_CALL_SHORT_BUFFER = -4,
     HOWL_VT_CALL_LIMIT_REACHED = -5,
+    HOWL_VT_CALL_NO_VALUE = -6,
 } HowlVtCallStatus;
 
 typedef struct HowlVtRenderState HowlVtRenderState;
