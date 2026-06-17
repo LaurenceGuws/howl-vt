@@ -12,10 +12,12 @@ comptime {
     @export(&ffi.terminalClearSelection, .{ .name = "howl_vt_terminal_clear_selection" });
     @export(&ffi.terminalFeed, .{ .name = "howl_vt_terminal_feed" });
     @export(&ffi.terminalProgressRuntime, .{ .name = "howl_vt_terminal_progress_runtime" });
+    @export(&ffi.terminalQueryVisibleInfo, .{ .name = "howl_vt_terminal_query_visible_info" });
     @export(&ffi.terminalQueryVisibleMeta, .{ .name = "howl_vt_terminal_query_visible_meta" });
     @export(&ffi.terminalCopySurface, .{ .name = "howl_vt_terminal_copy_surface" });
     @export(&ffi.terminalQuerySelection, .{ .name = "howl_vt_terminal_query_selection" });
     @export(&ffi.terminalCopySurfaceHyperlink, .{ .name = "howl_vt_terminal_copy_surface_hyperlink" });
+    @export(&ffi.terminalCopyVisibleHyperlink, .{ .name = "howl_vt_terminal_copy_visible_hyperlink" });
     @export(&ffi.terminalCopySelection, .{ .name = "howl_vt_terminal_copy_selection" });
     @export(&ffi.terminalCopyTitle, .{ .name = "howl_vt_terminal_copy_title" });
     @export(&ffi.terminalCopyPendingOutput, .{ .name = "howl_vt_terminal_copy_pending_output" });

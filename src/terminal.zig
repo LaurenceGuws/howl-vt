@@ -277,6 +277,13 @@ pub const Terminal = struct {
         return host_state.hyperlinkUriForId(self, view.cellInfoAt(row, col).attrs.link_id);
     }
 
+    pub fn visibleCellHyperlinkUriCurrent(self: *Terminal, scrollback_offset: u64, row: u16, col: u16) ?[]const u8 {
+        const publication = self.surfaceSnapshot(scrollback_offset);
+        const view = publication.snapshot.view;
+        if (row >= view.rows or col >= view.cols) return null;
+        return host_state.hyperlinkUriForId(self, view.cellInfoAt(row, col).attrs.link_id);
+    }
+
     pub fn selectionState(self: *const Terminal) ?selection.TerminalSelection {
         return self.screen_state.activeSelectionConst().state();
     }

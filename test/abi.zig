@@ -9,6 +9,25 @@ comptime {
     std.debug.assert(@sizeOf(ffi.FfiBytesResult) == @sizeOf(c.HowlVtBytesResult));
     std.debug.assert(@sizeOf(ffi.FfiFeedResult) == @sizeOf(c.HowlVtFeedResult));
     std.debug.assert(@sizeOf(ffi.FfiVisibleMetaResult) == @sizeOf(c.HowlVtVisibleMetaResult));
+    std.debug.assert(@sizeOf(ffi.FfiVisibleInfo) == @sizeOf(c.HowlVtVisibleInfo));
+    std.debug.assert(@sizeOf(ffi.FfiVisibleInfoResult) == @sizeOf(c.HowlVtVisibleInfoResult));
+    std.debug.assert(@alignOf(ffi.FfiVisibleInfo) == @alignOf(c.HowlVtVisibleInfo));
+    std.debug.assert(@alignOf(ffi.FfiVisibleInfoResult) == @alignOf(c.HowlVtVisibleInfoResult));
+    std.debug.assert(@sizeOf(c.HowlVtVisibleInfo) == 40);
+    std.debug.assert(@alignOf(c.HowlVtVisibleInfo) == 8);
+    std.debug.assert(@sizeOf(c.HowlVtVisibleInfoResult) == 48);
+    std.debug.assert(@alignOf(c.HowlVtVisibleInfoResult) == 8);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfo, "rows") == 0);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfo, "cols") == 4);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfo, "history_count") == 8);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfo, "is_alternate_screen") == 16);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfo, "reserved0") == 17);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfo, "reserved1") == 18);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfo, "snapshot_seq") == 24);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfo, "dirty_generation") == 32);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfoResult, "status") == 0);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfoResult, "reserved0") == 4);
+    std.debug.assert(@offsetOf(c.HowlVtVisibleInfoResult, "info") == 8);
     std.debug.assert(@sizeOf(ffi.FfiRuntimeObligationResult) == @sizeOf(c.HowlVtRuntimeObligationResult));
     std.debug.assert(@sizeOf(ffi.FfiRuntimeProgressResult) == @sizeOf(c.HowlVtRuntimeProgressResult));
     std.debug.assert(@sizeOf(ffi.FfiSelectionResult) == @sizeOf(c.HowlVtSelectionResult));
@@ -93,6 +112,66 @@ comptime {
     std.debug.assert(@intFromEnum(ffi.FfiRowCellsData.cell) == c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_CELL);
     std.debug.assert(@intFromEnum(ffi.FfiRowCellsData.selected) == c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_SELECTED);
     std.debug.assert(@intFromEnum(ffi.FfiRowCellsData.highlighted) == c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_HIGHLIGHTED);
+
+    const CopyVisibleHyperlinkNoSnapshot = *const fn (c.HowlVtHandle, u64, u16, u16, [*c]u8, usize) callconv(.c) c.HowlVtBytesResult;
+    const copy_visible_hyperlink_no_snapshot: CopyVisibleHyperlinkNoSnapshot = c.howl_vt_terminal_copy_visible_hyperlink;
+    _ = copy_visible_hyperlink_no_snapshot;
+}
+
+test "vt abi visible info query is non-surface metadata" {
+    const missing = ffi.terminalQueryVisibleInfo(null, 0);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, missing.status);
+    try std.testing.expectEqual(@as(u32, 0), missing.info.rows);
+
+    const vt = ffi.terminalInit(2, 4, 8);
+    defer ffi.terminalDeinit(vt);
+    try std.testing.expect(vt != null);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, "abcd".ptr, 4).status);
+    const result = ffi.terminalQueryVisibleInfo(vt, 0);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, result.status);
+    try std.testing.expectEqual(@as(u32, 2), result.info.rows);
+    try std.testing.expectEqual(@as(u32, 4), result.info.cols);
+    try std.testing.expect(result.info.snapshot_seq != 0);
+    try std.testing.expect(result.info.dirty_generation != 0);
+}
+
+test "vt abi visible hyperlink copies current visible cell without stale snapshot argument" {
+    var out: [64]u8 = undefined;
+
+    const missing = ffi.terminalCopyVisibleHyperlink(null, 0, 0, 0, &out, out.len);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, missing.status);
+
+    const vt = ffi.terminalInit(1, 8, 4);
+    defer ffi.terminalDeinit(vt);
+    try std.testing.expect(vt != null);
+
+    const invalid = ffi.terminalCopyVisibleHyperlink(vt, 0, 0, 0, null, 1);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_INVALID_ARGUMENT, invalid.status);
+
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, "abcd".ptr, 4).status);
+    const no_link = ffi.terminalCopyVisibleHyperlink(vt, 0, 0, 0, &out, out.len);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, no_link.status);
+    try std.testing.expectEqual(@as(u64, 0), no_link.written);
+    try std.testing.expectEqual(@as(u64, 0), no_link.needed);
+
+    const out_of_range = ffi.terminalCopyVisibleHyperlink(vt, 0, 9, 9, &out, out.len);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, out_of_range.status);
+    try std.testing.expectEqual(@as(u64, 0), out_of_range.written);
+    try std.testing.expectEqual(@as(u64, 0), out_of_range.needed);
+
+    const linked = "\x1b[2K\r\x1b]8;;https://example.com\x07link\x1b]8;;\x07";
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, linked.ptr, linked.len).status);
+    const copied = ffi.terminalCopyVisibleHyperlink(vt, 0, 0, 0, &out, out.len);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, copied.status);
+    try std.testing.expectEqual(@as(u64, "https://example.com".len), copied.written);
+    try std.testing.expectEqual(@as(u64, "https://example.com".len), copied.needed);
+    try std.testing.expectEqualStrings("https://example.com", out[0..copied.written]);
+
+    var short: [4]u8 = undefined;
+    const short_result = ffi.terminalCopyVisibleHyperlink(vt, 0, 0, 0, &short, short.len);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_SHORT_BUFFER, short_result.status);
+    try std.testing.expectEqual(@as(u64, 0), short_result.written);
+    try std.testing.expectEqual(@as(u64, "https://example.com".len), short_result.needed);
 }
 
 test "vt abi render_state fixed cell layout has no embedded selected or highlighted facts" {

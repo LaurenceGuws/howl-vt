@@ -397,6 +397,23 @@ typedef struct {
 } HowlVtBytesResult;
 
 typedef struct {
+    uint32_t rows;
+    uint32_t cols;
+    uint64_t history_count;
+    uint8_t is_alternate_screen;
+    uint8_t reserved0;
+    uint16_t reserved1;
+    uint64_t snapshot_seq;
+    uint64_t dirty_generation;
+} HowlVtVisibleInfo;
+
+typedef struct {
+    int32_t status;
+    uint32_t reserved0;
+    HowlVtVisibleInfo info;
+} HowlVtVisibleInfoResult;
+
+typedef struct {
     int32_t status;
     uint8_t state_changed;
     uint8_t title_changed;
@@ -537,6 +554,10 @@ HowlVtRuntimeProgressResult howl_vt_terminal_progress_runtime(
     HowlVtHandle handle,
     uint64_t now_ns
 );
+HowlVtVisibleInfoResult howl_vt_terminal_query_visible_info(
+    HowlVtHandle handle,
+    uint64_t scrollback_offset
+);
 HowlVtVisibleMetaResult howl_vt_terminal_query_visible_meta(
     HowlVtHandle handle,
     uint64_t scrollback_offset
@@ -558,6 +579,14 @@ HowlVtBytesResult howl_vt_terminal_copy_surface_hyperlink(
     HowlVtHandle handle,
     uint64_t scrollback_offset,
     uint64_t snapshot_seq,
+    uint16_t row,
+    uint16_t col,
+    uint8_t *ptr,
+    size_t cap
+);
+HowlVtBytesResult howl_vt_terminal_copy_visible_hyperlink(
+    HowlVtHandle handle,
+    uint64_t scrollback_offset,
     uint16_t row,
     uint16_t col,
     uint8_t *ptr,
