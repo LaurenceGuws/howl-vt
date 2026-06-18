@@ -10,7 +10,6 @@ const lifecycle = @import("lifecycle.zig");
 const runtime = @import("runtime.zig");
 const selection = @import("selection.zig");
 const status = @import("status.zig");
-const surface = @import("surface.zig");
 const render_state = @import("render_state.zig");
 const hyperlink = @import("hyperlink.zig");
 const visible_info = @import("visible_info.zig");
@@ -27,18 +26,6 @@ pub const FfiFeedResult = lifecycle.FfiFeedResult;
 pub const FfiCursorStyle = lifecycle.FfiCursorStyle;
 pub const FfiTerminalInitOptions = lifecycle.FfiTerminalInitOptions;
 
-pub const FfiColor = surface.FfiColor;
-pub const FfiCursor = surface.FfiCursor;
-pub const FfiRenderColorState = surface.FfiRenderColorState;
-pub const FfiRgb8 = surface.FfiRgb8;
-pub const FfiSurface = surface.FfiSurface;
-pub const FfiSurfaceCell = surface.FfiSurfaceCell;
-pub const FfiSurfaceCellAttrs = surface.FfiSurfaceCellAttrs;
-pub const FfiSurfaceCellFlags = surface.FfiSurfaceCellFlags;
-pub const FfiSurfaceCellSpan = surface.FfiSurfaceCellSpan;
-pub const FfiSurfaceResult = surface.FfiSurfaceResult;
-pub const FfiVisibleMeta = surface.FfiVisibleMeta;
-pub const FfiVisibleMetaResult = surface.FfiVisibleMetaResult;
 pub const FfiVisibleInfo = visible_info.FfiVisibleInfo;
 pub const FfiVisibleInfoResult = visible_info.FfiVisibleInfoResult;
 
@@ -80,10 +67,6 @@ pub const terminalCopyTitle = lifecycle.terminalCopyTitle;
 pub const terminalResize = lifecycle.terminalResize;
 pub const terminalSetCellPixelSize = lifecycle.terminalSetCellPixelSize;
 
-pub const terminalAckSurface = surface.terminalAckSurface;
-pub const terminalQueryVisibleMeta = surface.terminalQueryVisibleMeta;
-pub const terminalCopySurface = surface.terminalCopySurface;
-pub const terminalCopySurfaceHyperlink = surface.terminalCopySurfaceHyperlink;
 pub const terminalQueryVisibleInfo = visible_info.terminalQueryVisibleInfo;
 pub const terminalCopyVisibleHyperlink = hyperlink.terminalCopyVisibleHyperlink;
 
@@ -135,7 +118,6 @@ comptime {
     std.debug.assert(host_state.pending_output_max_bytes == 1024 * 1024);
     std.debug.assert(host_state.retained_payload_max_bytes == 1024 * 1024);
     std.debug.assert(@sizeOf(input_encode.Scratch) == 64);
-    std.debug.assert(@sizeOf(FfiRgb8) == 3);
     std.debug.assert(@sizeOf(FfiVisibleInfo) == 40);
     std.debug.assert(@alignOf(FfiVisibleInfo) == 8);
     std.debug.assert(@sizeOf(FfiVisibleInfoResult) == 48);
@@ -145,7 +127,6 @@ comptime {
     std.debug.assert(@sizeOf(FfiRenderStateCellFlags) == 4);
     std.debug.assert(@sizeOf(FfiRenderStateCellAttrs) == 10);
     std.debug.assert(@sizeOf(FfiRenderStateCell) == 68);
-    std.debug.assert(@sizeOf(FfiRenderColorState) == 777);
     std.debug.assert(@sizeOf(FfiColors) == 792);
 }
 
@@ -158,6 +139,5 @@ test {
     _ = runtime;
     _ = selection;
     _ = status;
-    _ = surface;
     _ = render_state;
 }

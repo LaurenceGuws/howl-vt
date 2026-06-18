@@ -8,7 +8,6 @@ const c = @cImport({
 comptime {
     std.debug.assert(@sizeOf(ffi.FfiBytesResult) == @sizeOf(c.HowlVtBytesResult));
     std.debug.assert(@sizeOf(ffi.FfiFeedResult) == @sizeOf(c.HowlVtFeedResult));
-    std.debug.assert(@sizeOf(ffi.FfiVisibleMetaResult) == @sizeOf(c.HowlVtVisibleMetaResult));
     std.debug.assert(@sizeOf(ffi.FfiVisibleInfo) == @sizeOf(c.HowlVtVisibleInfo));
     std.debug.assert(@sizeOf(ffi.FfiVisibleInfoResult) == @sizeOf(c.HowlVtVisibleInfoResult));
     std.debug.assert(@alignOf(ffi.FfiVisibleInfo) == @alignOf(c.HowlVtVisibleInfo));
@@ -531,12 +530,10 @@ test "vt abi render_state row and cell handle deinit null safety" {
 test "vt abi null handles report missing-handle contract" {
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalResize(null, 24, 80));
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalSetCellPixelSize(null, 8, 16));
-    try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalAckSurface(null, 1));
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalStartSelection(null, 0, 0));
 
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalFeed(null, null, 0).status);
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalCopyTitle(null, null, 0).status);
-    try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalQueryVisibleMeta(null, 0).status);
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalQuerySelection(null).status);
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalQueryRuntimeObligation(null, 0).status);
     try std.testing.expectEqual(c.HOWL_VT_CALL_MISSING_HANDLE, ffi.terminalProgressRuntime(null, 0).status);
@@ -554,16 +551,10 @@ test "vt abi invalid arguments report invalid-argument contract" {
     try std.testing.expectEqual(c.HOWL_VT_CALL_INVALID_ARGUMENT, ffi.terminalEncodeKey(handle, c.HOWL_VT_KEY_ENTER, 0, null, 1).status);
 }
 
-test "vt abi lifecycle and visible-meta contract are exported" {
+test "vt abi lifecycle and runtime contract are exported" {
     const handle = ffi.terminalInitWithOptions(24, 80, 16, .{ .default_cursor_style = .{ .shape = 2, .blink = 0 } });
     defer ffi.terminalDeinit(handle);
     try std.testing.expect(handle != null);
-
-    const meta = ffi.terminalQueryVisibleMeta(handle, 0);
-    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, meta.status);
-    try std.testing.expectEqual(@as(u16, 24), meta.meta.rows);
-    try std.testing.expectEqual(@as(u16, 80), meta.meta.cols);
-    try std.testing.expectEqual(@as(u64, 1), meta.meta.snapshot_seq);
 
     const obligation = ffi.terminalQueryRuntimeObligation(handle, 1234);
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, obligation.status);

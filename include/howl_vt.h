@@ -148,13 +148,6 @@ typedef enum {
 } HowlVtMouseEventKind;
 
 typedef struct {
-    uint8_t continuation;
-    uint8_t reserved0;
-    uint8_t reserved1;
-    uint8_t reserved2;
-} HowlVtSurfaceCellFlags;
-
-typedef struct {
     uint8_t kind;
     uint32_t value;
 } HowlVtColor;
@@ -231,91 +224,12 @@ typedef struct {
     HowlVtRgb8 palette[256];
 } HowlVtRenderStateColors;
 
-typedef struct {
-    HowlVtRgb8 foreground;
-    HowlVtRgb8 background;
-    HowlVtRgb8 cursor;
-    HowlVtRgb8 palette[256];
-} HowlVtRenderColorState;
-
-typedef struct {
-    uint8_t bold;
-    uint8_t dim;
-    uint8_t italic;
-    uint8_t underline;
-    uint8_t underline_color_set;
-    uint8_t blink;
-    uint8_t inverse;
-    uint8_t invisible;
-    uint8_t strikethrough;
-    uint8_t selected;
-} HowlVtSurfaceCellAttrs;
-
-typedef struct {
-    uint32_t codepoint;
-    uint8_t combining_len;
-    uint8_t reserved0;
-    uint8_t reserved1;
-    uint8_t reserved2;
-    uint32_t combining[3];
-    HowlVtSurfaceCellFlags flags;
-    HowlVtColor fg_color;
-    HowlVtColor bg_color;
-    HowlVtColor underline_color;
-    uint8_t underline_style;
-    uint8_t reserved3;
-    uint8_t reserved4;
-    uint8_t reserved5;
-    HowlVtSurfaceCellAttrs attrs;
-    uint32_t link_id;
-} HowlVtSurfaceCell;
-
-typedef struct {
-    const HowlVtSurfaceCell *ptr;
-    size_t len;
-} HowlVtSurfaceCellSpan;
-
-typedef struct {
-    const uint8_t *ptr;
-    size_t len;
-} HowlVtByteSpan;
-
-typedef struct {
-    const uint16_t *ptr;
-    size_t len;
-} HowlVtU16Span;
-
 enum {
     HOWL_VT_CURSOR_SHAPE_BLOCK = 0,
     HOWL_VT_CURSOR_SHAPE_UNDERLINE = 1,
     HOWL_VT_CURSOR_SHAPE_BEAM = 2,
     HOWL_VT_CURSOR_SHAPE_NONE = 3,
 };
-
-typedef struct {
-    uint16_t row;
-    uint16_t col;
-    uint8_t visible;
-    uint8_t shape;
-    uint8_t blink;
-    uint8_t reserved0;
-    uint64_t position_changed_by_client_at_ms;
-    uint16_t cell_cols;
-    uint16_t cell_rows;
-} HowlVtCursor;
-
-typedef struct {
-    uint16_t row;
-    uint16_t col;
-    uint16_t rows;
-    uint16_t cols;
-    uint8_t shape;
-    uint8_t mode;
-    uint8_t shape_follows_main;
-    uint8_t color_follows_main;
-    HowlVtColor cursor_color;
-    HowlVtColor text_color;
-} HowlVtExtraCursor;
 
 typedef struct {
     uint8_t shape;
@@ -344,51 +258,6 @@ typedef struct {
 typedef struct {
     HowlVtCursorStyle default_cursor_style;
 } HowlVtTerminalInitOptions;
-
-typedef struct {
-    HowlVtSurfaceCellSpan surface_cells;
-    uint16_t cols;
-    uint16_t rows;
-    uint64_t scroll_row;
-    uint8_t is_alternate_screen;
-    uint8_t reserved0;
-    uint16_t reserved1;
-    HowlVtByteSpan dirty_rows;
-    HowlVtU16Span dirty_cols_start;
-    HowlVtU16Span dirty_cols_end;
-    HowlVtCursor cursor;
-    HowlVtColor cursor_color;
-    HowlVtColor cursor_text_color;
-    uint16_t extra_cursor_count;
-    HowlVtExtraCursor extra_cursors[HOWL_VT_MAX_EXTRA_CURSORS];
-    HowlVtRenderColorState colors;
-    HowlVtSelection selection;
-} HowlVtSurface;
-
-typedef struct {
-    uint16_t rows;
-    uint16_t cols;
-    uint64_t history_count;
-    uint8_t is_alternate_screen;
-    uint8_t reserved0;
-    uint16_t reserved1;
-    uint64_t snapshot_seq;
-    uint64_t dirty_generation;
-} HowlVtVisibleMeta;
-
-typedef struct {
-    int32_t status;
-    HowlVtVisibleMeta meta;
-} HowlVtVisibleMetaResult;
-
-typedef struct {
-    int32_t status;
-    uint64_t history_count;
-    uint64_t scrollback_offset;
-    uint64_t snapshot_seq;
-    uint64_t dirty_generation;
-    HowlVtSurface source;
-} HowlVtSurfaceResult;
 
 typedef struct {
     int32_t status;
@@ -558,32 +427,7 @@ HowlVtVisibleInfoResult howl_vt_terminal_query_visible_info(
     HowlVtHandle handle,
     uint64_t scrollback_offset
 );
-HowlVtVisibleMetaResult howl_vt_terminal_query_visible_meta(
-    HowlVtHandle handle,
-    uint64_t scrollback_offset
-);
-HowlVtSurfaceResult howl_vt_terminal_copy_surface(
-    HowlVtHandle handle,
-    uint64_t scrollback_offset,
-    HowlVtSurfaceCell *cells_ptr,
-    size_t cells_cap,
-    uint8_t *dirty_rows_ptr,
-    size_t dirty_rows_cap,
-    uint16_t *cols_start_ptr,
-    size_t cols_start_cap,
-    uint16_t *cols_end_ptr,
-    size_t cols_end_cap
-);
 HowlVtSelectionResult howl_vt_terminal_query_selection(HowlVtHandle handle);
-HowlVtBytesResult howl_vt_terminal_copy_surface_hyperlink(
-    HowlVtHandle handle,
-    uint64_t scrollback_offset,
-    uint64_t snapshot_seq,
-    uint16_t row,
-    uint16_t col,
-    uint8_t *ptr,
-    size_t cap
-);
 HowlVtBytesResult howl_vt_terminal_copy_visible_hyperlink(
     HowlVtHandle handle,
     uint64_t scrollback_offset,
@@ -661,7 +505,6 @@ HowlVtBytesResult howl_vt_terminal_encode_paste(
     uint8_t *ptr,
     size_t cap
 );
-int32_t howl_vt_terminal_ack_surface(HowlVtHandle handle, uint64_t snapshot_seq);
 void howl_vt_terminal_clear_pending_output(HowlVtHandle handle);
 
 #ifdef __cplusplus

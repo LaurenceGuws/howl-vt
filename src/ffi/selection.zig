@@ -84,7 +84,6 @@ pub fn terminalCopySelection(vt_handle: handle.VtHandle, ptr: ?[*]u8, cap: usize
 
 test "vt ffi selection query and copy stay history-aware" {
     const lifecycle = @import("lifecycle.zig");
-    const surface = @import("surface.zig");
     const vt_handle = lifecycle.terminalInit(2, 4, 8);
     defer lifecycle.terminalDeinit(vt_handle);
     try std.testing.expect(vt_handle != null);
@@ -107,20 +106,14 @@ test "vt ffi selection query and copy stay history-aware" {
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), copied.status);
     try std.testing.expectEqualStrings("aa\nbb", text[0..@intCast(copied.written)]);
 
-    var cells: [8]surface.FfiSurfaceCell = undefined;
-    var dirty_rows: [2]u8 = undefined;
-    var cols_start: [2]u16 = undefined;
-    var cols_end: [2]u16 = undefined;
-    const surface_result = surface.terminalCopySurface(vt_handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), surface_result.status);
-    try std.testing.expectEqual(@as(u8, 1), surface_result.source.selection.active);
-    try std.testing.expectEqual(@as(i32, 0), surface_result.source.selection.start.row);
-    try std.testing.expectEqual(@as(i32, 1), surface_result.source.selection.end.row);
+    const owned = handle.vtFromHandle(vt_handle).?;
+    const selected = owned.selectionState().?;
+    try std.testing.expectEqual(@as(i32, 0), selected.start.row);
+    try std.testing.expectEqual(@as(i32, 1), selected.end.row);
 }
 
 test "vt ffi alternate selection does not read primary history" {
     const lifecycle = @import("lifecycle.zig");
-    const surface = @import("surface.zig");
     const vt_handle = lifecycle.terminalInit(2, 4, 8);
     defer lifecycle.terminalDeinit(vt_handle);
     try std.testing.expect(vt_handle != null);
@@ -140,18 +133,10 @@ test "vt ffi alternate selection does not read primary history" {
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), copied.status);
     try std.testing.expectEqualStrings("zz", text[0..@intCast(copied.written)]);
 
-    var cells: [8]surface.FfiSurfaceCell = undefined;
-    var dirty_rows: [2]u8 = undefined;
-    var cols_start: [2]u16 = undefined;
-    var cols_end: [2]u16 = undefined;
-    const surface_result = surface.terminalCopySurface(vt_handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), surface_result.status);
-    try std.testing.expectEqual(@as(u8, 1), cells[0].attrs.selected);
-    try std.testing.expectEqual(@as(u8, 1), cells[1].attrs.selected);
-    try std.testing.expectEqual(@as(u8, 0), cells[2].attrs.selected);
-    try std.testing.expectEqual(@as(u8, 0), cells[3].attrs.selected);
-    try std.testing.expectEqual(@as(u8, 0), cells[4].attrs.selected);
-    try std.testing.expectEqual(@as(u8, 0), cells[5].attrs.selected);
-    try std.testing.expectEqual(@as(u8, 0), cells[6].attrs.selected);
-    try std.testing.expectEqual(@as(u8, 0), cells[7].attrs.selected);
+    const owned = handle.vtFromHandle(vt_handle).?;
+    const publication = owned.surfaceSnapshot(0);
+    try std.testing.expectEqual(@as(u64, 0), publication.snapshot.view.history_count);
+    const selected = owned.selectionState().?;
+    try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(publication.snapshot.view, selected, 0));
+    try std.testing.expectEqual(@as(?selection_projection.Range, null), selection_projection.visibleRange(publication.snapshot.view, selected, 1));
 }

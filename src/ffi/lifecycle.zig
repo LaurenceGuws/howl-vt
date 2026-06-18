@@ -94,46 +94,35 @@ pub fn terminalSetCellPixelSize(vt_handle: handle.VtHandle, width: u32, height: 
 }
 
 test "vt ffi init options seed default cursor style and blink" {
-    const surface = @import("surface.zig");
     const vt_handle = terminalInitWithOptions(2, 4, 8, .{
         .default_cursor_style = .{ .shape = 2, .blink = 0 },
     });
     defer terminalDeinit(vt_handle);
     try std.testing.expect(vt_handle != null);
 
-    var cells: [8]surface.FfiSurfaceCell = undefined;
-    var dirty_rows: [2]u8 = undefined;
-    var cols_start: [2]u16 = undefined;
-    var cols_end: [2]u16 = undefined;
-
-    const initial = surface.terminalCopySurface(vt_handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), initial.status);
-    try std.testing.expectEqual(@as(u8, 2), initial.source.cursor.shape);
-    try std.testing.expectEqual(@as(u8, 0), initial.source.cursor.blink);
+    const owned = handle.vtFromHandle(vt_handle).?;
+    try std.testing.expectEqual(screen.Screen.CursorShape.bar, owned.screen_state.activeConst().cursor.effective_shape);
+    try std.testing.expectEqual(false, owned.screen_state.activeConst().cursor.blink_intent);
+    try std.testing.expectEqual(screen.Screen.CursorShape.bar, owned.screen_state.alternate.cursor.effective_shape);
+    try std.testing.expectEqual(false, owned.screen_state.alternate.cursor.blink_intent);
 
     const override = terminalFeed(vt_handle, "\x1b[3 q".ptr, 6);
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), override.status);
 
-    const overridden = surface.terminalCopySurface(vt_handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), overridden.status);
-    try std.testing.expectEqual(@as(u8, 1), overridden.source.cursor.shape);
-    try std.testing.expectEqual(@as(u8, 1), overridden.source.cursor.blink);
+    try std.testing.expectEqual(screen.Screen.CursorShape.underline, owned.screen_state.activeConst().cursor.effective_shape);
+    try std.testing.expectEqual(true, owned.screen_state.activeConst().cursor.blink_intent);
 
     const blinking_block = terminalFeed(vt_handle, "\x1b[1 q".ptr, 6);
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), blinking_block.status);
 
-    const restored = surface.terminalCopySurface(vt_handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), restored.status);
-    try std.testing.expectEqual(@as(u8, 0), restored.source.cursor.shape);
-    try std.testing.expectEqual(@as(u8, 1), restored.source.cursor.blink);
+    try std.testing.expectEqual(screen.Screen.CursorShape.block, owned.screen_state.activeConst().cursor.effective_shape);
+    try std.testing.expectEqual(true, owned.screen_state.activeConst().cursor.blink_intent);
 
     const reset = terminalFeed(vt_handle, "\x1bc".ptr, 2);
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), reset.status);
 
-    const after_reset = surface.terminalCopySurface(vt_handle, 0, cells[0..].ptr, cells.len, dirty_rows[0..].ptr, dirty_rows.len, cols_start[0..].ptr, cols_start.len, cols_end[0..].ptr, cols_end.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), after_reset.status);
-    try std.testing.expectEqual(@as(u8, 2), after_reset.source.cursor.shape);
-    try std.testing.expectEqual(@as(u8, 0), after_reset.source.cursor.blink);
+    try std.testing.expectEqual(screen.Screen.CursorShape.bar, owned.screen_state.activeConst().cursor.effective_shape);
+    try std.testing.expectEqual(false, owned.screen_state.activeConst().cursor.blink_intent);
 }
 
 test "vt ffi set cell pixel size validates and applies" {

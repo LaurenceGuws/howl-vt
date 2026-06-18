@@ -13,10 +13,7 @@ comptime {
     @export(&ffi.terminalFeed, .{ .name = "howl_vt_terminal_feed" });
     @export(&ffi.terminalProgressRuntime, .{ .name = "howl_vt_terminal_progress_runtime" });
     @export(&ffi.terminalQueryVisibleInfo, .{ .name = "howl_vt_terminal_query_visible_info" });
-    @export(&ffi.terminalQueryVisibleMeta, .{ .name = "howl_vt_terminal_query_visible_meta" });
-    @export(&ffi.terminalCopySurface, .{ .name = "howl_vt_terminal_copy_surface" });
     @export(&ffi.terminalQuerySelection, .{ .name = "howl_vt_terminal_query_selection" });
-    @export(&ffi.terminalCopySurfaceHyperlink, .{ .name = "howl_vt_terminal_copy_surface_hyperlink" });
     @export(&ffi.terminalCopyVisibleHyperlink, .{ .name = "howl_vt_terminal_copy_visible_hyperlink" });
     @export(&ffi.terminalCopySelection, .{ .name = "howl_vt_terminal_copy_selection" });
     @export(&ffi.terminalCopyTitle, .{ .name = "howl_vt_terminal_copy_title" });
@@ -29,7 +26,6 @@ comptime {
     @export(&ffi.terminalEncodePasteEnd, .{ .name = "howl_vt_terminal_encode_paste_end" });
     @export(&ffi.terminalEncodeMouse, .{ .name = "howl_vt_terminal_encode_mouse" });
     @export(&ffi.terminalEncodePaste, .{ .name = "howl_vt_terminal_encode_paste" });
-    @export(&ffi.terminalAckSurface, .{ .name = "howl_vt_terminal_ack_surface" });
     @export(&ffi.terminalClearPendingOutput, .{ .name = "howl_vt_terminal_clear_pending_output" });
     @export(&ffi.renderStateInit, .{ .name = "howl_vt_render_state_init" });
     @export(&ffi.renderStateDeinit, .{ .name = "howl_vt_render_state_deinit" });
