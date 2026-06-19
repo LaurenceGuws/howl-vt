@@ -106,6 +106,8 @@ comptime {
     std.debug.assert(@intFromEnum(ffi.FfiRowData.selection) == c.HOWL_VT_RENDER_STATE_ROW_DATA_SELECTION);
     std.debug.assert(@intFromEnum(ffi.FfiRowData.highlight_count) == c.HOWL_VT_RENDER_STATE_ROW_DATA_HIGHLIGHT_COUNT);
     std.debug.assert(@intFromEnum(ffi.FfiRowData.highlight) == c.HOWL_VT_RENDER_STATE_ROW_DATA_HIGHLIGHT);
+    std.debug.assert(@intFromEnum(ffi.FfiRowData.dirty_col_start) == c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY_COL_START);
+    std.debug.assert(@intFromEnum(ffi.FfiRowData.dirty_col_end) == c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY_COL_END);
     std.debug.assert(@intFromEnum(ffi.FfiRowOption.dirty) == c.HOWL_VT_RENDER_STATE_ROW_OPTION_DIRTY);
     std.debug.assert(@intFromEnum(ffi.FfiRowCellsData.invalid) == c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_INVALID);
     std.debug.assert(@intFromEnum(ffi.FfiRowCellsData.cell) == c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_CELL);
@@ -339,6 +341,12 @@ test "vt abi render_state hover highlights ranges cells and dirty rows" {
     var row_dirty: u8 = 0;
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator_after, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY, &row_dirty));
     try std.testing.expectEqual(@as(u8, 1), row_dirty);
+    var dirty_col_start: u16 = 99;
+    var dirty_col_end: u16 = 99;
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator_after, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY_COL_START, &dirty_col_start));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator_after, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY_COL_END, &dirty_col_end));
+    try std.testing.expectEqual(@as(u16, 0), dirty_col_start);
+    try std.testing.expectEqual(@as(u16, 3), dirty_col_end);
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator_after, c.HOWL_VT_RENDER_STATE_ROW_DATA_HIGHLIGHT_COUNT, &count));
     try std.testing.expectEqual(@as(u16, 1), count);
     var highlight = ffi.FfiRowHighlight{ .index = 0 };
@@ -357,6 +365,12 @@ test "vt abi render_state hover highlights ranges cells and dirty rows" {
     row_dirty = 0;
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator_after, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY, &row_dirty));
     try std.testing.expectEqual(@as(u8, 1), row_dirty);
+    dirty_col_start = 99;
+    dirty_col_end = 99;
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator_after, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY_COL_START, &dirty_col_start));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator_after, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY_COL_END, &dirty_col_end));
+    try std.testing.expectEqual(@as(u16, 0), dirty_col_start);
+    try std.testing.expectEqual(@as(u16, 1), dirty_col_end);
     highlight = .{ .index = 0 };
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator_after, c.HOWL_VT_RENDER_STATE_ROW_DATA_HIGHLIGHT, &highlight));
     try std.testing.expectEqual(@as(u8, 1), highlight.tag);
@@ -370,6 +384,135 @@ test "vt abi render_state hover highlights ranges cells and dirty rows" {
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowCellsSelect(second_row_cells, 2));
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowCellsGet(second_row_cells, c.HOWL_VT_RENDER_STATE_ROW_CELLS_DATA_HIGHLIGHTED, &highlighted));
     try std.testing.expectEqual(@as(u8, 0), highlighted);
+}
+
+test "vt abi render_state moved hover unions old and new dirty column bounds" {
+    const vt = ffi.terminalInit(1, 4, 4);
+    defer ffi.terminalDeinit(vt);
+    try std.testing.expect(vt != null);
+    const source = "\x1b]8;;https://one.example\x07ab\x1b]8;;\x07\x1b]8;;https://two.example\x07cd\x1b]8;;\x07";
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, source.ptr, source.len).status);
+
+    const state = try renderStateWithRows(vt);
+    defer ffi.renderStateDeinit(state);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.testRenderStateClearDirty(state));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateUpdateHighlightsForHyperlink(state, 1, 0, 0, 0));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.testRenderStateClearDirty(state));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateUpdateHighlightsForHyperlink(state, 1, 0, 2, 0));
+
+    const iterator = try firstRowIterator(state);
+    defer ffi.renderStateRowIteratorDeinit(iterator);
+    try expectCurrentRowDirtyCols(iterator, true, 0, 3);
+}
+
+test "vt abi render_state clearing hover to no-link dirties old highlight columns" {
+    const vt = ffi.terminalInit(1, 4, 4);
+    defer ffi.terminalDeinit(vt);
+    try std.testing.expect(vt != null);
+    const source = "\x1b]8;;https://one.example\x07ab\x1b]8;;\x07cd";
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, source.ptr, source.len).status);
+
+    const state = try renderStateWithRows(vt);
+    defer ffi.renderStateDeinit(state);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.testRenderStateClearDirty(state));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateUpdateHighlightsForHyperlink(state, 1, 0, 0, 0));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.testRenderStateClearDirty(state));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateUpdateHighlightsForHyperlink(state, 1, 0, 3, 0));
+
+    var dirty: c_int = c.HOWL_VT_RENDER_STATE_DIRTY_FALSE;
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateGet(state, c.HOWL_VT_RENDER_STATE_DATA_DIRTY, &dirty));
+    try std.testing.expectEqual(@as(c_int, c.HOWL_VT_RENDER_STATE_DIRTY_PARTIAL), dirty);
+    const iterator = try firstRowIterator(state);
+    defer ffi.renderStateRowIteratorDeinit(iterator);
+    try expectCurrentRowDirtyCols(iterator, true, 0, 1);
+}
+
+test "vt abi render_state clearing hover to out-of-range row dirties old highlight columns" {
+    const vt = ffi.terminalInit(1, 4, 4);
+    defer ffi.terminalDeinit(vt);
+    try std.testing.expect(vt != null);
+    const source = "\x1b]8;;https://one.example\x07ab\x1b]8;;\x07cd";
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, source.ptr, source.len).status);
+
+    const state = try renderStateWithRows(vt);
+    defer ffi.renderStateDeinit(state);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.testRenderStateClearDirty(state));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateUpdateHighlightsForHyperlink(state, 1, 0, 0, 0));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.testRenderStateClearDirty(state));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateUpdateHighlightsForHyperlink(state, 1, 99, 0, 0));
+
+    var dirty: c_int = c.HOWL_VT_RENDER_STATE_DIRTY_FALSE;
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateGet(state, c.HOWL_VT_RENDER_STATE_DATA_DIRTY, &dirty));
+    try std.testing.expectEqual(@as(c_int, c.HOWL_VT_RENDER_STATE_DIRTY_PARTIAL), dirty);
+    const iterator = try firstRowIterator(state);
+    defer ffi.renderStateRowIteratorDeinit(iterator);
+    try expectCurrentRowDirtyCols(iterator, true, 0, 1);
+}
+
+test "vt abi render_state dirty row exposes copied dirty column bounds" {
+    const vt = ffi.terminalInit(1, 6, 4);
+    defer ffi.terminalDeinit(vt);
+    try std.testing.expect(vt != null);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, "abcdef".ptr, 6).status);
+
+    var state = try renderStateWithRows(vt);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateAck(state, vt));
+    ffi.renderStateDeinit(state);
+
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, "\x1b[1;4HG".ptr, 7).status);
+    state = try renderStateWithRows(vt);
+    defer ffi.renderStateDeinit(state);
+
+    const iterator = try firstRowIterator(state);
+    defer ffi.renderStateRowIteratorDeinit(iterator);
+    var row_dirty: u8 = 0;
+    var dirty_col_start: u16 = 99;
+    var dirty_col_end: u16 = 99;
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY, &row_dirty));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY_COL_START, &dirty_col_start));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY_COL_END, &dirty_col_end));
+    try std.testing.expectEqual(@as(u8, 1), row_dirty);
+    try std.testing.expectEqual(@as(u16, 3), dirty_col_start);
+    try std.testing.expectEqual(@as(u16, 3), dirty_col_end);
+}
+
+test "vt abi render_state full-screen dirty exposes full row column bounds" {
+    const vt = ffi.terminalInit(2, 3, 4);
+    defer ffi.terminalDeinit(vt);
+    try std.testing.expect(vt != null);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, "abcdef".ptr, 6).status);
+
+    const state = try renderStateWithRows(vt);
+    defer ffi.renderStateDeinit(state);
+    var dirty: c_int = c.HOWL_VT_RENDER_STATE_DIRTY_FALSE;
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateGet(state, c.HOWL_VT_RENDER_STATE_DATA_DIRTY, &dirty));
+    try std.testing.expectEqual(@as(c_int, c.HOWL_VT_RENDER_STATE_DIRTY_FULL), dirty);
+
+    const iterator = try firstRowIterator(state);
+    defer ffi.renderStateRowIteratorDeinit(iterator);
+    try expectCurrentRowDirtyCols(iterator, true, 0, 2);
+    try std.testing.expectEqual(@as(u8, 1), ffi.renderStateRowIteratorNext(iterator));
+    try expectCurrentRowDirtyCols(iterator, true, 0, 2);
+}
+
+test "vt abi render_state scroll-exposed dirty row exposes full row column bounds" {
+    const vt = ffi.terminalInit(2, 3, 8);
+    defer ffi.terminalDeinit(vt);
+    try std.testing.expect(vt != null);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, "aaa\r\nbbb".ptr, 8).status);
+
+    var state = try renderStateWithRows(vt);
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateAck(state, vt));
+    ffi.renderStateDeinit(state);
+
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.terminalFeed(vt, "\r\nccc".ptr, 5).status);
+    state = try renderStateWithRows(vt);
+    defer ffi.renderStateDeinit(state);
+
+    const iterator = try firstRowIterator(state);
+    defer ffi.renderStateRowIteratorDeinit(iterator);
+    _ = ffi.renderStateRowIteratorNext(iterator);
+    try expectCurrentRowDirtyCols(iterator, true, 0, 2);
 }
 
 test "vt abi render_state public hover no-link and out-of-range leave highlights and dirty false" {
@@ -418,6 +561,18 @@ fn rowCells(iterator: ffi.FfiRowIteratorHandle) !ffi.FfiRowCellsHandle {
     var cells: ffi.FfiRowCellsHandle = null;
     try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_CELLS, @ptrCast(&cells)));
     return cells;
+}
+
+fn expectCurrentRowDirtyCols(iterator: ffi.FfiRowIteratorHandle, expected_dirty: bool, expected_start: u16, expected_end: u16) !void {
+    var row_dirty: u8 = 0;
+    var dirty_col_start: u16 = 99;
+    var dirty_col_end: u16 = 99;
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY, &row_dirty));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY_COL_START, &dirty_col_start));
+    try std.testing.expectEqual(c.HOWL_VT_CALL_OK, ffi.renderStateRowGet(iterator, c.HOWL_VT_RENDER_STATE_ROW_DATA_DIRTY_COL_END, &dirty_col_end));
+    try std.testing.expectEqual(@as(u8, if (expected_dirty) 1 else 0), row_dirty);
+    try std.testing.expectEqual(expected_start, dirty_col_start);
+    try std.testing.expectEqual(expected_end, dirty_col_end);
 }
 
 test "vt abi render_state lifecycle null safety" {

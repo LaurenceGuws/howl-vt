@@ -42,7 +42,7 @@ pub const FfiData = enum(c_int) {
     is_alternate_screen = 22,
 };
 pub const FfiOption = enum(c_int) { dirty = 0 };
-pub const FfiRowData = enum(c_int) { invalid = 0, dirty = 1, cells = 2, selection = 3, highlight_count = 4, highlight = 5 };
+pub const FfiRowData = enum(c_int) { invalid = 0, dirty = 1, cells = 2, selection = 3, highlight_count = 4, highlight = 5, dirty_col_start = 6, dirty_col_end = 7 };
 pub const FfiRowOption = enum(c_int) { dirty = 0 };
 pub const FfiRowCellsData = enum(c_int) { invalid = 0, cell = 1, selected = 2, highlighted = 3 };
 
@@ -213,6 +213,8 @@ fn rowDataIn(value: c_int) ?FfiRowData {
         3 => .selection,
         4 => .highlight_count,
         5 => .highlight,
+        6 => .dirty_col_start,
+        7 => .dirty_col_end,
         else => null,
     };
 }
@@ -435,6 +437,8 @@ pub fn renderStateRowGet(iterator: FfiRowIteratorHandle, data: c_int, out: ?*any
         .selection => rowSelectionOut(out, row.selection),
         .highlight_count => writeOut(u16, out, row.highlight_count),
         .highlight => rowHighlightOut(out, row),
+        .dirty_col_start => writeOut(u16, out, row.dirty_col_start),
+        .dirty_col_end => writeOut(u16, out, row.dirty_col_end),
     };
 }
 
@@ -544,7 +548,11 @@ pub fn renderStateRowCellsGetMulti(cells: FfiRowCellsHandle, count: usize, keys:
 pub fn testRenderStateClearDirty(state: FfiRenderStateHandle) i32 {
     const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
     owned.state.dirty = .false;
-    for (owned.state.rows_storage.items) |*row| row.dirty = false;
+    for (owned.state.rows_storage.items) |*row| {
+        row.dirty = false;
+        row.dirty_col_start = 0;
+        row.dirty_col_end = 0;
+    }
     return @intFromEnum(status.HowlVtCallStatus.ok);
 }
 

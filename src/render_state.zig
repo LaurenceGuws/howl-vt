@@ -27,10 +27,28 @@ pub const RenderState = struct {
 
     pub const Row = struct {
         dirty: bool = false,
+        dirty_col_start: u16 = 0,
+        dirty_col_end: u16 = 0,
         cells: []Cell = &.{},
         selection: ?SelectionRange = null,
         highlights: []Highlight = &.{},
         highlight_count: u16 = 0,
+
+        fn markDirtyCols(self: *Row, start_col: u16, end_col: u16) void {
+            if (self.cells.len == 0) return;
+            const last_col: u16 = @intCast(self.cells.len - 1);
+            const start = @min(start_col, last_col);
+            const end = @min(end_col, last_col);
+            if (end < start) return;
+            if (self.dirty) {
+                self.dirty_col_start = @min(self.dirty_col_start, start);
+                self.dirty_col_end = @max(self.dirty_col_end, end);
+            } else {
+                self.dirty = true;
+                self.dirty_col_start = start;
+                self.dirty_col_end = end;
+            }
+        }
     };
 
     pub const Cell = struct {
@@ -185,6 +203,8 @@ pub const RenderState = struct {
 
         for (self.rows_storage.items, 0..) |*row, row_index| {
             row.dirty = dirty_rows[row_index] != 0;
+            row.dirty_col_start = cols_start[row_index];
+            row.dirty_col_end = cols_end[row_index];
             row.selection = null;
             if (snapshot.selection) |selected| {
                 if (selection_projection.visibleRange(view, selected, @intCast(row_index))) |range| {
@@ -210,18 +230,31 @@ pub const RenderState = struct {
         if (!vt.surface_publication.canAck(self.snapshot_seq, vt.dirty_generation)) return false;
         if (!vt.ackSurface(self.snapshot_seq)) return false;
         self.dirty = .false;
-        for (self.rows_storage.items) |*row| row.dirty = false;
+        for (self.rows_storage.items) |*row| {
+            row.dirty = false;
+            row.dirty_col_start = 0;
+            row.dirty_col_end = 0;
+        }
         return true;
     }
 
     pub fn updateHighlightsForHyperlink(self: *RenderState, tag: u8, row: u16, col: u16, underline_style: UnderlineStyle) void {
         std.debug.assert(self.rows_storage.items.len == self.rows);
-        self.clearHighlights(tag);
-        if (row >= self.rows) return;
+        const cleared_highlight = self.clearHighlights(tag);
+        if (row >= self.rows) {
+            if (cleared_highlight) self.dirty = .partial;
+            return;
+        }
         const row_cells = self.rows_storage.items[row].cells;
-        if (col >= row_cells.len) return;
+        if (col >= row_cells.len) {
+            if (cleared_highlight) self.dirty = .partial;
+            return;
+        }
         const link_id = row_cells[col].link_id;
-        if (link_id == 0) return;
+        if (link_id == 0) {
+            if (cleared_highlight) self.dirty = .partial;
+            return;
+        }
 
         const start = self.hyperlinkHighlightStart(row, col, link_id);
         const end = self.hyperlinkHighlightEnd(row, col, link_id);
@@ -237,7 +270,10 @@ pub const RenderState = struct {
                 .underline_style = underline_style,
             };
             current.highlight_count = 1;
-            current.dirty = true;
+            current.markDirtyCols(
+                if (current_row == start.row) start.col else 0,
+                if (current_row == end.row) end.col else @intCast(current.cells.len - 1),
+            );
         }
         self.dirty = .partial;
     }
@@ -277,17 +313,23 @@ pub const RenderState = struct {
         }
     }
 
-    fn clearHighlights(self: *RenderState, tag: u8) void {
+    fn clearHighlights(self: *RenderState, tag: u8) bool {
+        var cleared = false;
         for (self.rows_storage.items) |*row| {
             if (row.highlight_count == 0) continue;
             var write_index: u16 = 0;
             for (row.highlights[0..row.highlight_count]) |highlight| {
-                if (highlight.tag == tag) continue;
+                if (highlight.tag == tag) {
+                    row.markDirtyCols(highlight.start_col, if (highlight.end_col == 0) 0 else highlight.end_col - 1);
+                    cleared = true;
+                    continue;
+                }
                 row.highlights[write_index] = highlight;
                 write_index += 1;
             }
             row.highlight_count = write_index;
         }
+        return cleared;
     }
 
     const HighlightPoint = struct { row: u16, col: u16 };
