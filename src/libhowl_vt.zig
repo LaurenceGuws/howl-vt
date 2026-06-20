@@ -13,6 +13,7 @@ comptime {
     @export(&ffi.terminalFeed, .{ .name = "howl_vt_terminal_feed" });
     @export(&ffi.terminalProgressRuntime, .{ .name = "howl_vt_terminal_progress_runtime" });
     @export(&ffi.terminalQueryVisibleInfo, .{ .name = "howl_vt_terminal_query_visible_info" });
+    @export(&ffi.terminalScrollViewport, .{ .name = "howl_vt_terminal_scroll_viewport" });
     @export(&ffi.terminalQuerySelection, .{ .name = "howl_vt_terminal_query_selection" });
     @export(&ffi.terminalCopyVisibleHyperlink, .{ .name = "howl_vt_terminal_copy_visible_hyperlink" });
     @export(&ffi.terminalCopySelection, .{ .name = "howl_vt_terminal_copy_selection" });

@@ -13,6 +13,7 @@ const status = @import("status.zig");
 const render_state = @import("render_state.zig");
 const hyperlink = @import("hyperlink.zig");
 const visible_info = @import("visible_info.zig");
+const viewport = @import("viewport.zig");
 
 pub const HowlVtCallStatus = status.HowlVtCallStatus;
 pub const HowlVtTerminal = handle.HowlVtTerminal;
@@ -28,6 +29,7 @@ pub const FfiTerminalInitOptions = lifecycle.FfiTerminalInitOptions;
 
 pub const FfiVisibleInfo = visible_info.FfiVisibleInfo;
 pub const FfiVisibleInfoResult = visible_info.FfiVisibleInfoResult;
+pub const FfiScrollViewportResult = viewport.FfiScrollViewportResult;
 
 pub const FfiSelection = selection.FfiSelection;
 pub const FfiSelectionPos = selection.FfiSelectionPos;
@@ -69,6 +71,7 @@ pub const terminalSetCellPixelSize = lifecycle.terminalSetCellPixelSize;
 
 pub const terminalQueryVisibleInfo = visible_info.terminalQueryVisibleInfo;
 pub const terminalCopyVisibleHyperlink = hyperlink.terminalCopyVisibleHyperlink;
+pub const terminalScrollViewport = viewport.terminalScrollViewport;
 
 pub const terminalQuerySelection = selection.terminalQuerySelection;
 pub const terminalStartSelection = selection.terminalStartSelection;
@@ -118,9 +121,9 @@ comptime {
     std.debug.assert(host_state.pending_output_max_bytes == 1024 * 1024);
     std.debug.assert(host_state.retained_payload_max_bytes == 1024 * 1024);
     std.debug.assert(@sizeOf(input_encode.Scratch) == 64);
-    std.debug.assert(@sizeOf(FfiVisibleInfo) == 40);
+    std.debug.assert(@sizeOf(FfiVisibleInfo) == 48);
     std.debug.assert(@alignOf(FfiVisibleInfo) == 8);
-    std.debug.assert(@sizeOf(FfiVisibleInfoResult) == 48);
+    std.debug.assert(@sizeOf(FfiVisibleInfoResult) == 56);
     std.debug.assert(@alignOf(FfiVisibleInfoResult) == 8);
     std.debug.assert(@sizeOf(FfiRenderStateRgb8) == 3);
     std.debug.assert(@sizeOf(FfiRenderStateColor) == 8);

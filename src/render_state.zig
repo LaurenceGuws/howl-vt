@@ -164,12 +164,12 @@ pub const RenderState = struct {
         self.* = empty();
     }
 
-    pub fn update(self: *RenderState, allocator: std.mem.Allocator, vt: *terminal.Terminal, scrollback_offset: u64) !void {
+    pub fn update(self: *RenderState, allocator: std.mem.Allocator, vt: *terminal.Terminal) !void {
         const previous_rows = self.rows;
         const previous_cols = self.cols;
         const previous_alternate = self.is_alternate_screen;
-        const meta = vt.visibleMeta(scrollback_offset);
-        const publication = vt.surfaceSnapshot(scrollback_offset);
+        const meta = vt.visibleMeta();
+        const publication = vt.surfaceSnapshot();
         const snapshot = publication.snapshot;
         const view = snapshot.view;
 
@@ -477,7 +477,7 @@ test "render_state update copies viewport metadata cells dirty cursor colors and
 
     var state = RenderState.empty();
     defer state.deinit(std.testing.allocator);
-    try state.update(std.testing.allocator, &vt, 0);
+    try state.update(std.testing.allocator, &vt);
 
     try std.testing.expectEqual(@as(u16, 2), state.rows);
     try std.testing.expectEqual(@as(u16, 4), state.cols);
@@ -499,11 +499,11 @@ test "render_state update copies viewport metadata cells dirty cursor colors and
     try std.testing.expectEqual(RenderState.SelectionRange{ .start_col = 0, .end_col = 2 }, state.rows_storage.items[0].selection.?);
 
     try std.testing.expect(state.ack(&vt));
-    try state.update(std.testing.allocator, &vt, 0);
+    try state.update(std.testing.allocator, &vt);
     try std.testing.expectEqual(RenderState.Dirty.false, state.dirty);
 
     try std.testing.expect((try vt.feed("dd")).state_changed);
-    try state.update(std.testing.allocator, &vt, 0);
+    try state.update(std.testing.allocator, &vt);
     try std.testing.expectEqual(RenderState.Dirty.partial, state.dirty);
 
     try std.testing.expect((try vt.feed("ee")).state_changed);
@@ -511,7 +511,8 @@ test "render_state update copies viewport metadata cells dirty cursor colors and
     try std.testing.expectEqual(RenderState.Dirty.partial, state.dirty);
     try std.testing.expect(state.rows_storage.items[1].dirty);
 
-    try state.update(std.testing.allocator, &vt, 1);
+    try std.testing.expect(vt.scrollViewport(.{ .absolute = 1 }));
+    try state.update(std.testing.allocator, &vt);
     try std.testing.expectEqual(@as(u64, 1), state.scrollback_offset);
     try std.testing.expectEqual(RenderState.SelectionRange{ .start_col = 0, .end_col = 2 }, state.rows_storage.items[0].selection.?);
 }
@@ -524,7 +525,7 @@ test "render_state update preserves full surface cell facts" {
 
     var state = RenderState.empty();
     defer state.deinit(std.testing.allocator);
-    try state.update(std.testing.allocator, &vt, 0);
+    try state.update(std.testing.allocator, &vt);
 
     const cell = state.rows_storage.items[0].cells[0];
     try std.testing.expectEqual(@as(u32, 'A'), cell.codepoint);
@@ -553,7 +554,7 @@ test "render_state hyperlink hover highlights contiguous linked cells and dirty 
 
     var state = RenderState.empty();
     defer state.deinit(std.testing.allocator);
-    try state.update(std.testing.allocator, &vt, 0);
+    try state.update(std.testing.allocator, &vt);
     state.dirty = .false;
     for (state.rows_storage.items) |*row| row.dirty = false;
 
@@ -575,7 +576,7 @@ test "render_state hyperlink hover stores underline style without mutating cells
 
     var state = RenderState.empty();
     defer state.deinit(std.testing.allocator);
-    try state.update(std.testing.allocator, &vt, 0);
+    try state.update(std.testing.allocator, &vt);
     const before = state.rows_storage.items[0].cells[1];
 
     state.updateHighlightsForHyperlink(1, 0, 1, .dashed);
@@ -591,7 +592,7 @@ test "render_state out of range hyperlink hover does not dirty empty highlights"
 
     var state = RenderState.empty();
     defer state.deinit(std.testing.allocator);
-    try state.update(std.testing.allocator, &vt, 0);
+    try state.update(std.testing.allocator, &vt);
     state.dirty = .false;
     for (state.rows_storage.items) |*row| row.dirty = false;
 

@@ -37,6 +37,7 @@ pub const Terminal = struct {
     alternate_savepoint: savepoint_mod.Savepoint = .{},
     dirty_generation: u64 = 1,
     surface_publication: surface_publication.Publication = .{},
+    scrollback_offset: u32 = 0,
 
     pub const RuntimeObligation = struct {
         pending_now: bool,
@@ -50,6 +51,13 @@ pub const Terminal = struct {
 
     pub const InitOptions = struct {
         default_cursor_style: ScreenNs.CursorStyle = ScreenNs.default_cursor_style,
+    };
+
+    pub const ScrollViewport = union(enum) {
+        top,
+        bottom,
+        delta: i64,
+        absolute: u64,
     };
 
     fn initWithScreens(allocator: std.mem.Allocator, stream_state: stream_terminal.TerminalStreamState, state: ScreenNs, alt_state: ScreenNs) Terminal {
@@ -118,9 +126,12 @@ pub const Terminal = struct {
     }
 
     pub fn feed(self: *Terminal, bytes: []const u8) FeedError!FeedSummary {
+        const history_before = self.visibleHistoryCount();
+        const was_scrolled = self.scrollback_offset > 0;
         var stream = self.vtStream();
         const summary = try stream.nextSliceSummary(bytes);
         self.postApply(summary.state_changed);
+        self.repairScrollbackAfterHistoryChange(history_before, was_scrolled);
         return summary;
     }
 
@@ -136,6 +147,7 @@ pub const Terminal = struct {
         self.screen_state.activeSelection().clearIfInvalidatedByGrid(
             self.screen_state.activeConst(),
         );
+        self.clampScrollbackOffset();
         self.dirty_generation +%= 1;
     }
 
@@ -209,6 +221,7 @@ pub const Terminal = struct {
             if (self.screen_state.alt_active) return;
             if (save_restore_cursor) self.saveCursor();
             self.screen_state.alt_active = true;
+            self.scrollback_offset = 0;
             self.screen_state.activeSelection().clear();
             if (clear_alt) self.screen_state.alternate.clearVisibleCells();
             self.screen_state.alternate.resetCursorForAltEntry();
@@ -218,6 +231,7 @@ pub const Terminal = struct {
 
         if (!self.screen_state.alt_active) return;
         self.screen_state.alt_active = false;
+        self.clampScrollbackOffset();
         self.screen_state.activeSelection().clear();
         if (save_restore_cursor) self.restoreCursor();
         self.screen_state.primary.markAllRowsDirty();
@@ -231,17 +245,67 @@ pub const Terminal = struct {
         return true;
     }
 
-    pub fn surfaceSnapshot(self: *Terminal, scrollback_offset: u64) SurfacePublication {
-        const snapshot = screen_set.surfaceSnapshot(&self.screen_state, scrollback_offset);
+    pub fn scrollViewport(self: *Terminal, behavior: ScrollViewport) bool {
+        const history_count = self.visibleHistoryCount();
+        const previous = self.scrollback_offset;
+        self.scrollback_offset = switch (behavior) {
+            .top => history_count,
+            .bottom => 0,
+            .delta => |delta| offset: {
+                if (delta < 0) {
+                    const decrease: u64 = if (delta == std.math.minInt(i64))
+                        @as(u64, @intCast(std.math.maxInt(i64))) + 1
+                    else
+                        @intCast(-delta);
+                    break :offset if (decrease >= previous) 0 else previous - @as(u32, @intCast(decrease));
+                }
+                const increase: u64 = @intCast(delta);
+                const target = @as(u64, previous) + increase;
+                break :offset @intCast(@min(target, history_count));
+            },
+            .absolute => |offset| @intCast(@min(offset, history_count)),
+        };
+        std.debug.assert(self.scrollback_offset <= history_count);
+        return self.scrollback_offset != previous;
+    }
+
+    pub fn visibleHistoryCount(self: *const Terminal) u32 {
+        if (self.screen_state.alt_active) return 0;
+        return self.screen_state.activeConst().historyCount();
+    }
+
+    fn clampScrollbackOffset(self: *Terminal) void {
+        const history_count = self.visibleHistoryCount();
+        self.scrollback_offset = @min(self.scrollback_offset, history_count);
+        std.debug.assert(self.scrollback_offset <= history_count);
+    }
+
+    fn repairScrollbackAfterHistoryChange(self: *Terminal, history_before: u32, was_scrolled: bool) void {
+        const history_after = self.visibleHistoryCount();
+        if (history_after > history_before) {
+            if (was_scrolled) {
+                const delta = history_after - history_before;
+                const target = @as(u64, self.scrollback_offset) + delta;
+                self.scrollback_offset = @intCast(@min(target, history_after));
+                std.debug.assert(self.scrollback_offset <= history_after);
+            }
+            return;
+        }
+        self.scrollback_offset = @min(self.scrollback_offset, history_after);
+        std.debug.assert(self.scrollback_offset <= history_after);
+    }
+
+    pub fn surfaceSnapshot(self: *Terminal) SurfacePublication {
+        const snapshot = screen_set.surfaceSnapshot(&self.screen_state, self.scrollback_offset);
         return .{
-            .snapshot_seq = self.surface_publication.publish(snapshot.view, scrollback_offset, self.dirty_generation),
+            .snapshot_seq = self.surface_publication.publish(snapshot.view, self.scrollback_offset, self.dirty_generation),
             .dirty_generation = self.dirty_generation,
             .snapshot = snapshot,
         };
     }
 
-    pub fn visibleMeta(self: *Terminal, scrollback_offset: u64) VisibleMeta {
-        const publication = self.surfaceSnapshot(scrollback_offset);
+    pub fn visibleMeta(self: *Terminal) VisibleMeta {
+        const publication = self.surfaceSnapshot();
         const view = publication.snapshot.view;
         return .{
             .rows = view.rows,
@@ -268,17 +332,17 @@ pub const Terminal = struct {
         };
     }
 
-    pub fn visibleCellHyperlinkUri(self: *Terminal, scrollback_offset: u64, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
+    pub fn visibleCellHyperlinkUri(self: *Terminal, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
         if (snapshot_seq == 0) return error.InvalidArgument;
-        const publication = self.surfaceSnapshot(scrollback_offset);
+        const publication = self.surfaceSnapshot();
         if (publication.snapshot_seq != snapshot_seq) return error.InvalidArgument;
         const view = publication.snapshot.view;
         if (row >= view.rows or col >= view.cols) return error.InvalidArgument;
         return host_state.hyperlinkUriForId(self, view.cellInfoAt(row, col).attrs.link_id);
     }
 
-    pub fn visibleCellHyperlinkUriCurrent(self: *Terminal, scrollback_offset: u64, row: u16, col: u16) ?[]const u8 {
-        const publication = self.surfaceSnapshot(scrollback_offset);
+    pub fn visibleCellHyperlinkUriCurrent(self: *Terminal, row: u16, col: u16) ?[]const u8 {
+        const publication = self.surfaceSnapshot();
         const view = publication.snapshot.view;
         if (row >= view.rows or col >= view.cols) return null;
         return host_state.hyperlinkUriForId(self, view.cellInfoAt(row, col).attrs.link_id);
@@ -370,3 +434,31 @@ pub const Terminal = struct {
         };
     }
 };
+
+test "terminal scroll viewport owns bottom intent" {
+    var vt = try Terminal.initWithCellsAndHistory(std.testing.allocator, 3, 5, 8);
+    defer vt.deinit();
+
+    _ = try vt.feed("1AAAA\r\n2BBBB\r\n3CCCC\r\n4DDDD");
+    try std.testing.expect(vt.visibleHistoryCount() > 0);
+    try std.testing.expect(vt.scrollViewport(.top));
+    try std.testing.expect(vt.scrollback_offset > 0);
+    try std.testing.expect(vt.scrollViewport(.bottom));
+    try std.testing.expectEqual(@as(u32, 0), vt.scrollback_offset);
+    try std.testing.expect(!vt.scrollViewport(.bottom));
+}
+
+test "terminal feed preserves scrolled viewport as history grows" {
+    var vt = try Terminal.initWithCellsAndHistory(std.testing.allocator, 3, 5, 8);
+    defer vt.deinit();
+
+    _ = try vt.feed("1AAAA\r\n2BBBB\r\n3CCCC\r\n4DDDD");
+    try std.testing.expect(vt.scrollViewport(.{ .absolute = 1 }));
+    const before = vt.surfaceSnapshot().snapshot.view.cellAt(0, 0);
+    const offset_before = vt.scrollback_offset;
+
+    _ = try vt.feed("\r\n5EEEE");
+
+    try std.testing.expect(vt.scrollback_offset > offset_before);
+    try std.testing.expectEqual(before, vt.surfaceSnapshot().snapshot.view.cellAt(0, 0));
+}

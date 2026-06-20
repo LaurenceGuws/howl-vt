@@ -134,7 +134,7 @@ test "vt ffi alternate selection does not read primary history" {
     try std.testing.expectEqualStrings("zz", text[0..@intCast(copied.written)]);
 
     const owned = handle.vtFromHandle(vt_handle).?;
-    const publication = owned.surfaceSnapshot(0);
+    const publication = owned.surfaceSnapshot();
     try std.testing.expectEqual(@as(u64, 0), publication.snapshot.view.history_count);
     const selected = owned.selectionState().?;
     try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(publication.snapshot.view, selected, 0));

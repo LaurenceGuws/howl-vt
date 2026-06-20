@@ -292,10 +292,10 @@ pub fn renderStateDeinit(state: FfiRenderStateHandle) callconv(.c) void {
     std.heap.c_allocator.destroy(owned);
 }
 
-pub fn renderStateUpdate(state: FfiRenderStateHandle, vt_handle: handle.VtHandle, scrollback_offset: u64) callconv(.c) i32 {
+pub fn renderStateUpdate(state: FfiRenderStateHandle, vt_handle: handle.VtHandle) callconv(.c) i32 {
     const owned = renderStateFromHandle(state) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
     const vt = handle.vtFromHandle(vt_handle) orelse return @intFromEnum(status.HowlVtCallStatus.missing_handle);
-    owned.state.update(std.heap.c_allocator, vt, scrollback_offset) catch return @intFromEnum(status.HowlVtCallStatus.failed);
+    owned.state.update(std.heap.c_allocator, vt) catch return @intFromEnum(status.HowlVtCallStatus.failed);
     return @intFromEnum(status.HowlVtCallStatus.ok);
 }
 
@@ -643,7 +643,7 @@ test "render_state ffi update exposes row and cell iteration" {
     var state: FfiRenderStateHandle = null;
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateInit(&state));
     defer renderStateDeinit(state);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle));
 
     var rows: u16 = 0;
     var cols: u16 = 0;
@@ -687,7 +687,7 @@ test "render_state ffi cells expose full copied surface facts" {
     var state: FfiRenderStateHandle = null;
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateInit(&state));
     defer renderStateDeinit(state);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle));
 
     var iterator: FfiRowIteratorHandle = null;
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateGet(state, @intFromEnum(FfiData.row_iterator), @ptrCast(&iterator)));
@@ -733,7 +733,7 @@ test "render_state ffi row selection and selected cell reads" {
     var state: FfiRenderStateHandle = null;
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateInit(&state));
     defer renderStateDeinit(state);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle));
 
     var iterator: FfiRowIteratorHandle = null;
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateGet(state, @intFromEnum(FfiData.row_iterator), @ptrCast(&iterator)));
@@ -774,7 +774,7 @@ test "render_state ffi highlight reads and highlighted cells" {
     var state: FfiRenderStateHandle = null;
     try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateInit(&state));
     defer renderStateDeinit(state);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle, 0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(status.HowlVtCallStatus.ok)), renderStateUpdate(state, vt_handle));
     const owned = renderStateFromHandle(state).?;
     owned.state.dirty = .false;
     for (owned.state.rows_storage.items) |*row| row.dirty = false;

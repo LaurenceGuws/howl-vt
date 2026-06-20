@@ -271,6 +271,7 @@ typedef struct {
     uint32_t rows;
     uint32_t cols;
     uint64_t history_count;
+    uint64_t scrollback_offset;
     uint8_t is_alternate_screen;
     uint8_t reserved0;
     uint16_t reserved1;
@@ -283,6 +284,20 @@ typedef struct {
     uint32_t reserved0;
     HowlVtVisibleInfo info;
 } HowlVtVisibleInfoResult;
+
+typedef enum {
+    HOWL_VT_SCROLL_VIEWPORT_TOP = 0,
+    HOWL_VT_SCROLL_VIEWPORT_BOTTOM = 1,
+    HOWL_VT_SCROLL_VIEWPORT_DELTA = 2,
+    HOWL_VT_SCROLL_VIEWPORT_ABSOLUTE = 3,
+} HowlVtScrollViewportKind;
+
+typedef struct {
+    int32_t status;
+    uint8_t changed;
+    uint8_t reserved0;
+    uint16_t reserved1;
+} HowlVtScrollViewportResult;
 
 typedef struct {
     int32_t status;
@@ -315,8 +330,7 @@ HowlVtCallStatus howl_vt_render_state_init(HowlVtRenderStateHandle *out_state);
 void howl_vt_render_state_deinit(HowlVtRenderStateHandle state);
 HowlVtCallStatus howl_vt_render_state_update(
     HowlVtRenderStateHandle state,
-    HowlVtHandle terminal,
-    uint64_t scrollback_offset
+    HowlVtHandle terminal
 );
 HowlVtCallStatus howl_vt_render_state_ack(HowlVtRenderStateHandle state, HowlVtHandle terminal);
 HowlVtCallStatus howl_vt_render_state_update_highlights_for_hyperlink(
@@ -425,14 +439,15 @@ HowlVtRuntimeProgressResult howl_vt_terminal_progress_runtime(
     HowlVtHandle handle,
     uint64_t now_ns
 );
-HowlVtVisibleInfoResult howl_vt_terminal_query_visible_info(
+HowlVtVisibleInfoResult howl_vt_terminal_query_visible_info(HowlVtHandle handle);
+HowlVtScrollViewportResult howl_vt_terminal_scroll_viewport(
     HowlVtHandle handle,
-    uint64_t scrollback_offset
+    uint8_t kind,
+    int64_t value
 );
 HowlVtSelectionResult howl_vt_terminal_query_selection(HowlVtHandle handle);
 HowlVtBytesResult howl_vt_terminal_copy_visible_hyperlink(
     HowlVtHandle handle,
-    uint64_t scrollback_offset,
     uint16_t row,
     uint16_t col,
     uint8_t *ptr,
