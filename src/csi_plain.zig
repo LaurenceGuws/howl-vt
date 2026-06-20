@@ -1,5 +1,6 @@
 const csi_params = @import("csi_params.zig");
 const events = @import("semantic_event.zig");
+const erase = @import("screen/erase.zig");
 const params_mod = @import("csi_params.zig");
 
 const SemanticEvent = events.SemanticEvent;
@@ -46,7 +47,7 @@ pub fn process(final: u8, params: []const i32, separators: CsiSeparatorList, int
             .top = params_mod.paramAtOrDefault1(params, 0) - 1,
             .bottom = if (params.len >= 2 and params[1] > 0) params_mod.paramAtOrDefault1(params, 1) - 1 else null,
         } },
-        'J' => return SemanticEvent{ .erase_display = params_mod.eraseMode(params_mod.paramAtOrDefault0(params, 0)) },
+        'J' => return eraseDisplayEvent(params_mod.eraseMode(params_mod.paramAtOrDefault0(params, 0)), false),
         'K' => return SemanticEvent{ .erase_line = params_mod.eraseMode(params_mod.paramAtOrDefault0(params, 0)) },
         'X' => return SemanticEvent{ .erase_chars = params_mod.paramAtOrDefault1(params, 0) },
         'x' => return SemanticEvent{ .parameters_report = params_mod.paramAtOrDefault0(params, 0) },
@@ -64,4 +65,13 @@ pub fn process(final: u8, params: []const i32, separators: CsiSeparatorList, int
         },
         else => return null,
     }
+}
+
+fn eraseDisplayEvent(mode: erase.EraseMode, protected: bool) SemanticEvent {
+    return switch (mode) {
+        .cursor_to_end => SemanticEvent{ .erase_display_below = protected },
+        .start_to_cursor => SemanticEvent{ .erase_display_above = protected },
+        .all => SemanticEvent{ .erase_display_complete = protected },
+        .scrollback => SemanticEvent{ .erase_display_scrollback = protected },
+    };
 }

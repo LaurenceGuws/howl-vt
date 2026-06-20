@@ -345,8 +345,8 @@ pub const Screen = struct {
         right: u16,
     };
 
-    pub fn eraseDisplay(self: *Screen, mode: EraseMode) void {
-        erase.eraseDisplay(self, mode);
+    pub fn eraseDisplay(self: *Screen, mode: EraseMode, protected: bool) void {
+        erase.eraseDisplay(self, mode, protected);
     }
 
     pub fn setCurrentLinkId(self: *Screen, link_id: u32) void {
@@ -414,10 +414,6 @@ pub const Screen = struct {
 
     pub fn changeRectAttrs(self: *Screen, area: rect.RectArea, attrs: []const u16, reverse: bool) void {
         rect.changeAttrs(self, area, attrs, reverse);
-    }
-
-    pub fn selectiveEraseDisplay(self: *Screen, mode: EraseMode) void {
-        erase.selectiveEraseDisplay(self, mode);
     }
 
     pub fn selectiveEraseLine(self: *Screen, mode: EraseMode) void {

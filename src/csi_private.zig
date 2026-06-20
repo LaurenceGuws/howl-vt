@@ -1,4 +1,5 @@
 const events = @import("semantic_event.zig");
+const erase = @import("screen/erase.zig");
 const params_mod = @import("csi_params.zig");
 
 const SemanticEvent = events.SemanticEvent;
@@ -17,12 +18,21 @@ fn directQuery(final: u8, params: []const i32) ?SemanticEvent {
     switch (final) {
         'u' => return SemanticEvent.kitty_keyboard_query,
         'g' => return SemanticEvent{ .key_format_query = params_mod.keyFormatParamAtOrDefault0(params, 0) },
-        'J' => return SemanticEvent{ .selective_erase_display = params_mod.eraseMode(params_mod.paramAtOrDefault0(params, 0)) },
+        'J' => return eraseDisplayEvent(params_mod.eraseMode(params_mod.paramAtOrDefault0(params, 0)), true),
         'K' => return SemanticEvent{ .selective_erase_line = params_mod.eraseMode(params_mod.paramAtOrDefault0(params, 0)) },
         'W' => if (params_mod.paramAtOrDefault0(params, 0) == 5) return SemanticEvent.reset_default_tab_stops,
         else => {},
     }
     return null;
+}
+
+fn eraseDisplayEvent(mode: erase.EraseMode, protected: bool) SemanticEvent {
+    return switch (mode) {
+        .cursor_to_end => SemanticEvent{ .erase_display_below = protected },
+        .start_to_cursor => SemanticEvent{ .erase_display_above = protected },
+        .all => SemanticEvent{ .erase_display_complete = protected },
+        .scrollback => SemanticEvent{ .erase_display_scrollback = protected },
+    };
 }
 
 fn modeReport(final: u8, params: []const i32, intermediates: []const u8) ?SemanticEvent {

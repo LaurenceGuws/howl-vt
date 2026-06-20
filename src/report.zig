@@ -31,7 +31,7 @@ pub const ReportAction = union(enum) {
     xtchecksum: u16,
     rect_checksum_request: struct { request_id: u16, page: u16, area: rect.RectArea },
     selected_graphic_rendition_report: rect.RectArea,
-    displayed_extent_report,
+    screen_extent_report,
     parameters_report: u16,
     xtreportcolors,
 };
@@ -109,7 +109,7 @@ pub fn apply(vt: anytype, event: ReportAction) host_state.ApplyError!void {
             computeRectChecksum(active, vt.xtchecksum_flags, req.page, req.area),
         ),
         .selected_graphic_rendition_report => |area| try appendSelectedGraphicRenditionReport(allocator, pending_output, encode_buf, active, area),
-        .displayed_extent_report => try appendDisplayedExtentReport(allocator, pending_output, encode_buf, render_view),
+        .screen_extent_report => try appendScreenExtentReport(allocator, pending_output, encode_buf, render_view),
         .parameters_report => |kind| try appendTerminalParametersReport(allocator, pending_output, encode_buf, kind),
         .xtreportcolors => try appendColorStackReport(allocator, pending_output, encode_buf, vt.kitty.global.color_stack.len),
     }
@@ -233,7 +233,7 @@ pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(
     try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
-pub fn appendDisplayedExtentReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
+pub fn appendScreenExtentReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[{d};{d};1;1;1\"w", .{ render_view.rows, render_view.cols });
     try host_state.appendOutput(output, allocator, text);
 }

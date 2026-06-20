@@ -32,7 +32,7 @@ fn processQuote(final: u8, params: []const i32) ?SemanticEvent {
             else => null,
         };
     }
-    if (final == 'v') return SemanticEvent.displayed_extent_report;
+    if (final == 'v') return SemanticEvent.screen_extent_report;
     return null;
 }
 

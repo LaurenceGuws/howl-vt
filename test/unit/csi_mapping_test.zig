@@ -146,11 +146,11 @@ test "csi mapping: positioning, tab, erase, and reset semantics" {
     try std.testing.expect(process(makeStyleChange('g', 0, 0, 0)).? == .tab_clear_current);
     try std.testing.expect(process(makeStyleChange('g', 3, 0, 1)).? == .tab_clear_all);
     try std.testing.expect(process(makePrivateStyleChange('W', &.{5})).? == .reset_default_tab_stops);
-    try std.testing.expectEqual(EraseMode.cursor_to_end, process(makeStyleChange('J', 0, 0, 0)).?.erase_display);
-    try std.testing.expectEqual(EraseMode.start_to_cursor, process(makeStyleChange('J', 1, 0, 1)).?.erase_display);
-    try std.testing.expectEqual(EraseMode.all, process(makeStyleChange('J', 2, 0, 1)).?.erase_display);
-    try std.testing.expectEqual(EraseMode.scrollback, process(makeStyleChange('J', 3, 0, 1)).?.erase_display);
-    try std.testing.expectEqual(EraseMode.cursor_to_end, process(makeStyleChange('J', 5, 0, 1)).?.erase_display);
+    try std.testing.expect(!process(makeStyleChange('J', 0, 0, 0)).?.erase_display_below);
+    try std.testing.expect(!process(makeStyleChange('J', 1, 0, 1)).?.erase_display_above);
+    try std.testing.expect(!process(makeStyleChange('J', 2, 0, 1)).?.erase_display_complete);
+    try std.testing.expect(!process(makeStyleChange('J', 3, 0, 1)).?.erase_display_scrollback);
+    try std.testing.expect(!process(makeStyleChange('J', 5, 0, 1)).?.erase_display_below);
     try std.testing.expectEqual(EraseMode.cursor_to_end, process(makeStyleChange('K', 0, 0, 0)).?.erase_line);
     try std.testing.expectEqual(EraseMode.start_to_cursor, process(makeStyleChange('K', 1, 0, 1)).?.erase_line);
     try std.testing.expectEqual(EraseMode.all, process(makeStyleChange('K', 2, 0, 1)).?.erase_line);
@@ -165,9 +165,9 @@ test "csi mapping: positioning, tab, erase, and reset semantics" {
 test "csi mapping: protection, rectangular ops, and margins" {
     try std.testing.expect(process(makeStyleChangeWithParamAndIntermediate('q', 1, '"')).?.character_protection);
     try std.testing.expect(!process(makeStyleChangeWithParamAndIntermediate('q', 2, '"')).?.character_protection);
-    try std.testing.expectEqual(EraseMode.all, process(makePrivateStyleChange('J', &.{2})).?.selective_erase_display);
+    try std.testing.expect(process(makePrivateStyleChange('J', &.{2})).?.erase_display_complete);
     try std.testing.expectEqual(EraseMode.start_to_cursor, process(makePrivateStyleChange('K', &.{1})).?.selective_erase_line);
-    try std.testing.expectEqual(EraseMode.cursor_to_end, process(makePrivateStyleChange('J', &.{5})).?.selective_erase_display);
+    try std.testing.expect(process(makePrivateStyleChange('J', &.{5})).?.erase_display_below);
     try std.testing.expectEqual(EraseMode.cursor_to_end, process(makePrivateStyleChange('K', &.{5})).?.selective_erase_line);
 
     var params = [_]i32{0} ** csi_max_params;
@@ -336,11 +336,11 @@ test "csi mapping: mode query, save restore, and erase families" {
     try std.testing.expectEqual(@as(u8, 3), restore.dec_mode_restore.param_count);
     try std.testing.expectEqual(@as(u16, 1004), restore.dec_mode_restore.params[2]);
 
-    try std.testing.expectEqual(EraseMode.cursor_to_end, process(makeStyleChange('J', 0, 0, 0)).?.erase_display);
-    try std.testing.expectEqual(EraseMode.start_to_cursor, process(makeStyleChange('J', 1, 0, 1)).?.erase_display);
-    try std.testing.expectEqual(EraseMode.all, process(makeStyleChange('J', 2, 0, 1)).?.erase_display);
-    try std.testing.expectEqual(EraseMode.scrollback, process(makeStyleChange('J', 3, 0, 1)).?.erase_display);
-    try std.testing.expectEqual(EraseMode.cursor_to_end, process(makeStyleChange('J', 5, 0, 1)).?.erase_display);
+    try std.testing.expect(!process(makeStyleChange('J', 0, 0, 0)).?.erase_display_below);
+    try std.testing.expect(!process(makeStyleChange('J', 1, 0, 1)).?.erase_display_above);
+    try std.testing.expect(!process(makeStyleChange('J', 2, 0, 1)).?.erase_display_complete);
+    try std.testing.expect(!process(makeStyleChange('J', 3, 0, 1)).?.erase_display_scrollback);
+    try std.testing.expect(!process(makeStyleChange('J', 5, 0, 1)).?.erase_display_below);
     try std.testing.expectEqual(EraseMode.cursor_to_end, process(makeStyleChange('K', 0, 0, 0)).?.erase_line);
     try std.testing.expectEqual(EraseMode.start_to_cursor, process(makeStyleChange('K', 1, 0, 1)).?.erase_line);
     try std.testing.expectEqual(EraseMode.all, process(makeStyleChange('K', 2, 0, 1)).?.erase_line);

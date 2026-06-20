@@ -7,16 +7,16 @@ pub const EraseMode = enum(u2) {
     scrollback = 3,
 };
 
-pub fn eraseDisplay(self: anytype, mode: EraseMode) void {
+pub fn eraseDisplay(self: anytype, mode: EraseMode, protected: bool) void {
     const c = self.cells orelse return;
     if (self.rows == 0 or self.cols == 0) return;
     switch (mode) {
         .cursor_to_end => {
             self.markDirtyRows(self.cursor.row, self.rows -| 1);
-            self.clearRowRange(self.cursor.row, self.cursor.col, self.cols);
+            clearDisplayRowRange(self, protected, self.cursor.row, self.cursor.col, self.cols);
             var r = self.cursor.row + 1;
             while (r < self.rows) : (r += 1) {
-                self.clearRowRange(r, 0, self.cols);
+                clearDisplayRowRange(self, protected, r, 0, self.cols);
                 self.setRowWrapped(r, false);
             }
         },
@@ -24,15 +24,20 @@ pub fn eraseDisplay(self: anytype, mode: EraseMode) void {
             self.markDirtyRows(0, self.cursor.row);
             var r: u16 = 0;
             while (r < self.cursor.row) : (r += 1) {
-                self.clearRowRange(r, 0, self.cols);
+                clearDisplayRowRange(self, protected, r, 0, self.cols);
                 self.setRowWrapped(r, false);
             }
-            self.clearRowRange(self.cursor.row, 0, self.cursor.col + 1);
+            clearDisplayRowRange(self, protected, self.cursor.row, 0, self.cursor.col + 1);
         },
         .all => {
             self.markAllRowsDirty();
-            const cell = self.eraseCell();
-            @memset(c, cell);
+            if (protected) {
+                var row: u16 = 0;
+                while (row < self.rows) : (row += 1) clearDisplayRowRange(self, true, row, 0, self.cols);
+            } else {
+                const cell = self.eraseCell();
+                @memset(c, cell);
+            }
             if (self.row_wraps) |buf| @memset(buf, false);
         },
         .scrollback => self.clearScrollback(),
@@ -67,36 +72,6 @@ pub fn eraseChars(self: anytype, count: u16) void {
     self.clearRowRange(self.cursor.row, self.cursor.col, self.cursor.col + amount);
 }
 
-pub fn selectiveEraseDisplay(self: anytype, mode: EraseMode) void {
-    if (self.rows == 0 or self.cols == 0) return;
-    switch (mode) {
-        .cursor_to_end => {
-            self.selectiveClearRowRange(self.cursor.row, self.cursor.col, self.cols);
-            var row = self.cursor.row + 1;
-            while (row < self.rows) : (row += 1) {
-                self.selectiveClearRowRange(row, 0, self.cols);
-                self.setRowWrapped(row, false);
-            }
-        },
-        .start_to_cursor => {
-            var row: u16 = 0;
-            while (row < self.cursor.row) : (row += 1) {
-                self.selectiveClearRowRange(row, 0, self.cols);
-                self.setRowWrapped(row, false);
-            }
-            self.selectiveClearRowRange(self.cursor.row, 0, self.cursor.col + 1);
-        },
-        .all => {
-            var row: u16 = 0;
-            while (row < self.rows) : (row += 1) {
-                self.selectiveClearRowRange(row, 0, self.cols);
-                self.setRowWrapped(row, false);
-            }
-        },
-        .scrollback => {},
-    }
-}
-
 pub fn selectiveEraseLine(self: anytype, mode: EraseMode) void {
     if (self.rows == 0 or self.cols == 0) return;
     switch (mode) {
@@ -107,6 +82,14 @@ pub fn selectiveEraseLine(self: anytype, mode: EraseMode) void {
             self.setRowWrapped(self.cursor.row, false);
         },
         .scrollback => {},
+    }
+}
+
+fn clearDisplayRowRange(self: anytype, protected: bool, row: u16, start_col: u16, end_col_exclusive: u16) void {
+    if (protected) {
+        self.selectiveClearRowRange(row, start_col, end_col_exclusive);
+    } else {
+        self.clearRowRange(row, start_col, end_col_exclusive);
     }
 }
 

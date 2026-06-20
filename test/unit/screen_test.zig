@@ -75,7 +75,7 @@ test "screen: erase_display mode 0 clears from cursor to end of screen" {
     s.cursor.setPositionByClient(2, 0);
     apply(&s, SemanticEvent{ .write_text = "CCCCC" });
     s.cursor.setPositionByClient(1, 2);
-    apply(&s, SemanticEvent{ .erase_display = .cursor_to_end });
+    apply(&s, SemanticEvent{ .erase_display_below = false });
     try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 1));
@@ -96,7 +96,7 @@ test "screen: erase_display mode 1 clears from start to cursor" {
     s.cursor.setPositionByClient(2, 0);
     apply(&s, SemanticEvent{ .write_text = "CCCCC" });
     s.cursor.setPositionByClient(1, 2);
-    apply(&s, SemanticEvent{ .erase_display = .start_to_cursor });
+    apply(&s, SemanticEvent{ .erase_display_above = false });
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(1, 2));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(1, 3));
@@ -112,7 +112,7 @@ test "screen: erase_display mode 2 clears entire screen" {
     s.cursor.setPositionByClient(1, 2);
     apply(&s, SemanticEvent{ .write_text = "AB" });
     s.cursor.setPositionByClient(1, 2);
-    apply(&s, SemanticEvent{ .erase_display = .all });
+    apply(&s, SemanticEvent{ .erase_display_complete = false });
     for (0..3) |r| {
         for (0..5) |c_| {
             try std.testing.expectEqual(@as(u21, 0), s.cellAt(@intCast(r), @intCast(c_)));
@@ -126,7 +126,7 @@ test "screen: erase ops no-op without cell buffer" {
     var s = Grid.init(4, 10);
     s.cursor.setColByClient(3);
     apply(&s, SemanticEvent{ .erase_line = EraseMode.all });
-    apply(&s, SemanticEvent{ .erase_display = EraseMode.all });
+    apply(&s, SemanticEvent{ .erase_display_complete = false });
     try std.testing.expectEqual(@as(u16, 3), s.cursor.col);
 }
 
@@ -357,7 +357,7 @@ test "screen: DECSCA protects cells from selective erase" {
     apply(&s, SemanticEvent{ .write_text = "CDEF" });
 
     s.cursor.setPositionByClient(1, 2);
-    apply(&s, SemanticEvent{ .selective_erase_display = .all });
+    apply(&s, SemanticEvent{ .erase_display_complete = true });
 
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(0, 0));
     try std.testing.expectEqual(@as(u21, 'B'), s.cellAt(0, 1));
