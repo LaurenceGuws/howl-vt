@@ -4,9 +4,11 @@ const kitty_protocol = @import("protocol.zig");
 const kitty_state = @import("state.zig");
 const input_encode = @import("../input/encode.zig");
 const host_state = @import("../host_state.zig");
+const terminal_mod = @import("../terminal.zig");
 
 const KittyNotificationCommand = kitty_protocol.KittyNotificationCommand;
 const KittyShellMark = kitty_protocol.KittyShellMark;
+const Terminal = terminal_mod.Terminal;
 
 pub const KittyAction = union(enum) {
     kitty_keyboard_set: struct { flags: u32, mode: u8 },
@@ -22,7 +24,7 @@ pub const KittyAction = union(enum) {
     kitty_text_size: []const u8,
 };
 
-pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!bool {
+pub fn apply(vt: *Terminal, action: KittyAction) host_state.ApplyError!bool {
     var scratch: input_encode.Scratch = .{};
     const allocator = vt.allocator;
     const active_screen = vt.kitty.activeScreen(vt.screen_state.alt_active);

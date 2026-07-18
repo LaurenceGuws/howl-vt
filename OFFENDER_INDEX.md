@@ -174,7 +174,7 @@ fragmentation and indirect ownership are defects.
 - Status: open
 - Path/symbol: `src/screen_set.zig` (2 occurrences);
   `src/report.zig:formatOutput` (1 intentional formatting generic).
-  Repository total: 9 occurrences across 8 files;
+  Repository total: 8 occurrences across 7 files;
   `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
@@ -253,7 +253,10 @@ fragmentation and indirect ownership are defects.
   four-value argument tuples with decimal and hexadecimal formats. Host
   consequence application now accepts only concrete `*Terminal`;
   `host_apply.zig` has zero structural generics while `host_state.State`
-  retains allocator-bound consequence ownership and rollback.
+  retains allocator-bound consequence ownership and rollback. Kitty
+  application now accepts only concrete `*Terminal`; Kitty modules retain
+  their bounded state/value mechanics and `kitty/apply.zig` has zero
+  structural generics.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
