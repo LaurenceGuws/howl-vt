@@ -4,6 +4,8 @@ const kitty_apply = @import("kitty/apply.zig");
 const mode_apply = @import("mode.zig");
 const report_apply = @import("report.zig");
 const parsed_events = @import("parser/events.zig");
+const parser_mod = @import("parser.zig");
+const terminal_mod = @import("terminal.zig");
 const c0 = @import("c0.zig");
 const csi = @import("csi.zig");
 const dcs = @import("dcs.zig");
@@ -19,6 +21,7 @@ pub const SemanticEvent = events.SemanticEvent;
 const ModeAction = mode_apply.ModeAction;
 const KittyAction = kitty_apply.KittyAction;
 const HostAction = host_apply.HostAction;
+const Terminal = terminal_mod.Terminal;
 
 pub const EventEffect = struct {
     changed: bool,
@@ -45,7 +48,7 @@ pub fn process(event: Event) ?SemanticEvent {
     }
 }
 
-fn processOscEvent(osc_event: anytype) ?SemanticEvent {
+fn processOscEvent(osc_event: parser_mod.OscAction) ?SemanticEvent {
     const semantic = osc.process(osc_event) orelse return null;
     if (semantic == .color_control) {
         if (osc_color.cursorColorEvent(semantic.color_control)) |cursor_event| return cursor_event;
@@ -53,7 +56,7 @@ fn processOscEvent(osc_event: anytype) ?SemanticEvent {
     return semantic;
 }
 
-pub fn apply(vt: anytype, event: Event) host_state.ApplyError!EventEffect {
+pub fn apply(vt: *Terminal, event: Event) host_state.ApplyError!EventEffect {
     switch (event) {
         .invoke_charset => |slot| {
             vt.gl_index = slot;
@@ -89,7 +92,7 @@ fn legacyCursorColorControl(event: Event) ?HostAction {
     return .{ .color_control = semantic.color_control };
 }
 
-fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!bool {
+fn applySemantic(vt: *Terminal, event: SemanticEvent) host_state.ApplyError!bool {
     if (event == .reset_screen) {
         vt.resetScreen();
         return true;
