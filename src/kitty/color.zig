@@ -1,16 +1,20 @@
+//! Owns Kitty color-stack mutation and color-control replies.
+
 const std = @import("std");
 const osc_color = @import("../osc_color.zig");
 const host_state = @import("../host_state.zig");
 
 const OscColor = osc_color;
 
-pub const State = OscColor.TerminalColorState;
+const State = OscColor.TerminalColorState;
 
+/// Stores at most sixteen complete terminal color states for Kitty push and pop.
 pub const Stack = struct {
     stack: [16]State = undefined,
     len: u8 = 0,
 };
 
+/// Pushes a color state, dropping the oldest entry when the stack is full.
 pub fn pushState(stack: *Stack, colors: *const State, depth: *u16) void {
     if (stack.len == stack.stack.len) {
         std.mem.copyForwards(State, stack.stack[0 .. stack.stack.len - 1], stack.stack[1..stack.stack.len]);
@@ -21,6 +25,7 @@ pub fn pushState(stack: *Stack, colors: *const State, depth: *u16) void {
     depth.* = stack.len;
 }
 
+/// Restores the newest color state when present and decrements the exposed depth.
 pub fn popState(stack: *Stack, colors: *State, depth: *u16) void {
     if (stack.len == 0) {
         depth.* = 0;
@@ -31,6 +36,7 @@ pub fn popState(stack: *Stack, colors: *State, depth: *u16) void {
     depth.* = stack.len;
 }
 
+/// Applies one Kitty color control or appends its bounded query reply.
 pub fn handleKittyControl(allocator: std.mem.Allocator, colors: *State, output: *std.ArrayList(u8), payload: []const u8) host_state.ApplyError!void {
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |raw_part| {

@@ -45,7 +45,6 @@ pub fn parse(allocator: std.mem.Allocator, text: []const u8) !Record {
 
 pub fn replay(terminal: *Terminal, record: *const Record) !void {
     var stream = try StreamHarness.init(terminal);
-    defer stream.deinit();
     for (record.chunks.items) |chunk| try stream.nextSlice(chunk);
 }
 
@@ -90,7 +89,6 @@ test "pty feed replay matches whole feed" {
     var whole = try Terminal.init(gpa, 4, 16);
     defer whole.deinit();
     var whole_stream = try StreamHarness.init(&whole);
-    defer whole_stream.deinit();
     try whole_stream.nextSlice(fixture);
     var whole_snap = try captureSnapshot(&whole);
     defer whole_snap.deinit();

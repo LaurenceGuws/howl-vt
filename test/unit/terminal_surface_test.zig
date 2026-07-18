@@ -54,7 +54,6 @@ test "snapshot capture remains deterministic" {
     var terminal = try Terminal.init(allocator, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("TEST");
 
@@ -75,7 +74,6 @@ test "resize keeps history enabled state" {
     var terminal = try Terminal.initWithHistory(allocator, 1, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("111\n222\n333");
     const before = visibleView(&terminal, 0).history_count;
@@ -90,7 +88,6 @@ test "alternate screen exit preserves primary scrollback" {
     var terminal = try Terminal.initWithHistory(allocator, 2, 4, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("AAAA\nBBBB\nCCCC\nDDDD");
     var before = try captureSnapshot(&terminal);
@@ -124,7 +121,6 @@ test "alternate screen 1049 restores primary cursor" {
     var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b[3;4H");
     const before_enter = activeScreen(&terminal).cursor.position_changed_by_client_at;
@@ -139,7 +135,6 @@ test "alternate screen switches mark active viewport fully dirty" {
     var terminal = try Terminal.init(allocator, 3, 4);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     clearDirtyRows(&terminal);
     try stream.nextSlice("\x1b[?1049h");
@@ -163,7 +158,6 @@ test "alternate screen switching clears selection on the screen-set owner path" 
     var terminal = try Terminal.init(allocator, 3, 4);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     terminal.startSelection(0, 0);
     try std.testing.expect(terminal.selectionState() != null);
@@ -183,7 +177,6 @@ test "full-screen scroll dirties only exposed bottom row" {
     var terminal = try Terminal.initWithHistory(allocator, 3, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("AAAA\nBBBB\nCCCC");
     clearDirtyRows(&terminal);
@@ -244,7 +237,6 @@ test "input encoding APIs are callable without terminal facade methods" {
     var terminal = try Terminal.init(allocator, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("TEST");
 
@@ -268,7 +260,6 @@ test "selection follows viewport movement through scrollback rows" {
     var terminal = try Terminal.initWithHistory(allocator, 2, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("aa\r\nbb\r\ncc");
 
@@ -290,7 +281,6 @@ test "cursor hides when viewport is scrolled off live bottom" {
     var terminal = try Terminal.initWithHistory(allocator, 2, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("aa\r\nbb\r\ncc");
 

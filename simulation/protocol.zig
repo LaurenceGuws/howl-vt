@@ -364,7 +364,6 @@ fn feedBytesToTerminal(
     max_chunk_len: ChunkLen,
 ) error{ ConsequenceLimit, OutOfMemory, ParsedEventLimit, StringControlLimit }!void {
     var stream = terminal.vtStream();
-    defer stream.deinit();
     switch (mode) {
         .whole_slice => try stream.nextSlice(bytes),
         .bytewise => for (bytes) |byte| try stream.next(byte),

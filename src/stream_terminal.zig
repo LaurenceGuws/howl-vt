@@ -1,3 +1,5 @@
+//! Drives parser actions into semantic routing and bounded DCS capture.
+
 const std = @import("std");
 const parsed_events = @import("parser/events.zig");
 const route = @import("route.zig");
@@ -6,6 +8,7 @@ const terminal_mod = @import("terminal.zig");
 
 const Event = parsed_events.Event;
 
+/// Reports parser allocation, parser bound, captured DCS bound, or retained-consequence failure.
 pub const FeedError = error{
     ConsequenceLimit,
     OutOfMemory,
@@ -13,6 +16,7 @@ pub const FeedError = error{
     StringControlLimit,
 };
 
+/// Reports whether one feed changed terminal state or the retained title.
 pub const FeedSummary = struct {
     state_changed: bool,
     title_changed: bool,
@@ -29,15 +33,15 @@ const DcsCapture = struct {
     intermediates_len: u8 = 0,
     active: bool = false,
 
-    pub fn init(allocator: std.mem.Allocator) DcsCapture {
+    fn init(allocator: std.mem.Allocator) DcsCapture {
         return .{ .allocator = allocator, .bytes = .empty };
     }
 
-    pub fn deinit(self: *DcsCapture) void {
+    fn deinit(self: *DcsCapture) void {
         self.bytes.deinit(self.allocator);
     }
 
-    pub fn reset(self: *DcsCapture) void {
+    fn reset(self: *DcsCapture) void {
         self.active = false;
         self.payload_start = 0;
         self.final = 0;
@@ -46,7 +50,7 @@ const DcsCapture = struct {
         self.bytes.clearRetainingCapacity();
     }
 
-    pub fn start(self: *DcsCapture, hook: parser_mod.DcsHook) !void {
+    fn start(self: *DcsCapture, hook: parser_mod.DcsHook) !void {
         std.debug.assert(hook.count <= parser_mod.max_params);
         std.debug.assert(hook.intermediates_len <= parser_mod.max_intermediates);
         self.reset();
@@ -70,7 +74,7 @@ const DcsCapture = struct {
         self.payload_start = self.bytes.items.len;
     }
 
-    pub fn put(self: *DcsCapture, byte: u8) !void {
+    fn put(self: *DcsCapture, byte: u8) !void {
         std.debug.assert(self.active);
         if (self.bytes.items.len - self.payload_start >= @as(usize, parser_mod.max_metadata_control_bytes)) {
             return error.StringControlLimit;
@@ -78,7 +82,7 @@ const DcsCapture = struct {
         try self.bytes.append(self.allocator, byte);
     }
 
-    pub fn event(self: *const DcsCapture) Event {
+    fn event(self: *const DcsCapture) Event {
         std.debug.assert(self.active);
         return .{ .dcs = .{
             .body = self.bytes.items,
@@ -92,10 +96,12 @@ const DcsCapture = struct {
     }
 };
 
+/// Owns parser allocation and bounded DCS capture for one terminal lifetime.
 pub const TerminalStreamState = struct {
     parser: parser_mod.Parser,
     dcs: DcsCapture,
 
+    /// Initializes parser and empty DCS capture with the terminal allocator.
     pub fn initAlloc(allocator: std.mem.Allocator) !TerminalStreamState {
         var parser = try parser_mod.Parser.init(allocator);
         errdefer parser.deinit();
@@ -105,33 +111,33 @@ pub const TerminalStreamState = struct {
         };
     }
 
+    /// Releases parser and DCS capture allocations.
     pub fn deinit(self: *TerminalStreamState) void {
         self.dcs.deinit();
         self.parser.deinit();
     }
 };
 
+/// Borrows one terminal while translating input bytes into terminal mutation.
 pub const Stream = struct {
     terminal: *terminal_mod.Terminal,
 
+    /// Creates a stream borrowing the terminal until the stream is discarded.
     pub fn init(terminal: *terminal_mod.Terminal) Stream {
         return .{ .terminal = terminal };
     }
 
-    pub fn deinit(_: *Stream) void {}
-
+    /// Feeds one byte and omits the optional mutation summary while preserving failures.
     pub fn next(self: *Stream, byte: u8) FeedError!void {
-        // This compatibility-free convenience call intentionally omits the
-        // optional mutation summary while preserving every feed failure.
         _ = try self.nextSummary(byte);
     }
 
+    /// Feeds a borrowed byte slice and omits the optional mutation summary.
     pub fn nextSlice(self: *Stream, bytes: []const u8) FeedError!void {
-        // Hosts that need redraw facts call nextSliceSummary directly.
         _ = try self.nextSliceSummary(bytes);
     }
 
-    pub fn nextSummary(self: *Stream, byte: u8) FeedError!FeedSummary {
+    fn nextSummary(self: *Stream, byte: u8) FeedError!FeedSummary {
         var state_changed = false;
         var title_changed = false;
         const state = &self.terminal.stream_state;
@@ -155,6 +161,7 @@ pub const Stream = struct {
         return .{ .state_changed = state_changed, .title_changed = title_changed };
     }
 
+    /// Feeds a complete borrowed slice and merges per-byte mutation summaries.
     pub fn nextSliceSummary(self: *Stream, bytes: []const u8) FeedError!FeedSummary {
         var summary: FeedSummary = .{ .state_changed = false, .title_changed = false };
         for (bytes) |byte| {

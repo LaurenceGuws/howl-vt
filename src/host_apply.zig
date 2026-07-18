@@ -1,3 +1,5 @@
+//! Applies semantic events whose consequences belong to the embedding host.
+
 const std = @import("std");
 const locator = @import("locator.zig");
 const osc_color = @import("osc_color.zig");

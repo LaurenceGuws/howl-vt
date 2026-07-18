@@ -1,3 +1,5 @@
+//! Owns logical history lines, reflow snapshots, and row-count arithmetic.
+
 const std = @import("std");
 const cell = @import("cell.zig");
 
@@ -42,21 +44,25 @@ pub const LogicalSnapshot = struct {
     }
 };
 
+/// Owns one logical history line’s cells until deinit.
 pub const HistoryLine = struct {
     cells: std.ArrayListUnmanaged(Cell) = .empty,
 
+    /// Releases a history line’s cell allocation.
     pub fn deinit(self: *HistoryLine, allocator: std.mem.Allocator) void {
         self.cells.deinit(allocator);
         self.* = .{};
     }
 };
 
+/// Borrows one row window from a reflowed logical line.
 pub const RewrappedRow = struct {
     start: u32,
     len: u16,
     wrapped: bool,
 };
 
+/// Finds the logical line containing a projected row within parallel bounded arrays.
 pub fn firstLineForRowBounded(line_row_starts: []const u32, line_row_counts: []const u16, row_index: u32) ?u32 {
     std.debug.assert(line_row_starts.len == line_row_counts.len);
     for (line_row_starts, line_row_counts, 0..) |row_start, row_count, line_idx| {

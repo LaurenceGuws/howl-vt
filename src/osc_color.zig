@@ -1,3 +1,5 @@
+//! Owns terminal palette state, color parsing, mutation, and OSC color replies.
+
 const std = @import("std");
 const screen_mod = @import("screen.zig");
 const host_state = @import("host_state.zig");
@@ -11,6 +13,7 @@ const SemanticEvent = semantic_event.SemanticEvent;
 const osc_reply_max_bytes = 8;
 const color_osc_max_bytes = 16;
 
+/// Owns the 256-color palette and dynamic foreground, background, and cursor colors.
 pub const TerminalColorState = struct {
     foreground: Rgb = default_fg,
     background: Rgb = default_bg,
@@ -27,11 +30,11 @@ pub const TerminalColorState = struct {
     palette: [256]Rgb = defaultPalette(),
 };
 
-pub const default_fg = Rgb{ .r = 220, .g = 220, .b = 220 };
-pub const default_bg = Rgb{ .r = 24, .g = 25, .b = 33 };
+const default_fg = Rgb{ .r = 220, .g = 220, .b = 220 };
+const default_bg = Rgb{ .r = 24, .g = 25, .b = 33 };
 
-pub const SpecialKey = enum { foreground, background, cursor, cursor_text, selection_background, selection_foreground };
-pub const DynamicKey = enum {
+const SpecialKey = enum { foreground, background, cursor, cursor_text, selection_background, selection_foreground };
+const DynamicKey = enum {
     foreground,
     background,
     cursor,
@@ -43,7 +46,7 @@ pub const DynamicKey = enum {
     tektronix_cursor,
     selection_foreground,
 };
-pub const SpecialPaletteKey = enum(u3) {
+const SpecialPaletteKey = enum(u3) {
     bold = 0,
     underline = 1,
     blink = 2,
@@ -51,6 +54,7 @@ pub const SpecialPaletteKey = enum(u3) {
     italic = 4,
 };
 
+/// Applies or answers one OSC 4 palette request transactionally.
 pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *TerminalColorState, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) host_state.ApplyError!void {
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |idx_text| {
@@ -69,6 +73,7 @@ pub fn handleXtermPaletteControl(allocator: std.mem.Allocator, colors: *Terminal
     }
 }
 
+/// Applies or answers one OSC 5 special-palette request transactionally.
 pub fn handleXtermSpecialPaletteControl(allocator: std.mem.Allocator, colors: *TerminalColorState, output: *std.ArrayList(u8), encode_buf: []u8, payload: []const u8) host_state.ApplyError!void {
     var parts = std.mem.splitScalar(u8, payload, ';');
     while (parts.next()) |idx_text| {
@@ -87,6 +92,7 @@ pub fn handleXtermSpecialPaletteControl(allocator: std.mem.Allocator, colors: *T
     }
 }
 
+/// Applies or answers one dynamic-color command transactionally.
 pub fn handleXtermDynamicColor(allocator: std.mem.Allocator, colors: *TerminalColorState, output: *std.ArrayList(u8), encode_buf: []u8, command: u16, payload: []const u8) host_state.ApplyError!void {
     var key = dynamicKeyForCommand(command) orelse return;
     var parts = std.mem.splitScalar(u8, payload, ';');
@@ -100,6 +106,7 @@ pub fn handleXtermDynamicColor(allocator: std.mem.Allocator, colors: *TerminalCo
     }
 }
 
+/// Resets selected OSC 104 palette entries or the complete palette.
 pub fn resetXtermPalette(colors: *TerminalColorState, payload: []const u8) void {
     if (payload.len == 0) {
         colors.palette = buildDefaultPalette();
@@ -112,12 +119,14 @@ pub fn resetXtermPalette(colors: *TerminalColorState, payload: []const u8) void 
     }
 }
 
+/// Resets one dynamic color selected by its OSC command.
 pub fn resetXtermDynamicColor(colors: *TerminalColorState, command: u16, payload: []const u8) void {
     if (payload.len != 0) return;
     const key = dynamicKeyForResetCommand(command) orelse return;
     resetDynamicColor(colors, key);
 }
 
+/// Converts a cursor color-control request into a semantic event when applicable.
 pub fn cursorColorEvent(command: terminal_color_control.TerminalColorControlCommand) ?SemanticEvent {
     if (command.command == 12) return cursorColorEventFromDynamicPayload(command.payload, .cursor);
     if (command.command == 112 and command.payload.len == 0) return .{ .cursor_color = null };
@@ -125,7 +134,7 @@ pub fn cursorColorEvent(command: terminal_color_control.TerminalColorControlComm
     return null;
 }
 
-pub fn parseColor(value: []const u8) ?Rgb {
+fn parseColor(value: []const u8) ?Rgb {
     const color_text = stripAlpha(std.mem.trim(u8, value, " \t\r\n"));
     if (color_text.len == 0) return null;
     if (std.mem.startsWith(u8, color_text, "#")) return parseHashColor(color_text[1..]);
@@ -138,15 +147,15 @@ pub fn parseColor(value: []const u8) ?Rgb {
     return null;
 }
 
-pub fn defaultPalette() [256]Rgb {
+fn defaultPalette() [256]Rgb {
     return buildDefaultPalette();
 }
 
-pub fn defaultPaletteColor(idx: u8) Rgb {
+fn defaultPaletteColor(idx: u8) Rgb {
     return paletteColor(idx);
 }
 
-pub fn specialColorKey(key: []const u8) ?SpecialKey {
+fn specialColorKey(key: []const u8) ?SpecialKey {
     if (std.mem.eql(u8, key, "foreground")) return .foreground;
     if (std.mem.eql(u8, key, "background")) return .background;
     if (std.mem.eql(u8, key, "cursor")) return .cursor;
@@ -156,12 +165,14 @@ pub fn specialColorKey(key: []const u8) ?SpecialKey {
     return null;
 }
 
+/// Reports whether a borrowed Kitty color key names supported state.
 pub fn isKnownColorKey(key: []const u8) bool {
     if (specialColorKey(key) != null) return true;
     _ = std.fmt.parseUnsigned(u8, key, 10) catch return false;
     return true;
 }
 
+/// Returns the current color for a recognized Kitty key.
 pub fn colorForKey(colors: TerminalColorState, key: []const u8) ?Rgb {
     if (std.fmt.parseUnsigned(u8, key, 10)) |idx| return colors.palette[idx] else |_| {}
     if (specialColorKey(key)) |special| return switch (special) {
@@ -342,12 +353,14 @@ fn resetDynamicColor(colors: *TerminalColorState, key: DynamicKey) void {
     }
 }
 
+/// Appends one bounded rgb:RRRR/GGGG/BBBB OSC color reply.
 pub fn appendColorOsc(allocator: std.mem.Allocator, output: *std.ArrayList(u8), color: Rgb) host_state.ApplyError!void {
     var buf: [32]u8 = undefined;
     const text = formatColorOsc(buf[0..], color);
     try host_state.appendOutput(output, allocator, text);
 }
 
+/// Parses and applies a recognized Kitty color key, ignoring invalid values.
 pub fn setColorKey(colors: *TerminalColorState, key: []const u8, value: []const u8) void {
     if (std.fmt.parseUnsigned(u8, key, 10)) |idx| {
         if (parseColor(value)) |color| colors.palette[idx] = color;
@@ -360,6 +373,7 @@ pub fn setColorKey(colors: *TerminalColorState, key: []const u8, value: []const 
     }
 }
 
+/// Restores a recognized Kitty color key to its default value.
 pub fn resetColorKey(colors: *TerminalColorState, key: []const u8) void {
     if (std.fmt.parseUnsigned(u8, key, 10)) |idx| {
         colors.palette[idx] = paletteColor(idx);

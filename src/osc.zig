@@ -1,3 +1,5 @@
+//! Decodes completed OSC controls and bounded clipboard payloads.
+
 const std = @import("std");
 const events = @import("semantic_event.zig");
 const parser_mod = @import("parser.zig");
@@ -5,6 +7,7 @@ const kitty = @import("kitty/protocol.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
+/// Decodes one complete borrowed OSC action into a canonical semantic event.
 pub fn process(osc: parser_mod.OscAction) ?SemanticEvent {
     return switch (osc) {
         .raw_title => |v| SemanticEvent{ .title_set = v.payload },
@@ -33,6 +36,7 @@ pub fn process(osc: parser_mod.OscAction) ?SemanticEvent {
     };
 }
 
+/// Allocates and decodes one base64 OSC 52 payload; invalid input returns an exact decode error.
 pub fn decodeClipboardSet(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
     const decoded_len = try decodedClipboardSetSize(raw);
     const out = try allocator.alloc(u8, @intCast(decoded_len));
@@ -41,13 +45,13 @@ pub fn decodeClipboardSet(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
     return out;
 }
 
-pub fn decodedClipboardSetSize(raw: []const u8) !u64 {
+fn decodedClipboardSetSize(raw: []const u8) !u64 {
     const data = clipboardData(raw) orelse return error.InvalidOsc52Payload;
     if (std.mem.eql(u8, data, "?")) return error.UnsupportedOsc52Query;
     return @intCast(try std.base64.standard.Decoder.calcSizeForSlice(data));
 }
 
-pub fn decodeClipboardSetInto(raw: []const u8, out: []u8) !u64 {
+fn decodeClipboardSetInto(raw: []const u8, out: []u8) !u64 {
     const data = clipboardData(raw) orelse return error.InvalidOsc52Payload;
     if (std.mem.eql(u8, data, "?")) return error.UnsupportedOsc52Query;
     const decoded_len = try std.base64.standard.Decoder.calcSizeForSlice(data);

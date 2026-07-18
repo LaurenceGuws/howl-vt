@@ -1,7 +1,9 @@
+//! Owns the bounded Kitty pointer-shape stack and query replies.
+
 const std = @import("std");
 const host_state = @import("../host_state.zig");
 
-pub const Shape = enum {
+const Shape = enum {
     alias,
     cell,
     copy,
@@ -34,15 +36,18 @@ pub const Shape = enum {
     zoom_out,
 };
 
+/// Stores at most sixteen recognized Kitty pointer shapes.
 pub const Stack = struct {
     stack: [16]Shape = undefined,
     len: u8 = 0,
 
+    /// Returns the active static shape name, or "0" when the stack is empty.
     pub fn currentName(self: *const Stack) []const u8 {
         if (self.len == 0) return "0";
         return shapeName(self.stack[self.len - 1]);
     }
 
+    /// Replaces the stack with the first recognized borrowed name.
     pub fn set(self: *Stack, names: []const u8) void {
         self.len = 0;
         const shape = firstShape(names) orelse return;
@@ -50,6 +55,7 @@ pub const Stack = struct {
         self.len = 1;
     }
 
+    /// Pushes recognized comma-separated names and drops oldest shapes at capacity.
     pub fn push(self: *Stack, names: []const u8) void {
         var parts = std.mem.splitScalar(u8, names, ',');
         while (parts.next()) |name| {
@@ -63,10 +69,12 @@ pub const Stack = struct {
         }
     }
 
+    /// Removes the active shape when present.
     pub fn pop(self: *Stack) void {
         if (self.len > 0) self.len -= 1;
     }
 
+    /// Appends one transactional Kitty pointer-shape query reply.
     pub fn appendQuery(self: *const Stack, allocator: std.mem.Allocator, output: *std.ArrayList(u8), names: []const u8) host_state.ApplyError!void {
         const start = host_state.byteCount(output.items);
         errdefer host_state.restorePendingOutput(output, start);

@@ -21,7 +21,6 @@ test "terminal cursor: save restore is terminal-owned per active bank" {
     var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b[2;6H\x1b[4 q\x1b7\x1b[1;1H\x1b[1 q\x1b8");
     try std.testing.expectEqual(@as(u16, 1), active(&terminal).cursor.row);
@@ -35,7 +34,6 @@ test "terminal cursor: restore without prior save homes and clears charset state
     var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b[?5h\x1b[?6h\x1b[?7l\x1b)0\x1b8");
     try std.testing.expectEqual(@as(u16, 0), active(&terminal).cursor.row);
@@ -53,7 +51,6 @@ test "terminal cursor: alt screen enter resets alt cursor instead of copying pri
     var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b[3;4H\x1b[6 q\x1b[?47h");
     try std.testing.expect(view(&terminal).is_alternate_screen);
@@ -68,7 +65,6 @@ test "terminal cursor: decscusr no-shape stays explicit through surface view" {
     var terminal = try Terminal.init(allocator, 2, 2);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b[7 q");
     const visible = view(&terminal);
@@ -133,7 +129,6 @@ test "terminal cursor: 1049 restores primary bank and 47 leaves banks independen
     var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b[3;4H\x1b[4 q\x1b[?1049h\x1b[2;2H\x1b[?1049l");
     try std.testing.expectEqual(@as(u16, 2), active(&terminal).cursor.row);

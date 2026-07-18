@@ -130,7 +130,6 @@ test "terminal tracks synchronized output private mode" {
     var vt = try Terminal.init(std.testing.allocator, 2, 8);
     defer vt.deinit();
     var stream = try stream_harness.Harness.init(&vt);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b[?2026h");
     try std.testing.expect(vt.modes.synchronized_output);
@@ -143,7 +142,6 @@ test "terminal visible view projects scrollback rows" {
     var vt = try Terminal.initWithHistory(std.testing.allocator, 2, 2, 4);
     defer vt.deinit();
     var stream = try stream_harness.Harness.init(&vt);
-    defer stream.deinit();
 
     try stream.nextSlice("aa\r\nbb\r\ncc");
 
@@ -164,7 +162,6 @@ test "terminal reset screen delegates owner resets" {
     var vt = try Terminal.init(std.testing.allocator, 2, 8);
     defer vt.deinit();
     var stream = try stream_harness.Harness.init(&vt);
-    defer stream.deinit();
 
     vt.screen_state.active().writeText("ab");
     vt.kitty.main.pointer.set("pointer");

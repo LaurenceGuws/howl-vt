@@ -1,8 +1,11 @@
+//! Decodes CSI commands distinguished by intermediate bytes.
+
 const events = @import("semantic_event.zig");
 const params_mod = @import("csi_params.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
+/// Decodes one CSI sequence with intermediates; unsupported forms return null.
 pub fn process(final: u8, params: []const i32, intermediates: []const u8) ?SemanticEvent {
     if (intermediates.len == 2) return processPair(final, params, intermediates);
     if (intermediates.len != 1) return null;

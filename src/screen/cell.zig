@@ -1,7 +1,10 @@
+//! Defines terminal cell content, attributes, defaults, and continuation markers.
+
 const color = @import("color.zig");
 
 const Color = color.Color;
 
+/// Identifies the supported terminal underline rendering styles.
 pub const UnderlineStyle = enum(u3) {
     straight,
     double,
@@ -10,6 +13,7 @@ pub const UnderlineStyle = enum(u3) {
     dashed,
 };
 
+/// Stores one cell’s style, colors, protection, and hyperlink identity.
 pub const CellAttrs = struct {
     fg: Color,
     bg: Color,
@@ -28,6 +32,7 @@ pub const CellAttrs = struct {
     link_id: u32,
 };
 
+/// Stores one Unicode codepoint, display width, and complete cell attributes.
 pub const Cell = struct {
     codepoint: u32,
     combining_len: u8 = 0,
@@ -39,14 +44,15 @@ pub const Cell = struct {
     attrs: CellAttrs,
 };
 
-pub fn isCellContinuation(cell: Cell) bool {
+fn isCellContinuation(cell: Cell) bool {
     return cell.x != 0 or cell.y != 0;
 }
 
-pub const default_fg = color.default_fg;
-pub const default_bg = color.default_bg;
-pub const default_underline_color = color.default_underline_color;
+const default_fg = color.default_fg;
+const default_bg = color.default_bg;
+const default_underline_color = color.default_underline_color;
 
+/// Provides immutable default terminal cell attributes.
 pub const default_cell_attrs = CellAttrs{
     .fg = default_fg,
     .bg = default_bg,
@@ -65,6 +71,7 @@ pub const default_cell_attrs = CellAttrs{
     .link_id = 0,
 };
 
+/// Provides the blank default cell used for clearing and allocation.
 pub const default_cell = Cell{
     .codepoint = 0,
     .attrs = default_cell_attrs,

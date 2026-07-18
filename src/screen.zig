@@ -1,3 +1,5 @@
+//! Owns visible cells, history projection, cursor state, margins, and screen mutation.
+
 const std = @import("std");
 const parser_mod = @import("parser.zig");
 const semantic_event = @import("semantic_event.zig");
@@ -24,26 +26,38 @@ const ResizeBuffers = resize_mod.ResizeBuffers;
 /// Terminal screen state for cursor, cells, margins, and history.
 pub const Screen = struct {
     /// Failure while validating dimensions or allocating owned Screen storage.
-    pub const InitError = error{ InvalidDimensions, OutOfMemory };
+    const InitError = error{ InvalidDimensions, OutOfMemory };
 
+    /// Uses the canonical terminal RGB value for screen state.
     pub const Rgb = color.Rgb;
+    /// Uses the canonical default, indexed, or RGB terminal color.
     pub const Color = color.Color;
+    /// Uses the canonical terminal underline style.
     pub const UnderlineStyle = cell.UnderlineStyle;
+    /// Uses the canonical complete cell attribute value.
     pub const CellAttrs = cell.CellAttrs;
+    /// Uses the canonical terminal cell value.
     pub const Cell = cell.Cell;
+    /// Uses the canonical cursor shape.
     pub const CursorShape = cursor.CursorShape;
+    /// Uses the canonical cursor style.
     pub const CursorStyle = cursor.CursorStyle;
-    pub const SemanticCursor = cursor.SemanticCursor;
+    const SemanticCursor = cursor.SemanticCursor;
+    /// Provides the canonical default cursor style.
     pub const default_cursor_style = cursor.default_cursor_style;
+    /// Provides the canonical default foreground color.
     pub const default_fg = color.default_fg;
-    pub const default_bg = color.default_bg;
+    const default_bg = color.default_bg;
+    /// Provides the canonical default underline color.
     pub const default_underline_color = color.default_underline_color;
+    /// Provides the canonical default cell attributes.
     pub const default_cell_attrs = cell.default_cell_attrs;
-    pub const default_cell = cell.default_cell;
-    pub const isCellContinuation = cell.isCellContinuation;
+    const default_cell = cell.default_cell;
+    const isCellContinuation = cell.isCellContinuation;
+    /// Uses the canonical borrowed dirty-row publication view.
     pub const DirtyRows = dirty.DirtyRows;
-    pub const EraseMode = erase.EraseMode;
-    pub const CellPixelSize = struct {
+    const EraseMode = erase.EraseMode;
+    const CellPixelSize = struct {
         width: u32,
         height: u32,
     };
@@ -141,7 +155,7 @@ pub const Screen = struct {
         return initWithDefaultCursorStyle(rows, cols, cursor.default_cursor_style);
     }
 
-    pub fn initWithDefaultCursorStyle(rows: u16, cols: u16, cursor_style_default: CursorStyle) Screen {
+    fn initWithDefaultCursorStyle(rows: u16, cols: u16, cursor_style_default: CursorStyle) Screen {
         return initBase(null, rows, cols, cursor_style_default, null, null, null, null, 0, .{}, null);
     }
 
@@ -186,7 +200,7 @@ pub const Screen = struct {
         );
     }
 
-    pub fn initWithCellsAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) InitError!Screen {
+    fn initWithCellsAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) InitError!Screen {
         return initOwnedVisibleGrid(allocator, rows, cols, cursor_style_default);
     }
 
@@ -195,7 +209,7 @@ pub const Screen = struct {
         return initWithCellsHistoryAndDefaultCursorStyle(allocator, rows, cols, history_capacity, cursor.default_cursor_style);
     }
 
-    pub fn initWithCellsHistoryAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16, cursor_style_default: CursorStyle) InitError!Screen {
+    fn initWithCellsHistoryAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16, cursor_style_default: CursorStyle) InitError!Screen {
         var screen = try initOwnedVisibleGrid(allocator, rows, cols, cursor_style_default);
         errdefer screen.deinit(allocator);
 
@@ -481,7 +495,7 @@ pub const Screen = struct {
     }
 
     /// Retain one visible row in bounded history, silently stopping on allocation failure.
-    pub fn storeHistoryRow(self: *Screen, row: u16) void {
+    fn storeHistoryRow(self: *Screen, row: u16) void {
         if (self.history_capacity == 0) return;
         const allocator = self.allocator orelse return;
         const wrapped = self.rowWrapped(row);
@@ -515,7 +529,7 @@ pub const Screen = struct {
     }
 
     /// Release retained logical history while preserving list capacity.
-    pub fn clearHistoryAuthority(self: *Screen, allocator: std.mem.Allocator) void {
+    fn clearHistoryAuthority(self: *Screen, allocator: std.mem.Allocator) void {
         for (self.history_lines.items) |*line| line.deinit(allocator);
         self.history_lines.clearRetainingCapacity();
         self.history_lines_start = 0;
@@ -525,7 +539,7 @@ pub const Screen = struct {
     }
 
     /// Rebuild projected history rows from retained logical authority.
-    pub fn rebuildHistoryProjection(self: *Screen, allocator: std.mem.Allocator) !void {
+    fn rebuildHistoryProjection(self: *Screen, allocator: std.mem.Allocator) !void {
         self.history_count = 0;
         self.history_write_idx = 0;
 
@@ -798,14 +812,17 @@ pub const Screen = struct {
         if (self.tab_stops) |stops| tabs.setDefaultTabStops(stops);
     }
 
+    /// Replaces the configured cursor default on this screen.
     pub fn setDefaultCursorStyle(self: *Screen, style: CursorStyle) void {
         self.cursor.setDefaultStyle(style);
     }
 
+    /// Borrows current dirty bounds until the next screen mutation.
     pub fn peekDirtyRows(self: *const Screen) ?DirtyRows {
         return self.dirty_state.rows;
     }
 
+    /// Acknowledges and clears all current dirty publication bounds.
     pub fn clearDirtyRows(self: *Screen) void {
         self.dirty_state.rows = null;
         if (self.dirty_state.cols_start) |buf| @memset(buf, self.cols);
@@ -817,6 +834,7 @@ pub const Screen = struct {
         return @intCast(self.cellInfoAt(row, col).codepoint);
     }
 
+    /// Returns a copied visible cell, or the blank default outside the grid.
     pub fn cellInfoAt(self: *const Screen, row: u16, col: u16) Cell {
         const c = self.cells orelse return default_cell;
         if (row >= self.rows or col >= self.cols) return default_cell;
@@ -837,6 +855,7 @@ pub const Screen = struct {
         return @intCast(self.historyCellAt(history_idx, col).codepoint);
     }
 
+    /// Returns a copied history cell by recency, or a blank cell out of range.
     pub fn historyCellAt(self: *const Screen, history_idx: u32, col: u16) Cell {
         const h = self.history orelse return default_cell;
         const bounded_idx: u32 = history_idx;
@@ -850,6 +869,7 @@ pub const Screen = struct {
         return self.history_count;
     }
 
+    /// Returns the oldest projected history row identity.
     pub fn historyRowBase(self: *const Screen) u32 {
         return self.history_row_base;
     }
@@ -1067,7 +1087,7 @@ pub const Screen = struct {
         }
     }
 
-    pub const RectBounds = struct {
+    const RectBounds = struct {
         top: u16,
         left: u16,
         bottom: u16,
@@ -1075,7 +1095,7 @@ pub const Screen = struct {
     };
 
     /// Erase display content according to `mode`, optionally preserving protected cells.
-    pub fn eraseDisplay(self: *Screen, mode: EraseMode, protected: bool) void {
+    fn eraseDisplay(self: *Screen, mode: EraseMode, protected: bool) void {
         const cells = self.cells orelse return;
         if (self.rows == 0 or self.cols == 0) return;
         switch (mode) {
@@ -1120,12 +1140,13 @@ pub const Screen = struct {
         }
     }
 
+    /// Sets the hyperlink identity copied into subsequently written cells.
     pub fn setCurrentLinkId(self: *Screen, link_id: u32) void {
         self.current_attrs.link_id = link_id;
     }
 
     /// Resolve a zero-based row against the active origin region, saturating at its bottom.
-    pub fn resolveAbsoluteRow(self: *const Screen, row: u16) u16 {
+    fn resolveAbsoluteRow(self: *const Screen, row: u16) u16 {
         if (!self.origin_mode) return row;
         const bottom = if (self.rows == 0) 0 else @min(self.scroll_bottom, self.rows - 1);
         const region_len = bottom - self.scroll_top;
@@ -1133,23 +1154,25 @@ pub const Screen = struct {
     }
 
     /// Resolve a zero-based column against active origin-mode horizontal margins.
-    pub fn resolveAbsoluteCol(self: *const Screen, col: u16) u16 {
+    fn resolveAbsoluteCol(self: *const Screen, col: u16) u16 {
         if (!(self.origin_mode and self.left_right_margin_mode)) return col;
         const region_len = self.right_margin - self.left_margin;
         return self.left_margin + @min(col, region_len);
     }
 
     /// Return the line-home column selected by origin and horizontal-margin modes.
-    pub fn lineHomeCol(self: *const Screen) u16 {
+    fn lineHomeCol(self: *const Screen) u16 {
         return if (self.origin_mode and self.left_right_margin_mode) self.left_margin else 0;
     }
 
+    /// Clears visible cells and marks the complete screen dirty.
     pub fn clearVisibleCells(self: *Screen) void {
         if (self.cells) |cells| @memset(cells, default_cell);
         if (self.row_wraps) |row_wraps| @memset(row_wraps, false);
         self.markAllRowsDirty();
     }
 
+    /// Moves the alternate-screen cursor to origin and clears pending wrap.
     pub fn resetCursorForAltEntry(self: *Screen) void {
         self.cursor.resetForAltEntry();
         self.wrap_pending = false;
@@ -1157,16 +1180,16 @@ pub const Screen = struct {
     }
 
     /// Return the active horizontal editing boundary on the left.
-    pub fn leftBoundary(self: *const Screen) u16 {
+    fn leftBoundary(self: *const Screen) u16 {
         return if (self.left_right_margin_mode) self.left_margin else 0;
     }
 
     /// Return the active horizontal editing boundary on the right.
-    pub fn rightBoundary(self: *const Screen) u16 {
+    fn rightBoundary(self: *const Screen) u16 {
         return if (self.left_right_margin_mode) self.right_margin else self.cols -| 1;
     }
 
-    pub fn clearScrollback(self: *Screen) void {
+    fn clearScrollback(self: *Screen) void {
         const allocator = self.allocator orelse return;
         self.history_row_base += self.history_count;
         self.clearHistoryAuthority(allocator);
@@ -1175,18 +1198,18 @@ pub const Screen = struct {
         self.markAllRowsDirty();
     }
 
-    pub fn setCellPixelSize(self: *Screen, width: u32, height: u32) void {
+    fn setCellPixelSize(self: *Screen, width: u32, height: u32) void {
         std.debug.assert(width > 0);
         std.debug.assert(height > 0);
         self.cell_pixel_size = .{ .width = width, .height = height };
     }
 
-    pub fn cellPixelSize(self: *const Screen) ?CellPixelSize {
+    fn cellPixelSize(self: *const Screen) ?CellPixelSize {
         return self.cell_pixel_size;
     }
 
     /// Erase the active line range selected by `mode`.
-    pub fn eraseLine(self: *Screen, mode: EraseMode) void {
+    fn eraseLine(self: *Screen, mode: EraseMode) void {
         if (self.cells == null) return;
         if (self.rows == 0 or self.cols == 0) return;
         switch (mode) {
@@ -1216,7 +1239,7 @@ pub const Screen = struct {
     }
 
     /// Change attributes in the clipped rectangle using rectangular or stream extent.
-    pub fn changeRectAttrs(self: *Screen, area: rect.RectArea, attrs: []const u16, reverse: bool) void {
+    fn changeRectAttrs(self: *Screen, area: rect.RectArea, attrs: []const u16, reverse: bool) void {
         const cells = self.cells orelse return;
         if (attrs.len == 0) return;
         const bounds = self.rectBounds(area) orelse return;
@@ -1235,7 +1258,7 @@ pub const Screen = struct {
     }
 
     /// Erase unprotected cells on the active line according to `mode`.
-    pub fn selectiveEraseLine(self: *Screen, mode: EraseMode) void {
+    fn selectiveEraseLine(self: *Screen, mode: EraseMode) void {
         if (self.rows == 0 or self.cols == 0) return;
         switch (mode) {
             .cursor_to_end => self.selectiveClearRowRange(self.cursor.row, self.cursor.col, self.cols),
@@ -1249,7 +1272,7 @@ pub const Screen = struct {
     }
 
     /// Erase a clipped rectangle, optionally preserving protected cells.
-    pub fn eraseRect(self: *Screen, area: rect.RectArea, selective: bool) void {
+    fn eraseRect(self: *Screen, area: rect.RectArea, selective: bool) void {
         const bounds = self.rectBounds(area) orelse return;
         self.markDirtyRows(bounds.top, bounds.bottom);
         var row = bounds.top;
@@ -1264,7 +1287,7 @@ pub const Screen = struct {
     }
 
     /// Fill a clipped rectangle with `codepoint` and the current write attributes.
-    pub fn fillRect(self: *Screen, area: rect.RectArea, codepoint: u21) void {
+    fn fillRect(self: *Screen, area: rect.RectArea, codepoint: u21) void {
         const cells = self.cells orelse return;
         const bounds = self.rectBounds(area) orelse return;
         self.markDirtyRows(bounds.top, bounds.bottom);
@@ -1282,7 +1305,7 @@ pub const Screen = struct {
     ///
     /// Unsupported pages, missing storage, and allocation failure leave the
     /// destination unchanged.
-    pub fn copyRect(self: *Screen, request: rect.RectCopy) void {
+    fn copyRect(self: *Screen, request: rect.RectCopy) void {
         if (self.cells == null) return;
         if (request.source_page != 1 or request.dest_page != 1) return;
         const source = self.rectBounds(request.area) orelse return;
@@ -1324,7 +1347,7 @@ pub const Screen = struct {
     }
 
     /// Insert columns at the cursor across the active vertical scroll region.
-    pub fn insertColumns(self: *Screen, count: u16) void {
+    fn insertColumns(self: *Screen, count: u16) void {
         const bottom = self.scrollBottom();
         if (self.cursor.col >= self.cols or self.scroll_top > bottom) return;
         var row = self.scroll_top;
@@ -1332,7 +1355,7 @@ pub const Screen = struct {
     }
 
     /// Delete columns at the cursor across the active vertical scroll region.
-    pub fn deleteColumns(self: *Screen, count: u16) void {
+    fn deleteColumns(self: *Screen, count: u16) void {
         const bottom = self.scrollBottom();
         if (self.cursor.col >= self.cols or self.scroll_top > bottom) return;
         var row = self.scroll_top;
@@ -1340,7 +1363,7 @@ pub const Screen = struct {
     }
 
     /// Shift active scroll-region rows left within current horizontal boundaries.
-    pub fn shiftColumnsLeft(self: *Screen, count: u16) void {
+    fn shiftColumnsLeft(self: *Screen, count: u16) void {
         const bottom = self.scrollBottom();
         if (self.cols == 0 or self.scroll_top > bottom) return;
         var row = self.scroll_top;
@@ -1348,7 +1371,7 @@ pub const Screen = struct {
     }
 
     /// Shift active scroll-region rows right within current horizontal boundaries.
-    pub fn shiftColumnsRight(self: *Screen, count: u16) void {
+    fn shiftColumnsRight(self: *Screen, count: u16) void {
         const bottom = self.scrollBottom();
         if (self.cols == 0 or self.scroll_top > bottom) return;
         var row = self.scroll_top;
@@ -1524,7 +1547,7 @@ pub const Screen = struct {
     }
 
     /// Repeat the last graphic codepoint up to `count` times.
-    pub fn repeatPreceding(self: *Screen, count: u16) void {
+    fn repeatPreceding(self: *Screen, count: u16) void {
         if (self.last_graphic_codepoint) |cp| {
             var remaining = count;
             while (remaining > 0) : (remaining -= 1) self.writeCell(cp);
@@ -1532,7 +1555,7 @@ pub const Screen = struct {
     }
 
     /// Write one codepoint with combining, insertion, wrapping, dirty, and cursor semantics.
-    pub fn writeCell(self: *Screen, cp: u21) void {
+    fn writeCell(self: *Screen, cp: u21) void {
         if (self.cols == 0 or self.rows == 0) return;
         if (self.appendCombiningToLeadCell(cp)) return;
 
@@ -1688,7 +1711,7 @@ pub const Screen = struct {
     }
 
     /// Move forward through at most `count` tab stops, clamping at the last column.
-    pub fn horizontalTabForward(self: *Screen, count: u16) void {
+    fn horizontalTabForward(self: *Screen, count: u16) void {
         if (self.cols == 0) return;
         var remaining = count;
         while (remaining > 0) : (remaining -= 1) {
@@ -1700,7 +1723,7 @@ pub const Screen = struct {
     }
 
     /// Move backward through at most `count` tab stops, clamping at column zero.
-    pub fn horizontalTabBack(self: *Screen, count: u16) void {
+    fn horizontalTabBack(self: *Screen, count: u16) void {
         var remaining = count;
         while (remaining > 0) : (remaining -= 1) {
             if (self.cursor.col == 0) break;
@@ -1711,31 +1734,31 @@ pub const Screen = struct {
     }
 
     /// Set a stored tab stop at the current in-bounds cursor column.
-    pub fn setTabStop(self: *Screen) void {
+    fn setTabStop(self: *Screen) void {
         if (self.tab_stops) |stops| {
             if (self.cursor.col < stops.len) stops[self.cursor.col] = true;
         }
     }
 
     /// Clear a stored tab stop at the current in-bounds cursor column.
-    pub fn clearCurrentTabStop(self: *Screen) void {
+    fn clearCurrentTabStop(self: *Screen) void {
         if (self.tab_stops) |stops| {
             if (self.cursor.col < stops.len) stops[self.cursor.col] = false;
         }
     }
 
     /// Clear every stored tab stop.
-    pub fn clearAllTabStops(self: *Screen) void {
+    fn clearAllTabStops(self: *Screen) void {
         if (self.tab_stops) |stops| @memset(stops, false);
     }
 
     /// Restore default eight-column stops in the stored tab-stop buffer.
-    pub fn resetDefaultTabStops(self: *Screen) void {
+    fn resetDefaultTabStops(self: *Screen) void {
         if (self.tab_stops) |stops| tabs.setDefaultTabStops(stops);
     }
 
     /// Advance within the scroll region, scrolling it upward at its bottom edge.
-    pub fn lineFeed(self: *Screen) void {
+    fn lineFeed(self: *Screen) void {
         if (self.rows == 0) return;
         const bottom = self.scrollBottom();
         if (self.cursor.row < bottom) {
@@ -1750,7 +1773,7 @@ pub const Screen = struct {
     }
 
     /// Move upward, scrolling the active region downward at its top edge.
-    pub fn reverseIndex(self: *Screen) void {
+    fn reverseIndex(self: *Screen) void {
         if (self.rows == 0) return;
         if (self.cursor.row == self.scroll_top) {
             self.scrollDownRegion(self.scroll_top, self.scrollBottom(), 1);
@@ -1771,12 +1794,12 @@ pub const Screen = struct {
         self.setRowWrapped(self.rows - 1, false);
     }
 
-    pub fn scrollBottom(self: *const Screen) u16 {
+    fn scrollBottom(self: *const Screen) u16 {
         return if (self.rows == 0) 0 else @min(self.scroll_bottom, self.rows - 1);
     }
 
     /// Set the vertical scrolling region when its clamped endpoints remain ordered.
-    pub fn setScrollRegion(self: *Screen, top: u16, bottom: ?u16) void {
+    fn setScrollRegion(self: *Screen, top: u16, bottom: ?u16) void {
         if (self.rows == 0) {
             self.scroll_top = 0;
             self.scroll_bottom = 0;
@@ -1794,7 +1817,7 @@ pub const Screen = struct {
     }
 
     /// Enable horizontal margins, or disable them and restore full-width defaults.
-    pub fn setLeftRightMarginMode(self: *Screen, enabled: bool) void {
+    fn setLeftRightMarginMode(self: *Screen, enabled: bool) void {
         self.left_right_margin_mode = enabled;
         if (!enabled) {
             self.left_margin = 0;
@@ -1803,7 +1826,7 @@ pub const Screen = struct {
     }
 
     /// Set ordered horizontal margins and home the cursor after a valid change.
-    pub fn setLeftRightMargins(self: *Screen, left: u16, right: ?u16) void {
+    fn setLeftRightMargins(self: *Screen, left: u16, right: ?u16) void {
         if (!self.left_right_margin_mode or self.cols < 2) return;
         const new_left = @min(left, self.cols - 2);
         const new_right = if (right) |value| @min(value, self.cols - 1) else self.cols - 1;
@@ -1815,21 +1838,21 @@ pub const Screen = struct {
     }
 
     /// Insert lines at the cursor within the active vertical scroll region.
-    pub fn insertLines(self: *Screen, count: u16) void {
+    fn insertLines(self: *Screen, count: u16) void {
         const bottom = self.scrollBottom();
         if (self.cursor.row < self.scroll_top or self.cursor.row > bottom) return;
         self.scrollDownRegion(self.cursor.row, bottom, count);
     }
 
     /// Delete lines at the cursor within the active vertical scroll region.
-    pub fn deleteLines(self: *Screen, count: u16) void {
+    fn deleteLines(self: *Screen, count: u16) void {
         const bottom = self.scrollBottom();
         if (self.cursor.row < self.scroll_top or self.cursor.row > bottom) return;
         self.scrollUpRegion(self.cursor.row, bottom, count);
     }
 
     /// Scroll an ordered, clamped region upward by at most its row count.
-    pub fn scrollUpRegion(self: *Screen, top: u16, bottom: u16, count: u16) void {
+    fn scrollUpRegion(self: *Screen, top: u16, bottom: u16, count: u16) void {
         if (self.rows == 0 or self.cols == 0 or top >= self.rows or top > bottom) return;
         const bounded_bottom = @min(bottom, self.rows - 1);
         const region_len: u16 = bounded_bottom - top + 1;
@@ -1859,7 +1882,7 @@ pub const Screen = struct {
     }
 
     /// Scroll an ordered, clamped region downward by at most its row count.
-    pub fn scrollDownRegion(self: *Screen, top: u16, bottom: u16, count: u16) void {
+    fn scrollDownRegion(self: *Screen, top: u16, bottom: u16, count: u16) void {
         if (self.rows == 0 or self.cols == 0 or top >= self.rows or top > bottom) return;
         const bounded_bottom = @min(bottom, self.rows - 1);
         const region_len: u16 = bounded_bottom - top + 1;
@@ -1884,7 +1907,7 @@ pub const Screen = struct {
         }
     }
 
-    pub fn rowStart(self: *const Screen, logical_row: u16) u32 {
+    fn rowStart(self: *const Screen, logical_row: u16) u32 {
         if (self.rows == 0) return 0;
         const physical_row = (self.row_origin + logical_row) % self.rows;
         return @as(u32, physical_row) * @as(u32, self.cols);
@@ -1896,71 +1919,72 @@ pub const Screen = struct {
         return (self.row_origin + logical_row) % self.rows;
     }
 
+    /// Reports whether a visible row continues into the next row.
     pub fn rowWrapped(self: *const Screen, logical_row: u16) bool {
         const wraps = self.row_wraps orelse return false;
         const idx = self.rowWrapIndex(logical_row) orelse return false;
         return wraps[@intCast(idx)];
     }
 
-    pub fn setRowWrapped(self: *Screen, logical_row: u16, wrapped: bool) void {
+    fn setRowWrapped(self: *Screen, logical_row: u16, wrapped: bool) void {
         const wraps = self.row_wraps orelse return;
         const idx = self.rowWrapIndex(logical_row) orelse return;
         wraps[@intCast(idx)] = wrapped;
     }
 
     /// Return a value view whose cells borrow the retained logical history line.
-    pub fn historyLineAt(self: *const Screen, logical_index: u32) HistoryLine {
+    fn historyLineAt(self: *const Screen, logical_index: u32) HistoryLine {
         const slot = (self.history_lines_start + logical_index) % self.historyLineCount();
         return self.history_lines.items[@intCast(slot)];
     }
 
     /// Resolve an oldest-first projected history row to its physical ring slot.
-    pub fn historySlotForLogicalRow(self: *const Screen, logical_row: u32) ?u32 {
+    fn historySlotForLogicalRow(self: *const Screen, logical_row: u32) ?u32 {
         const capacity = self.projectedCapacity();
         if (logical_row >= self.history_count or capacity == 0) return null;
         return (self.history_write_idx + logical_row) % capacity;
     }
 
     /// Resolve a newest-first projected history row to its physical ring slot.
-    pub fn historySlotForRecency(self: *const Screen, history_idx: u32) ?u32 {
+    fn historySlotForRecency(self: *const Screen, history_idx: u32) ?u32 {
         if (history_idx >= self.history_count) return null;
         return self.historySlotForLogicalRow(self.history_count - 1 - history_idx);
     }
 
     /// Return whether a newest-first projected history row continues logically.
-    pub fn historyRowWrapped(self: *const Screen, history_idx: u32) bool {
+    fn historyRowWrapped(self: *const Screen, history_idx: u32) bool {
         const wraps = self.history_wraps orelse return false;
         const slot = self.historySlotForRecency(history_idx) orelse return false;
         return wraps[@intCast(slot)];
     }
 
     /// Return the physical ring slot for the next projected history row.
-    pub fn projectedAppendSlot(self: *const Screen) u32 {
+    fn projectedAppendSlot(self: *const Screen) u32 {
         const capacity = self.projectedCapacity();
         if (capacity == 0) return 0;
         return (self.history_write_idx + self.history_count) % capacity;
     }
 
     /// Return allocated projected-history row capacity.
-    pub fn projectedCapacity(self: *const Screen) u32 {
+    fn projectedCapacity(self: *const Screen) u32 {
         const wraps = self.history_wraps orelse return 0;
         std.debug.assert(wraps.len <= std.math.maxInt(u32));
         return @intCast(wraps.len);
     }
 
     /// Return projected row count for `cells` at the current column width.
-    pub fn projectedRowCountForCells(self: *const Screen, cells: []const Cell) u32 {
+    fn projectedRowCountForCells(self: *const Screen, cells: []const Cell) u32 {
         return history_mod.rowCountForCells(history_mod.count32(cells.len), self.cols);
     }
 
     /// Return retained logical history-line count.
-    pub fn historyLineCount(self: *const Screen) u32 {
+    fn historyLineCount(self: *const Screen) u32 {
         std.debug.assert(self.history_lines.items.len <= std.math.maxInt(u32));
         return @intCast(self.history_lines.items.len);
     }
 
     /// Fill an assumed in-bounds row range with the current erase cell.
-    pub fn clearRowRange(self: *Screen, row: u16, start_col: u16, end_col_exclusive: u16) void {
+    fn clearRowRange(self: *Screen, row: u16, start_col: u16, end_col_exclusive: u16) void {
         const cells = self.cells orelse return;
         const start = self.rowStart(row);
         const erase_cell = self.eraseCell();
@@ -1968,7 +1992,7 @@ pub const Screen = struct {
     }
 
     /// Fill unprotected cells in an assumed in-bounds row range with the erase cell.
-    pub fn selectiveClearRowRange(self: *Screen, row: u16, start_col: u16, end_col_exclusive: u16) void {
+    fn selectiveClearRowRange(self: *Screen, row: u16, start_col: u16, end_col_exclusive: u16) void {
         const cells = self.cells orelse return;
         const start = self.rowStart(row);
         const erase_cell = self.eraseCell();
@@ -1980,6 +2004,7 @@ pub const Screen = struct {
         }
     }
 
+    /// Clamps a protocol rectangle to this screen, returning null when empty.
     pub fn rectBounds(self: *const Screen, area: rect.RectArea) ?RectBounds {
         if (self.rows == 0 or self.cols == 0) return null;
         const row_base: u16 = if (self.origin_mode) self.scroll_top else 0;
@@ -1994,7 +2019,7 @@ pub const Screen = struct {
     }
 
     /// Construct an empty cell carrying the current erase attributes.
-    pub fn eraseCell(self: *const Screen) Cell {
+    fn eraseCell(self: *const Screen) Cell {
         return .{ .codepoint = 0, .attrs = self.current_attrs };
     }
 
@@ -2013,7 +2038,7 @@ pub const Screen = struct {
         self.setRowWrapped(dst_row, self.rowWrapped(src_row));
     }
 
-    pub fn copyRowRange(self: *Screen, dst_row: u16, src_row: u16, start_col: u16, end_col_exclusive: u16) void {
+    fn copyRowRange(self: *Screen, dst_row: u16, src_row: u16, start_col: u16, end_col_exclusive: u16) void {
         const c = self.cells orelse return;
         const dst_start = self.rowStart(dst_row);
         const src_start = self.rowStart(src_row);
@@ -2024,7 +2049,7 @@ pub const Screen = struct {
     }
 
     /// Mark one in-bounds row dirty across its full visible width.
-    pub fn markDirtyRow(self: *Screen, row: u16) void {
+    fn markDirtyRow(self: *Screen, row: u16) void {
         if (self.rows == 0 or row >= self.rows) return;
         self.markDirtyCols(row, 0, self.cols -| 1);
     }

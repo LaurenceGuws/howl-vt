@@ -12,7 +12,6 @@ test "terminal: stream applies bytes to grid state deterministically" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("ab");
     try stream.next('c');
@@ -33,7 +32,6 @@ test "terminal: OSC cursor colors route into semantic cursor owner" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]12;#010203\x1b\\\x1b]21;cursor_text=#040506\x1b\\");
 

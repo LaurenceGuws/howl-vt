@@ -1,7 +1,9 @@
+//! Owns incremental UTF-8 decoding for ground-state printable input.
+
 const std = @import("std");
 
 /// UTF-8 decode result union.
-pub const Utf8Result = union(enum) {
+const Utf8Result = union(enum) {
     codepoint: u21,
     incomplete,
     invalid,

@@ -1,13 +1,15 @@
+//! Owns C0 byte classification and conversion into terminal control events.
+
 const std = @import("std");
 
-pub const C0Action = enum {
+const C0Action = enum {
     line_feed,
     carriage_return,
     backspace,
     horizontal_tab,
 };
 
-pub const C0 = enum(u8) {
+const C0 = enum(u8) {
     backspace = 0x08,
     horizontal_tab = 0x09,
     line_feed = 0x0A,
@@ -25,11 +27,12 @@ const events = @import("semantic_event.zig");
 const legacy_control = @import("legacy_control.zig");
 const SemanticEvent = events.SemanticEvent;
 
+/// Classifies one byte as its exact C0 code without rejecting unknown values.
 pub fn fromByte(byte: u8) C0 {
     return @enumFromInt(byte);
 }
 
-pub fn action(control: C0) ?C0Action {
+fn action(control: C0) ?C0Action {
     return switch (control) {
         .line_feed, .vertical_tab, .form_feed => .line_feed,
         .carriage_return => .carriage_return,
@@ -39,6 +42,7 @@ pub fn action(control: C0) ?C0Action {
     };
 }
 
+/// Converts a C0 code into its terminal mutation, or null when it is ignored.
 pub fn process(control: C0) ?SemanticEvent {
     switch (control) {
         .file_separator => return SemanticEvent{ .legacy_control = .tek_point_plot },

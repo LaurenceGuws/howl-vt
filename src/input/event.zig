@@ -1,3 +1,5 @@
+//! Defines the typed keyboard, text, paste, focus, and mouse input vocabulary.
+
 const std = @import("std");
 const keyboard = @import("keyboard.zig");
 const mouse = @import("mouse.zig");
@@ -8,6 +10,7 @@ pub const KeyEvent = struct {
     mods: keyboard.Modifier = .{},
 };
 
+/// Identifies host focus gained or lost for terminal focus reporting.
 pub const FocusEvent = enum {
     in,
     out,

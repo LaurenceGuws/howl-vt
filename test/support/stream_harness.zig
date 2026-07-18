@@ -9,10 +9,6 @@ pub const Harness = struct {
         return .{ .stream = terminal.vtStream() };
     }
 
-    pub fn deinit(self: *Harness) void {
-        self.stream.deinit();
-    }
-
     pub fn next(self: *Harness, byte: u8) !void {
         try self.stream.next(byte);
     }

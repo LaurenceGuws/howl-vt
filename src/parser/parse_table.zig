@@ -1,7 +1,8 @@
-//! Parser transition table moving toward Ghostty's fuller DEC model.
+//! Owns the compile-time parser state transition table.
 
 const std = @import("std");
 
+/// Names every state in the generated VT parser automaton.
 pub const ParseState = enum {
     ground,
     escape,
@@ -19,6 +20,7 @@ pub const ParseState = enum {
     sos_pm_apc_string,
 };
 
+/// Names the byte action performed while crossing a parser transition.
 pub const TransitionAction = enum {
     none,
     print,
@@ -34,14 +36,16 @@ pub const TransitionAction = enum {
     param,
 };
 
+/// Pairs the next parser state with its transition action.
 pub const Transition = struct {
     state: ParseState,
     action: TransitionAction,
 };
 
+/// Provides the compile-time-complete byte-by-state transition table.
 pub const table = genTable();
 
-pub const Table = genTableType(false);
+const Table = genTableType(false);
 const OptionalTable = genTableType(true);
 
 fn genTableType(comptime optional: bool) type {

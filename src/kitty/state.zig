@@ -1,3 +1,5 @@
+//! Owns retained Kitty protocol state for one terminal instance.
+
 const std = @import("std");
 const color = @import("color.zig");
 const key = @import("key.zig");
@@ -24,23 +26,26 @@ comptime {
     std.debug.assert(text_size_request_max_bytes == notification_part_max_bytes);
 }
 
-pub const ScreenState = struct {
+const ScreenState = struct {
     keyboard: key.Stack = .{},
     pointer: pointer.Stack = .{},
     multiple_cursor_count: u16 = 0,
 };
 
+/// Owns the latest shell mark metadata until replacement or terminal deinit.
 pub const ShellMark = struct {
     kind: u8 = 0,
     status: ?i32 = null,
     metadata: []u8 = &[_]u8{},
 };
 
+/// Owns one bounded notification metadata and payload pair.
 pub const NotificationRequest = struct {
     metadata: []u8,
     payload: []u8,
 };
 
+/// Owns Kitty state shared by primary and alternate screens.
 pub const GlobalState = struct {
     shell_mark: ShellMark = .{},
     notifications: std.ArrayList(NotificationRequest) = .empty,
@@ -49,6 +54,7 @@ pub const GlobalState = struct {
     file_transfer_request: ?[]u8 = null,
     text_size_request: ?[]u8 = null,
 
+    /// Releases every allocation retained by global Kitty state.
     pub fn deinit(self: *GlobalState, allocator: std.mem.Allocator) void {
         allocator.free(self.shell_mark.metadata);
         for (self.notifications.items) |notification| {
@@ -93,19 +99,23 @@ pub const GlobalState = struct {
     }
 };
 
+/// Combines screen-local Kitty state with one shared global state.
 pub const KittyState = struct {
     main: ScreenState = .{},
     alt: ScreenState = .{},
     global: GlobalState = .{},
 
+    /// Releases global Kitty allocations through the terminal allocator.
     pub fn deinit(self: *KittyState, allocator: std.mem.Allocator) void {
         self.global.deinit(allocator);
     }
 
+    /// Returns mutable Kitty state for the currently selected screen.
     pub fn activeScreen(self: *KittyState, alt_active: bool) *ScreenState {
         return if (alt_active) &self.alt else &self.main;
     }
 
+    /// Returns borrowed read-only Kitty state for the selected screen.
     pub fn activeScreenConst(self: *const KittyState, alt_active: bool) *const ScreenState {
         return if (alt_active) &self.alt else &self.main;
     }
@@ -120,6 +130,7 @@ pub const KittyState = struct {
         return self.activeScreenConst(alt_active).multiple_cursor_count;
     }
 
+    /// Resets Kitty state governed by terminal reset while preserving retained requests.
     pub fn resetTerminalState(self: *KittyState) void {
         self.main.pointer.len = 0;
         self.alt.pointer.len = 0;

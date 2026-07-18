@@ -1,3 +1,5 @@
+//! Encodes typed host input into bounded terminal byte sequences.
+
 const std = @import("std");
 const encoded_owner = @import("encoded.zig");
 

@@ -1,3 +1,6 @@
+//! Names legacy control consequences retained for host inspection.
+
+/// Identifies a legacy terminal mode transition retained for host observation.
 pub const LegacyControlKind = enum {
     tek_point_plot,
     tek_graph,

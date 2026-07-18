@@ -1,7 +1,9 @@
+//! Validates keyboard identities and encodes keyboard protocol sequences.
+
 const std = @import("std");
 
 /// Named physical key whose terminal identity is distinct from Unicode text.
-pub const NamedKey = enum {
+const NamedKey = enum {
     enter,
     tab,
     backspace,
@@ -55,13 +57,13 @@ pub const NamedKey = enum {
 };
 
 /// Valid Unicode scalar produced by one physical key event.
-pub const UnicodeScalar = struct {
+const UnicodeScalar = struct {
     value: u21,
 
     /// Validate one scalar before it enters terminal keyboard encoding.
     ///
     /// Surrogate halves and values outside Unicode's scalar range are rejected.
-    pub fn init(value: u21) error{InvalidUnicodeScalar}!UnicodeScalar {
+    fn init(value: u21) error{InvalidUnicodeScalar}!UnicodeScalar {
         if (!std.unicode.utf8ValidCodepoint(value)) return error.InvalidUnicodeScalar;
         return .{ .value = value };
     }

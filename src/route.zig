@@ -1,3 +1,5 @@
+//! Converts parser events into canonical semantic events and applies them by owner.
+
 const events = @import("semantic_event.zig");
 const host_apply = @import("host_apply.zig");
 const kitty_apply = @import("kitty/apply.zig");
@@ -16,7 +18,7 @@ const host_state = @import("host_state.zig");
 /// Parser event classified before semantic dispatch.
 const Event = parsed_events.Event;
 /// Canonical parser-to-domain vocabulary exposed to routing tests.
-pub const SemanticEvent = events.SemanticEvent;
+const SemanticEvent = events.SemanticEvent;
 
 const Terminal = terminal_mod.Terminal;
 

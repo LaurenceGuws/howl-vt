@@ -1,6 +1,8 @@
+//! Decodes completed ESC sequences into terminal semantic events.
+
 const std = @import("std");
 
-pub const EscAction = union(enum) {
+const EscAction = union(enum) {
     line_feed,
     next_line,
     reverse_index,
@@ -15,7 +17,7 @@ pub const EscAction = union(enum) {
 const events = @import("semantic_event.zig");
 const SemanticEvent = events.SemanticEvent;
 
-pub fn action(final: u8) ?EscAction {
+fn action(final: u8) ?EscAction {
     return switch (final) {
         'D' => .line_feed,
         'E' => .next_line,
@@ -31,6 +33,7 @@ pub fn action(final: u8) ?EscAction {
     };
 }
 
+/// Decodes one completed ESC event; unsupported combinations return null.
 pub fn process(final: u8) ?SemanticEvent {
     switch (final) {
         0x17 => return SemanticEvent{ .legacy_control = .tek_copy },

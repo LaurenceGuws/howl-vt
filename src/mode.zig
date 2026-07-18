@@ -1,6 +1,9 @@
+//! Defines terminal mode state, saved DEC modes, and mode-report projections.
+
 const std = @import("std");
 const input_mouse = @import("input/mouse.zig");
 
+/// Carries Kitty keyboard flags and the set, add, or remove operation mode.
 pub const KeyFormatChange = struct {
     resource: ?u8,
     value: ?u16,
@@ -10,6 +13,7 @@ const saved_dec_mode_limit = 16;
 const SavedDecModeCount = u8;
 const SavedDecModeSlot = u8;
 
+/// Stores terminal modes that affect screen mutation, input encoding, and reports.
 pub const ModeState = struct {
     keyboard_action_mode: bool = false,
     application_cursor_keys: bool = false,
@@ -32,11 +36,12 @@ pub const ModeState = struct {
     saved_dec_mode_count: SavedDecModeCount = 0,
 };
 
-pub const SavedDecMode = struct {
+const SavedDecMode = struct {
     mode: u16,
     state: u8,
 };
 
+/// Borrows the DEC mode facts required to answer one mode query.
 pub const DecView = struct {
     application_cursor_keys: bool,
     application_keypad: bool,
@@ -53,6 +58,7 @@ pub const DecView = struct {
     kitty_clipboard: bool,
 };
 
+/// Borrows the ANSI mode facts required to answer one mode query.
 pub const AnsiView = struct {
     keyboard_action_mode: bool,
     insert_mode: bool,
@@ -60,6 +66,7 @@ pub const AnsiView = struct {
     newline_mode: bool,
 };
 
+/// Returns the DEC mode report state for a supported numeric mode.
 pub fn decModeStateForView(view: DecView, mode: u16) u8 {
     return switch (mode) {
         1 => boolToDecModeState(view.application_cursor_keys),
@@ -84,6 +91,7 @@ pub fn decModeStateForView(view: DecView, mode: u16) u8 {
     };
 }
 
+/// Returns the ANSI mode report state for a supported numeric mode.
 pub fn ansiModeStateForView(view: AnsiView, mode: u16) u8 {
     return switch (mode) {
         2 => boolToDecModeState(view.keyboard_action_mode),
@@ -94,10 +102,11 @@ pub fn ansiModeStateForView(view: AnsiView, mode: u16) u8 {
     };
 }
 
-pub fn boolToDecModeState(enabled: bool) u8 {
+fn boolToDecModeState(enabled: bool) u8 {
     return if (enabled) 1 else 2;
 }
 
+/// Returns an existing saved-mode slot or appends one within caller capacity.
 pub fn savedDecModeSlot(saved_modes: []SavedDecMode, saved_count: *SavedDecModeCount, mode: u16) SavedDecModeSlot {
     const cap = savedDecModeCap(saved_modes);
     var slot: SavedDecModeSlot = 0;
@@ -112,6 +121,7 @@ pub fn savedDecModeSlot(saved_modes: []SavedDecMode, saved_count: *SavedDecModeC
     return cap - 1;
 }
 
+/// Returns a saved DEC mode value when the bounded store contains it.
 pub fn savedDecModeState(saved_modes: []const SavedDecMode, saved_count: SavedDecModeCount, mode: u16) ?u8 {
     var slot: SavedDecModeSlot = 0;
     while (slot < saved_count) : (slot += 1) {
@@ -121,6 +131,7 @@ pub fn savedDecModeState(saved_modes: []const SavedDecMode, saved_count: SavedDe
     return null;
 }
 
+/// Reports whether a DEC mode has implemented set and reset behavior.
 pub fn canSetDecMode(mode: u16) bool {
     return switch (mode) {
         1, 5, 6, 7, 9, 25, 47, 66, 69, 1047, 1049, 1000, 1002, 1003, 1004, 1005, 1006, 1015, 2004, 2026, 5522 => true,

@@ -1,8 +1,11 @@
+//! Decodes CSI commands distinguished by a private leader byte.
+
 const events = @import("semantic_event.zig");
 const params_mod = @import("csi_params.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
+/// Decodes one leader-qualified CSI sequence; unsupported forms return null.
 pub fn process(final: u8, params: []const i32, leader: u8, intermediates: []const u8) ?SemanticEvent {
     return switch (leader) {
         '>' => switch (final) {

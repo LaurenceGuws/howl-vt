@@ -1,3 +1,5 @@
+//! Defines the canonical parser-to-terminal mutation vocabulary.
+
 const csi_params = @import("csi_params.zig");
 const cursor = @import("screen/cursor.zig");
 const dcs_payload = @import("dcs_payload.zig");

@@ -1,3 +1,5 @@
+//! Owns primary/alternate screens, selections, and unified visible surface views.
+
 const std = @import("std");
 const screen_mod = @import("screen.zig");
 const selection = @import("selection.zig");
@@ -5,11 +7,13 @@ const selection = @import("selection.zig");
 const Screen = screen_mod.Screen;
 const SelectionState = selection.SelectionState;
 
+/// Identifies whether a visible row comes from history or the active screen.
 pub const RowSource = union(enum) {
     history: u32,
     screen: u16,
 };
 
+/// Borrows a unified history-and-screen viewport until screen-set mutation.
 pub const View = struct {
     rows: u16,
     cols: u16,
@@ -25,7 +29,7 @@ pub const View = struct {
     start: u32,
     screen: *const Screen,
 
-    pub fn rowSource(self: View, row: u16) RowSource {
+    fn rowSource(self: View, row: u16) RowSource {
         if (self.rows == 0 or row >= self.rows) return .{ .screen = 0 };
         const src_row = self.start + rowIndex(row);
         std.debug.assert(self.start + rowIndex(self.rows) <= self.history_count + rowIndex(self.rows));
@@ -35,6 +39,7 @@ pub const View = struct {
         return .{ .screen = @intCast(@min(src_row - self.history_count, rowIndex(self.rows -| 1))) };
     }
 
+    /// Returns a copied cell from an already resolved row source.
     pub fn sourceCellInfoAt(self: View, source: RowSource, col: u16) Screen.Cell {
         return switch (source) {
             .history => |recency| self.screen.historyCellAt(recency, col),
@@ -42,20 +47,24 @@ pub const View = struct {
         };
     }
 
+    /// Returns a copied viewport cell, clamping an invalid row to screen row zero.
     pub fn cellInfoAt(self: View, row: u16, col: u16) Screen.Cell {
         return self.sourceCellInfoAt(self.rowSource(row), col);
     }
 
+    /// Returns the codepoint of one visible cell.
     pub fn cellAt(self: View, row: u16, col: u16) u21 {
         return @intCast(self.cellInfoAt(row, col).codepoint);
     }
 
+    /// Returns the display depth contributed by one visible row.
     pub fn rowDepth(self: View, row: u16) u32 {
         if (self.rows == 0 or row >= self.rows) return self.scrollback_offset;
         std.debug.assert(self.scrollback_offset <= self.history_count);
         return self.scrollback_offset + rowIndex(self.rows - 1 - row);
     }
 
+    /// Returns the first blank column after visible row content.
     pub fn contentEndExclusive(self: View, row: u16) u16 {
         if (self.scrollback_offset == 0 and row > self.cursor_row) return 0;
         var scan = self.cols;
@@ -69,12 +78,14 @@ pub const View = struct {
     }
 };
 
+/// Pairs a borrowed visible view with its active selection.
 pub const SurfaceSnapshot = struct {
     view: View,
     dirty: ?Screen.DirtyRows,
     selection: ?selection.TerminalSelection,
 };
 
+/// Owns primary and alternate screens plus their independent selections.
 pub const Set = struct {
     primary: Screen,
     alternate: Screen,
@@ -82,26 +93,32 @@ pub const Set = struct {
     alternate_selection: SelectionState = SelectionState.init(),
     alt_active: bool = false,
 
+    /// Takes primary and alternate screen values into one screen set.
     pub fn init(primary: Screen, alternate: Screen) Set {
         return .{ .primary = primary, .alternate = alternate };
     }
 
+    /// Returns the mutable screen selected by alternate-screen state.
     pub fn active(self: *Set) *Screen {
         return if (self.alt_active) &self.alternate else &self.primary;
     }
 
+    /// Returns the borrowed screen selected by alternate-screen state.
     pub fn activeConst(self: *const Set) *const Screen {
         return if (self.alt_active) &self.alternate else &self.primary;
     }
 
+    /// Returns mutable selection state paired with the active screen.
     pub fn activeSelection(self: *Set) *SelectionState {
         return if (self.alt_active) &self.alternate_selection else &self.primary_selection;
     }
 
+    /// Returns borrowed selection state paired with the active screen.
     pub fn activeSelectionConst(self: *const Set) *const SelectionState {
         return if (self.alt_active) &self.alternate_selection else &self.primary_selection;
     }
 
+    /// Resets both screens, selections, and active-screen state.
     pub fn reset(self: *Set) void {
         self.active().reset();
     }
@@ -122,17 +139,19 @@ pub const Set = struct {
         alternate.deinit(allocator);
     }
 
-    pub fn setCellPixelSize(self: *Set, width: u32, height: u32) void {
+    fn setCellPixelSize(self: *Set, width: u32, height: u32) void {
         self.primary.setCellPixelSize(width, height);
         self.alternate.setCellPixelSize(width, height);
     }
 
+    /// Releases both screens through their shared terminal allocator.
     pub fn deinit(self: *Set, allocator: std.mem.Allocator) void {
         self.primary.deinit(allocator);
         self.alternate.deinit(allocator);
     }
 };
 
+/// Builds a borrowed viewport at a clamped scrollback offset.
 pub fn visibleView(screen_state: *const Set, scrollback_offset: u32) View {
     const active = screen_state.activeConst();
     const history_count: u32 = if (screen_state.alt_active) 0 else active.historyCount();
@@ -162,6 +181,7 @@ pub fn visibleView(screen_state: *const Set, scrollback_offset: u32) View {
     };
 }
 
+/// Builds a borrowed view and selection at a clamped u64 offset.
 pub fn surfaceSnapshot(screen_state: *const Set, scrollback_offset: u64) SurfaceSnapshot {
     const history_count: u64 = if (screen_state.alt_active)
         0
@@ -177,11 +197,11 @@ pub fn surfaceSnapshot(screen_state: *const Set, scrollback_offset: u64) Surface
     };
 }
 
-pub fn peekDirtyRows(screen_state: *const Set) ?Screen.DirtyRows {
+fn peekDirtyRows(screen_state: *const Set) ?Screen.DirtyRows {
     return screen_state.activeConst().peekDirtyRows();
 }
 
-pub fn copyDirtyRows(dirty_rows_out: []u8, cols_start: []u16, cols_end: []u16, dirty: ?Screen.DirtyRows) void {
+fn copyDirtyRows(dirty_rows_out: []u8, cols_start: []u16, cols_end: []u16, dirty: ?Screen.DirtyRows) void {
     @memset(dirty_rows_out, 0);
     @memset(cols_start, 0);
     @memset(cols_end, 0);
@@ -197,20 +217,23 @@ pub fn copyDirtyRows(dirty_rows_out: []u8, cols_start: []u16, cols_end: []u16, d
     }
 }
 
+/// Acknowledges dirty state on the active screen.
 pub fn clearDirtyRows(screen_state: *Set) void {
     screen_state.active().clearDirtyRows();
 }
 
+/// Returns one history codepoint by recency.
 pub fn historyRowAt(screen_state: *const Set, history_idx: u32, col: u16) u21 {
     if (screen_state.alt_active) return 0;
     return screen_state.primary.historyRowAt(history_idx, col);
 }
 
-pub fn historyCellAt(screen_state: *const Set, history_idx: u32, col: u16) Screen.Cell {
+fn historyCellAt(screen_state: *const Set, history_idx: u32, col: u16) Screen.Cell {
     if (screen_state.alt_active) return Screen.default_cell;
     return screen_state.primary.historyCellAt(history_idx, col);
 }
 
+/// Returns the configured active-screen history row capacity.
 pub fn historyCapacity(screen_state: *const Set) u16 {
     return screen_state.primary.historyCapacity();
 }

@@ -1,6 +1,9 @@
+//! Owns monotonic mutation and snapshot identities for terminal surface publication.
+
 const std = @import("std");
 const screen_set = @import("screen_set.zig");
 
+/// Tracks monotonic mutation, snapshot, and acknowledgement identities.
 pub const Publication = struct {
     seq: u64 = 1,
     dirty_generation: u64 = 0,
@@ -10,6 +13,7 @@ pub const Publication = struct {
     cols: u16 = 0,
     alt: bool = false,
 
+    /// Publishes a new snapshot only when mutation advanced beyond the last publication.
     pub fn publish(self: *Publication, view: screen_set.View, scrollback_offset: u64, dirty_generation: u64) u64 {
         std.debug.assert(view.rows > 0);
         std.debug.assert(view.cols > 0);
@@ -32,6 +36,7 @@ pub const Publication = struct {
         return self.seq;
     }
 
+    /// Accepts acknowledgement only for a nonzero snapshot no newer than publication.
     pub fn canAck(self: Publication, snapshot_seq: u64, dirty_generation_current: u64) bool {
         if (snapshot_seq == 0) return false;
         return self.seq == snapshot_seq and self.dirty_generation == dirty_generation_current;

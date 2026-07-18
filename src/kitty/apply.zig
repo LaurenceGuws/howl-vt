@@ -1,3 +1,5 @@
+//! Applies Kitty semantic events to bounded terminal-owned Kitty state.
+
 const std = @import("std");
 const kitty_color = @import("color.zig");
 const kitty_protocol = @import("protocol.zig");
@@ -79,13 +81,13 @@ pub fn apply(vt: *Terminal, event: SemanticEvent) host_state.ApplyError!void {
     }
 }
 
-pub fn setShellMark(allocator: std.mem.Allocator, current: *kitty_state.ShellMark, mark: KittyShellMark) host_state.ApplyError!void {
+fn setShellMark(allocator: std.mem.Allocator, current: *kitty_state.ShellMark, mark: KittyShellMark) host_state.ApplyError!void {
     const owned = try replaceOwned(allocator, mark.metadata, kitty_state.shell_mark_max_bytes);
     allocator.free(current.metadata);
     current.* = .{ .kind = mark.kind, .status = mark.status, .metadata = owned };
 }
 
-pub fn appendNotification(allocator: std.mem.Allocator, notifications: *std.ArrayList(kitty_state.NotificationRequest), notification: KittyNotificationCommand) host_state.ApplyError!void {
+fn appendNotification(allocator: std.mem.Allocator, notifications: *std.ArrayList(kitty_state.NotificationRequest), notification: KittyNotificationCommand) host_state.ApplyError!void {
     if (notifications.items.len >= kitty_state.notification_max_count) return error.ConsequenceLimit;
     try ensureRetainedBound(host_state.byteCount(notification.metadata), kitty_state.notification_part_max_bytes);
     try ensureRetainedBound(host_state.byteCount(notification.payload), kitty_state.notification_part_max_bytes);
@@ -96,7 +98,7 @@ pub fn appendNotification(allocator: std.mem.Allocator, notifications: *std.Arra
     try notifications.append(allocator, .{ .metadata = metadata, .payload = payload });
 }
 
-pub fn setOptionalPayload(allocator: std.mem.Allocator, slot: *?[]u8, payload: []const u8, max_len: u32) host_state.ApplyError!void {
+fn setOptionalPayload(allocator: std.mem.Allocator, slot: *?[]u8, payload: []const u8, max_len: u32) host_state.ApplyError!void {
     const owned = try replaceOwned(allocator, payload, max_len);
     if (slot.*) |old| allocator.free(old);
     slot.* = owned;

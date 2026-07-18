@@ -1,9 +1,12 @@
+//! Decodes private CSI mode and report commands.
+
 const events = @import("semantic_event.zig");
 const erase = @import("screen/erase.zig");
 const params_mod = @import("csi_params.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
+/// Decodes one private CSI sequence; unsupported forms return null.
 pub fn process(final: u8, params: []const i32, leader: u8, intermediates: []const u8) ?SemanticEvent {
     if (leader != '?') return null;
     if (directQuery(final, params)) |event| return event;

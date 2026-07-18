@@ -1,10 +1,12 @@
+//! Owns terminal selection endpoints and selection lifecycle.
+
 const std = @import("std");
 const screen_mod = @import("screen.zig");
 
 const Screen = screen_mod.Screen;
 
 /// Selection endpoint coordinate in stable projected scrollback rows.
-pub const SelectionPos = struct {
+const SelectionPos = struct {
     row: i32,
     col: u16,
 };
@@ -76,6 +78,7 @@ pub const SelectionState = struct {
     }
 };
 
+/// Returns selection endpoints in document order without mutating selection state.
 pub fn ordered(sel: TerminalSelection) struct { start: SelectionPos, end: SelectionPos } {
     if (sel.start.row < sel.end.row) return .{ .start = sel.start, .end = sel.end };
     if (sel.start.row > sel.end.row) return .{ .start = sel.end, .end = sel.start };

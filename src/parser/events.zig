@@ -1,7 +1,9 @@
+//! Defines parser event values consumed by semantic routing.
+
 const parser_mod = @import("../parser.zig");
 
 /// Parser output event.
-pub const StyleChange = struct {
+const StyleChange = struct {
     final: u8,
     params: []const i32,
     separators: parser_mod.CsiSeparatorList,
@@ -12,7 +14,7 @@ pub const StyleChange = struct {
     intermediates_len: u8,
 };
 
-pub const DcsEvent = struct {
+const DcsEvent = struct {
     body: []const u8,
     payload: []const u8,
     final: u8,
@@ -22,6 +24,7 @@ pub const DcsEvent = struct {
     intermediates_len: u8,
 };
 
+/// Carries one parser event with slices borrowed until the next parser advance.
 pub const Event = union(enum) {
     text: []const u8,
     codepoint: u21,

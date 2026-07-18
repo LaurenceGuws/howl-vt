@@ -10,14 +10,14 @@ fragmentation and indirect ownership are defects.
 | --- | ---: | --- |
 | Foot directness | 7/10 | The embedding root exposes one state owner and SemanticEvent dispatches directly to concrete owners; protocol classification remains fragmented across CSI-family files. |
 | TigerBeetle defensiveness | 7/10 | Terminal dimensions now reject zero exactly, but many internal owner boundaries infer errors and structural `anytype` hides required state. |
-| Character/capability density | 7/10 | ABI projection, compatibility constants, and four redundant Terminal constructors are gone; 643 public declarations across implementation modules still expose far more vocabulary than the one-symbol embedding root. |
+| Character/capability density | 8/10 | ABI projection, compatibility constants, redundant Terminal constructors, and 169 accidental public declarations are gone; remaining density work belongs to concrete owner boundaries. |
 | Ownership/cleanup | 7/10 | Constructors and transactional Screen/Set resize have exhaustive allocation-failure cleanup proofs; routed mutation now enters concrete Screen, Terminal, report, Kitty, or host owners without mirrored action unions. |
 | Exact failures | 6/10 | Curated Terminal operations, selection projection, Screen construction/resize, Set resize, and paste allocation now expose exact failures; inferred errors remain elsewhere in internal protocol and host-state owners. |
-| Documentation | 3/10 | The tree has 101 `///` lines for 643 public declarations, and only 2 of 62 source files have `//!` owner contracts; many retained public implementation symbols remain undocumented. |
+| Documentation | 10/10 | All 57 source files state their owner boundary and every retained public declaration has a specific adjacent contract; the executable audit rejects drift. |
 | Hostile-input evidence | 6/10 | Limit and allocator-failure tests, deterministic simulations, and a native arbitrary-byte/operation fuzz target exist; bounded fuzz runs complete and preserve their corpus. |
 | Embedding surface | 7/10 | `src/howl_vt.zig` now exposes only `Terminal` and proves the current headless host path; additional contracts remain private until earned. |
-| Deliberate modification | 5/10 | `protocol_coverage.db` and simulations help, but no executable source-debt gates protect public docs, erased types, exact errors, or ABI absence. |
-| Source maturity | 6/10 | Strong protocol breadth, native tests, and current design paths remain, but broad erased helpers, undocumented implementation-public symbols, and inferred internal failures persist. |
+| Deliberate modification | 7/10 | `protocol_coverage.db`, simulations, and the source audit protect tested behavior, owner contracts, public documentation, and the one-symbol embedding root; erased-type and exact-error gates remain future work. |
+| Source maturity | 7/10 | Strong protocol breadth, native tests, current design paths, and complete owner documentation remain; broad erased helpers and inferred internal failures still block the final bar. |
 
 ## Ordered offenders
 
@@ -83,14 +83,13 @@ fragmentation and indirect ownership are defects.
 
 ### VT-004 — Public source is largely undocumented
 
-- Status: open
+- Status: resolved
 - Path/symbol: repository-wide; immediately `src/terminal.zig:Terminal`,
   `src/screen_set.zig:View`, `src/stream_terminal.zig:Stream`, and
   `src/howl_vt.zig`
-- Defect: 63 `///` comments cover 502 non-FFI public declarations. Public
-  methods such as `Terminal.feed`, `surfaceSnapshot`, and selection
-  mutation omit ownership, bounds, invalidation, and failure meaning. Almost
-  every source file lacks `//!`.
+- Defect: retained public declarations lacked contracts for ownership, bounds,
+  invalidation, and failure meaning, while almost every source file lacked an
+  owner boundary.
 - Bars: documentation, deliberate modification, maturity
 - Simpler shape: reduce accidental `pub`; document every retained public owner
   and non-obvious local invariant where it lives.
@@ -98,6 +97,12 @@ fragmentation and indirect ownership are defects.
   documented
 - Acceptance evidence: an audit lists no undocumented retained public symbol
   or owned file; comments match executable tests and current paths.
+- Resolution: compiler-checked unit, simulation, fuzz, benchmark, and native
+  embedding paths reduced source visibility from 571 to 402 public
+  declarations without aliases. All 57 source files and every retained public
+  declaration now carry current contracts. `tools/audit_source.sh` enforces
+  both requirements and keeps `src/howl_vt.zig` limited to the single
+  `Terminal` export through the `zig build check` gate.
 
 ### VT-005 — Terminal construction had six overlapping paths
 

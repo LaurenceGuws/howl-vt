@@ -1,3 +1,5 @@
+//! Owns one terminal instance and its curated native embedding operations.
+
 const std = @import("std");
 const input_encode = @import("input/encode.zig");
 const input_encoded = @import("input/encoded.zig");
@@ -28,11 +30,17 @@ const SemanticEvent = semantic_event.SemanticEvent;
 pub const Terminal = struct {
     const HostState = host_state.State;
     const KittyState = kitty_state.KittyState;
+    /// Exposes the terminal-borrowing byte stream type used by native hosts.
     pub const Stream = stream_terminal.Stream;
+    /// Reports invalid zero dimensions or allocation failure during construction.
     pub const InitError = error{ InvalidDimensions, OutOfMemory };
+    /// Reports invalid zero dimensions or allocation failure before resize mutation.
     pub const ResizeError = error{ InvalidDimensions, OutOfMemory };
+    /// Exposes the typed host-input vocabulary accepted by encodeInput.
     pub const InputEvent = input_event.Event;
+    /// Provides caller-owned fixed scratch storage for allocation-free input encoding.
     pub const InputScratch = input_encode.Scratch;
+    /// Returns encoded input with explicit borrowed-or-owned byte lifetime.
     pub const EncodedInput = input_encoded.Encoded;
 
     const ScreenSet = screen_set.Set;
@@ -53,6 +61,7 @@ pub const Terminal = struct {
     surface_publication: surface_publication.Publication = .{},
     scrollback_offset: u32 = 0,
 
+    /// Selects absolute, relative, or edge-based history viewport movement.
     pub const ScrollViewport = union(enum) {
         top,
         bottom,
@@ -109,10 +118,12 @@ pub const Terminal = struct {
         self.stream_state.deinit();
     }
 
+    /// Returns a stream borrowing this terminal; the terminal must outlive its use.
     pub fn vtStream(self: *Terminal) Stream {
         return .init(self);
     }
 
+    /// Applies a borrowed byte slice and reports mutation; failures reset transient parser state.
     pub fn feed(self: *Terminal, bytes: []const u8) FeedError!FeedSummary {
         const history_before = self.visibleHistoryCount();
         const was_scrolled = self.scrollback_offset > 0;
@@ -123,6 +134,7 @@ pub const Terminal = struct {
         return summary;
     }
 
+    /// Publishes mutation identity and enforces cursor and selection invariants after routing.
     pub fn postApply(self: *Terminal, state_changed: bool) void {
         self.screen_state.activeSelection().clearIfInvalidatedByGrid(
             self.screen_state.activeConst(),
@@ -144,6 +156,7 @@ pub const Terminal = struct {
         self.dirty_generation +%= 1;
     }
 
+    /// Sets nonzero cell pixels on both screens, or clears the size when either value is zero.
     pub fn setCellPixelSize(self: *Terminal, width: u32, height: u32) void {
         const previous = self.screen_state.primary.cellPixelSize();
         if (previous) |cell| {
@@ -153,6 +166,7 @@ pub const Terminal = struct {
         self.screen_state.setCellPixelSize(width, height);
     }
 
+    /// Applies terminal reset while preserving dimensions and owned allocations.
     pub fn resetScreen(self: *Terminal) void {
         self.screen_state.reset();
         self.primary_savepoint.clear();
@@ -164,6 +178,7 @@ pub const Terminal = struct {
         self.host.resetTerminalState();
     }
 
+    /// Saves cursor, charset, origin, and wrap state into the active screen slot.
     pub fn saveCursor(self: *Terminal) void {
         const active = self.screen_state.activeConst();
         const savepoint = self.activeSavepoint();
@@ -184,6 +199,7 @@ pub const Terminal = struct {
         };
     }
 
+    /// Restores the active screen savepoint and clamps position to current bounds.
     pub fn restoreCursor(self: *Terminal) void {
         const active = self.screen_state.active();
         const savepoint = self.activeSavepointConst();
@@ -209,6 +225,7 @@ pub const Terminal = struct {
         self.g1_designation = savepoint.g1_designation;
     }
 
+    /// Switches primary or alternate screen with explicit clear and cursor-save behavior.
     pub fn switchScreenMode(self: *Terminal, enable_alt: bool, clear_alt: bool, save_restore_cursor: bool) void {
         if (enable_alt) {
             if (self.screen_state.alt_active) return;
@@ -348,6 +365,7 @@ pub const Terminal = struct {
         };
     }
 
+    /// Acknowledges a published snapshot and retires dirty state only for valid identities.
     pub fn ackSurface(self: *Terminal, snapshot_seq: u64) bool {
         if (snapshot_seq == 0) return false;
         if (self.surface_publication.canAck(snapshot_seq, self.dirty_generation)) {
@@ -356,6 +374,7 @@ pub const Terminal = struct {
         return true;
     }
 
+    /// Moves the history viewport within current visible-history bounds.
     pub fn scrollViewport(self: *Terminal, behavior: ScrollViewport) bool {
         const history_count = self.visibleHistoryCount();
         const previous = self.scrollback_offset;
@@ -380,6 +399,7 @@ pub const Terminal = struct {
         return self.scrollback_offset != previous;
     }
 
+    /// Returns history rows currently reachable above the active screen.
     pub fn visibleHistoryCount(self: *const Terminal) u32 {
         if (self.screen_state.alt_active) return 0;
         return self.screen_state.activeConst().historyCount();
@@ -406,6 +426,7 @@ pub const Terminal = struct {
         std.debug.assert(self.scrollback_offset <= history_after);
     }
 
+    /// Publishes and borrows the current surface until terminal mutation.
     pub fn surfaceSnapshot(self: *Terminal) SurfacePublication {
         const snapshot = screen_set.surfaceSnapshot(&self.screen_state, self.scrollback_offset);
         return .{
@@ -415,6 +436,7 @@ pub const Terminal = struct {
         };
     }
 
+    /// Returns copied dimensions, cursor, history, and active-screen metadata.
     pub fn visibleMeta(self: *Terminal) VisibleMeta {
         const publication = self.surfaceSnapshot();
         const view = publication.snapshot.view;
@@ -428,6 +450,7 @@ pub const Terminal = struct {
         };
     }
 
+    /// Borrows a cell hyperlink URI only when snapshot identity and coordinates are valid.
     pub fn visibleCellHyperlinkUri(self: *Terminal, snapshot_seq: u64, row: u16, col: u16) error{InvalidArgument}!?[]const u8 {
         if (snapshot_seq == 0) return error.InvalidArgument;
         const publication = self.surfaceSnapshot();
@@ -437,6 +460,7 @@ pub const Terminal = struct {
         return self.host.hyperlinkUriForId(view.cellInfoAt(row, col).attrs.link_id);
     }
 
+    /// Borrows the current cell hyperlink URI, or null for invalid coordinates or no link.
     pub fn visibleCellHyperlinkUriCurrent(self: *Terminal, row: u16, col: u16) ?[]const u8 {
         const publication = self.surfaceSnapshot();
         const view = publication.snapshot.view;
@@ -444,15 +468,18 @@ pub const Terminal = struct {
         return self.host.hyperlinkUriForId(view.cellInfoAt(row, col).attrs.link_id);
     }
 
+    /// Returns a copied active-screen selection when one exists.
     pub fn selectionState(self: *const Terminal) ?selection.TerminalSelection {
         return self.screen_state.activeSelectionConst().state();
     }
 
+    /// Starts selection at a clamped column and VT/history row.
     pub fn startSelection(self: *Terminal, row: i32, col: u16) void {
         self.screen_state.activeSelection().start(self.selectionAbsoluteRow(row), col);
         self.noteSelectionChanged();
     }
 
+    /// Moves the active selection endpoint to a clamped column.
     pub fn updateSelection(self: *Terminal, row: i32, col: u16) void {
         const before = self.selectionState() orelse return;
         self.screen_state.activeSelection().update(self.selectionAbsoluteRow(row), col);
@@ -461,6 +488,7 @@ pub const Terminal = struct {
         self.noteSelectionChanged();
     }
 
+    /// Marks the active selection complete without changing its endpoints.
     pub fn finishSelection(self: *Terminal) void {
         const before = self.selectionState() orelse return;
         self.screen_state.activeSelection().finish();
@@ -469,6 +497,7 @@ pub const Terminal = struct {
         self.noteSelectionChanged();
     }
 
+    /// Clears active-screen selection state.
     pub fn clearSelection(self: *Terminal) void {
         if (self.selectionState() == null) return;
         self.screen_state.activeSelection().clear();
@@ -589,12 +618,14 @@ pub const Terminal = struct {
         active.cursor.setPositionStructural(bounded_row, bounded_col);
     }
 
+    /// Pairs a borrowed surface snapshot with monotonic mutation and snapshot identities.
     pub const SurfacePublication = struct {
         snapshot_seq: u64,
         dirty_generation: u64,
         snapshot: screen_set.SurfaceSnapshot,
     };
 
+    /// Copies host-facing viewport dimensions, cursor, history, and active-screen facts.
     pub const VisibleMeta = struct {
         rows: u16,
         cols: u16,
@@ -604,6 +635,7 @@ pub const Terminal = struct {
         dirty_generation: u64,
     };
 
+    /// Returns the active G0, G1, and GL charset selection for DECCIR reporting.
     pub fn deccirCharsetState(self: *const Terminal) parser_mod.DeccirCharsetState {
         return .{
             .gl_index = self.gl_index,

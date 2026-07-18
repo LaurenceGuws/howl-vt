@@ -1,7 +1,10 @@
+//! Applies rectangular cell-attribute operations.
+
 const cell_mod = @import("cell.zig");
 
 const CellAttrs = cell_mod.CellAttrs;
 
+/// Applies bounded rectangular attribute operations to one cell in protocol order.
 pub fn applyRectAttrOps(target: *CellAttrs, attrs: []const u16, reverse: bool) void {
     for (attrs) |attr| {
         switch (attr) {

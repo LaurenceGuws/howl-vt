@@ -1,16 +1,18 @@
+//! Decodes complete DCS payloads into terminal semantic events.
+
 const parsed_events = @import("parser/events.zig");
 
-pub fn requestStatusPayload(data: []const u8) ?[]const u8 {
+fn requestStatusPayload(data: []const u8) ?[]const u8 {
     if (data.len >= 2 and data[0] == '$' and data[1] == 'q') return data[2..];
     return null;
 }
 
-pub fn requestTermcapPayload(data: []const u8) ?[]const u8 {
+fn requestTermcapPayload(data: []const u8) ?[]const u8 {
     if (data.len >= 2 and data[0] == '+' and data[1] == 'q') return data[2..];
     return null;
 }
 
-pub fn requestResourcePayload(data: []const u8) ?[]const u8 {
+fn requestResourcePayload(data: []const u8) ?[]const u8 {
     if (data.len >= 2 and data[0] == '+' and data[1] == 'Q') return data[2..];
     return null;
 }
@@ -20,6 +22,7 @@ const std = @import("std");
 const SemanticEvent = events.SemanticEvent;
 const DcsEvent = @FieldType(parsed_events.Event, "dcs");
 
+/// Decodes one completed borrowed DCS payload; unsupported commands return null.
 pub fn process(dcs: DcsEvent) ?SemanticEvent {
     if (dcs.intermediates_len == 1 and dcs.intermediates[0] == '$' and dcs.final == 'q') return SemanticEvent{ .dcs_request_status = dcs.payload };
     if (dcs.intermediates_len == 1 and dcs.intermediates[0] == '+' and dcs.final == 'q') return SemanticEvent{ .dcs_request_termcap = dcs.payload };

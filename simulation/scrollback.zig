@@ -165,7 +165,6 @@ fn pickOp(rand: std.Random) OpKind {
 
 fn applyWriteBurst(vt: *Terminal, rand: std.Random) !void {
     var stream = vt.vtStream();
-    defer stream.deinit();
     const lines = rand.uintLessThan(u8, 8) + 1;
     var line_idx: u8 = 0;
     while (line_idx < lines) : (line_idx += 1) {

@@ -1,3 +1,5 @@
+//! Decodes ordinary CSI commands without private leaders or intermediates.
+
 const csi_params = @import("csi_params.zig");
 const events = @import("semantic_event.zig");
 const erase = @import("screen/erase.zig");
@@ -6,6 +8,7 @@ const params_mod = @import("csi_params.zig");
 const SemanticEvent = events.SemanticEvent;
 const CsiSeparatorList = csi_params.CsiSeparatorList;
 
+/// Decodes one ordinary CSI sequence; unsupported forms return null.
 pub fn process(final: u8, params: []const i32, separators: CsiSeparatorList, intermediates: []const u8) ?SemanticEvent {
     switch (final) {
         '@' => return SemanticEvent{ .insert_chars = params_mod.paramAtOrDefault1(params, 0) },

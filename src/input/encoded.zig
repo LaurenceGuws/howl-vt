@@ -1,5 +1,8 @@
+//! Owns encoded input bytes that may borrow scratch storage or hold an allocation.
+
 const std = @import("std");
 
+/// Holds encoded bytes that either borrow caller scratch or own one allocation.
 pub const Encoded = struct {
     allocator: ?std.mem.Allocator = null,
     bytes: []const u8 = "",

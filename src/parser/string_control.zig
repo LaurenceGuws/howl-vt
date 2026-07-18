@@ -1,3 +1,5 @@
+//! Owns incremental delimited-control state and bounded OSC payload buffering.
+
 const std = @import("std");
 const parser_mod = @import("../parser.zig");
 
@@ -9,7 +11,7 @@ pub const Finish = enum {
     st,
 };
 
-pub const FeedResult = union(enum) {
+const FeedResult = union(enum) {
     put: u8,
     finish: Finish,
 };
@@ -20,6 +22,7 @@ const DelimitedState = enum {
     esc,
 };
 
+/// Owns bounded incremental OSC parsing and its reusable payload allocation.
 pub const OscControl = struct {
     const Failure = error{ OutOfMemory, StringControlLimit };
     const prefix_max_bytes = 8;
@@ -140,6 +143,7 @@ pub const OscControl = struct {
         c5522,
     };
 
+    /// Allocates the initial OSC buffer and records metadata, clipboard, and chunk bounds.
     pub fn init(
         allocator: std.mem.Allocator,
         capacity: ByteLimit,
@@ -157,10 +161,12 @@ pub const OscControl = struct {
         };
     }
 
+    /// Releases the OSC payload buffer through its initializer allocator.
     pub fn deinit(self: *OscControl) void {
         self.buffer.deinit(self.allocator);
     }
 
+    /// Returns OSC state to idle while retaining reusable capacity.
     pub fn reset(self: *OscControl) void {
         self.state = .idle;
         self.prefix = .start;
@@ -170,15 +176,18 @@ pub const OscControl = struct {
         self.buffer.clearRetainingCapacity();
     }
 
+    /// Begins a new OSC and clears prior payload and failure state.
     pub fn start(self: *OscControl) void {
         self.reset();
         self.state = .prefix;
     }
 
+    /// Reports whether an OSC delimiter has started and not finished.
     pub fn active(self: *const OscControl) bool {
         return self.state != .idle;
     }
 
+    /// Reports whether OSC has consumed ESC while awaiting ST or payload continuation.
     pub fn escaping(self: *const OscControl) bool {
         return switch (self.state) {
             .prefix_esc, .payload_esc, .raw_esc => true,
@@ -186,6 +195,7 @@ pub const OscControl = struct {
         };
     }
 
+    /// Borrows the completed OSC action until reset, start, feed, or deinit.
     pub fn snapshot(self: *const OscControl, term: parser_mod.OscTerminator) parser_mod.OscAction {
         return switch (self.policy.class) {
             .raw_title => .{ .raw_title = .{ .payload = self.buffer.items, .term = term } },
@@ -214,6 +224,7 @@ pub const OscControl = struct {
         };
     }
 
+    /// Returns and clears the first OSC allocation or bound failure.
     pub fn takeFailure(self: *OscControl) ?Failure {
         var failure: ?Failure = null;
         if (self.overflowed) {
@@ -226,6 +237,7 @@ pub const OscControl = struct {
         return failure;
     }
 
+    /// Consumes one OSC byte and returns its payload or terminator effect.
     pub fn feed(self: *OscControl, byte: u8) ?FeedResult {
         return switch (self.state) {
             .idle => null,
@@ -663,26 +675,32 @@ pub const PassthroughControl = struct {
     state: DelimitedState = .idle,
     bel_terminates: bool,
 
+    /// Initializes allocation-free delimited-control state.
     pub fn init(bel_terminates: bool) PassthroughControl {
         return .{ .bel_terminates = bel_terminates };
     }
 
+    /// Returns delimited-control state to idle.
     pub fn reset(self: *PassthroughControl) void {
         self.state = .idle;
     }
 
+    /// Begins one allocation-free delimited control.
     pub fn start(self: *PassthroughControl) void {
         self.state = .payload;
     }
 
+    /// Reports whether a delimited control is active.
     pub fn active(self: *const PassthroughControl) bool {
         return stateActive(self.state);
     }
 
+    /// Reports whether a delimited control is awaiting ST completion.
     pub fn escaping(self: *const PassthroughControl) bool {
         return stateEscaping(self.state);
     }
 
+    /// Consumes one delimited-control byte without retaining payload data.
     pub fn feed(self: *PassthroughControl, byte: u8) ?FeedResult {
         return feedDelimitedState(&self.state, byte, self.bel_terminates);
     }

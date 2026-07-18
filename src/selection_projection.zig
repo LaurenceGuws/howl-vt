@@ -1,7 +1,10 @@
+//! Projects VT/history selections into visible rows and copied text.
+
 const std = @import("std");
 const screen_set = @import("screen_set.zig");
 const state = @import("selection.zig");
 
+/// Stores a half-open visible column range for one projected selection row.
 pub const Range = struct {
     start: u16,
     end_exclusive: u16,
@@ -14,7 +17,7 @@ pub const CopyError = error{
     Utf8CannotEncodeSurrogateHalf,
 };
 
-pub fn rowSource(screen_state: *const screen_set.Set, row: i32) ?screen_set.RowSource {
+fn rowSource(screen_state: *const screen_set.Set, row: i32) ?screen_set.RowSource {
     if (row < 0) return null;
     const active = screen_state.activeConst();
     const absolute: u32 = std.math.cast(u32, row) orelse return null;
@@ -28,7 +31,7 @@ pub fn rowSource(screen_state: *const screen_set.Set, row: i32) ?screen_set.RowS
     return .{ .screen = @intCast(screen_row) };
 }
 
-pub fn contentEndExclusive(screen_state: *const screen_set.Set, row: i32) u16 {
+fn contentEndExclusive(screen_state: *const screen_set.Set, row: i32) u16 {
     const source = rowSource(screen_state, row) orelse return 0;
     const active = screen_state.activeConst();
     var scan = active.cols;
@@ -44,12 +47,13 @@ pub fn contentEndExclusive(screen_state: *const screen_set.Set, row: i32) u16 {
     return if (active.cols > 0) 1 else 0;
 }
 
-pub fn visibleRow(view: screen_set.View, row: u16) i32 {
+fn visibleRow(view: screen_set.View, row: u16) i32 {
     std.debug.assert(row < view.rows or view.rows == 0);
     const absolute = @as(u64, view.history_row_base) + @as(u64, view.start) + @as(u64, row);
     return std.math.cast(i32, absolute) orelse std.math.maxInt(i32);
 }
 
+/// Projects an ordered selection onto one visible row, or null outside the selection.
 pub fn visibleRange(view: screen_set.View, selected: state.TerminalSelection, row: u16) ?Range {
     std.debug.assert(row < view.rows or view.rows == 0);
     const ordered = state.ordered(selected);

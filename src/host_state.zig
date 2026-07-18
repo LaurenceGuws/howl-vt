@@ -1,3 +1,5 @@
+//! Owns bounded protocol consequences retained for host inspection or drain.
+
 const std = @import("std");
 const dcs_payload = @import("dcs_payload.zig");
 const legacy_control = @import("legacy_control.zig");
@@ -8,22 +10,23 @@ const osc = @import("osc.zig");
 const LocatorNs = locator;
 const OscColorNs = osc_color;
 
-pub const ClipboardRequest = struct {
+const ClipboardRequest = struct {
     raw: []u8,
 };
 
-pub const CopyIntoResult = union(enum) {
+const CopyIntoResult = union(enum) {
     copied: u64,
     short: u64,
 };
 
-pub const ClipboardDrainResult = union(enum) {
+const ClipboardDrainResult = union(enum) {
     none,
     copied: u64,
     short: u64,
     failed,
 };
 
+/// Reports allocation failure or rejection by a concrete retained-consequence bound.
 pub const ApplyError = error{
     OutOfMemory,
     ConsequenceLimit,
@@ -32,15 +35,15 @@ pub const ApplyError = error{
 /// Accumulated replies await a host drain and stop at a bounded 64 KiB queue.
 pub const pending_output_max_bytes: u32 = 64 * 1024;
 /// OSC 52 is unchunked; retain at most the parser's 1 MiB clipboard packet.
-pub const clipboard_max_bytes: u32 = 1024 * 1024;
+const clipboard_max_bytes: u32 = 1024 * 1024;
 /// Retained DCS families are metadata protocols bounded by parser acceptance.
-pub const dcs_payload_max_bytes: u32 = 2 * 1024;
+const dcs_payload_max_bytes: u32 = 2 * 1024;
 /// One hyperlink URI shares the ordinary OSC metadata scale.
-pub const hyperlink_target_max_bytes: u32 = 2 * 1024;
+const hyperlink_target_max_bytes: u32 = 2 * 1024;
 /// One retained title follows the interoperable 1 KiB terminal title ceiling.
 pub const title_max_bytes: u32 = 1024;
 /// A terminal instance interns at most 4096 distinct hyperlink targets.
-pub const hyperlink_target_max_count: u32 = 4096;
+const hyperlink_target_max_count: u32 = 4096;
 
 comptime {
     std.debug.assert(title_max_bytes <= hyperlink_target_max_bytes);
@@ -48,6 +51,7 @@ comptime {
     std.debug.assert(hyperlink_target_max_count > 0);
 }
 
+/// Converts a slice length after asserting it fits the protocol-owned u32 domain.
 pub fn byteCount(bytes: []const u8) u32 {
     std.debug.assert(bytes.len <= std.math.maxInt(u32));
     return @intCast(bytes.len);
@@ -65,7 +69,7 @@ fn hyperlinkCount(items: []const []u8) u32 {
 pub const State = struct {
     // Host consequence retention is heap-backed today, but every retained path
     // is bounded by this file's product capacity constants before allocation.
-    pub const DcsPayloadOwned = struct {
+    const DcsPayloadOwned = struct {
         kind: dcs_payload.DcsPayloadKind,
         payload: []u8,
     };
@@ -153,7 +157,7 @@ pub const State = struct {
     }
 
     /// Copy pending replies into caller memory without consuming them.
-    pub fn copyPendingOutputInto(self: *const State, out: []u8) CopyIntoResult {
+    fn copyPendingOutputInto(self: *const State, out: []u8) CopyIntoResult {
         const pending = self.pendingOutput();
         if (out.len < pending.len) return .{ .short = @intCast(pending.len) };
         if (pending.len != 0) @memcpy(out[0..pending.len], pending);
@@ -200,7 +204,7 @@ pub const State = struct {
     }
 
     /// Decode into caller memory and consume only after a complete copy.
-    pub fn drainPendingClipboardSetInto(self: *State, out: []u8) ClipboardDrainResult {
+    fn drainPendingClipboardSetInto(self: *State, out: []u8) ClipboardDrainResult {
         const pending = self.pendingClipboardSet() orelse return .none;
         const decoded_len = osc.decodedClipboardSetSize(pending) catch return .failed;
         if (out.len < decoded_len) return .{ .short = decoded_len };
@@ -237,11 +241,13 @@ pub const State = struct {
     }
 };
 
+/// Appends a reply transactionally within the accumulated-output bound.
 pub fn appendOutput(output: *std.ArrayList(u8), allocator: std.mem.Allocator, bytes: []const u8) ApplyError!void {
     try ensureAppendBound(byteCount(output.items), byteCount(bytes), pending_output_max_bytes);
     try output.appendSlice(allocator, bytes);
 }
 
+/// Restores drained reply bytes ahead of current output without partial mutation.
 pub fn restorePendingOutput(output: *std.ArrayList(u8), len: u32) void {
     std.debug.assert(len <= byteCount(output.items));
     output.items.len = len;

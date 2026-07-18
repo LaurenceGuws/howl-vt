@@ -1,3 +1,5 @@
+//! Owns incremental VT parsing and emits ordered borrowed parser actions.
+
 const std = @import("std");
 const parse_table = @import("parser/parse_table.zig");
 const string_control_mod = @import("parser/string_control.zig");
@@ -15,7 +17,7 @@ const BufferedControlKind = enum {
     sos,
 };
 
-pub const DeccirCharsetState = struct {
+const DeccirCharsetState = struct {
     g0_designation: u8,
     g1_designation: u8,
     gl_index: u8,
@@ -42,37 +44,43 @@ const clipboard_control_max_bytes = 1024 * 1024;
 // metadata without turning one protocol packet into a bulk-transfer buffer.
 const chunk_control_max_bytes = 8 * 1024;
 
+/// Maximum CSI or DCS parameters retained by one parser action.
 pub const max_params = csi_max_params;
+/// Maximum intermediate bytes retained by one parser action.
 pub const max_intermediates = csi_max_intermediates;
+/// Tracks colon separators across the bounded CSI parameter array.
 pub const CsiSeparatorList = std.StaticBitSet(csi_max_params);
 /// Maximum complete payload accepted for one ordinary metadata control.
 pub const max_metadata_control_bytes = metadata_control_max_bytes;
 /// Maximum complete payload accepted for one unchunked OSC 52 control.
-pub const max_clipboard_control_bytes = clipboard_control_max_bytes;
+const max_clipboard_control_bytes = clipboard_control_max_bytes;
 /// Maximum complete payload accepted for one chunked Kitty control.
-pub const max_chunk_control_bytes = chunk_control_max_bytes;
+const max_chunk_control_bytes = chunk_control_max_bytes;
+/// Identifies BEL or ST termination for a completed OSC action.
 pub const OscTerminator = enum {
     bel,
     st,
 };
 
+/// Borrows one completed ESC final byte and bounded intermediates.
 pub const EscAction = struct {
     final: u8,
     intermediates: [csi_max_intermediates]u8,
     intermediates_len: u8,
 };
 
-pub const OscText = struct {
+const OscText = struct {
     payload: []const u8,
     term: OscTerminator,
 };
 
-pub const OscCommandText = struct {
+const OscCommandText = struct {
     command: u16,
     payload: []const u8,
     term: OscTerminator,
 };
 
+/// Borrows one typed completed OSC payload until the parser advances.
 pub const OscAction = union(enum) {
     raw_title: OscText,
     raw_other: OscText,
@@ -98,6 +106,7 @@ pub const OscAction = union(enum) {
     kitty_file_transfer: OscText,
     kitty_clipboard: OscText,
 
+    /// Returns the borrowed payload slice carried by any OSC action variant.
     pub fn payload(self: OscAction) []const u8 {
         return switch (self) {
             .raw_title => |v| v.payload,
@@ -125,6 +134,7 @@ pub const OscAction = union(enum) {
         };
     }
 
+    /// Returns the numeric OSC command when the variant has one.
     pub fn command(self: OscAction) ?u16 {
         return switch (self) {
             .raw_title, .raw_other => null,
@@ -152,6 +162,7 @@ pub const OscAction = union(enum) {
         };
     }
 
+    /// Returns the delimiter that completed this OSC action.
     pub fn term(self: OscAction) OscTerminator {
         return switch (self) {
             .raw_title => |v| v.term,
@@ -181,6 +192,7 @@ pub const OscAction = union(enum) {
     }
 };
 
+/// Borrows one DCS final byte, parameters, and bounded intermediates.
 pub const DcsHook = struct {
     // Borrowed parser-owned slices. Callers that retain them past the next
     // `Parser.next` call must copy.
@@ -191,6 +203,7 @@ pub const DcsHook = struct {
     intermediates_len: u8,
 };
 
+/// Borrows one CSI final byte, bounded parameters, separators, and intermediates.
 pub const CsiAction = struct {
     // Borrowed parser-owned slices. Callers that retain them past the next
     // `Parser.next` call must copy.
@@ -204,6 +217,7 @@ pub const CsiAction = struct {
     intermediates_len: u8,
 };
 
+/// Carries one ordered parser phase action with parser-borrowed slices.
 pub const Action = union(enum) {
     print: u21,
     execute: u8,
@@ -225,6 +239,7 @@ pub const Action = union(enum) {
     esc_dispatch: EscAction,
 };
 
+/// Preserves exit, transition, and entry action order for one input byte.
 pub const PhaseActions = [3]?Action;
 
 /// Stateful parser for terminal input streams.
@@ -288,6 +303,7 @@ pub const Parser = struct {
         self.sos.reset();
     }
 
+    /// Returns and clears the pending OSC allocation or bound failure.
     pub fn takeStringControlFailed(self: *Parser) ?error{ OutOfMemory, StringControlLimit } {
         if (self.osc.takeFailure()) |failure| return failure;
         return null;

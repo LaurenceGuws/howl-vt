@@ -278,7 +278,6 @@ fn runStreamWorkload(io: std.Io, base_allocator: std.mem.Allocator, name: []cons
         );
         defer terminal.deinit();
         var stream = try StreamHarness.init(&terminal);
-        defer stream.deinit();
         counting.resetWindow();
         const start = nowNs(io);
         try stream.nextSlice(fixture);
@@ -310,7 +309,6 @@ fn runMixedInteractiveWorkload(io: std.Io, base_allocator: std.mem.Allocator, ru
         );
         defer terminal.deinit();
         var stream = try StreamHarness.init(&terminal);
-        defer stream.deinit();
         counting.resetWindow();
         const start = nowNs(io);
         var j: RunCount = 0;
@@ -344,7 +342,6 @@ fn runSnapshotWorkload(io: std.Io, base_allocator: std.mem.Allocator, fixture: [
         );
         defer terminal.deinit();
         var stream = try StreamHarness.init(&terminal);
-        defer stream.deinit();
         try stream.nextSlice(fixture);
         counting.resetWindow();
         const start = nowNs(io);
@@ -391,7 +388,6 @@ fn runReplayRecordWorkload(
         );
         defer terminal.deinit();
         var stream = try StreamHarness.init(&terminal);
-        defer stream.deinit();
 
         counting.resetWindow();
         const start = nowNs(io);

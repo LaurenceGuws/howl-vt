@@ -1,3 +1,5 @@
+//! Formats bounded terminal replies from current semantic state.
+
 const std = @import("std");
 const screen_mod = @import("screen.zig");
 const rect = @import("screen/rect.zig");
@@ -18,14 +20,14 @@ const SemanticEvent = semantic_event.SemanticEvent;
 const xtversion_text = "howl-vt dev";
 const format_output_max_bytes = 64;
 
-pub const CursorReportView = struct {
+const CursorReportView = struct {
     rows: u16,
     cols: u16,
     cursor_row: u16,
     cursor_col: u16,
 };
 
-pub const RectChecksumRequest = struct {
+const RectChecksumRequest = struct {
     request_id: u16,
 };
 
@@ -142,25 +144,25 @@ fn decrqssPayload(encode_buf: []u8, screen: *const Screen, request: []const u8) 
     return null;
 }
 
-pub fn appendModifyOtherKeysReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, value: i8) host_state.ApplyError!void {
+fn appendModifyOtherKeysReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, value: i8) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[>4;{d}m", .{value});
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendKeyFormatReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, resource: u8, value: u16) host_state.ApplyError!void {
+fn appendKeyFormatReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, resource: u8, value: u16) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[>{d};{d}f", .{ resource, value });
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendXtVersionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) host_state.ApplyError!void {
+fn appendXtVersionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) host_state.ApplyError!void {
     try host_state.appendOutput(output, allocator, "\x1bP>|" ++ xtversion_text ++ "\x1b\\");
 }
 
-pub fn appendTermcapInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) host_state.ApplyError!void {
+fn appendTermcapInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8)) host_state.ApplyError!void {
     try host_state.appendOutput(output, allocator, "\x1bP0+r\x1b\\");
 }
 
-pub fn appendResourceInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), request: []const u8) host_state.ApplyError!void {
+fn appendResourceInvalidReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), request: []const u8) host_state.ApplyError!void {
     const start = host_state.byteCount(output.items);
     errdefer host_state.restorePendingOutput(output, start);
     try host_state.appendOutput(output, allocator, "\x1bP0+R");
@@ -168,37 +170,37 @@ pub fn appendResourceInvalidReport(allocator: std.mem.Allocator, output: *std.Ar
     try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
-pub fn appendTitleStackPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, current: u16, max: u16) host_state.ApplyError!void {
+fn appendTitleStackPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, current: u16, max: u16) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[{d};{d}#S", .{ current, max });
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
+fn appendCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[{d};{d}R", .{ render_view.cursor_row + 1, render_view.cursor_col + 1 });
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendDecCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
+fn appendDecCursorPositionReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[?{d};{d}R", .{ render_view.cursor_row + 1, render_view.cursor_col + 1 });
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendDecModeReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, mode: u16, state: u8) host_state.ApplyError!void {
+fn appendDecModeReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, mode: u16, state: u8) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[?{d};{d}$y", .{ mode, state });
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendAnsiModeReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, mode: u16, state: u8) host_state.ApplyError!void {
+fn appendAnsiModeReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, mode: u16, state: u8) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[{d};{d}$y", .{ mode, state });
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendColorStackReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, depth: u8) host_state.ApplyError!void {
+fn appendColorStackReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, depth: u8) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[{d};{d}#Q", .{ depth, depth });
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid) host_state.ApplyError!void {
+fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, screen: *const Grid) host_state.ApplyError!void {
     const start = host_state.byteCount(output.items);
     errdefer host_state.restorePendingOutput(output, start);
     try host_state.appendOutput(output, allocator, "\x1bP2$u");
@@ -214,23 +216,23 @@ pub fn appendTabStopReport(allocator: std.mem.Allocator, output: *std.ArrayList(
     try host_state.appendOutput(output, allocator, "\x1b\\");
 }
 
-pub fn appendScreenExtentReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
+fn appendScreenExtentReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, render_view: CursorReportView) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1b[{d};{d};1;1;1\"w", .{ render_view.rows, render_view.cols });
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendTerminalParametersReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, kind: u16) host_state.ApplyError!void {
+fn appendTerminalParametersReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, kind: u16) host_state.ApplyError!void {
     if (kind > 1) return;
     const text = formatOutput(encode_buf, "\x1b[{d};1;1;128;128;1;0x", .{kind + 2});
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, req: RectChecksumRequest, checksum: u16) host_state.ApplyError!void {
+fn appendRectChecksumReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, req: RectChecksumRequest, checksum: u16) host_state.ApplyError!void {
     const text = formatOutput(encode_buf, "\x1bP{d}!~{X:0>4}\x1b\\", .{ req.request_id, checksum });
     try host_state.appendOutput(output, allocator, text);
 }
 
-pub fn appendSelectedGraphicRenditionReport(
+fn appendSelectedGraphicRenditionReport(
     allocator: std.mem.Allocator,
     output: *std.ArrayList(u8),
     encode_buf: []u8,
@@ -263,7 +265,7 @@ pub fn appendSelectedGraphicRenditionReport(
     try host_state.appendOutput(output, allocator, "m");
 }
 
-pub fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: rect.RectArea) u16 {
+fn computeRectChecksum(screen: *const Grid, xtchecksum_flags: u16, page: u16, area: rect.RectArea) u16 {
     if (page != 1) return 0;
     const bounds = screen.rectBounds(area) orelse return 0;
     var sum: u16 = 0;

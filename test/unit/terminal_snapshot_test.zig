@@ -28,7 +28,6 @@ test "snapshot: capture from simple text" {
     var terminal = try Terminal.init(gpa, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("HELLO");
 
@@ -56,7 +55,6 @@ test "snapshot: determinism across identical state" {
     var vt_core1 = try Terminal.init(gpa, 5, 10);
     defer vt_core1.deinit();
     var stream1 = try StreamHarness.init(&vt_core1);
-    defer stream1.deinit();
     try stream1.nextSlice("TEST");
     var snap1 = try captureSnapshot(&vt_core1);
     defer snap1.deinit();
@@ -64,7 +62,6 @@ test "snapshot: determinism across identical state" {
     var vt_core2 = try Terminal.init(gpa, 5, 10);
     defer vt_core2.deinit();
     var stream2 = try StreamHarness.init(&vt_core2);
-    defer stream2.deinit();
     try stream2.nextSlice("TEST");
     var snap2 = try captureSnapshot(&vt_core2);
     defer snap2.deinit();
@@ -88,7 +85,6 @@ test "snapshot: split-feed equivalence" {
     var vt_core_atomic = try Terminal.init(gpa, 5, 10);
     defer vt_core_atomic.deinit();
     var atomic_stream = try StreamHarness.init(&vt_core_atomic);
-    defer atomic_stream.deinit();
     try atomic_stream.nextSlice("ABCDEFGHIJ");
     var snap_atomic = try captureSnapshot(&vt_core_atomic);
     defer snap_atomic.deinit();
@@ -96,7 +92,6 @@ test "snapshot: split-feed equivalence" {
     var vt_core_chunked = try Terminal.init(gpa, 5, 10);
     defer vt_core_chunked.deinit();
     var chunked_stream = try StreamHarness.init(&vt_core_chunked);
-    defer chunked_stream.deinit();
     try chunked_stream.next('A');
     try chunked_stream.next('B');
     try chunked_stream.nextSlice("CD");
@@ -118,7 +113,6 @@ test "snapshot: history capture when history is enabled" {
     var terminal = try Terminal.initWithHistory(gpa, 3, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("AAA\nBBB\nCCC\nDDD");
 
@@ -140,7 +134,6 @@ test "snapshot: historyRowAt matches terminal after wraparound" {
     var terminal = try Terminal.initWithHistory(gpa, 2, 3, 2);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     // Force history ring-buffer wraparound (capacity 2, scroll more than 2 rows).
     try stream.nextSlice("111\n222\n333\n444\n555");
@@ -165,7 +158,6 @@ test "snapshot: selection state is included" {
     var terminal = try Terminal.init(gpa, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("HELLO");
 
@@ -191,7 +183,6 @@ test "snapshot: parity with direct screen state" {
     var terminal = try Terminal.init(gpa, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("TEST");
 

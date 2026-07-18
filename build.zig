@@ -47,6 +47,11 @@ pub fn build(b: *std.Build) void {
     const run_terminal_fuzz_tests = addTestRunArtifact(b, terminal_fuzz_tests);
 
     const check_step = b.step("check", "Build the native VT model");
+    const audit_step = b.step("audit", "Audit source owner and public symbol contracts");
+    const run_audit = b.addSystemCommand(&.{"bash"});
+    run_audit.addFileArg(b.path("tools/audit_source.sh"));
+    run_audit.setCwd(b.path("."));
+    audit_step.dependOn(&run_audit.step);
     const test_step = b.step("test", "Run native VT correctness proofs");
     const test_unit_step = b.step("test:unit", "Run unit tests");
     const test_unit_build_step = b.step("test:unit:build", "Build unit tests");
@@ -59,6 +64,7 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&mod_tests.step);
     check_step.dependOn(&embedding_tests.step);
     check_step.dependOn(&terminal_fuzz_tests.step);
+    check_step.dependOn(audit_step);
 
     const terminal_fuzz_step = b.step("fuzz:terminal", "Fuzz the native Terminal ownership boundary");
     const terminal_fuzz_build_step = b.step("fuzz:terminal:build", "Build the native Terminal fuzz target");

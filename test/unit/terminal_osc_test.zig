@@ -16,7 +16,6 @@ test "OSC title updates terminal title under stream path" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]0;My Title\x07");
     try std.testing.expectEqualStrings("My Title", terminal.host.current_title.?);
@@ -27,7 +26,6 @@ test "raw OSC title updates terminal title through OSC owner path" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]Raw Title\x07");
     try std.testing.expectEqualStrings("Raw Title", terminal.host.current_title.?);
@@ -38,7 +36,6 @@ test "OSC title limit fails without dropping current title" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]0;ok\x07");
 
@@ -62,7 +59,6 @@ test "OSC 8 assigns link ids and preserves URI lookup" {
     var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]8;;https://example.com\x07abc\x1b]8;;\x07z");
 
@@ -83,7 +79,6 @@ test "OSC 52 produces pending clipboard request" {
     var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]52;c;Zm9v\x07");
     try std.testing.expectEqualStrings("c;Zm9v", terminal.host.pendingClipboardSet().?);
@@ -96,7 +91,6 @@ test "OSC 52 decoded clipboard drain clears pending request" {
     var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]52;c;SG93bA==\x07");
 
@@ -111,7 +105,6 @@ test "OSC 52 query clipboard drain clears without request" {
     var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]52;c;?\x07");
 
@@ -124,7 +117,6 @@ test "kitty clipboard OSC 5522 and mode query use host-neutral state" {
     var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b[?5522h\x1b[?5522$p\x1b]5522;type=write;AAAA\x1b\\");
 
@@ -138,7 +130,6 @@ test "kitty file transfer and text sizing OSC payloads are retained" {
     var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]5113;cmd=data;AAAA\x1b\\\x1b]66;s=2;Hi\x1b\\");
 
@@ -155,7 +146,6 @@ test "kitty file transfer OOM fails feed without dropping retained request" {
         var terminal = try Terminal.init(probe_allocator_state.allocator(), 3, 16);
         defer terminal.deinit();
         var stream = try StreamHarness.init(&terminal);
-        defer stream.deinit();
 
         try stream.nextSlice(seq_a);
     }
@@ -165,7 +155,6 @@ test "kitty file transfer OOM fails feed without dropping retained request" {
     var terminal = try Terminal.init(failing_allocator_state.allocator(), 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice(seq_a);
     try std.testing.expectEqualStrings("cmd=data;AAAA", terminal.kitty.global.fileTransferRequest().?);
@@ -179,7 +168,6 @@ test "kitty shell integration OSC 133 records latest mark" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]133;C;cmdline=ls\x07\x1b]133;D;2\x07");
 
@@ -194,7 +182,6 @@ test "kitty notification OSC 99 queues host-neutral request" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]99;i=1:d=0;Hello\x1b\\\x1b]99;i=1:p=body;World\x1b\\");
 
@@ -215,7 +202,6 @@ test "kitty notification OOM fails feed without dropping queued requests" {
         var terminal = try Terminal.init(probe_allocator_state.allocator(), 3, 8);
         defer terminal.deinit();
         var stream = try StreamHarness.init(&terminal);
-        defer stream.deinit();
 
         try stream.nextSlice(seq_a);
     }
@@ -225,7 +211,6 @@ test "kitty notification OOM fails feed without dropping queued requests" {
     var terminal = try Terminal.init(failing_allocator_state.allocator(), 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice(seq_a);
     try std.testing.expectEqual(@as(u32, 1), terminal.kitty.global.notificationCount());
@@ -243,7 +228,6 @@ test "kitty notification OSC 9 alias queues host-neutral request" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]9;i=3:p=body;Alias\x1b\\");
 
@@ -257,7 +241,6 @@ test "kitty pointer shape OSC 22 maintains per-screen stack and replies to queri
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]22;pointer\x1b\\\x1b]22;>wait,crosshair\x1b\\\x1b]22;?__current__,pointer,no-such\x1b\\");
 
@@ -276,7 +259,6 @@ test "kitty multiple cursor support clear and empty queries" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b[> q\x1b[>100 q\x1b[>101 q\x1b[>0;4 q");
 
@@ -289,7 +271,6 @@ test "xterm pointer mode stores bounded resource value" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try std.testing.expectEqual(@as(u2, 1), terminal.modes.pointer_mode);
     try stream.nextSlice("\x1b[>2p");
@@ -307,7 +288,6 @@ test "kitty color stack OSC 30001 and 30101 track depth" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]30001\x1b\\\x1b]30001\x1b\\\x1b]30101\x1b\\");
     try std.testing.expectEqual(@as(u16, 1), terminal.kitty.global.colorStackDepth());
@@ -318,7 +298,6 @@ test "kitty OSC 21 sets queries and resets terminal colors" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]21;foreground=#112233;background=rgb:44/55/66;cursor=\x1b\\");
     try stream.nextSlice("\x1b]21;foreground=?;background=?;cursor=?;no_such=?\x1b\\");
@@ -345,7 +324,6 @@ test "xterm OSC colors set query and reset palette and dynamic colors" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]4;1;#010203\x1b\\\x1b]10;#aabbcc\x1b\\\x1b]11;rgb:0d/0e/0f\x1b\\\x1b]12;red\x1b\\");
     try stream.nextSlice("\x1b]4;1;?\x1b\\\x1b]10;?\x1b\\\x1b]11;?\x1b\\\x1b]12;?\x1b\\");
@@ -365,7 +343,6 @@ test "xterm extra dynamic colors set query and reset host-neutral state" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]13;#010203\x1b\\\x1b]14;#040506\x1b\\\x1b]15;#070809\x1b\\\x1b]16;#0a0b0c\x1b\\\x1b]17;#0d0e0f\x1b\\\x1b]18;#101112\x1b\\\x1b]19;#131415\x1b\\");
     try stream.nextSlice("\x1b]13;?\x1b\\\x1b]14;?\x1b\\\x1b]15;?\x1b\\\x1b]16;?\x1b\\\x1b]17;?\x1b\\\x1b]18;?\x1b\\\x1b]19;?\x1b\\");
@@ -406,7 +383,6 @@ test "xterm special colors via OSC 5 and OSC 4 special offsets" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]5;0;#010203;1;#040506\x1b\\\x1b]4;258;#070809;260;#0a0b0c\x1b\\");
     try stream.nextSlice("\x1b]5;0;?;1;?\x1b\\\x1b]4;258;?;260;?\x1b\\");
@@ -436,7 +412,6 @@ test "kitty color stack restores terminal color snapshots" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]21;foreground=#010203;1=#040506\x1b\\\x1b]30001\x1b\\");
     try stream.nextSlice("\x1b]21;foreground=#aabbcc;1=#ddeeff\x1b\\\x1b]30101\x1b\\");
@@ -451,7 +426,6 @@ test "kitty tui CSI save and restore colors use the same stack" {
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
-    defer stream.deinit();
 
     try stream.nextSlice("\x1b]21;foreground=#010203;1=#040506\x1b\\\x1b[#P");
     try stream.nextSlice("\x1b]21;foreground=#aabbcc;1=#ddeeff\x1b\\\x1b[#Q");

@@ -1,3 +1,5 @@
+//! Owns DEC locator configuration and locator report generation.
+
 const std = @import("std");
 const input_mouse = @import("input/mouse.zig");
 const rect = @import("screen/rect.zig");
@@ -5,19 +7,20 @@ const host_state = @import("host_state.zig");
 
 const format_output_max_bytes = 40;
 
-pub const ReportingMode = enum(u2) {
+const ReportingMode = enum(u2) {
     disabled,
     continuous,
     one_shot,
 };
 
-pub const FilterRect = struct {
+const FilterRect = struct {
     top: u16,
     left: u16,
     bottom: u16,
     right: u16,
 };
 
+/// Stores DEC locator reporting mode, filter rectangle, and one-shot event flags.
 pub const Locator = struct {
     mode: ReportingMode = .disabled,
     coordinate_unit: u16 = 0,
@@ -31,6 +34,7 @@ pub const Locator = struct {
     last_buttons_down: u8 = 0,
 };
 
+/// Sets locator reporting and coordinate units, disabling unsupported values.
 pub fn setReporting(state: *Locator, mode: u16, unit: u16) void {
     state.mode = switch (mode) {
         1 => .continuous,
@@ -40,6 +44,7 @@ pub fn setReporting(state: *Locator, mode: u16, unit: u16) void {
     state.coordinate_unit = unit;
 }
 
+/// Installs an optional locator filter rectangle and clears its outside latch.
 pub fn setFilter(state: *Locator, area: rect.OptionalRectArea) void {
     const row = state.last_row orelse 0;
     const col = state.last_col orelse 0;
@@ -55,6 +60,7 @@ pub fn setFilter(state: *Locator, area: rect.OptionalRectArea) void {
     state.filter_rect = .{ .top = top, .left = left, .bottom = bottom, .right = right };
 }
 
+/// Replaces one-shot locator event flags from borrowed numeric modes.
 pub fn setEvents(state: *Locator, modes: []const u16) void {
     for (modes) |mode| switch (mode) {
         0 => {
@@ -70,6 +76,7 @@ pub fn setEvents(state: *Locator, modes: []const u16) void {
     };
 }
 
+/// Appends a bounded locator status or position reply for one request parameter.
 pub fn appendReportForRequest(state: *Locator, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, param: u16) host_state.ApplyError!void {
     if (param > 1) return;
     if (state.mode == .disabled or state.last_row == null or state.last_col == null) {
@@ -79,6 +86,7 @@ pub fn appendReportForRequest(state: *Locator, allocator: std.mem.Allocator, out
     try appendReport(state, allocator, output, encode_buf, 1, state.last_buttons_down, state.last_row.?, state.last_col.?);
 }
 
+/// Appends the supported locator device-status reply for parameter 53.
 pub fn appendDeviceStatusReport(allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, param: u16) host_state.ApplyError!void {
     const text = switch (param) {
         55 => formatOutput(encode_buf, "\x1b[?50n", .{}),
@@ -88,6 +96,7 @@ pub fn appendDeviceStatusReport(allocator: std.mem.Allocator, output: *std.Array
     try host_state.appendOutput(output, allocator, text);
 }
 
+/// Emits enabled locator events and updates one-shot and filter latches.
 pub fn handleMouseEvent(state: *Locator, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event: input_mouse.MouseEvent) void {
     if (event.row < 0) return;
     const row: u16 = @intCast(event.row);

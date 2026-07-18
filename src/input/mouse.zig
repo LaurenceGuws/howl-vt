@@ -1,8 +1,10 @@
+//! Defines mouse input values and encodes enabled terminal mouse protocols.
+
 const std = @import("std");
 const keyboard = @import("keyboard.zig");
 
 /// Mouse button values.
-pub const MouseButton = enum(u8) {
+const MouseButton = enum(u8) {
     none = 0,
     left = 1,
     middle = 2,
@@ -12,7 +14,7 @@ pub const MouseButton = enum(u8) {
 };
 
 /// Mouse event kinds.
-pub const MouseEventKind = enum(u8) {
+const MouseEventKind = enum(u8) {
     press,
     release,
     move,
@@ -31,6 +33,7 @@ pub const MouseEvent = struct {
     buttons_down: u8,
 };
 
+/// Selects which host mouse events the terminal has requested.
 pub const MouseTrackingMode = enum(u8) {
     off,
     x10,
@@ -39,6 +42,7 @@ pub const MouseTrackingMode = enum(u8) {
     any_event,
 };
 
+/// Selects the negotiated byte encoding for mouse reports.
 pub const MouseProtocol = enum(u8) {
     none,
     utf8,
@@ -46,7 +50,7 @@ pub const MouseProtocol = enum(u8) {
     urxvt,
 };
 
-pub fn wouldEncodeMouse(event: MouseEvent, tracking: MouseTrackingMode, protocol: MouseProtocol) bool {
+fn wouldEncodeMouse(event: MouseEvent, tracking: MouseTrackingMode, protocol: MouseProtocol) bool {
     if (tracking == .off) return false;
 
     const emit = switch (event.kind) {

@@ -1,6 +1,9 @@
+//! Copies borrowed parser actions into caller-owned test and simulation storage.
+
 const std = @import("std");
 const parser_mod = @import("parser.zig");
 
+/// Copies borrowed parser phase actions into arena-backed storage transactionally.
 pub fn appendOwnedPhases(allocator: std.mem.Allocator, arena: std.mem.Allocator, actions: *std.ArrayList(parser_mod.Action), phases: parser_mod.PhaseActions) error{OutOfMemory}!void {
     for (phases) |phase| {
         if (phase) |action| try appendOwnedAction(allocator, arena, actions, action);
