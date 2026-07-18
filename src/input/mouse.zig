@@ -46,18 +46,6 @@ pub const MouseProtocol = enum(u8) {
     urxvt,
 };
 
-pub const mouse_button_none: MouseButton = .none;
-pub const mouse_button_left: MouseButton = .left;
-pub const mouse_button_middle: MouseButton = .middle;
-pub const mouse_button_right: MouseButton = .right;
-pub const mouse_button_wheel_up: MouseButton = .wheel_up;
-pub const mouse_button_wheel_down: MouseButton = .wheel_down;
-
-pub const mouse_press: MouseEventKind = .press;
-pub const mouse_release: MouseEventKind = .release;
-pub const mouse_move: MouseEventKind = .move;
-pub const mouse_wheel: MouseEventKind = .wheel;
-
 pub fn wouldEncodeMouse(event: MouseEvent, tracking: MouseTrackingMode, protocol: MouseProtocol) bool {
     if (tracking == .off) return false;
 
@@ -102,9 +90,9 @@ fn mouseCode(event: MouseEvent, tracking: MouseTrackingMode) u16 {
         .move => moveBaseCode(event, tracking),
     };
     if (tracking != .x10) {
-        if ((event.mod & keyboard.VTERM_MOD_SHIFT) != 0) code += 4;
-        if ((event.mod & keyboard.VTERM_MOD_ALT) != 0) code += 8;
-        if ((event.mod & keyboard.VTERM_MOD_CTRL) != 0) code += 16;
+        if ((event.mod & keyboard.mod_shift) != 0) code += 4;
+        if ((event.mod & keyboard.mod_alt) != 0) code += 8;
+        if ((event.mod & keyboard.mod_ctrl) != 0) code += 16;
     }
     if (event.kind == .move) code += 32;
     return code;

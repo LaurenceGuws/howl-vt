@@ -1,80 +1,33 @@
-// The native Zig model is the primary development surface. The C ABI remains
-// available for hosts that need a language-neutral boundary.
+//! Builds the native Howl VT model, tests, simulations, and benchmarks.
 
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const module_options = b.addOptions();
-    module_options.addOption(bool, "c_abi", false);
-    module_options.addOption(bool, "howl_vt", true);
-    const ffi_options = b.addOptions();
-    ffi_options.addOption(bool, "c_abi", true);
-    ffi_options.addOption(bool, "howl_vt", true);
     const internal_mod = b.addModule("howl_vt", .{
         .root_source_file = b.path("src/howl_vt.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
-    internal_mod.addOptions("vt_options", module_options);
     const unit_test_mod = b.createModule(.{
         .root_source_file = b.path("test_unit.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
     });
-    unit_test_mod.addOptions("vt_options", module_options);
     const mod_tests = add_test_artifact(b, "test-unit", unit_test_mod);
     const run_mod_tests = add_test_run_artifact(b, mod_tests);
 
-    const abi_mod = b.createModule(.{
-        .root_source_file = b.path("test_abi.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    abi_mod.addIncludePath(b.path("include"));
-    const abi_ffi_mod = b.createModule(.{
-        .root_source_file = b.path("test_ffi.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    abi_ffi_mod.addOptions("vt_options", ffi_options);
-    abi_mod.addImport("ffi", abi_ffi_mod);
-    const abi_tests = add_test_artifact(b, "test-abi", abi_mod);
-    const run_abi_tests = add_test_run_artifact(b, abi_tests);
-
-    const check_step = b.step("check", "Build the shipped VT ABI surface");
-    const test_step = b.step("test", "Run all VT correctness proofs");
-    const test_abi_step = b.step("test:abi", "Run shipped VT ABI contract tests");
-    const test_abi_build_step = b.step("test:abi:build", "Build shipped VT ABI contract tests");
+    const check_step = b.step("check", "Build the native VT model");
+    const test_step = b.step("test", "Run native VT correctness proofs");
     const test_unit_step = b.step("test:unit", "Run unit tests");
     const test_unit_build_step = b.step("test:unit:build", "Build unit tests");
-    test_abi_build_step.dependOn(&abi_tests.step);
-    test_abi_step.dependOn(&run_abi_tests.step);
     test_unit_build_step.dependOn(&mod_tests.step);
     test_unit_step.dependOn(&run_mod_tests.step);
-    test_step.dependOn(test_abi_step);
     test_step.dependOn(test_unit_step);
-
-    const ffi_mod = b.createModule(.{
-        .root_source_file = b.path("src/libhowl_vt.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-    });
-    ffi_mod.addOptions("vt_options", ffi_options);
-    const ffi_lib = b.addLibrary(.{
-        .name = "howl_vt",
-        .linkage = .dynamic,
-        .root_module = ffi_mod,
-    });
-    check_step.dependOn(&ffi_lib.step);
-    b.installArtifact(ffi_lib);
-    b.installFile("include/howl_vt.h", "include/howl_vt.h");
+    check_step.dependOn(&mod_tests.step);
 
     const simulation_module = b.createModule(.{
         .root_source_file = b.path("simulation/main.zig"),

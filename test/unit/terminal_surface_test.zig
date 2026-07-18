@@ -1,7 +1,6 @@
 const std = @import("std");
 const parser_mod = @import("../../src/parser.zig");
 const terminal_mod = @import("../../src/terminal.zig");
-const ffi = @import("../../src/ffi/main.zig");
 const screen = @import("../../src/screen.zig");
 const screen_capture = @import("../support/screen_capture.zig");
 const screen_set = @import("../../src/screen_set.zig");
@@ -69,36 +68,6 @@ fn selectionFinish(terminal: *Terminal) void {
 
 fn selectionClear(terminal: *Terminal) void {
     Selection.terminalClear(terminal);
-}
-
-test "Terminal public methods remain available" {
-    try std.testing.expect(@hasDecl(Terminal, "init"));
-    try std.testing.expect(@hasDecl(Terminal, "initWithCells"));
-    try std.testing.expect(@hasDecl(Terminal, "deinit"));
-    try std.testing.expect(@hasDecl(Terminal, "vtStream"));
-}
-
-test "Terminal method signatures remain host-facing" {
-    const Allocator = std.mem.Allocator;
-    const init_fn: fn (Allocator, u16, u16) anyerror!Terminal = Terminal.init;
-    const init_cells_fn: fn (Allocator, u16, u16) anyerror!Terminal = Terminal.initWithCells;
-    const init_cells_history_fn: fn (Allocator, u16, u16, u16) anyerror!Terminal = Terminal.initWithCellsAndHistory;
-    const deinit_fn: fn (*Terminal) void = Terminal.deinit;
-    const vt_stream_fn: fn (*Terminal) Terminal.Stream = Terminal.vtStream;
-    _ = .{ init_fn, init_cells_fn, init_cells_history_fn, deinit_fn, vt_stream_fn };
-}
-
-test "const-read history and selection accessors stay stable" {
-    const selection_state_fn: fn (*const Terminal) ?Selection.TerminalSelection = selectionState;
-    _ = .{selection_state_fn};
-}
-
-test "lifecycle extension methods stay stable" {
-    const selection_start_fn: fn (*Terminal, i32, u16) void = selectionStart;
-    const selection_update_fn: fn (*Terminal, i32, u16) void = selectionUpdate;
-    const selection_finish_fn: fn (*Terminal) void = selectionFinish;
-    const selection_clear_fn: fn (*Terminal) void = selectionClear;
-    _ = .{ selection_start_fn, selection_update_fn, selection_finish_fn, selection_clear_fn };
 }
 
 test "snapshot capture remains deterministic" {
@@ -251,8 +220,8 @@ test "full-screen scroll dirties only exposed bottom row" {
 
 test "terminal feed fails overlong OSC instead of truncating it" {
     const allocator = std.testing.allocator;
-    const handle = ffi.terminalInit(2, 4, 4);
-    defer ffi.terminalDeinit(handle);
+    var terminal = try Terminal.initWithCells(allocator, 2, 4);
+    defer terminal.deinit();
 
     var bytes = try std.ArrayList(u8).initCapacity(allocator, 4_101);
     defer bytes.deinit(allocator);
@@ -260,21 +229,18 @@ test "terminal feed fails overlong OSC instead of truncating it" {
     try bytes.appendNTimes(allocator, 'A', 4_097);
     try bytes.append(allocator, 0x07);
 
-    const failed = ffi.terminalFeed(handle, bytes.items.ptr, bytes.items.len);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)), failed.status);
+    try std.testing.expectError(error.StringControlLimit, terminal.feed(bytes.items));
 
-    const recovered = ffi.terminalFeed(handle, "A".ptr, 1);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), recovered.status);
-    try std.testing.expectEqual(@as(u8, 1), recovered.state_changed);
+    const recovered = try terminal.feed("A");
+    try std.testing.expect(recovered.state_changed);
 }
 
 test "terminal feed fails overlong APC instead of truncating it" {
     const allocator = std.testing.allocator;
-    const handle = ffi.terminalInit(2, 4, 4);
-    defer ffi.terminalDeinit(handle);
+    var terminal = try Terminal.initWithCells(allocator, 2, 4);
+    defer terminal.deinit();
 
-    const begin = ffi.terminalFeed(handle, "\x1b_".ptr, 2);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), begin.status);
+    _ = try terminal.feed("\x1b_");
 
     const chunk_len: usize = 4096;
     const chunk = try allocator.alloc(u8, chunk_len);
@@ -283,25 +249,21 @@ test "terminal feed fails overlong APC instead of truncating it" {
 
     var sent: usize = 0;
     while (sent + chunk_len <= parser_mod.max_apc_control_bytes) : (sent += chunk_len) {
-        const result = ffi.terminalFeed(handle, chunk.ptr, chunk.len);
-        try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), result.status);
+        _ = try terminal.feed(chunk);
     }
 
-    const failed = ffi.terminalFeed(handle, chunk.ptr, 1);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)), failed.status);
+    try std.testing.expectError(error.StringControlLimit, terminal.feed(chunk[0..1]));
 
-    const recovered = ffi.terminalFeed(handle, "A".ptr, 1);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), recovered.status);
-    try std.testing.expectEqual(@as(u8, 1), recovered.state_changed);
+    const recovered = try terminal.feed("A");
+    try std.testing.expect(recovered.state_changed);
 }
 
 test "terminal feed fails overlong PM instead of truncating it" {
     const allocator = std.testing.allocator;
-    const handle = ffi.terminalInit(2, 4, 4);
-    defer ffi.terminalDeinit(handle);
+    var terminal = try Terminal.initWithCells(allocator, 2, 4);
+    defer terminal.deinit();
 
-    const begin = ffi.terminalFeed(handle, "\x1b^".ptr, 2);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), begin.status);
+    _ = try terminal.feed("\x1b^");
 
     const chunk_len: usize = 4096;
     const chunk = try allocator.alloc(u8, chunk_len);
@@ -310,16 +272,13 @@ test "terminal feed fails overlong PM instead of truncating it" {
 
     var sent: usize = 0;
     while (sent + chunk_len <= parser_mod.max_metadata_control_bytes) : (sent += chunk_len) {
-        const result = ffi.terminalFeed(handle, chunk.ptr, chunk.len);
-        try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), result.status);
+        _ = try terminal.feed(chunk);
     }
 
-    const failed = ffi.terminalFeed(handle, chunk.ptr, 1);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.limit_reached)), failed.status);
+    try std.testing.expectError(error.StringControlLimit, terminal.feed(chunk[0..1]));
 
-    const recovered = ffi.terminalFeed(handle, "A".ptr, 1);
-    try std.testing.expectEqual(@as(i32, @intFromEnum(ffi.HowlVtCallStatus.ok)), recovered.status);
-    try std.testing.expectEqual(@as(u8, 1), recovered.state_changed);
+    const recovered = try terminal.feed("A");
+    try std.testing.expect(recovered.state_changed);
 }
 
 test "input encoding APIs are callable without terminal facade methods" {
@@ -344,23 +303,6 @@ test "input encoding APIs are callable without terminal facade methods" {
     try std.testing.expectEqual(snap_before.cursor_col, snap_after.cursor_col);
     try std.testing.expectEqual(snap_before.history_count, snap_after.history_count);
     try std.testing.expectEqual(snap_before.selection, snap_after.selection);
-}
-
-test "Input exposes key and modifier constants" {
-    _ = input_keyboard.mod_none;
-    _ = input_keyboard.mod_shift;
-    _ = input_keyboard.mod_alt;
-    _ = input_keyboard.mod_ctrl;
-    _ = input_keyboard.key_enter;
-    _ = input_keyboard.key_tab;
-    _ = input_keyboard.key_backspace;
-    _ = input_keyboard.key_escape;
-    _ = input_keyboard.key_up;
-    _ = input_keyboard.key_down;
-    _ = input_keyboard.key_left;
-    _ = input_keyboard.key_right;
-    _ = input_keyboard.key_kp_0;
-    _ = input_keyboard.key_kp_enter;
 }
 
 test "selection follows viewport movement through scrollback rows" {

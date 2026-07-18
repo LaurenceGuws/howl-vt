@@ -12,7 +12,6 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "include",
         "src",
     },
 }

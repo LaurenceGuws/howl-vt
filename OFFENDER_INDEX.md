@@ -8,22 +8,22 @@ fragmentation and indirect ownership are defects.
 
 | Bar | Score | Blocking evidence |
 | --- | ---: | --- |
-| Foot directness | 5/10 | ABI translation spans `src/ffi/`; screen behavior is dispatched through broad structural helpers; CSI routing crosses six files. |
+| Foot directness | 6/10 | ABI translation is gone; screen behavior is still dispatched through broad structural helpers and CSI routing crosses six files. |
 | TigerBeetle defensiveness | 6/10 | Bounds exist for string controls, but dimensions accept zero, many owner boundaries infer errors, and structural `anytype` hides required state. |
-| Character/capability density | 5/10 | 502 non-FFI public declarations, compatibility constants, six terminal constructors, and ABI-only render projection dilute the engine. |
+| Character/capability density | 7/10 | ABI projection and compatibility constants are gone; six terminal constructors and a broad implementation-public surface still dilute the engine. |
 | Ownership/cleanup | 7/10 | Core owners generally use `errdefer`/`deinit`; allocator provenance and resize/history rollback remain implicit across helpers. |
 | Exact failures | 5/10 | `Terminal` construction/resize, `Screen` construction/resize, selection copying, and paste encoding expose inferred `!` errors. |
 | Documentation | 3/10 | 63 `///` comments cover 502 non-FFI public declarations; almost every source file lacks `//!`; `design.md` names paths that do not exist. |
 | Hostile-input evidence | 6/10 | Limit and allocator-failure tests exist, plus deterministic random simulations, but no native fuzz target continuously feeds arbitrary bytes and operation sequences. |
-| Embedding surface | 4/10 | `src/howl_vt.zig` exports four broad namespaces/types while useful input and observation contracts are discovered through internals; C ABI currently dominates projection mechanics. |
+| Embedding surface | 5/10 | Native Zig is now sole authority, but `src/howl_vt.zig` exports four broad namespaces/types while useful input and observation contracts are discovered through internals. |
 | Deliberate modification | 5/10 | `protocol_coverage.db` and simulations help, but no executable source-debt gates protect public docs, erased types, exact errors, or ABI absence. |
-| Source maturity | 5/10 | Strong protocol breadth and 318 tests coexist with stale design claims, legacy aliases, duplicated projections, and immature native contracts. |
+| Source maturity | 6/10 | Strong protocol breadth and native tests remain, but stale design claims, broad erased helpers, and immature native contracts persist. |
 
 ## Ordered offenders
 
 ### VT-001 — Premature C ABI obstructs the native model
 
-- Status: open
+- Status: resolved
 - Path/symbol: `include/howl_vt.h`; `src/libhowl_vt.zig`; `src/ffi/`;
   `test/abi.zig`; `test_abi.zig`; `test_ffi.zig`; ABI branches in `build.zig`
   and `test_unit.zig`
@@ -35,12 +35,15 @@ fragmentation and indirect ownership are defects.
 - Depends on: nothing
 - Acceptance evidence: `rg -n
   'howl_vt_|callconv\\(\\.c\\)|@export|c_abi|src/ffi|include/howl_vt.h|test[_/:]abi'
-  .` finds no ABI surface, target, test, alias, or compatibility prose;
+  . --glob '!OFFENDER_INDEX.md'` finds no ABI surface, target, test, alias, or
+  compatibility shim;
   `zig build check` and `zig build test` exercise native code only.
+- Observed: header, export root, 13 translation files, ABI build/tests, and
+  exported symbols deleted; repository audit is empty; native build/tests pass.
 
 ### VT-002 — ABI-only render projection duplicates terminal truth
 
-- Status: open
+- Status: resolved
 - Path/symbol: `src/render_state.zig:RenderState`;
   `src/ffi/render_state.zig:FfiRenderState`
 - Defect: a 603-line copied render model and an 828-line reflective getter /
@@ -55,6 +58,8 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: no `render_state` import remains; native snapshot,
   dirty acknowledgement, selection, hyperlink, and color tests pass against
   terminal-owned views.
+- Observed: both render projection files and imports deleted; native terminal
+  surface tests pass.
 
 ### VT-003 — Native embedding root is both broad and incomplete
 
@@ -280,6 +285,8 @@ fragmentation and indirect ownership are defects.
 - Depends on: VT-001, VT-003
 - Acceptance evidence: no `VTERM_` or duplicate lowercase compatibility
   constants remain; native keyboard/mouse encoding tests use typed values.
+- Observed: repository audit finds no `VTERM_` or duplicate mouse aliases;
+  native input tests pass.
 
 ## Hardening loop
 

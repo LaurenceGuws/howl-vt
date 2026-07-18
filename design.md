@@ -8,21 +8,20 @@ Shared rules: [`../AGENTS.md`](../AGENTS.md), [`../project-memory.md`](../projec
 
 `howl-vt` owns the host-neutral terminal model.
 
-It parses terminal input streams, maps parser events into terminal actions, mutates screen state, owns selection truth, encodes host input according to terminal modes, and exposes host-facing protocol consequences and visible-surface truth through a C ABI.
+It parses terminal input streams, maps parser events into terminal actions, mutates screen state, owns selection truth, encodes host input according to terminal modes, and exposes host-facing protocol consequences and visible-surface truth through native Zig interfaces.
 
 It does not own PTY transport, host wake policy, host event loops, render text shaping, or backend presentation.
 
 ## Embedding Surfaces
 
 - The primary development contract is the `howl_vt` Zig module rooted at `src/howl_vt.zig`.
-- The language-neutral contract is `include/howl_vt.h` plus exported `howl_vt_*` symbols.
-- `src/libhowl_vt.zig` is the C ABI export root.
 - Private implementation modules remain repo-local owners rather than direct embedding targets.
-- This private project has no compatibility promise while its native owner boundaries mature.
+- This private project's native owner boundaries may change without notice.
+- A future external ABI may be designed from scratch only after the native
+  model earns a stable projection.
 
 ## Owners
 
-- `src/ffi.zig` translates the C ABI only.
 - `src/terminal.zig` owns terminal lifecycle and composes parser, screen, host, kitty, selection, and input state.
 - `src/stream_terminal.zig` owns byte-stream batching and parent routing into terminal-owned state.
 - `src/parser/` owns byte-step syntax recognition and parser-event materialization.
@@ -37,20 +36,19 @@ It does not own PTY transport, host wake policy, host event loops, render text s
 
 ## Main Flow
 
-1. Host creates terminal state through the native Zig model or an opaque C ABI handle.
-2. Host feeds bytes from PTY transport into `howl_vt_terminal_feed`.
+1. Host creates terminal state through the native Zig model.
+2. Host feeds bytes from PTY transport into `Terminal.feed`.
 3. Parser owners produce events and action routing delegates mutation to screen, host, kitty, mode, report, and selection owners.
-4. Host drains pending protocol consequences such as output, clipboard, title, and visible metadata through ABI calls.
+4. Host drains pending protocol consequences such as output, clipboard, title, and visible metadata through native owner methods.
 5. Host copies visible-surface truth for render publication.
-6. Host encodes keyboard, mouse, focus, and paste input through VT input ABI calls before sending bytes to PTY.
+6. Host encodes keyboard, mouse, focus, and paste input through native VT input interfaces before sending bytes to PTY.
 
 ## Invariants
 
 - VT owns terminal state truth; render and host must not invent terminal state.
 - Selection coordinates are VT/history-aware and must be mutated through VT selection contracts.
-- Dirty and snapshot identities are VT-owned and retired only through the acknowledged ABI path.
+- Dirty and snapshot identities are VT-owned and retired only through the acknowledged native path.
 - Parser syntax, parser events, action vocabulary, screen mutation, and host consequences remain separate owners.
-- Bounded ABI buffers publish their limits in `howl_vt.h`.
 - Runtime control signals and wake policy do not belong in VT.
 
 ## Non-Goals

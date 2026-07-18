@@ -1,6 +1,4 @@
 test {
-    _ = @import("src/ffi/render_state.zig");
-    _ = @import("src/render_state.zig");
     _ = @import("src/howl_vt.zig");
     _ = @import("test/unit/terminal_test.zig");
     _ = @import("test/unit/terminal_modes_test.zig");
