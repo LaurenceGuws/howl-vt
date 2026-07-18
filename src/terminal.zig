@@ -26,11 +26,6 @@ pub const Terminal = struct {
     pub const Stream = stream_terminal.Stream;
     pub const InitError = error{ InvalidDimensions, OutOfMemory };
     pub const ResizeError = error{ InvalidDimensions, OutOfMemory };
-    pub const CopySelectionError = error{
-        CodepointTooLarge,
-        OutOfMemory,
-        Utf8CannotEncodeSurrogateHalf,
-    };
     pub const InputEvent = input_event.Event;
     pub const InputScratch = input_encode.Scratch;
     pub const EncodedInput = input_encoded.Encoded;
@@ -386,7 +381,7 @@ pub const Terminal = struct {
     ///
     /// The returned slice is always owned by `allocator`, including when no
     /// selection exists, and the caller must free it.
-    pub fn copySelection(self: *const Terminal, allocator: std.mem.Allocator) CopySelectionError![]const u8 {
+    pub fn copySelection(self: *const Terminal, allocator: std.mem.Allocator) selection_projection.CopyError![]const u8 {
         if (self.selectionState() == null) return allocator.dupe(u8, "");
         return selection_projection.copyText(allocator, &self.screen_state, self.selectionState());
     }

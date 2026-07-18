@@ -85,6 +85,37 @@ fn resizeTerminalTransaction(allocator: std.mem.Allocator, alternate_active: boo
     try std.testing.expectEqual(dirty_generation_before + 1, terminal.dirty_generation);
 }
 
+test "selection copy owns exact allocation and codepoint failures" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, copySelectionAllocation, .{});
+
+    var terminal = try Terminal.init(std.testing.allocator, 1, 1);
+    defer terminal.deinit();
+    terminal.startSelection(0, 0);
+    terminal.finishSelection();
+
+    terminal.screen_state.primary.cells.?[0].codepoint = 0x110000;
+    try std.testing.expectError(error.CodepointTooLarge, terminal.copySelection(std.testing.allocator));
+    terminal.screen_state.primary.cells.?[0].codepoint = 0xD800;
+    try std.testing.expectError(error.Utf8CannotEncodeSurrogateHalf, terminal.copySelection(std.testing.allocator));
+}
+
+fn copySelectionAllocation(allocator: std.mem.Allocator) !void {
+    var terminal = try Terminal.init(allocator, 1, 4);
+    defer terminal.deinit();
+    terminal.screen_state.primary.writeText("COPY");
+    terminal.startSelection(0, 0);
+    terminal.updateSelection(0, 3);
+    terminal.finishSelection();
+
+    const copied = terminal.copySelection(allocator) catch |err| {
+        try std.testing.expect(terminal.selectionState() != null);
+        try std.testing.expectEqual(@as(u21, 'C'), terminal.screen_state.primary.cellAt(0, 0));
+        return err;
+    };
+    defer allocator.free(copied);
+    try std.testing.expectEqualStrings("COPY", copied);
+}
+
 test "terminal rejects zero resize without changing dimensions" {
     var terminal = try Terminal.init(std.testing.allocator, 2, 3);
     defer terminal.deinit();

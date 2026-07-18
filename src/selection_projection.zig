@@ -7,6 +7,13 @@ pub const Range = struct {
     end_exclusive: u16,
 };
 
+/// Failures produced while copying selected cells into UTF-8 caller storage.
+pub const CopyError = error{
+    CodepointTooLarge,
+    OutOfMemory,
+    Utf8CannotEncodeSurrogateHalf,
+};
+
 pub fn rowSource(screen_state: *const screen_set.Set, row: i32) ?screen_set.RowSource {
     if (row < 0) return null;
     const active = screen_state.activeConst();
@@ -63,7 +70,11 @@ pub fn visibleRange(view: screen_set.View, selected: state.TerminalSelection, ro
     return .{ .start = range_start, .end_exclusive = range_end };
 }
 
-pub fn copyText(allocator: std.mem.Allocator, screen_state: *const screen_set.Set, selected: ?state.TerminalSelection) ![]const u8 {
+/// Copy selected cells into caller-owned UTF-8 memory.
+///
+/// The caller owns a successful non-empty result. Invalid stored codepoints
+/// are reported exactly instead of trapping during integer narrowing.
+pub fn copyText(allocator: std.mem.Allocator, screen_state: *const screen_set.Set, selected: ?state.TerminalSelection) CopyError![]const u8 {
     const active_selection = selected orelse return &.{};
     const ordered_selection = state.ordered(active_selection);
     var out = std.ArrayList(u8).empty;
@@ -85,7 +96,8 @@ pub fn copyText(allocator: std.mem.Allocator, screen_state: *const screen_set.Se
                 };
                 if (cell.codepoint == 0) continue;
                 var utf8: [4]u8 = undefined;
-                const len = try std.unicode.utf8Encode(@intCast(cell.codepoint), &utf8);
+                const codepoint = std.math.cast(u21, cell.codepoint) orelse return error.CodepointTooLarge;
+                const len = try std.unicode.utf8Encode(codepoint, &utf8);
                 try out.appendSlice(allocator, utf8[0..len]);
             }
         }

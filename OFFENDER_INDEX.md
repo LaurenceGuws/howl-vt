@@ -140,10 +140,7 @@ fragmentation and indirect ownership are defects.
 ### VT-006 — Owner-boundary failures are inferred
 
 - Status: open
-- Path/symbol: `src/terminal.zig` constructors and `resize`;
-  `src/screen.zig` constructors and `resize`;
-  `src/screen_set.zig:Set.resize`;
-  `src/selection_projection.zig:copyText`;
+- Path/symbol: `src/screen.zig` storage-backed constructors;
   `src/input/encode.zig:encodePaste`
 - Defect: `!T` and `!void` hide whether failure means invalid input, overflow,
   allocation failure, retained-state limit, or internal inconsistency.
@@ -154,10 +151,14 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: no inferred error union remains on the curated native
   surface; tests assert each public failure and unchanged/valid post-failure
   state.
-- Observed progress: `Terminal.InitError` and `Terminal.ResizeError` now name
-  invalid dimensions and allocation failure exactly. `Screen.resize` and
-  `Set.resize` now expose only `error.OutOfMemory`; VT-012 proves resize failure
-  preserves both screen owners and terminal publication state.
+- Observed progress: the curated Terminal surface now has exact errors for
+  construction, feed, runtime progress, resize, selection copying, input
+  encoding, hyperlink lookup, and pending consequence drains. Screen/Set
+  resize expose only `error.OutOfMemory` and have transactional failure proofs.
+  `selection_projection.CopyError` now owns exact UTF-8/allocation failures;
+  exhaustive allocation injection proves selection/content remain usable, and
+  invalid stored codepoints return errors rather than trapping. Screen
+  construction and the immediate paste-allocation helper remain inferred.
 
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 
