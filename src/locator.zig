@@ -96,9 +96,12 @@ pub fn appendDeviceStatusReport(allocator: std.mem.Allocator, output: *std.Array
     try host_state.appendOutput(output, allocator, text);
 }
 
-/// Updates locator position and appends enabled reports, preserving report latches on failure.
+/// Updates representable locator coordinates and appends enabled reports.
+///
+/// Rows outside the retained `u16` coordinate domain are ignored. Report
+/// allocation or capacity failure preserves one-shot and filter latches.
 pub fn handleMouseEvent(state: *Locator, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event: input_mouse.MouseEvent) host_state.ApplyError!void {
-    if (event.row < 0) return;
+    if (event.row < 0 or event.row > std.math.maxInt(u16)) return;
     const row: u16 = @intCast(event.row);
     const col = event.col;
     state.last_row = row;

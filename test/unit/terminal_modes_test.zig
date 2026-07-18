@@ -500,6 +500,39 @@ test "locator button and filter events append DECLRP" {
     try std.testing.expectEqualStrings("\x1b[10;0;4;4;0&w", pendingOutput(&terminal));
 }
 
+test "locator ignores rows outside its retained coordinate domain" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.init(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    write(&stream, "\x1b[1;0'z\x1b[1'*{");
+
+    const rows = [_]i32{ -1, @as(i32, std.math.maxInt(u16)) + 1 };
+    for (rows) |row| {
+        var encoded = try terminal.encodeInput(allocator, &encode_scratch, .{ .mouse = .{
+            .kind = .press,
+            .button = .left,
+            .row = row,
+            .col = 2,
+            .mod = .{},
+            .buttons_down = 1,
+        } });
+        encoded.deinit();
+        try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+    }
+
+    var encoded = try terminal.encodeInput(allocator, &encode_scratch, .{ .mouse = .{
+        .kind = .press,
+        .button = .left,
+        .row = std.math.maxInt(u16),
+        .col = 2,
+        .mod = .{},
+        .buttons_down = 1,
+    } });
+    defer encoded.deinit();
+    try std.testing.expectEqualStrings("\x1b[2;4;65536;3;0&w", pendingOutput(&terminal));
+}
+
 test "locator mouse allocation failure is exact and preserves one-shot reporting" {
     const setup = "\x1b[2;0'z\x1b[1'*{";
     const event: input_mouse.MouseEvent = .{

@@ -9,15 +9,15 @@ by themselves.
 | Bar | Score | Blocking evidence |
 | --- | ---: | --- |
 | Foot directness | 10/10 | Current control flow keeps protocol classification and execution direct; no concrete indirection defect is indexed. |
-| TigerBeetle defensiveness | 9/10 | Input failures propagate exactly and Screen runtime allocation failure preserves paired history state; broader typed hostile-operation proof remains. |
+| TigerBeetle defensiveness | 10/10 | Typed host operations, exact failures, allocation ownership, bounds, and post-failure reuse now have executable proof at the native boundary. |
 | Character/capability density | 10/10 | The root exports one direct native `Terminal` owner without compatibility layers or additional ownership machinery. |
-| Ownership/cleanup | 9/10 | Resize and runtime history replacement are transactional; every temporary owner has failure cleanup and successful reuse proof. |
+| Ownership/cleanup | 10/10 | Resize and runtime history replacement are transactional; every generated input, copy, and drain owner is released or transferred exactly once. |
 | Exact failures | 10/10 | Parser, stream, OSC, input, retained consequences, logical snapshots, reflow, and resize storage expose their complete current failure vocabularies. |
 | Documentation | 10/10 | The source audit covers every source owner and retained public declaration and guards the one-symbol embedding root. |
-| Hostile-input evidence | 8/10 | Native fuzzing covers bytes, resize, reset, inspection, and post-error reuse; exhaustive allocation proof now covers input and runtime history, while other typed host operations remain absent. |
+| Hostile-input evidence | 10/10 | Structured native histories cover hostile bytes and every current typed host operation, including rejected limits, failed allocation, drains, acknowledgement, and reuse. |
 | Embedding surface | 10/10 | `src/howl_vt.zig` exports one directly owned native `Terminal`; current root-only integration proof exercises the accepted embedding shape. |
 | Deliberate modification | 8/10 | Unit, simulation, fuzz, coverage data, and source audits exist; parser/stream/OSC error contracts have direct failure proof, while broader exact-error and assertion-density audits remain manual. |
-| Source maturity | 9/10 | Protocol breadth, deterministic parsing, transactional history, and allocation-free rectangle copy are proved; inferred failure boundaries and missing typed hostile-operation proof remain. |
+| Source maturity | 10/10 | Protocol breadth, deterministic parsing, transactional history, allocation-free rectangle copy, and the complete current native host surface are proved. |
 
 ## Ordered offenders
 
@@ -102,7 +102,7 @@ by themselves.
 
 ### VT-020 — Native hostile proof omits typed host operations
 
-- Status: open
+- Status: resolved
 - Path/symbol: `test/fuzz_terminal.zig:fuzzTerminal`
 - Defect: the current operation model generates feed, resize, reset, and
   inspect only. Keyboard, mouse, focus, paste, selection, drain, acknowledge
@@ -113,6 +113,19 @@ by themselves.
 - Proof: generated typed operations assert bounds, ownership, post-error reuse,
   and deinitialization through the curated root.
 - Depends on: VT-016; screen allocation transitions depend on VT-017
+- Resolution: the native Smith history now generates bounded committed bytes,
+  named and Unicode keyboard input, mouse, focus, paste, selection, output
+  drain, clipboard drain, and acknowledgement operations alongside terminal
+  feed, resize, reset, viewport, and inspection.
+  Input results are always deinitialized and checked against fixed scratch or
+  paste bounds. Selection copy and both consequence drains fail a caller
+  allocation first, preserve their terminal owner, then succeed and prove
+  consumption. Zero acknowledgement is rejected before a valid publication is
+  retired, and every operation is followed by complete surface traversal and
+  publication acknowledgement. Generated mouse rows exposed an unchecked
+  narrowing conversion in DEC locator retention; locator input now rejects
+  rows outside its explicit `u16` coordinate domain and remains reusable at
+  the inclusive upper bound.
 
 ### VT-021 — Source safety properties remain manually audited
 
