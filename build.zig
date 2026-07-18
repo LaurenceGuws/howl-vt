@@ -35,7 +35,15 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     terminal_fuzz_mod.addImport("howl_vt", internal_mod);
-    const terminal_fuzz_tests = addTestArtifact(b, "fuzz-terminal", terminal_fuzz_mod);
+    const terminal_fuzz_tests = b.addTest(.{
+        .name = "fuzz-terminal",
+        .root_module = terminal_fuzz_mod,
+        .test_runner = .{
+            .path = b.path("vendor/zig-0.16-test-runner/test_runner.zig"),
+            .mode = .server,
+        },
+    });
+    terminal_fuzz_tests.use_llvm = true;
     const run_terminal_fuzz_tests = addTestRunArtifact(b, terminal_fuzz_tests);
 
     const check_step = b.step("check", "Build the native VT model");
