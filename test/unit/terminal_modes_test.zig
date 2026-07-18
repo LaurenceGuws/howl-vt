@@ -18,46 +18,27 @@ const StreamHarness = stream_harness.Harness;
 var encode_scratch: input_encode.Scratch = .{};
 
 fn encodeKey(terminal: *Terminal, key: input_keyboard.Key, mod: input_keyboard.Modifier) []const u8 {
-    return input_encode.encodeKey(
-        &encode_scratch,
-        key,
-        mod,
-        terminal.modes.keyboard_action_mode,
-        terminal.modes.application_cursor_keys,
-        terminal.modes.application_keypad,
-        terminal.modes.modify_other_keys,
-        terminal.modes.key_format[4],
-        terminal.kitty.activeScreenConst(terminal.screen_state.alt_active).keyboard.flags,
-        terminal.modes.newline_mode,
-    );
+    var encoded = terminal.encodeInput(std.testing.allocator, &encode_scratch, .{ .key = .{ .key = key, .mods = mod } }) catch unreachable;
+    defer encoded.deinit();
+    return encoded.bytes;
 }
 
 fn encodeMouse(terminal: *Terminal, event: input_mouse.MouseEvent) []const u8 {
-    return input_encode.encodeMouse(
-        &encode_scratch,
-        &terminal.host.locator,
-        terminal.allocator,
-        &terminal.host.pending_output,
-        terminal.modes.mouse_tracking,
-        terminal.modes.mouse_protocol,
-        event,
-    );
+    var encoded = terminal.encodeInput(std.testing.allocator, &encode_scratch, .{ .mouse = event }) catch unreachable;
+    defer encoded.deinit();
+    return encoded.bytes;
 }
 
 fn encodeFocusIn(terminal: *Terminal) []const u8 {
-    return input_encode.encodeFocusIn(&encode_scratch, terminal.modes.focus_reporting);
+    var encoded = terminal.encodeInput(std.testing.allocator, &encode_scratch, .{ .focus = .in }) catch unreachable;
+    defer encoded.deinit();
+    return encoded.bytes;
 }
 
 fn encodeFocusOut(terminal: *Terminal) []const u8 {
-    return input_encode.encodeFocusOut(&encode_scratch, terminal.modes.focus_reporting);
-}
-
-fn encodePasteStart(terminal: *Terminal) []const u8 {
-    return input_encode.encodePasteStart(&encode_scratch, terminal.modes.bracketed_paste);
-}
-
-fn encodePasteEnd(terminal: *Terminal) []const u8 {
-    return input_encode.encodePasteEnd(&encode_scratch, terminal.modes.bracketed_paste);
+    var encoded = terminal.encodeInput(std.testing.allocator, &encode_scratch, .{ .focus = .out }) catch unreachable;
+    defer encoded.deinit();
+    return encoded.bytes;
 }
 
 fn visibleView(terminal: *const Terminal, scrollback_offset: u32) screen_set.View {
@@ -317,20 +298,24 @@ test "focus reports are gated by DECSET 1004" {
     try std.testing.expectEqualStrings("", encodeFocusIn(&terminal));
 }
 
-test "bracketed paste wrappers are gated by DECSET 2004" {
+test "terminal paste encoding is gated by DECSET 2004" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try std.testing.expectEqualStrings("", encodePasteStart(&terminal));
-    try std.testing.expectEqualStrings("", encodePasteEnd(&terminal));
+    var plain = try terminal.encodeInput(allocator, &encode_scratch, .{ .paste = "paste" });
+    defer plain.deinit();
+    try std.testing.expectEqualStrings("paste", plain.bytes);
     write(&stream, "\x1b[?2004h");
-    try std.testing.expectEqualStrings("\x1b[200~", encodePasteStart(&terminal));
-    try std.testing.expectEqualStrings("\x1b[201~", encodePasteEnd(&terminal));
+    var bracketed = try terminal.encodeInput(allocator, &encode_scratch, .{ .paste = "paste" });
+    defer bracketed.deinit();
+    try std.testing.expectEqualStrings("\x1b[200~paste\x1b[201~", bracketed.bytes);
     write(&stream, "\x1b[?2004l");
-    try std.testing.expectEqualStrings("", encodePasteStart(&terminal));
+    var plain_again = try terminal.encodeInput(allocator, &encode_scratch, .{ .paste = "paste" });
+    defer plain_again.deinit();
+    try std.testing.expectEqualStrings("paste", plain_again.bytes);
 }
 
 test "paste encoding distinguishes borrowed and owned results" {
@@ -665,7 +650,9 @@ test "XTSAVE and XTRESTORE restore supported DEC private modes" {
     try std.testing.expect(!view.screen.auto_wrap);
     try std.testing.expect(!view.cursor_visible);
     try std.testing.expectEqualStrings("\x1b[I", encodeFocusIn(&terminal));
-    try std.testing.expectEqualStrings("\x1b[200~", encodePasteStart(&terminal));
+    var paste = try terminal.encodeInput(allocator, &encode_scratch, .{ .paste = "x" });
+    defer paste.deinit();
+    try std.testing.expectEqualStrings("\x1b[200~x\x1b[201~", paste.bytes);
     try std.testing.expectEqualStrings("\x1b[?1;1$y\x1b[?7;2$y\x1b[?25;2$y\x1b[?1004;1$y\x1b[?2004;1$y", pendingOutput(&terminal));
 }
 

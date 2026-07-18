@@ -188,11 +188,13 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: every retained `anytype` has at least two concrete,
   intentional callers and a documented reason; owner tests compile through
   explicit types.
-- Observed progress: input encoding now accepts explicit keyboard mode values,
-  typed mouse tracking/protocol values, and concrete Locator/output owners.
-  Pure key/focus/paste encoding remains separate from mouse encoding that may
-  append locator reports. Four field-proxy query helpers were deleted; no
-  context/config wrapper or Terminal import was added.
+- Observed progress: `Terminal.encodeInput` now directly orchestrates its
+  public Event, modes, Kitty flags, locator consequences, allocator, and
+  scratch lifetime. It calls the pure keyboard/mouse encoders directly;
+  newline adjustment, focus markers, and locator routing stay with Terminal.
+  `src/input/encode.zig` retains only Scratch copying and paste allocation
+  ownership, with zero `anytype`. Flattened dependency lists and four
+  field-proxy query helpers were deleted; no context/config wrapper was added.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 

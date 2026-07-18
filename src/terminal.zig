@@ -2,6 +2,9 @@ const std = @import("std");
 const input_encode = @import("input/encode.zig");
 const input_encoded = @import("input/encoded.zig");
 const input_event = @import("input/event.zig");
+const input_keyboard = @import("input/keyboard.zig");
+const input_mouse = @import("input/mouse.zig");
+const locator = @import("locator.zig");
 const mode = @import("mode.zig");
 const screen = @import("screen.zig");
 const host_state = @import("host_state.zig");
@@ -400,33 +403,45 @@ pub const Terminal = struct {
     ) input_encode.PasteError!EncodedInput {
         return switch (event) {
             .bytes => |bytes| .{ .bytes = bytes },
-            .key => |key| .{ .bytes = input_encode.encodeKey(
-                scratch,
-                key.key,
-                key.mods,
-                self.modes.keyboard_action_mode,
-                self.modes.application_cursor_keys,
-                self.modes.application_keypad,
-                self.modes.modify_other_keys,
-                self.modes.key_format[4],
-                self.kitty.activeScreenConst(self.screen_state.alt_active).keyboard.flags,
-                self.modes.newline_mode,
-            ) },
-            .mouse => |mouse| .{ .bytes = input_encode.encodeMouse(
-                scratch,
-                &self.host.locator,
-                self.allocator,
-                &self.host.pending_output,
-                self.modes.mouse_tracking,
-                self.modes.mouse_protocol,
-                mouse,
-            ) },
-            .focus => |focus| .{ .bytes = switch (focus) {
-                .in => input_encode.encodeFocusIn(scratch, self.modes.focus_reporting),
-                .out => input_encode.encodeFocusOut(scratch, self.modes.focus_reporting),
-            } },
+            .key => |key| .{ .bytes = self.encodeKeyInput(scratch, key) },
+            .mouse => |mouse| .{ .bytes = self.encodeMouseInput(scratch, mouse) },
+            .focus => |focus| .{ .bytes = self.encodeFocusInput(scratch, focus) },
             .paste => |text| input_encode.encodePaste(self.modes.bracketed_paste, allocator, text),
         };
+    }
+
+    fn encodeKeyInput(self: *Terminal, scratch: *InputScratch, event: input_event.KeyEvent) []const u8 {
+        if (self.modes.keyboard_action_mode) return scratch.buf[0..0];
+        const encoded = input_keyboard.encodeKey(
+            scratch.buf[0..],
+            event.key,
+            event.mods,
+            self.modes.application_cursor_keys,
+            self.modes.application_keypad,
+            self.modes.modify_other_keys,
+            self.modes.key_format[4],
+            self.kitty.activeScreenConst(self.screen_state.alt_active).keyboard.flags,
+        );
+        std.debug.assert(encoded.len <= scratch.buf.len);
+        if (self.modes.newline_mode and event.key == .named and event.key.named == .enter and std.mem.eql(u8, encoded, "\r")) {
+            return input_encode.writeScratch(scratch, "\r\n");
+        }
+        return encoded;
+    }
+
+    fn encodeMouseInput(self: *Terminal, scratch: *InputScratch, event: input_mouse.MouseEvent) []const u8 {
+        locator.handleMouseEvent(&self.host.locator, self.allocator, &self.host.pending_output, scratch.buf[0..], event);
+        const encoded = input_mouse.encodeMouse(scratch.buf[0..], event, self.modes.mouse_tracking, self.modes.mouse_protocol);
+        std.debug.assert(encoded.len <= scratch.buf.len);
+        return encoded;
+    }
+
+    fn encodeFocusInput(self: *const Terminal, scratch: *InputScratch, event: input_event.FocusEvent) []const u8 {
+        if (!self.modes.focus_reporting) return scratch.buf[0..0];
+        return input_encode.writeScratch(scratch, switch (event) {
+            .in => "\x1b[I",
+            .out => "\x1b[O",
+        });
     }
 
     /// Drain pending terminal reply bytes into caller-owned memory.

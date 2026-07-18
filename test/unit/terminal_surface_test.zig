@@ -18,18 +18,9 @@ const StreamHarness = stream_harness.Harness;
 var encode_scratch: input_encode.Scratch = .{};
 
 fn encodeKey(terminal: *Terminal, key: input_keyboard.Key, mod: input_keyboard.Modifier) []const u8 {
-    return input_encode.encodeKey(
-        &encode_scratch,
-        key,
-        mod,
-        terminal.modes.keyboard_action_mode,
-        terminal.modes.application_cursor_keys,
-        terminal.modes.application_keypad,
-        terminal.modes.modify_other_keys,
-        terminal.modes.key_format[4],
-        terminal.kitty.activeScreenConst(terminal.screen_state.alt_active).keyboard.flags,
-        terminal.modes.newline_mode,
-    );
+    var encoded = terminal.encodeInput(std.testing.allocator, &encode_scratch, .{ .key = .{ .key = key, .mods = mod } }) catch unreachable;
+    defer encoded.deinit();
+    return encoded.bytes;
 }
 
 fn activeScreen(terminal: *const Terminal) *const Screen {
