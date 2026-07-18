@@ -11,7 +11,6 @@ const screen_apply = @import("screen/apply.zig");
 const history_mod = @import("screen/history.zig");
 const rect = @import("screen/rect.zig");
 const resize_mod = @import("screen/resize.zig");
-const scroll = @import("screen/scroll.zig");
 const style_mod = @import("screen/style.zig");
 const tabs = @import("screen/tabs.zig");
 
@@ -604,16 +603,41 @@ pub const Screen = struct {
         if (self.tab_stops) |stops| tabs.setDefaultTabStops(stops);
     }
 
+    /// Advance within the scroll region, scrolling it upward at its bottom edge.
     pub fn lineFeed(self: *Screen) void {
-        scroll.lineFeed(self);
+        if (self.rows == 0) return;
+        const bottom = self.scrollBottom();
+        if (self.cursor.row < bottom) {
+            self.cursor.setRowByClient(self.cursor.row + 1);
+            return;
+        }
+        if (self.cursor.row == bottom) {
+            self.scrollUpRegion(self.scroll_top, bottom, 1);
+            return;
+        }
+        if (self.cursor.row < self.rows - 1) self.cursor.setRowByClient(self.cursor.row + 1);
     }
 
+    /// Move upward, scrolling the active region downward at its top edge.
     pub fn reverseIndex(self: *Screen) void {
-        scroll.reverseIndex(self);
+        if (self.rows == 0) return;
+        if (self.cursor.row == self.scroll_top) {
+            self.scrollDownRegion(self.scroll_top, self.scrollBottom(), 1);
+        } else {
+            self.cursor.setRowByClient(self.cursor.row -| 1);
+        }
     }
 
     fn scrollUp(self: *Screen) void {
-        scroll.scrollUp(self);
+        const cells = self.cells orelse return;
+        if (self.rows == 0 or self.cols == 0) return;
+        self.markDirtyRow(self.rows - 1);
+        const row_len = @as(u32, self.cols);
+        self.storeHistoryRow(0);
+        self.row_origin = (self.row_origin + 1) % self.rows;
+        const bottom_start = self.rowStart(self.rows - 1);
+        @memset(cells[@intCast(bottom_start)..@intCast(bottom_start + row_len)], default_cell);
+        self.setRowWrapped(self.rows - 1, false);
     }
 
     pub fn scrollBottom(self: *const Screen) u16 {
@@ -659,20 +683,74 @@ pub const Screen = struct {
         self.cursor.setPositionByClient(if (self.origin_mode) self.scroll_top else 0, self.lineHomeCol());
     }
 
+    /// Insert lines at the cursor within the active vertical scroll region.
     pub fn insertLines(self: *Screen, count: u16) void {
-        scroll.insertLines(self, count);
+        const bottom = self.scrollBottom();
+        if (self.cursor.row < self.scroll_top or self.cursor.row > bottom) return;
+        self.scrollDownRegion(self.cursor.row, bottom, count);
     }
 
+    /// Delete lines at the cursor within the active vertical scroll region.
     pub fn deleteLines(self: *Screen, count: u16) void {
-        scroll.deleteLines(self, count);
+        const bottom = self.scrollBottom();
+        if (self.cursor.row < self.scroll_top or self.cursor.row > bottom) return;
+        self.scrollUpRegion(self.cursor.row, bottom, count);
     }
 
+    /// Scroll an ordered, clamped region upward by at most its row count.
     pub fn scrollUpRegion(self: *Screen, top: u16, bottom: u16, count: u16) void {
-        scroll.scrollUpRegion(self, top, bottom, count);
+        if (self.rows == 0 or self.cols == 0 or top >= self.rows or top > bottom) return;
+        const bounded_bottom = @min(bottom, self.rows - 1);
+        const region_len: u16 = bounded_bottom - top + 1;
+        const amount = @min(count, region_len);
+        if (amount == 0) return;
+
+        if (top == 0 and bounded_bottom == self.rows - 1) {
+            var remaining = amount;
+            while (remaining > 0) : (remaining -= 1) self.scrollUp();
+            return;
+        }
+
+        self.markDirtyRows(top, bounded_bottom);
+        const left = if (self.left_right_margin_mode) self.left_margin else 0;
+        const right = if (self.left_right_margin_mode) self.right_margin else self.cols -| 1;
+
+        var dst = top;
+        while (dst + amount <= bounded_bottom) : (dst += 1) {
+            self.copyRowRange(dst, dst + amount, left, right + 1);
+        }
+
+        var clear_row = bounded_bottom - amount + 1;
+        while (clear_row <= bounded_bottom) : (clear_row += 1) {
+            self.clearRowRange(clear_row, left, right + 1);
+            self.setRowWrapped(clear_row, false);
+        }
     }
 
+    /// Scroll an ordered, clamped region downward by at most its row count.
     pub fn scrollDownRegion(self: *Screen, top: u16, bottom: u16, count: u16) void {
-        scroll.scrollDownRegion(self, top, bottom, count);
+        if (self.rows == 0 or self.cols == 0 or top >= self.rows or top > bottom) return;
+        const bounded_bottom = @min(bottom, self.rows - 1);
+        const region_len: u16 = bounded_bottom - top + 1;
+        const amount = @min(count, region_len);
+        if (amount == 0) return;
+
+        self.markDirtyRows(top, bounded_bottom);
+        const left = if (self.left_right_margin_mode) self.left_margin else 0;
+        const right = if (self.left_right_margin_mode) self.right_margin else self.cols -| 1;
+
+        var dst = bounded_bottom;
+        while (dst >= top + amount) {
+            self.copyRowRange(dst, dst - amount, left, right + 1);
+            if (dst == top + amount) break;
+            dst -= 1;
+        }
+
+        var clear_row = top;
+        while (clear_row < top + amount) : (clear_row += 1) {
+            self.clearRowRange(clear_row, left, right + 1);
+            self.setRowWrapped(clear_row, false);
+        }
     }
 
     pub fn rowStart(self: *const Screen, logical_row: u16) u32 {

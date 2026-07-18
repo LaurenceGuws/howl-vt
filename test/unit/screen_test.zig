@@ -623,3 +623,34 @@ test "screen: SU scrolls only within configured region" {
     try std.testing.expectEqual(@as(u21, 'D'), s.cellAt(2, 0));
     try std.testing.expectEqual(@as(u21, 0), s.cellAt(3, 0));
 }
+
+test "screen: vertical scrolling preserves columns outside horizontal margins" {
+    const allocator = std.testing.allocator;
+    var screen = try Grid.initWithCells(allocator, 4, 5);
+    defer screen.deinit(allocator);
+
+    apply(&screen, .{ .write_text = "AAAAA" });
+    apply(&screen, .{ .cursor_position = .{ .row = 1, .col = 0 } });
+    apply(&screen, .{ .write_text = "BBBBB" });
+    apply(&screen, .{ .cursor_position = .{ .row = 2, .col = 0 } });
+    apply(&screen, .{ .write_text = "CCCCC" });
+    apply(&screen, .{ .cursor_position = .{ .row = 3, .col = 0 } });
+    apply(&screen, .{ .write_text = "DDDDD" });
+    apply(&screen, .{ .left_right_margin_mode = true });
+    apply(&screen, .{ .set_left_right_margins = .{ .left = 1, .right = 3 } });
+    apply(&screen, .{ .set_scroll_region = .{ .top = 1, .bottom = 3 } });
+    apply(&screen, .{ .scroll_up_lines = 1 });
+
+    try std.testing.expectEqual(@as(u21, 'B'), screen.cellAt(1, 0));
+    try std.testing.expectEqual(@as(u21, 'C'), screen.cellAt(1, 1));
+    try std.testing.expectEqual(@as(u21, 'C'), screen.cellAt(1, 3));
+    try std.testing.expectEqual(@as(u21, 'B'), screen.cellAt(1, 4));
+    try std.testing.expectEqual(@as(u21, 'C'), screen.cellAt(2, 0));
+    try std.testing.expectEqual(@as(u21, 'D'), screen.cellAt(2, 1));
+    try std.testing.expectEqual(@as(u21, 'D'), screen.cellAt(2, 3));
+    try std.testing.expectEqual(@as(u21, 'C'), screen.cellAt(2, 4));
+    try std.testing.expectEqual(@as(u21, 'D'), screen.cellAt(3, 0));
+    try std.testing.expectEqual(@as(u21, 0), screen.cellAt(3, 1));
+    try std.testing.expectEqual(@as(u21, 0), screen.cellAt(3, 3));
+    try std.testing.expectEqual(@as(u21, 'D'), screen.cellAt(3, 4));
+}
