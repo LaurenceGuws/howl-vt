@@ -172,9 +172,8 @@ fragmentation and indirect ownership are defects.
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 
 - Status: open
-- Path/symbol: `src/screen_set.zig` (2 occurrences);
-  `src/report.zig:formatOutput` (1 intentional formatting generic).
-  Repository total: 8 occurrences across 7 files;
+- Path/symbol: `src/report.zig:formatOutput` (1 intentional formatting
+  generic). Repository total: 6 occurrences across 6 files;
   `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
@@ -256,7 +255,8 @@ fragmentation and indirect ownership are defects.
   retains allocator-bound consequence ownership and rollback. Kitty
   application now accepts only concrete `*Terminal`; Kitty modules retain
   their bounded state/value mechanics and `kitty/apply.zig` has zero
-  structural generics.
+  structural generics. An unused ScreenSet projection helper and both of its
+  unproven output/map generics were deleted without replacement.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 

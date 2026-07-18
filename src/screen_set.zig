@@ -181,18 +181,6 @@ pub fn peekDirtyRows(screen_state: *const Set) ?Screen.DirtyRows {
     return screen_state.activeConst().peekDirtyRows();
 }
 
-pub fn copyViewCells(view: View, out: anytype, map: anytype) void {
-    std.debug.assert(out.len >= @as(@TypeOf(out.len), @intCast(@as(u32, view.rows) * @as(u32, view.cols))));
-    var row: u16 = 0;
-    while (row < view.rows) : (row += 1) {
-        var col: u16 = 0;
-        while (col < view.cols) : (col += 1) {
-            const idx: u32 = @as(u32, row) * @as(u32, view.cols) + col;
-            out[@intCast(idx)] = map(view.cellInfoAt(row, col));
-        }
-    }
-}
-
 pub fn copyDirtyRows(dirty_rows_out: []u8, cols_start: []u16, cols_end: []u16, dirty: ?Screen.DirtyRows) void {
     @memset(dirty_rows_out, 0);
     @memset(cols_start, 0);
