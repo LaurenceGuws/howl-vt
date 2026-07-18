@@ -12,12 +12,13 @@ It parses terminal input streams, maps parser events into terminal actions, muta
 
 It does not own PTY transport, host wake policy, host event loops, render text shaping, or backend presentation.
 
-## Public Surface
+## Embedding Surfaces
 
-- The shipped embedding contract is `include/howl_vt.h` plus exported `howl_vt_*` symbols.
+- The primary development contract is the `howl_vt` Zig module rooted at `src/howl_vt.zig`.
+- The language-neutral contract is `include/howl_vt.h` plus exported `howl_vt_*` symbols.
 - `src/libhowl_vt.zig` is the C ABI export root.
-- Internal Zig roots are repo-local test/fuzz/proof wiring only.
-- Hosts and embedders consume VT through the C ABI only.
+- Private implementation modules remain repo-local owners rather than direct embedding targets.
+- This private project has no compatibility promise while its native owner boundaries mature.
 
 ## Owners
 
@@ -36,7 +37,7 @@ It does not own PTY transport, host wake policy, host event loops, render text s
 
 ## Main Flow
 
-1. Host creates an opaque VT terminal handle through the C ABI.
+1. Host creates terminal state through the native Zig model or an opaque C ABI handle.
 2. Host feeds bytes from PTY transport into `howl_vt_terminal_feed`.
 3. Parser owners produce events and action routing delegates mutation to screen, host, kitty, mode, report, and selection owners.
 4. Host drains pending protocol consequences such as output, clipboard, title, and visible metadata through ABI calls.

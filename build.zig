@@ -1,6 +1,5 @@
-// This repo ships a C ABI first until further notice.
-// Keep build entrypoints aligned around the shipped header and exported symbols, not privileged Zig imports.
-// Repo-local Zig roots may exist for tests and proofs, but they are not an embedder-facing contract.
+// The native Zig model is the primary development surface. The C ABI remains
+// available for hosts that need a language-neutral boundary.
 
 const std = @import("std");
 
@@ -13,7 +12,7 @@ pub fn build(b: *std.Build) void {
     const ffi_options = b.addOptions();
     ffi_options.addOption(bool, "c_abi", true);
     ffi_options.addOption(bool, "howl_vt", true);
-    const internal_mod = b.createModule(.{
+    const internal_mod = b.addModule("howl_vt", .{
         .root_source_file = b.path("src/howl_vt.zig"),
         .target = target,
         .optimize = optimize,

@@ -4,13 +4,17 @@ Host-neutral terminal model for Howl.
 
 `howl-vt` parses terminal byte streams, routes parser events into terminal actions, mutates screen state, owns selection truth, encodes host input according to terminal modes, and exposes visible-surface and protocol consequences through a C ABI.
 
-## Public ABI
+## Embedding surfaces
 
-- Header: `include/howl_vt.h`
-- Exported symbols: `howl_vt_*`
-- Public root: `src/libhowl_vt.zig`
+- Native Zig module: `howl_vt`
+- Native root: `src/howl_vt.zig`
+- C header: `include/howl_vt.h`
+- C exports: `howl_vt_*`
+- C root: `src/libhowl_vt.zig`
 
-Internal Zig roots are repo-local test/fuzz/proof wiring only.
+The native Zig model is the primary development surface. The C ABI remains
+available as language-neutral glue while it continues to earn its maintenance
+cost.
 
 ## Build
 
