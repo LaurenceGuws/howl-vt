@@ -175,8 +175,8 @@ fragmentation and indirect ownership are defects.
 - Path/symbol: `src/screen/history.zig` (25 occurrences);
   `src/screen/edit.zig` (11);
   `src/screen/style.zig`, `erase.zig`, and `apply.zig` (9 each);
-  `src/screen/resize.zig` (7). Repository total: 120 occurrences across
-  23 files; `src/input/encode.zig`, `src/host_state.zig`,
+  `src/screen/resize.zig` (7). Repository total: 117 occurrences across
+  22 files; `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig` now have zero.
 - Defect: helpers accept undeclared field/method shapes, making dependencies,
@@ -206,13 +206,15 @@ fragmentation and indirect ownership are defects.
   explicit `alt_active` domain fact. Five test-only selection forwarders were
   deleted; tests exercise Terminal's existing concrete selection surface.
   Five cursor boundary calculations now live directly on concrete Screen;
-  `screen/cursor.zig` retains only cursor value state and behavior.
+  `screen/cursor.zig` retains only cursor value state and behavior. Screen now
+  owns its three margin mutations directly; the empty structural margins
+  module was deleted.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
 - Status: open
 - Path/symbol: `src/screen.zig` delegating to `src/screen/apply.zig`,
-  `edit.zig`, `erase.zig`, `margins.zig`, `scroll.zig`, `style.zig`,
+  `edit.zig`, `erase.zig`, `scroll.zig`, `style.zig`,
   `tabs.zig`, and `write.zig`
 - Defect: one `Screen` authority is spread across structural helpers that
   reach into its fields through `anytype`. Mutation and invariants require

@@ -9,7 +9,6 @@ const edit = @import("screen/edit.zig");
 const erase = @import("screen/erase.zig");
 const screen_apply = @import("screen/apply.zig");
 const history_mod = @import("screen/history.zig");
-const margins = @import("screen/margins.zig");
 const rect = @import("screen/rect.zig");
 const resize_mod = @import("screen/resize.zig");
 const scroll = @import("screen/scroll.zig");
@@ -539,16 +538,43 @@ pub const Screen = struct {
         return if (self.rows == 0) 0 else @min(self.scroll_bottom, self.rows - 1);
     }
 
+    /// Set the vertical scrolling region when its clamped endpoints remain ordered.
     pub fn setScrollRegion(self: *Screen, top: u16, bottom: ?u16) void {
-        margins.setScrollRegion(self, top, bottom);
+        if (self.rows == 0) {
+            self.scroll_top = 0;
+            self.scroll_bottom = 0;
+            self.cursor.setPositionByClient(0, 0);
+            return;
+        }
+
+        const new_top = @min(top, self.rows - 1);
+        const new_bottom = if (bottom) |value| @min(value, self.rows - 1) else self.rows - 1;
+        if (new_top >= new_bottom) return;
+
+        self.scroll_top = new_top;
+        self.scroll_bottom = new_bottom;
+        self.cursor.setPositionByClient(if (self.origin_mode) self.scroll_top else 0, self.lineHomeCol());
     }
 
+    /// Enable horizontal margins, or disable them and restore full-width defaults.
     pub fn setLeftRightMarginMode(self: *Screen, enabled: bool) void {
-        margins.setLeftRightMode(self, enabled);
+        self.left_right_margin_mode = enabled;
+        if (!enabled) {
+            self.left_margin = 0;
+            self.right_margin = self.cols -| 1;
+        }
     }
 
+    /// Set ordered horizontal margins and home the cursor after a valid change.
     pub fn setLeftRightMargins(self: *Screen, left: u16, right: ?u16) void {
-        margins.setLeftRightMargins(self, left, right);
+        if (!self.left_right_margin_mode or self.cols < 2) return;
+        const new_left = @min(left, self.cols - 2);
+        const new_right = if (right) |value| @min(value, self.cols - 1) else self.cols - 1;
+        if (new_left >= new_right) return;
+        self.left_margin = new_left;
+        self.right_margin = new_right;
+        self.wrap_pending = false;
+        self.cursor.setPositionByClient(if (self.origin_mode) self.scroll_top else 0, self.lineHomeCol());
     }
 
     pub fn insertLines(self: *Screen, count: u16) void {
