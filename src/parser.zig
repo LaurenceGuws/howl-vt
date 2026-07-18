@@ -12,6 +12,7 @@ const ParamKind = enum {
 const BufferedControlKind = enum {
     apc,
     pm,
+    sos,
 };
 
 pub const DeccirCharsetState = struct {
@@ -30,24 +31,26 @@ const csi_max_intermediates = 4;
 // avoids immediate growth without preallocating the full metadata ceiling for
 // every parser-owned control buffer.
 const control_init_capacity = 256;
-// Keep metadata-sized control strings explicitly small. The owned OSC, DCS,
-// and PM protocols in Howl are title, color, report, clipboard, and similar
-// metadata paths, not bulk transport.
-const metadata_control_max_bytes = 4096;
-// Large OSC payload families such as clipboard, text sizing, and file-transfer
-// use a larger transient parser buffer. This acceptance limit does not define
-// how much any downstream owner may retain.
-const large_osc_control_max_bytes = 1024 * 1024;
-// Production APC payload bytes are counted and discarded. This limit is the
-// accepted ignored-byte tolerance before rejection, not a memory budget.
-const apc_max_bytes = 65 * 1024 * 1024;
+// Ghostty's fixed OSC parser demonstrates that ordinary terminal metadata fits
+// in 2 KiB. Howl uses that scale for controls whose complete value is metadata.
+const metadata_control_max_bytes = 2 * 1024;
+// OSC 52 is an unchunked clipboard protocol, so parser acceptance remains
+// larger than metadata while host retention applies the same explicit bound.
+const clipboard_control_max_bytes = 1024 * 1024;
+// Kitty clipboard and file-transfer protocols send binary data in chunks no
+// larger than 4096 decoded bytes. 8 KiB covers base64 expansion and command
+// metadata without turning one protocol packet into a bulk-transfer buffer.
+const chunk_control_max_bytes = 8 * 1024;
 
 pub const max_params = csi_max_params;
 pub const max_intermediates = csi_max_intermediates;
 pub const CsiSeparatorList = std.StaticBitSet(csi_max_params);
+/// Maximum complete payload accepted for one ordinary metadata control.
 pub const max_metadata_control_bytes = metadata_control_max_bytes;
-pub const max_large_osc_control_bytes = large_osc_control_max_bytes;
-pub const max_apc_control_bytes = apc_max_bytes;
+/// Maximum complete payload accepted for one unchunked OSC 52 control.
+pub const max_clipboard_control_bytes = clipboard_control_max_bytes;
+/// Maximum complete payload accepted for one chunked Kitty control.
+pub const max_chunk_control_bytes = chunk_control_max_bytes;
 pub const OscTerminator = enum {
     bel,
     st,
@@ -216,6 +219,9 @@ pub const Action = union(enum) {
     pm_start,
     pm_put: u8,
     pm_end,
+    sos_start,
+    sos_put: u8,
+    sos_end,
     esc_dispatch: EscAction,
 };
 
@@ -235,6 +241,7 @@ pub const Parser = struct {
     apc: string_control_mod.PassthroughControl,
     dcs: string_control_mod.PassthroughControl,
     pm: string_control_mod.PassthroughControl,
+    sos: string_control_mod.PassthroughControl,
 
     /// Initialize parser state and owned buffers.
     pub fn init(allocator: std.mem.Allocator) !Parser {
@@ -242,7 +249,8 @@ pub const Parser = struct {
             allocator,
             control_init_capacity,
             metadata_control_max_bytes,
-            large_osc_control_max_bytes,
+            clipboard_control_max_bytes,
+            chunk_control_max_bytes,
         );
         errdefer osc.deinit();
 
@@ -259,15 +267,13 @@ pub const Parser = struct {
             .apc = string_control_mod.PassthroughControl.init(false),
             .dcs = string_control_mod.PassthroughControl.init(false),
             .pm = string_control_mod.PassthroughControl.init(false),
+            .sos = string_control_mod.PassthroughControl.init(false),
         };
     }
 
     /// Release parser-owned buffers.
     pub fn deinit(self: *Parser) void {
         self.osc.deinit();
-        self.apc.deinit();
-        self.dcs.deinit();
-        self.pm.deinit();
     }
 
     /// Reset parser state and transient buffers.
@@ -279,6 +285,7 @@ pub const Parser = struct {
         self.apc.reset();
         self.dcs.reset();
         self.pm.reset();
+        self.sos.reset();
     }
 
     pub fn takeStringControlFailed(self: *Parser) ?error{ OutOfMemory, StringControlLimit } {
@@ -316,6 +323,7 @@ pub const Parser = struct {
             .sos_pm_apc_string => switch (sos_kind.?) {
                 .apc => self.apc.escaping(),
                 .pm => self.pm.escaping(),
+                .sos => self.sos.escaping(),
             },
             else => false,
         };
@@ -359,6 +367,13 @@ pub const Parser = struct {
                     const result = self.pm.feed(byte) orelse break :pm .{ .sos_pm_apc_string, null };
                     break :pm switch (result) {
                         .put => |payload_byte| .{ .sos_pm_apc_string, .{ .pm_put = payload_byte } },
+                        .finish => .{ .ground, null },
+                    };
+                },
+                .sos => sos: {
+                    const result = self.sos.feed(byte) orelse break :sos .{ .sos_pm_apc_string, null };
+                    break :sos switch (result) {
+                        .put => |payload_byte| .{ .sos_pm_apc_string, .{ .sos_put = payload_byte } },
                         .finish => .{ .ground, null },
                     };
                 },
@@ -411,6 +426,11 @@ pub const Parser = struct {
                     std.debug.assert(!self.pm.active());
                     break :pm .pm_end;
                 },
+                .sos => sos: {
+                    self.sos.reset();
+                    std.debug.assert(!self.sos.active());
+                    break :sos .sos_end;
+                },
             },
             else => null,
         };
@@ -426,6 +446,7 @@ pub const Parser = struct {
                     self.apc.reset();
                     self.dcs.reset();
                     self.pm.reset();
+                    self.sos.reset();
                     self.clear();
                     std.debug.assert(self.activeControlCount() == 0);
                 } else {
@@ -455,12 +476,19 @@ pub const Parser = struct {
                     std.debug.assert(self.activeControlCount() == 1);
                     break :apc .apc_start;
                 },
-                '^', 0x98, 0x9E => pm: {
+                '^', 0x9E => pm: {
                     std.debug.assert(self.activeControlCount() == 0);
                     self.pm.start();
                     std.debug.assert(self.pm.active());
                     std.debug.assert(self.activeControlCount() == 1);
                     break :pm .pm_start;
+                },
+                'X', 0x98 => sos: {
+                    std.debug.assert(self.activeControlCount() == 0);
+                    self.sos.start();
+                    std.debug.assert(self.sos.active());
+                    std.debug.assert(self.activeControlCount() == 1);
+                    break :sos .sos_start;
                 },
                 else => unreachable,
             },
@@ -506,7 +534,11 @@ pub const Parser = struct {
             },
             .csi_dispatch => self.consumeCsiDispatch(byte),
             .osc_put => osc_put: {
-                _ = self.osc.feed(byte);
+                const result = self.osc.feed(byte) orelse unreachable;
+                switch (result) {
+                    .put => {},
+                    .finish => unreachable,
+                }
                 break :osc_put null;
             },
             .put => put: {
@@ -529,6 +561,13 @@ pub const Parser = struct {
                         const result = self.pm.feed(byte) orelse break :pm null;
                         break :pm switch (result) {
                             .put => |payload_byte| .{ .pm_put = payload_byte },
+                            .finish => unreachable,
+                        };
+                    },
+                    .sos => sos: {
+                        const result = self.sos.feed(byte) orelse break :sos null;
+                        break :sos switch (result) {
+                            .put => |payload_byte| .{ .sos_put = payload_byte },
                             .finish => unreachable,
                         };
                     },
@@ -558,11 +597,17 @@ pub const Parser = struct {
     fn sosPmApcKind(self: *const Parser) BufferedControlKind {
         if (self.apc.active()) {
             std.debug.assert(!self.pm.active());
+            std.debug.assert(!self.sos.active());
             return .apc;
         }
 
-        std.debug.assert(self.pm.active());
-        return .pm;
+        if (self.pm.active()) {
+            std.debug.assert(!self.sos.active());
+            return .pm;
+        }
+
+        std.debug.assert(self.sos.active());
+        return .sos;
     }
 
     fn activeControlCount(self: *const Parser) u3 {
@@ -571,6 +616,7 @@ pub const Parser = struct {
         if (self.apc.active()) count += 1;
         if (self.dcs.active()) count += 1;
         if (self.pm.active()) count += 1;
+        if (self.sos.active()) count += 1;
         return count;
     }
 

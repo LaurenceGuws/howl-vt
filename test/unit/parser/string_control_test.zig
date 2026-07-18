@@ -126,6 +126,29 @@ test "parser string controls: PM with ST terminator" {
     try std.testing.expect(output.actions.items[8] == .pm_end);
 }
 
+test "parser string controls: SOS forms remain distinct and terminate" {
+    const gpa = std.testing.allocator;
+    var parser = try Parser.init(gpa);
+    defer parser.deinit();
+    var output = try Output.init(gpa);
+    defer output.deinit(gpa);
+
+    for ("\x1bXs\x1b\\") |byte| output.appendPhases(parser.next(byte));
+    try expectActionCount(output.actions.items, 3);
+    try std.testing.expect(output.actions.items[0] == .sos_start);
+    try std.testing.expectEqual(@as(u8, 's'), output.actions.items[1].sos_put);
+    try std.testing.expect(output.actions.items[2] == .sos_end);
+
+    output.actions.clearRetainingCapacity();
+    for ("\x1bPq\x98t\x9c") |byte| output.appendPhases(parser.next(byte));
+    try expectActionCount(output.actions.items, 5);
+    try std.testing.expect(output.actions.items[0] == .dcs_hook);
+    try std.testing.expect(output.actions.items[1] == .dcs_unhook);
+    try std.testing.expect(output.actions.items[2] == .sos_start);
+    try std.testing.expectEqual(@as(u8, 't'), output.actions.items[3].sos_put);
+    try std.testing.expect(output.actions.items[4] == .sos_end);
+}
+
 test "parser string controls: stray ESC in OSC appends byte to payload" {
     const gpa = std.testing.allocator;
     var parser = try Parser.init(gpa);
@@ -247,12 +270,24 @@ test "parser string controls: explicit OSC ladder recognizes full command list" 
     }
 }
 
+fn putOscBytes(osc: *OscControl, bytes: []const u8) !void {
+    for (bytes) |byte| {
+        const result = osc.feed(byte) orelse return error.MissingFeedResult;
+        try std.testing.expect(result == .put);
+    }
+}
+
+fn finishOscBel(osc: *OscControl) !void {
+    const result = osc.feed(0x07) orelse return error.MissingFeedResult;
+    try std.testing.expectEqual(string_control.Finish.bel, result.finish);
+}
+
 test "osc control: title payload keeps metadata limit" {
-    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32);
+    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32, 8);
     defer osc.deinit();
     osc.start();
-    for ("0;hello") |byte| _ = osc.feed(byte);
-    _ = osc.feed(0x07);
+    try putOscBytes(&osc, "0;hello");
+    try finishOscBel(&osc);
     const snapshot = osc.snapshot(.bel);
     try std.testing.expectEqual(@as(?u16, 0), snapshot.command());
     try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).title, std.meta.activeTag(snapshot));
@@ -261,11 +296,11 @@ test "osc control: title payload keeps metadata limit" {
 }
 
 test "osc control: clipboard payload uses large limit" {
-    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32);
+    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32, 8);
     defer osc.deinit();
     osc.start();
-    for ("52;c;abcdefgh") |byte| _ = osc.feed(byte);
-    _ = osc.feed(0x07);
+    try putOscBytes(&osc, "52;c;abcdefgh");
+    try finishOscBel(&osc);
     const snapshot = osc.snapshot(.bel);
     try std.testing.expectEqual(@as(?u16, 52), snapshot.command());
     try std.testing.expectEqual(std.meta.Tag(parser_mod.OscAction).clipboard, std.meta.activeTag(snapshot));
@@ -273,8 +308,8 @@ test "osc control: clipboard payload uses large limit" {
     try std.testing.expectEqual(@as(?(error{ OutOfMemory, StringControlLimit }), null), osc.takeFailure());
 }
 
-test "osc control: large payload boundary rejects and resets exactly" {
-    var osc = try OscControl.init(std.testing.allocator, 16, 4, 4);
+test "osc control: clipboard boundary rejects and resets exactly" {
+    var osc = try OscControl.init(std.testing.allocator, 16, 4, 4, 4);
     defer osc.deinit();
 
     const cases = [_]struct {
@@ -290,8 +325,40 @@ test "osc control: large payload boundary rejects and resets exactly" {
 
     for (cases) |case| {
         osc.start();
-        for (case.body) |byte| _ = osc.feed(byte);
-        _ = osc.feed(0x07);
+        try putOscBytes(&osc, case.body);
+        try finishOscBel(&osc);
+        const snapshot = osc.snapshot(.bel);
+        try std.testing.expectEqualStrings(case.payload, snapshot.payload());
+        if (case.exceeds_limit) {
+            try std.testing.expectEqual(error.StringControlLimit, osc.takeFailure().?);
+        } else {
+            try std.testing.expectEqual(
+                @as(?(error{ OutOfMemory, StringControlLimit }), null),
+                osc.takeFailure(),
+            );
+        }
+    }
+}
+
+test "osc control: chunked protocol boundary rejects and resets exactly" {
+    var osc = try OscControl.init(std.testing.allocator, 16, 4, 32, 4);
+    defer osc.deinit();
+
+    const cases = [_]struct {
+        body: []const u8,
+        payload: []const u8,
+        exceeds_limit: bool,
+    }{
+        .{ .body = "5113;abc", .payload = "abc", .exceeds_limit = false },
+        .{ .body = "5113;abcd", .payload = "abcd", .exceeds_limit = false },
+        .{ .body = "5113;abcde", .payload = "abcd", .exceeds_limit = true },
+        .{ .body = "5522;z", .payload = "z", .exceeds_limit = false },
+    };
+
+    for (cases) |case| {
+        osc.start();
+        try putOscBytes(&osc, case.body);
+        try finishOscBel(&osc);
         const snapshot = osc.snapshot(.bel);
         try std.testing.expectEqualStrings(case.payload, snapshot.payload());
         if (case.exceeds_limit) {

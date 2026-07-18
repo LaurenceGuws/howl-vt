@@ -342,21 +342,13 @@ fragmentation and indirect ownership are defects.
 
 ### VT-011 — Retained protocol state has coarse oversized bounds
 
-- Status: open
-- Path/symbol: `src/parser.zig:large_osc_control_max_bytes` (1 MiB),
-  `apc_max_bytes` (65 MiB); `src/host_state.zig:retained_payload_max_bytes`;
-  `src/parser/string_control.zig:OscControl`
-- Defect: comments borrow burst scales from Ghostty/PTY behavior, but parser
-  buffering and retained host consequences are different owners. One parser
-  can reserve/grow very large payloads without protocol-specific retained-state
-  evidence.
-- Observed progress: parser acceptance and HostState retention now own their
-  unchanged numeric bounds independently. APC production bytes are counted and
-  discarded; direct bounded-state tests prove APC and PM limit-1, limit, limit+1,
-  and reset/reuse without constructing 65 MiB input. A small configured
-  `OscControl` proves large-payload acceptance, rejection, and reuse at the same
-  boundaries. The numeric choices and protocol-specific retention needs remain
-  undecided.
+- Status: resolved
+- Path/symbol: `src/parser.zig`, `src/parser/string_control.zig`,
+  `src/stream_terminal.zig`, `src/host_state.zig`, `src/kitty/state.zig`,
+  `src/kitty/apply.zig`
+- Defect: resolved; parser acceptance, discarded streaming controls, and
+  retained host consequences previously shared coarse metadata, 1 MiB, and
+  65 MiB buckets without matching protocol ownership.
 - Bars: bounds, ownership, density, hostile-input evidence, maturity
 - Simpler shape: protocol-family limits sized from native ownership and
   retention behavior; streaming or rejection where bulk payload ownership
@@ -365,6 +357,24 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: each retained payload limit has a concrete consumer and
   boundary test at limit-1/limit/limit+1; rejected input resets parser state
   and does not retain partial payloads.
+- Resolution: ordinary OSC and DCS metadata accepts 2 KiB, matching Ghostty's
+  fixed OSC buffer scale. Titles retain 1 KiB. OSC 52 alone accepts and retains
+  one unchunked 1 MiB clipboard packet. Kitty OSC 5113 and 5522 accept and
+  retain 8 KiB packets, covering their specified 4096-byte decoded chunks plus
+  base64 and command metadata. APC and PM payload bytes stream to their
+  terminators without allocation or retained counters because Howl implements
+  neither protocol family. Pending replies stop at 64 KiB. DCS payloads,
+  hyperlink URIs, shell marks, notification parts, and text-size requests stop
+  at 2 KiB. Howl's local notification policy retains at most 128 requests per
+  terminal lifetime, bounding allocation count without attributing that choice
+  to Kitty. Native fuzzing also exposed SOS entering the shared string state
+  without an exact parser kind; SOS now has distinct parser phases while
+  production streams and discards its bytes. Exact boundary, replacement
+  rollback, parser reuse, ignored-stream continuation, simulation, and native
+  fuzz gates exercise the resulting owners. The root unit-test index now
+  includes every `test/unit/**/*_test.zig` file; the duplicate nested index was
+  removed after it hid terminal-surface and terminal-cursor proofs from
+  `zig build test`.
 
 ### VT-012 — Resize/history replacement was not transactional
 

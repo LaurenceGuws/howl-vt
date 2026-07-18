@@ -29,17 +29,22 @@ pub const ApplyError = error{
     ConsequenceLimit,
 };
 
-/// Current bound on accumulated terminal reply bytes.
-pub const pending_output_max_bytes: u32 = 1024 * 1024;
-/// Current bound on one retained bulk consequence.
-pub const retained_payload_max_bytes: u32 = 1024 * 1024;
-/// Current bound on one retained metadata consequence.
-pub const retained_metadata_max_bytes: u32 = 4096;
+/// Accumulated replies await a host drain and stop at a bounded 64 KiB queue.
+pub const pending_output_max_bytes: u32 = 64 * 1024;
+/// OSC 52 is unchunked; retain at most the parser's 1 MiB clipboard packet.
+pub const clipboard_max_bytes: u32 = 1024 * 1024;
+/// Retained DCS families are metadata protocols bounded by parser acceptance.
+pub const dcs_payload_max_bytes: u32 = 2 * 1024;
+/// One hyperlink URI shares the ordinary OSC metadata scale.
+pub const hyperlink_target_max_bytes: u32 = 2 * 1024;
+/// One retained title follows the interoperable 1 KiB terminal title ceiling.
 pub const title_max_bytes: u32 = 1024;
+/// A terminal instance interns at most 4096 distinct hyperlink targets.
 pub const hyperlink_target_max_count: u32 = 4096;
 
 comptime {
-    std.debug.assert(title_max_bytes <= retained_metadata_max_bytes);
+    std.debug.assert(title_max_bytes <= hyperlink_target_max_bytes);
+    std.debug.assert(dcs_payload_max_bytes <= pending_output_max_bytes);
     std.debug.assert(hyperlink_target_max_count > 0);
 }
 
@@ -120,7 +125,7 @@ pub const State = struct {
 
     /// Replace the retained clipboard request after bounds and allocation succeed.
     pub fn replaceClipboard(self: *State, payload: []const u8) ApplyError!void {
-        try ensureRetainedBound(byteCount(payload), retained_payload_max_bytes);
+        try ensureRetainedBound(byteCount(payload), clipboard_max_bytes);
         const owned = try self.allocator.dupe(u8, payload);
         if (self.pending_clipboard) |req| self.allocator.free(req.raw);
         self.pending_clipboard = .{ .raw = owned };
@@ -128,7 +133,7 @@ pub const State = struct {
 
     /// Replace the retained DCS payload after bounds and allocation succeed.
     pub fn replaceDcsPayload(self: *State, payload: dcs_payload.DcsPayload) ApplyError!void {
-        try ensureRetainedBound(byteCount(payload.payload), retained_payload_max_bytes);
+        try ensureRetainedBound(byteCount(payload.payload), dcs_payload_max_bytes);
         const owned = try self.allocator.dupe(u8, payload.payload);
         if (self.dcs_payload) |old| self.allocator.free(old.payload);
         self.dcs_payload = .{ .kind = payload.kind, .payload = owned };
@@ -139,7 +144,7 @@ pub const State = struct {
         for (self.hyperlink_targets.items, 0..) |existing, idx| {
             if (std.mem.eql(u8, existing, uri)) return @intCast(idx + 1);
         }
-        try ensureRetainedBound(byteCount(uri), retained_metadata_max_bytes);
+        try ensureRetainedBound(byteCount(uri), hyperlink_target_max_bytes);
         if (hyperlinkCount(self.hyperlink_targets.items) >= hyperlink_target_max_count) return error.ConsequenceLimit;
         const owned = try self.allocator.dupe(u8, uri);
         errdefer self.allocator.free(owned);
@@ -289,17 +294,78 @@ fn internHyperlinkAllocation(allocator: std.mem.Allocator) !void {
     var state = State.init(allocator);
     defer state.deinit();
     try std.testing.expectEqual(@as(u32, 1), try state.internHyperlink("https://one.example"));
-    _ = state.internHyperlink("https://two.example") catch |err| {
+    const second_id = state.internHyperlink("https://two.example") catch |err| {
         try std.testing.expectEqualStrings("https://one.example", state.hyperlinkUriForId(1).?);
         try std.testing.expectEqual(@as(?[]const u8, null), state.hyperlinkUriForId(2));
         return err;
     };
+    try std.testing.expectEqual(@as(u32, 2), second_id);
     try std.testing.expectEqualStrings("https://one.example", state.hyperlinkUriForId(1).?);
     try std.testing.expectEqualStrings("https://two.example", state.hyperlinkUriForId(2).?);
 }
 
 test "clipboard drain preserves the retained request on allocation failure" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, drainClipboardAllocation, .{});
+}
+
+test "retained host consequences enforce owner-specific boundaries" {
+    const allocator = std.testing.allocator;
+    var state = State.init(allocator);
+    defer state.deinit();
+
+    const title = try allocator.alloc(u8, title_max_bytes + 1);
+    defer allocator.free(title);
+    @memset(title, 't');
+    try state.replaceTitle(title[0 .. title_max_bytes - 1]);
+    try state.replaceTitle(title[0..title_max_bytes]);
+    try std.testing.expectError(error.ConsequenceLimit, state.replaceTitle(title));
+    try std.testing.expectEqual(title_max_bytes, byteCount(state.current_title.?));
+
+    const hyperlink = try allocator.alloc(u8, hyperlink_target_max_bytes + 1);
+    defer allocator.free(hyperlink);
+    @memset(hyperlink, 'h');
+    try std.testing.expectEqual(@as(u32, 1), try state.internHyperlink(hyperlink[0 .. hyperlink_target_max_bytes - 1]));
+    try std.testing.expectEqual(@as(u32, 2), try state.internHyperlink(hyperlink[0..hyperlink_target_max_bytes]));
+    try std.testing.expectError(error.ConsequenceLimit, state.internHyperlink(hyperlink));
+    try std.testing.expectEqual(@as(u32, 2), hyperlinkCount(state.hyperlink_targets.items));
+
+    const dcs = try allocator.alloc(u8, dcs_payload_max_bytes + 1);
+    defer allocator.free(dcs);
+    @memset(dcs, 'd');
+    try state.replaceDcsPayload(.{ .kind = .xtsettcap, .payload = dcs[0 .. dcs_payload_max_bytes - 1] });
+    try state.replaceDcsPayload(.{ .kind = .xtsettcap, .payload = dcs[0..dcs_payload_max_bytes] });
+    try std.testing.expectError(
+        error.ConsequenceLimit,
+        state.replaceDcsPayload(.{ .kind = .xtsettcap, .payload = dcs }),
+    );
+    try std.testing.expectEqual(dcs_payload_max_bytes, byteCount(state.dcsPayload().?));
+
+    const clipboard = try allocator.alloc(u8, clipboard_max_bytes + 1);
+    defer allocator.free(clipboard);
+    @memset(clipboard, 'c');
+    try state.replaceClipboard(clipboard[0 .. clipboard_max_bytes - 1]);
+    try state.replaceClipboard(clipboard[0..clipboard_max_bytes]);
+    try std.testing.expectError(error.ConsequenceLimit, state.replaceClipboard(clipboard));
+    try std.testing.expectEqual(clipboard_max_bytes, byteCount(state.pendingClipboardSet().?));
+}
+
+test "pending output enforces exact accumulated boundary" {
+    const allocator = std.testing.allocator;
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(allocator);
+
+    const bytes = try allocator.alloc(u8, pending_output_max_bytes + 1);
+    defer allocator.free(bytes);
+    @memset(bytes, 'o');
+
+    try appendOutput(&output, allocator, bytes[0 .. pending_output_max_bytes - 1]);
+    try appendOutput(&output, allocator, bytes[pending_output_max_bytes - 1 .. pending_output_max_bytes]);
+    try std.testing.expectEqual(pending_output_max_bytes, byteCount(output.items));
+    try std.testing.expectError(
+        error.ConsequenceLimit,
+        appendOutput(&output, allocator, bytes[pending_output_max_bytes..]),
+    );
+    try std.testing.expectEqual(pending_output_max_bytes, byteCount(output.items));
 }
 
 fn drainClipboardAllocation(result_allocator: std.mem.Allocator) !void {

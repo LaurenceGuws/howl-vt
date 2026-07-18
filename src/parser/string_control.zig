@@ -61,7 +61,8 @@ pub const OscControl = struct {
     prefix: PrefixState = .start,
     buffer: std.ArrayList(u8),
     metadata_max_len: ByteLimit,
-    large_max_len: ByteLimit,
+    clipboard_max_len: ByteLimit,
+    chunk_max_len: ByteLimit,
     policy: CommandPolicy,
     alloc_failed: bool = false,
     overflowed: bool = false,
@@ -139,12 +140,19 @@ pub const OscControl = struct {
         c5522,
     };
 
-    pub fn init(allocator: std.mem.Allocator, capacity: ByteLimit, metadata_max_len: ByteLimit, large_max_len: ByteLimit) !OscControl {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        capacity: ByteLimit,
+        metadata_max_len: ByteLimit,
+        clipboard_max_len: ByteLimit,
+        chunk_max_len: ByteLimit,
+    ) !OscControl {
         return .{
             .allocator = allocator,
             .buffer = try std.ArrayList(u8).initCapacity(allocator, @intCast(capacity)),
             .metadata_max_len = metadata_max_len,
-            .large_max_len = large_max_len,
+            .clipboard_max_len = clipboard_max_len,
+            .chunk_max_len = chunk_max_len,
             .policy = .{ .command = null, .class = .raw_title, .max_len = metadata_max_len },
         };
     }
@@ -589,8 +597,8 @@ pub const OscControl = struct {
             .c10, .c11, .c12, .c13, .c14, .c15, .c16, .c17, .c18, .c19 => .{ .command = prefixDynamicCommand(self.prefix), .class = .dynamic_color, .max_len = self.metadata_max_len },
             .c21 => .{ .command = 21, .class = .kitty_color, .max_len = self.metadata_max_len },
             .c22 => .{ .command = 22, .class = .pointer_shape, .max_len = self.metadata_max_len },
-            .c52 => .{ .command = 52, .class = .clipboard, .max_len = self.large_max_len },
-            .c66 => .{ .command = 66, .class = .kitty_text_size, .max_len = self.large_max_len },
+            .c52 => .{ .command = 52, .class = .clipboard, .max_len = self.clipboard_max_len },
+            .c66 => .{ .command = 66, .class = .kitty_text_size, .max_len = self.metadata_max_len },
             .c104 => .{ .command = 104, .class = .palette_reset, .max_len = self.metadata_max_len },
             .c110, .c111, .c112, .c113, .c114, .c115, .c116, .c117, .c118, .c119 => .{
                 .command = prefixDynamicCommand(self.prefix),
@@ -603,8 +611,8 @@ pub const OscControl = struct {
             .c3008 => .{ .command = 3008, .class = .context_signal, .max_len = self.metadata_max_len },
             .c30001 => .{ .command = 30001, .class = .kitty_color_stack_push, .max_len = self.metadata_max_len },
             .c30101 => .{ .command = 30101, .class = .kitty_color_stack_pop, .max_len = self.metadata_max_len },
-            .c5113 => .{ .command = 5113, .class = .kitty_file_transfer, .max_len = self.large_max_len },
-            .c5522 => .{ .command = 5522, .class = .kitty_clipboard, .max_len = self.large_max_len },
+            .c5113 => .{ .command = 5113, .class = .kitty_file_transfer, .max_len = self.chunk_max_len },
+            .c5522 => .{ .command = 5522, .class = .kitty_clipboard, .max_len = self.chunk_max_len },
             else => null,
         };
     }
@@ -659,16 +667,8 @@ pub const PassthroughControl = struct {
         return .{ .bel_terminates = bel_terminates };
     }
 
-    pub fn deinit(self: *PassthroughControl) void {
-        _ = self;
-    }
-
     pub fn reset(self: *PassthroughControl) void {
         self.state = .idle;
-    }
-
-    pub fn clearFinished(self: *PassthroughControl) void {
-        _ = self;
     }
 
     pub fn start(self: *PassthroughControl) void {

@@ -57,6 +57,9 @@ It does not own PTY transport, host wake policy, host event loops, render text s
 - Selection coordinates are VT/history-aware and must be mutated through VT selection contracts.
 - Dirty and snapshot identities are VT-owned and retired only through the acknowledged native path.
 - Parser syntax, parser events, canonical semantic mutation vocabulary, concrete state mutation, and host consequences remain separate owners.
+- String-control parsing accepts protocol-sized packets, unsupported SOS, PM,
+  and APC payloads stream without retention, and concrete host owners bound
+  every retained consequence independently.
 - Runtime control signals and wake policy do not belong in VT.
 
 ## Non-Goals

@@ -1,5 +1,4 @@
 const std = @import("std");
-const parser_mod = @import("../../src/parser.zig");
 const terminal_mod = @import("../../src/terminal.zig");
 const screen = @import("../../src/screen.zig");
 const screen_capture = @import("../support/screen_capture.zig");
@@ -215,27 +214,29 @@ test "terminal feed fails overlong OSC instead of truncating it" {
     try std.testing.expect(recovered.state_changed);
 }
 
-test "terminal feed fails overlong PM instead of truncating it" {
+test "terminal feed streams discarded PM and resumes visible text" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.init(allocator, 2, 4);
     defer terminal.deinit();
 
-    _ = try terminal.feed("\x1b^");
+    const start = try terminal.feed("\x1b^");
+    try std.testing.expect(!start.state_changed);
 
-    const chunk_len: usize = 4096;
-    const chunk = try allocator.alloc(u8, chunk_len);
+    const chunk = try allocator.alloc(u8, 8 * 1024);
     defer allocator.free(chunk);
-    @memset(chunk, 'A');
+    @memset(chunk, 'P');
 
-    var sent: usize = 0;
-    while (sent + chunk_len <= parser_mod.max_metadata_control_bytes) : (sent += chunk_len) {
-        _ = try terminal.feed(chunk);
+    var chunk_index: u8 = 0;
+    while (chunk_index < 4) : (chunk_index += 1) {
+        const streamed = try terminal.feed(chunk);
+        try std.testing.expect(!streamed.state_changed);
     }
-
-    try std.testing.expectError(error.StringControlLimit, terminal.feed(chunk[0..1]));
+    const finish = try terminal.feed("\x1b\\");
+    try std.testing.expect(!finish.state_changed);
 
     const recovered = try terminal.feed("A");
     try std.testing.expect(recovered.state_changed);
+    try std.testing.expectEqual(@as(u21, 'A'), activeScreen(&terminal).cellAt(0, 0));
 }
 
 test "input encoding APIs are callable without terminal facade methods" {

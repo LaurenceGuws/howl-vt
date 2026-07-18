@@ -84,6 +84,9 @@ const Event = union(enum) {
     pm_start,
     pm_put: u8,
     pm_end,
+    sos_start,
+    sos_put: u8,
+    sos_end,
     esc_dispatch: parser_mod.EscAction,
 };
 
@@ -142,6 +145,9 @@ const Harness = struct {
             .pm_start => try self.events.append(self.allocator, .pm_start),
             .pm_put => |byte| try self.events.append(self.allocator, Event{ .pm_put = byte }),
             .pm_end => try self.events.append(self.allocator, .pm_end),
+            .sos_start => try self.events.append(self.allocator, .sos_start),
+            .sos_put => |byte| try self.events.append(self.allocator, Event{ .sos_put = byte }),
+            .sos_end => try self.events.append(self.allocator, .sos_end),
             .esc_dispatch => |esc| try self.events.append(self.allocator, Event{ .esc_dispatch = esc }),
         };
     }
@@ -589,6 +595,12 @@ fn hashEvent(hasher: *std.hash.Wyhash, event: Event) void {
             hashValue(hasher, byte);
         },
         .pm_end => hashValue(hasher, @as(u8, 14)),
+        .sos_start => hashValue(hasher, @as(u8, 16)),
+        .sos_put => |byte| {
+            hashValue(hasher, @as(u8, 17));
+            hashValue(hasher, byte);
+        },
+        .sos_end => hashValue(hasher, @as(u8, 18)),
         .esc_dispatch => |esc| hashEscDispatchEvent(hasher, esc),
     }
 }

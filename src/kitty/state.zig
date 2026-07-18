@@ -5,6 +5,25 @@ const pointer = @import("pointer.zig");
 
 const NotificationIndex = u32;
 
+/// Howl retains at most 128 notification requests to bound terminal-lifetime allocation count.
+pub const notification_max_count: u32 = 128;
+/// Maximum metadata or payload bytes retained for one Kitty notification.
+pub const notification_part_max_bytes: u32 = 2 * 1024;
+/// Maximum bytes retained for one shell-integration mark.
+pub const shell_mark_max_bytes: u32 = 2 * 1024;
+/// Maximum encoded bytes retained for one Kitty file-transfer packet.
+pub const file_transfer_request_max_bytes: u32 = 8 * 1024;
+/// Maximum bytes retained for one Kitty text-sizing request.
+pub const text_size_request_max_bytes: u32 = 2 * 1024;
+
+comptime {
+    std.debug.assert(notification_max_count > 0);
+    std.debug.assert(notification_part_max_bytes > 0);
+    std.debug.assert(shell_mark_max_bytes > 0);
+    std.debug.assert(file_transfer_request_max_bytes >= notification_part_max_bytes);
+    std.debug.assert(text_size_request_max_bytes == notification_part_max_bytes);
+}
+
 pub const ScreenState = struct {
     keyboard: key.Stack = .{},
     pointer: pointer.Stack = .{},
@@ -48,7 +67,7 @@ pub const GlobalState = struct {
 
     /// Return the bounded number of retained notification requests.
     pub fn notificationCount(self: *const GlobalState) NotificationIndex {
-        std.debug.assert(self.notifications.items.len <= std.math.maxInt(NotificationIndex));
+        std.debug.assert(self.notifications.items.len <= notification_max_count);
         return @intCast(self.notifications.items.len);
     }
 
@@ -101,8 +120,7 @@ pub const KittyState = struct {
         return self.activeScreenConst(alt_active).multiple_cursor_count;
     }
 
-    pub fn resetTerminalState(self: *KittyState, allocator: std.mem.Allocator) void {
-        _ = allocator;
+    pub fn resetTerminalState(self: *KittyState) void {
         self.main.pointer.len = 0;
         self.alt.pointer.len = 0;
         self.global.color_stack_depth = 0;

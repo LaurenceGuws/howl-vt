@@ -18,27 +18,6 @@ pub const FeedSummary = struct {
     title_changed: bool,
 };
 
-const BoundedStringControl = struct {
-    active: bool = false,
-    count: u32 = 0,
-
-    pub fn reset(self: *BoundedStringControl) void {
-        self.active = false;
-        self.count = 0;
-    }
-
-    pub fn start(self: *BoundedStringControl) void {
-        self.active = true;
-        self.count = 0;
-    }
-
-    pub fn put(self: *BoundedStringControl, limit: u32) !void {
-        std.debug.assert(self.active);
-        if (self.count >= limit) return error.StringControlLimit;
-        self.count += 1;
-    }
-};
-
 const DcsCapture = struct {
     allocator: std.mem.Allocator,
     bytes: std.ArrayList(u8),
@@ -116,8 +95,6 @@ const DcsCapture = struct {
 pub const TerminalStreamState = struct {
     parser: parser_mod.Parser,
     dcs: DcsCapture,
-    apc: BoundedStringControl,
-    pm: BoundedStringControl,
 
     pub fn initAlloc(allocator: std.mem.Allocator) !TerminalStreamState {
         var parser = try parser_mod.Parser.init(allocator);
@@ -125,8 +102,6 @@ pub const TerminalStreamState = struct {
         return .{
             .parser = parser,
             .dcs = DcsCapture.init(allocator),
-            .apc = .{},
-            .pm = .{},
         };
     }
 
@@ -146,10 +121,13 @@ pub const Stream = struct {
     pub fn deinit(_: *Stream) void {}
 
     pub fn next(self: *Stream, byte: u8) FeedError!void {
+        // This compatibility-free convenience call intentionally omits the
+        // optional mutation summary while preserving every feed failure.
         _ = try self.nextSummary(byte);
     }
 
     pub fn nextSlice(self: *Stream, bytes: []const u8) FeedError!void {
+        // Hosts that need redraw facts call nextSliceSummary directly.
         _ = try self.nextSliceSummary(bytes);
     }
 
@@ -161,8 +139,6 @@ pub const Stream = struct {
         errdefer {
             state.parser.reset();
             state.dcs.reset();
-            state.apc.reset();
-            state.pm.reset();
         }
 
         const phases = state.parser.next(byte);
@@ -205,15 +181,12 @@ pub const Stream = struct {
                 .intermediates_len = csi.intermediates_len,
             } }),
             .osc_dispatch => |osc| try self.applyEvent(.{ .osc = osc }),
-            .apc_start => self.startBoundedStringControl(&self.terminal.stream_state.apc),
-            .apc_put => |byte| self.putBoundedStringControl(&self.terminal.stream_state.apc, byte, parser_mod.max_apc_control_bytes),
-            .apc_end => self.endBoundedStringControl(&self.terminal.stream_state.apc),
+            .apc_start, .apc_put, .apc_end => discardedStringControl(),
             .dcs_hook => |hook| self.startDcs(hook),
             .dcs_put => |byte| self.putDcs(byte),
             .dcs_unhook => self.endDcs(),
-            .pm_start => self.startBoundedStringControl(&self.terminal.stream_state.pm),
-            .pm_put => |byte| self.putBoundedStringControl(&self.terminal.stream_state.pm, byte, parser_mod.max_metadata_control_bytes),
-            .pm_end => self.endBoundedStringControl(&self.terminal.stream_state.pm),
+            .pm_start, .pm_put, .pm_end => discardedStringControl(),
+            .sos_start, .sos_put, .sos_end => discardedStringControl(),
             .esc_dispatch => |esc| self.applyEsc(esc),
         };
     }
@@ -279,31 +252,16 @@ pub const Stream = struct {
         return try route.apply(self.terminal, event);
     }
 
-    fn startBoundedStringControl(self: *Stream, control: *BoundedStringControl) route.EventEffect {
-        _ = self;
-        control.start();
-        return .{ .changed = false, .title_changed = false };
-    }
-
-    fn putBoundedStringControl(self: *Stream, control: *BoundedStringControl, byte: u8, limit: u32) FeedError!route.EventEffect {
-        _ = self;
-        _ = byte;
-        try control.put(limit);
-        return .{ .changed = false, .title_changed = false };
-    }
-
-    fn endBoundedStringControl(self: *Stream, control: *BoundedStringControl) route.EventEffect {
-        _ = self;
-        control.reset();
-        return .{ .changed = false, .title_changed = false };
-    }
-
     fn mapCodepoint(self: *const Stream, cp: u21) u21 {
         if (!isDecSpecial(self.terminal)) return cp;
         if (cp < 0x20 or cp > 0x7e) return cp;
         return mapDecSpecial(@intCast(cp));
     }
 };
+
+fn discardedStringControl() route.EventEffect {
+    return .{ .changed = false, .title_changed = false };
+}
 
 fn isDecSpecial(terminal: *const terminal_mod.Terminal) bool {
     return switch (terminal.gl_index) {
@@ -346,42 +304,23 @@ fn mapDecSpecial(byte: u8) u21 {
     };
 }
 
-test "ignored APC bytes enforce the exact tolerance and reset" {
-    var control: BoundedStringControl = .{};
-    control.start();
-    control.count = parser_mod.max_apc_control_bytes - 1;
+test "discarded string controls stream without retaining payload bytes" {
+    var terminal = try terminal_mod.Terminal.init(std.testing.allocator, 2, 2);
+    defer terminal.deinit();
+    var stream = Stream.init(&terminal);
 
-    try control.put(parser_mod.max_apc_control_bytes);
-    try std.testing.expectEqual(parser_mod.max_apc_control_bytes, control.count);
-    try std.testing.expectError(
-        error.StringControlLimit,
-        control.put(parser_mod.max_apc_control_bytes),
-    );
+    try stream.nextSlice("\x1b_G");
+    try stream.nextSlice("x" ** 8192);
+    try stream.nextSlice("\x1b\\");
+    try stream.nextSlice("\x1b^");
+    try stream.nextSlice("y" ** 8192);
+    try stream.nextSlice("\x1b\\");
+    try stream.nextSlice("\x1bX");
+    try stream.nextSlice("z" ** 8192);
+    try stream.nextSlice("\x1b\\");
+    try stream.nextSlice("ok");
 
-    control.reset();
-    try std.testing.expect(!control.active);
-    try std.testing.expectEqual(@as(u32, 0), control.count);
-    control.start();
-    try control.put(parser_mod.max_apc_control_bytes);
-    try std.testing.expectEqual(@as(u32, 1), control.count);
-}
-
-test "ignored PM bytes enforce the exact tolerance and reset" {
-    var control: BoundedStringControl = .{};
-    control.start();
-    control.count = parser_mod.max_metadata_control_bytes - 1;
-
-    try control.put(parser_mod.max_metadata_control_bytes);
-    try std.testing.expectEqual(parser_mod.max_metadata_control_bytes, control.count);
-    try std.testing.expectError(
-        error.StringControlLimit,
-        control.put(parser_mod.max_metadata_control_bytes),
-    );
-
-    control.reset();
-    try std.testing.expect(!control.active);
-    try std.testing.expectEqual(@as(u32, 0), control.count);
-    control.start();
-    try control.put(parser_mod.max_metadata_control_bytes);
-    try std.testing.expectEqual(@as(u32, 1), control.count);
+    const view = terminal.surfaceSnapshot().snapshot.view;
+    try std.testing.expectEqual(@as(u21, 'o'), view.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'k'), view.cellAt(0, 1));
 }

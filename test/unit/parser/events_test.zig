@@ -17,11 +17,12 @@ const ParsedEvents = struct {
     // path drains events directly; this stale store remains only to prove the
     // legacy materialization shape until its test value disappears entirely.
     const max_queued_events: u32 = 1024 * 1024;
+    const max_buffered_string_control_bytes: u32 = 2 * 1024;
 
     comptime {
         std.debug.assert(max_queued_events > 0);
         std.debug.assert(parser_mod.max_metadata_control_bytes > 0);
-        std.debug.assert(parser_mod.max_apc_control_bytes > parser_mod.max_metadata_control_bytes);
+        std.debug.assert(max_buffered_string_control_bytes > 0);
     }
 
     allocator: std.mem.Allocator,
@@ -249,6 +250,7 @@ const ParsedEvents = struct {
             .pm_start => self.pm_bytes.clearRetainingCapacity(),
             .pm_put => |byte| try self.pmBytesAppend(byte),
             .pm_end => try self.appendBufferedBytes(.pm, &self.pm_bytes),
+            .sos_start, .sos_put, .sos_end => {},
             .esc_dispatch => |esc| try self.appendEscDispatch(esc),
         }
     }
@@ -349,7 +351,7 @@ const ParsedEvents = struct {
     }
 
     fn apcBytesAppend(self: *ParsedEvents, byte: u8) error{ OutOfMemory, StringControlLimit }!void {
-        if (self.apc_bytes.items.len >= parser_mod.max_apc_control_bytes) return error.StringControlLimit;
+        if (self.apc_bytes.items.len >= max_buffered_string_control_bytes) return error.StringControlLimit;
         try self.apc_bytes.append(self.allocator, byte);
     }
 

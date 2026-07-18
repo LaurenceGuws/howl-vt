@@ -160,7 +160,7 @@ pub const Terminal = struct {
         self.gl_index = 0;
         self.g0_designation = 'B';
         self.g1_designation = 'B';
-        self.kitty.resetTerminalState(self.allocator);
+        self.kitty.resetTerminalState();
         self.host.resetTerminalState();
     }
 
