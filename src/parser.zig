@@ -244,6 +244,9 @@ pub const PhaseActions = [3]?Action;
 
 /// Stateful parser for terminal input streams.
 pub const Parser = struct {
+    /// Parser initialization can fail only while allocating its reusable OSC buffer.
+    pub const InitError = error{OutOfMemory};
+
     utf8: utf8_mod.Utf8Decoder,
     state: ParseState,
     csi_params: [csi_max_params]i32,
@@ -258,16 +261,15 @@ pub const Parser = struct {
     pm: string_control_mod.PassthroughControl,
     sos: string_control_mod.PassthroughControl,
 
-    /// Initialize parser state and owned buffers.
-    pub fn init(allocator: std.mem.Allocator) !Parser {
-        var osc = try string_control_mod.OscControl.init(
+    /// Initialize parser state and its allocator-owned reusable OSC buffer.
+    pub fn init(allocator: std.mem.Allocator) InitError!Parser {
+        const osc = try string_control_mod.OscControl.init(
             allocator,
             control_init_capacity,
             metadata_control_max_bytes,
             clipboard_control_max_bytes,
             chunk_control_max_bytes,
         );
-        errdefer osc.deinit();
 
         return .{
             .utf8 = .{},
@@ -745,6 +747,13 @@ test "parser control spine orders populated phase slots in one next call" {
     try std.testing.expectEqual(@as(u3, 1), parser.activeControlCount());
     try std.testing.expect(parser.apc.active());
     try std.testing.expect(!parser.dcs.active());
+}
+
+test "parser initialization reports only allocation failure" {
+    const init: *const fn (std.mem.Allocator) Parser.InitError!Parser = Parser.init;
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    try std.testing.expectError(error.OutOfMemory, init(failing.allocator()));
+    try std.testing.expect(failing.has_induced_failure);
 }
 
 test "parser keeps active string controls exclusive" {

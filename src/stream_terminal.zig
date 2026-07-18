@@ -23,6 +23,9 @@ pub const FeedSummary = struct {
 };
 
 const DcsCapture = struct {
+    const StartError = error{OutOfMemory};
+    const PutError = error{ OutOfMemory, StringControlLimit };
+
     allocator: std.mem.Allocator,
     bytes: std.ArrayList(u8),
     params: [parser_mod.max_params]i32 = [_]i32{0} ** parser_mod.max_params,
@@ -50,7 +53,7 @@ const DcsCapture = struct {
         self.bytes.clearRetainingCapacity();
     }
 
-    fn start(self: *DcsCapture, hook: parser_mod.DcsHook) !void {
+    fn start(self: *DcsCapture, hook: parser_mod.DcsHook) StartError!void {
         std.debug.assert(hook.count <= parser_mod.max_params);
         std.debug.assert(hook.intermediates_len <= parser_mod.max_intermediates);
         self.reset();
@@ -74,7 +77,7 @@ const DcsCapture = struct {
         self.payload_start = self.bytes.items.len;
     }
 
-    fn put(self: *DcsCapture, byte: u8) !void {
+    fn put(self: *DcsCapture, byte: u8) PutError!void {
         std.debug.assert(self.active);
         if (self.bytes.items.len - self.payload_start >= @as(usize, parser_mod.max_metadata_control_bytes)) {
             return error.StringControlLimit;
@@ -98,15 +101,16 @@ const DcsCapture = struct {
 
 /// Owns parser allocation and bounded DCS capture for one terminal lifetime.
 pub const TerminalStreamState = struct {
+    /// Stream-state initialization can fail only while allocating parser storage.
+    pub const InitError = error{OutOfMemory};
+
     parser: parser_mod.Parser,
     dcs: DcsCapture,
 
-    /// Initializes parser and empty DCS capture with the terminal allocator.
-    pub fn initAlloc(allocator: std.mem.Allocator) !TerminalStreamState {
-        var parser = try parser_mod.Parser.init(allocator);
-        errdefer parser.deinit();
+    /// Initializes parser storage and an empty DCS capture with one borrowed allocator.
+    pub fn initAlloc(allocator: std.mem.Allocator) InitError!TerminalStreamState {
         return .{
-            .parser = parser,
+            .parser = try parser_mod.Parser.init(allocator),
             .dcs = DcsCapture.init(allocator),
         };
     }
@@ -309,6 +313,60 @@ fn mapDecSpecial(byte: u8) u21 {
         '~' => 0x00B7,
         else => byte,
     };
+}
+
+test "stream state initialization reports parser allocation failure" {
+    const init: *const fn (std.mem.Allocator) TerminalStreamState.InitError!TerminalStreamState = TerminalStreamState.initAlloc;
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    try std.testing.expectError(error.OutOfMemory, init(failing.allocator()));
+    try std.testing.expect(failing.has_induced_failure);
+}
+
+test "DCS capture start and put report exact failures and remain reusable" {
+    const start: *const fn (*DcsCapture, parser_mod.DcsHook) DcsCapture.StartError!void = DcsCapture.start;
+    const put: *const fn (*DcsCapture, u8) DcsCapture.PutError!void = DcsCapture.put;
+    const hook: parser_mod.DcsHook = .{
+        .final = 'q',
+        .params = &.{1},
+        .count = 1,
+        .intermediates = "$",
+        .intermediates_len = 1,
+    };
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    var capture = DcsCapture.init(failing.allocator());
+    defer capture.deinit();
+
+    try std.testing.expectError(error.OutOfMemory, start(&capture, hook));
+    try std.testing.expect(!capture.active);
+    try std.testing.expectEqual(@as(usize, 0), capture.bytes.items.len);
+
+    failing.fail_index = std.math.maxInt(usize);
+    try start(&capture, hook);
+    const payload_start = capture.payload_start;
+    failing.fail_index = failing.alloc_index;
+
+    var put_count: u32 = 0;
+    while (!failing.has_induced_failure) : (put_count += 1) {
+        try std.testing.expect(put_count < parser_mod.max_metadata_control_bytes);
+        put(&capture, 'x') catch |err| {
+            try std.testing.expectEqual(error.OutOfMemory, err);
+            break;
+        };
+    }
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expect(capture.active);
+    try std.testing.expectEqual(payload_start + put_count, capture.bytes.items.len);
+
+    failing.fail_index = std.math.maxInt(usize);
+    try put(&capture, 'y');
+    while (capture.bytes.items.len - capture.payload_start < parser_mod.max_metadata_control_bytes) {
+        try put(&capture, 'z');
+    }
+    try std.testing.expectError(error.StringControlLimit, put(&capture, 'z'));
+    capture.reset();
+    try std.testing.expect(!capture.active);
+    try start(&capture, hook);
 }
 
 test "discarded string controls stream without retaining payload bytes" {

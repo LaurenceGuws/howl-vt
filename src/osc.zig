@@ -7,6 +7,29 @@ const kitty = @import("kitty/protocol.zig");
 
 const SemanticEvent = events.SemanticEvent;
 
+/// Reports malformed OSC 52 syntax, unsupported query input, invalid base64, or allocation failure.
+pub const ClipboardSetError = error{
+    InvalidCharacter,
+    InvalidOsc52Payload,
+    InvalidPadding,
+    OutOfMemory,
+    UnsupportedOsc52Query,
+};
+
+const ClipboardSizeError = error{
+    InvalidOsc52Payload,
+    InvalidPadding,
+    UnsupportedOsc52Query,
+};
+
+const ClipboardIntoError = error{
+    InvalidCharacter,
+    InvalidOsc52Payload,
+    InvalidPadding,
+    ShortBuffer,
+    UnsupportedOsc52Query,
+};
+
 /// Decodes one complete borrowed OSC action into a canonical semantic event.
 pub fn process(osc: parser_mod.OscAction) ?SemanticEvent {
     return switch (osc) {
@@ -36,28 +59,49 @@ pub fn process(osc: parser_mod.OscAction) ?SemanticEvent {
     };
 }
 
-/// Allocates and decodes one base64 OSC 52 payload; invalid input returns an exact decode error.
-pub fn decodeClipboardSet(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
+/// Allocates and decodes one base64 OSC 52 payload into caller-owned memory.
+pub fn decodeClipboardSet(allocator: std.mem.Allocator, raw: []const u8) ClipboardSetError![]u8 {
     const decoded_len = try decodedClipboardSetSize(raw);
     const out = try allocator.alloc(u8, @intCast(decoded_len));
     errdefer allocator.free(out);
-    _ = try decodeClipboardSetInto(raw, out);
+    std.debug.assert(out.len == decoded_len);
+    const written = decodeClipboardSetInto(raw, out) catch |err| switch (err) {
+        error.ShortBuffer => unreachable,
+        error.InvalidCharacter => return error.InvalidCharacter,
+        error.InvalidOsc52Payload => return error.InvalidOsc52Payload,
+        error.InvalidPadding => return error.InvalidPadding,
+        error.UnsupportedOsc52Query => return error.UnsupportedOsc52Query,
+    };
+    std.debug.assert(written == decoded_len);
     return out;
 }
 
-fn decodedClipboardSetSize(raw: []const u8) !u64 {
+fn decodedClipboardSetSize(raw: []const u8) ClipboardSizeError!u64 {
     const data = clipboardData(raw) orelse return error.InvalidOsc52Payload;
     if (std.mem.eql(u8, data, "?")) return error.UnsupportedOsc52Query;
-    return @intCast(try std.base64.standard.Decoder.calcSizeForSlice(data));
+    return @intCast(try decodedBase64Size(data));
 }
 
-fn decodeClipboardSetInto(raw: []const u8, out: []u8) !u64 {
+fn decodeClipboardSetInto(raw: []const u8, out: []u8) ClipboardIntoError!u64 {
     const data = clipboardData(raw) orelse return error.InvalidOsc52Payload;
     if (std.mem.eql(u8, data, "?")) return error.UnsupportedOsc52Query;
-    const decoded_len = try std.base64.standard.Decoder.calcSizeForSlice(data);
+    const decoded_len = try decodedBase64Size(data);
     if (out.len < decoded_len) return error.ShortBuffer;
-    try std.base64.standard.Decoder.decode(out[0..decoded_len], data);
+    std.debug.assert(out.len >= decoded_len);
+    std.base64.standard.Decoder.decode(out[0..decoded_len], data) catch |err| switch (err) {
+        error.InvalidCharacter => return error.InvalidCharacter,
+        error.InvalidPadding => return error.InvalidPadding,
+        error.NoSpaceLeft => unreachable,
+    };
     return @intCast(decoded_len);
+}
+
+fn decodedBase64Size(data: []const u8) error{InvalidPadding}!usize {
+    // Size calculation cannot inspect alphabet bytes or consume destination space.
+    return std.base64.standard.Decoder.calcSizeForSlice(data) catch |err| switch (err) {
+        error.InvalidPadding => return error.InvalidPadding,
+        error.InvalidCharacter, error.NoSpaceLeft => unreachable,
+    };
 }
 
 fn clipboardData(raw: []const u8) ?[]const u8 {
@@ -73,6 +117,20 @@ test "OSC 52 clipboard set payload decodes" {
 
 test "OSC 52 clipboard query is unsupported for set drain" {
     try std.testing.expectError(error.UnsupportedOsc52Query, decodeClipboardSet(std.testing.allocator, "c;?"));
+}
+
+test "OSC 52 clipboard decode reports exact syntax base64 and allocation failures" {
+    const decode: *const fn (std.mem.Allocator, []const u8) ClipboardSetError![]u8 = decodeClipboardSet;
+    try std.testing.expectError(error.InvalidOsc52Payload, decode(std.testing.allocator, "SG93bA=="));
+    try std.testing.expectError(error.InvalidPadding, decode(std.testing.allocator, "c;A"));
+    try std.testing.expectError(error.InvalidCharacter, decode(std.testing.allocator, "c;!!!!"));
+
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    try std.testing.expectError(error.OutOfMemory, decode(failing.allocator(), "c;SG93bA=="));
+    try std.testing.expect(failing.has_induced_failure);
+
+    var short: [3]u8 = undefined;
+    try std.testing.expectError(error.ShortBuffer, decodeClipboardSetInto("c;SG93bA==", &short));
 }
 
 test "OSC title and hyperlink actions map to semantic events" {

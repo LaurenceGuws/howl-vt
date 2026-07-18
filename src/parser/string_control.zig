@@ -150,7 +150,7 @@ pub const OscControl = struct {
         metadata_max_len: ByteLimit,
         clipboard_max_len: ByteLimit,
         chunk_max_len: ByteLimit,
-    ) !OscControl {
+    ) error{OutOfMemory}!OscControl {
         return .{
             .allocator = allocator,
             .buffer = try std.ArrayList(u8).initCapacity(allocator, @intCast(capacity)),
