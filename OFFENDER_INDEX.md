@@ -174,7 +174,7 @@ fragmentation and indirect ownership are defects.
 - Status: open
 - Path/symbol: `src/screen_set.zig` (2 occurrences);
   `src/report.zig:formatOutput` (1 intentional formatting generic).
-  Repository total: 10 occurrences across 9 files;
+  Repository total: 9 occurrences across 8 files;
   `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
@@ -250,7 +250,10 @@ fragmentation and indirect ownership are defects.
   `OscAction`; `route.zig` has zero structural generics. Report application
   now accepts only concrete `*Terminal`. Its retained `formatOutput` generic
   is direct `std.fmt.bufPrint` use instantiated by intentional one-, two-, and
-  four-value argument tuples with decimal and hexadecimal formats.
+  four-value argument tuples with decimal and hexadecimal formats. Host
+  consequence application now accepts only concrete `*Terminal`;
+  `host_apply.zig` has zero structural generics while `host_state.State`
+  retains allocator-bound consequence ownership and rollback.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 

@@ -9,10 +9,12 @@ const screen = @import("screen.zig");
 const kitty_color = @import("kitty/color.zig");
 const input_encode = @import("input/encode.zig");
 const terminal_color_control = @import("terminal_color_control.zig");
+const terminal_mod = @import("terminal.zig");
 
 const LocatorNs = locator;
 const OscColorNs = osc_color;
 const HostState = @import("host_state.zig");
+const Terminal = terminal_mod.Terminal;
 
 pub const HostAction = union(enum) {
     title_set: []const u8,
@@ -29,7 +31,7 @@ pub const HostAction = union(enum) {
     legacy_control: legacy_control.LegacyControlKind,
 };
 
-pub fn apply(vt: anytype, action: HostAction) HostState.ApplyError!void {
+pub fn apply(vt: *Terminal, action: HostAction) HostState.ApplyError!void {
     var scratch: input_encode.Scratch = .{};
     const allocator = vt.allocator;
     switch (action) {
