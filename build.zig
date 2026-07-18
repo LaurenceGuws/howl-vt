@@ -41,17 +41,14 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&mod_tests.step);
     check_step.dependOn(&embedding_tests.step);
 
-    const simulation_support = b.createModule(.{
-        .root_source_file = b.path("src/simulation.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
     const simulation_module = b.createModule(.{
-        .root_source_file = b.path("simulation/main.zig"),
+        .root_source_file = b.path("src/simulation_main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    simulation_module.addImport("howl_vt_simulation", simulation_support);
+    simulation_module.addAnonymousImport("xterm-ctlseqs.ms", .{
+        .root_source_file = b.path("simulation/assets/xterm-ctlseqs.ms"),
+    });
 
     const simulation_exe = b.addExecutable(.{
         .name = "howl_vt_simulate",

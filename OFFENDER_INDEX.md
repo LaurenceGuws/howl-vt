@@ -63,7 +63,7 @@ fragmentation and indirect ownership are defects.
 
 ### VT-003 — Native embedding root is both broad and incomplete
 
-- Status: resolved
+- Status: open
 - Path/symbol: `src/howl_vt.zig:Terminal`
 - Defect: the root exposed parser, owned-action, and screen-set implementation
   namespaces wholesale even though the only external consumer uses the
@@ -73,11 +73,13 @@ fragmentation and indirect ownership are defects.
   modules private until an external embedding requirement earns them.
 - Depends on: VT-001, VT-002
 - Acceptance evidence: one native integration test imports only `howl_vt` and
-  exercises the currently required initialize, feed, semantic snapshot,
-  acknowledge, resize, and cleanup path.
+  can initialize, feed, observe, acknowledge, select/copy, encode input, drain
+  output and host consequences, resize, and deinitialize without importing
+  repository paths.
 - Observed: `Parser`, `ParserOwnedActions`, and `ScreenSet` were removed from
-  the root; simulations receive private build-only modules; the root-only
-  integration test passes.
+  the root. The existing root-only test proves initialize, feed, snapshot,
+  acknowledge, resize, and cleanup only; selection/copy, input encoding, and
+  consequence draining remain unproven.
 
 ### VT-004 — Public source is largely undocumented
 

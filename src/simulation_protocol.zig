@@ -1,14 +1,14 @@
 const std = @import("std");
-const howl_vt = @import("howl_vt_simulation");
+const owned_actions = @import("parser_owned_actions.zig");
+const parser_mod = @import("parser.zig");
+const terminal_mod = @import("terminal.zig");
 
-const owned_actions = howl_vt.ParserOwnedActions;
-const parser_mod = howl_vt.Parser;
-const Terminal = howl_vt.Terminal;
+const Terminal = terminal_mod.Terminal;
 
 const OscTerminator = parser_mod.OscTerminator;
 const CsiEvent = @FieldType(Event, "csi");
 const OscEvent = @FieldType(Event, "osc");
-const xterm_ctlseqs = @embedFile("assets/xterm-ctlseqs.ms");
+const xterm_ctlseqs = @embedFile("xterm-ctlseqs.ms");
 
 const IterationCount = u32;
 const OpCount = u32;

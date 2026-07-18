@@ -1,10 +1,10 @@
 const std = @import("std");
-const howl_vt = @import("howl_vt_simulation");
+const terminal_mod = @import("terminal.zig");
 
 // Shared VT simulation helper for scrollback churn. Workloads use deterministic
 // seeded input space with explicit preservation claims.
 
-const Terminal = howl_vt.Terminal;
+const Terminal = terminal_mod.Terminal;
 
 pub const RowsMin: u16 = 1;
 pub const ColsMin: u16 = 1;
