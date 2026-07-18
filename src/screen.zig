@@ -10,6 +10,7 @@ const screen_apply = @import("screen/apply.zig");
 const history_mod = @import("screen/history.zig");
 const rect = @import("screen/rect.zig");
 const resize_mod = @import("screen/resize.zig");
+const style_mod = @import("screen/style.zig");
 const tabs = @import("screen/tabs.zig");
 
 const SemanticEvent = semantic_event.SemanticEvent;
@@ -663,8 +664,23 @@ pub const Screen = struct {
         self.clearRowRange(self.cursor.row, self.cursor.col, self.cursor.col + amount);
     }
 
+    /// Change attributes in the clipped rectangle using rectangular or stream extent.
     pub fn changeRectAttrs(self: *Screen, area: rect.RectArea, attrs: []const u16, reverse: bool) void {
-        rect.changeAttrs(self, area, attrs, reverse);
+        const cells = self.cells orelse return;
+        if (attrs.len == 0) return;
+        const bounds = self.rectBounds(area) orelse return;
+        self.markDirtyRows(bounds.top, bounds.bottom);
+        var row = bounds.top;
+        while (row <= bounds.bottom) : (row += 1) {
+            const row_start = self.rowStart(row);
+            const start_col = if (self.attr_change_extent_rect or row == bounds.top) bounds.left else 0;
+            const end_col = if (self.attr_change_extent_rect or row == bounds.bottom) bounds.right else self.cols -| 1;
+            var col = start_col;
+            while (col <= end_col) : (col += 1) {
+                const idx = row_start + @as(u32, col);
+                style_mod.applyRectAttrOps(&cells[@intCast(idx)].attrs, attrs, reverse);
+            }
+        }
     }
 
     /// Erase unprotected cells on the active line according to `mode`.
@@ -681,16 +697,79 @@ pub const Screen = struct {
         }
     }
 
+    /// Erase a clipped rectangle, optionally preserving protected cells.
     pub fn eraseRect(self: *Screen, area: rect.RectArea, selective: bool) void {
-        rect.erase(self, area, selective);
+        const bounds = self.rectBounds(area) orelse return;
+        self.markDirtyRows(bounds.top, bounds.bottom);
+        var row = bounds.top;
+        while (row <= bounds.bottom) : (row += 1) {
+            if (selective) {
+                self.selectiveClearRowRange(row, bounds.left, bounds.right + 1);
+            } else {
+                self.clearRowRange(row, bounds.left, bounds.right + 1);
+            }
+            if (bounds.left == 0 and bounds.right + 1 == self.cols) self.setRowWrapped(row, false);
+        }
     }
 
-    pub fn fillRect(self: *Screen, area: rect.RectArea, ch: u21) void {
-        rect.fill(self, area, ch);
+    /// Fill a clipped rectangle with `codepoint` and the current write attributes.
+    pub fn fillRect(self: *Screen, area: rect.RectArea, codepoint: u21) void {
+        const cells = self.cells orelse return;
+        const bounds = self.rectBounds(area) orelse return;
+        self.markDirtyRows(bounds.top, bounds.bottom);
+        var row = bounds.top;
+        while (row <= bounds.bottom) : (row += 1) {
+            const start = self.rowStart(row);
+            var col = bounds.left;
+            while (col <= bounds.right) : (col += 1) {
+                cells[start + col] = .{ .codepoint = codepoint, .attrs = self.current_attrs };
+            }
+        }
     }
 
-    pub fn copyRect(self: *Screen, req: rect.RectCopy) void {
-        rect.copy(self, req);
+    /// Copy one clipped page-one rectangle through temporary owned storage.
+    ///
+    /// Unsupported pages, missing storage, and allocation failure leave the
+    /// destination unchanged.
+    pub fn copyRect(self: *Screen, request: rect.RectCopy) void {
+        _ = self.cells orelse return;
+        if (request.source_page != 1 or request.dest_page != 1) return;
+        const source = self.rectBounds(request.area) orelse return;
+        const row_base: u16 = if (self.origin_mode) self.scroll_top else 0;
+        const row_limit: u16 = if (self.origin_mode) self.scrollBottom() else self.rows -| 1;
+        const dest_top = row_base + @min(request.dest_top, row_limit -| row_base);
+        const dest_left = @min(request.dest_left, self.cols -| 1);
+        const height: u16 = source.bottom - source.top + 1;
+        const width: u16 = source.right - source.left + 1;
+        if (dest_top >= self.rows or dest_left >= self.cols) return;
+        const copy_height = @min(height, self.rows - dest_top);
+        const copy_width = @min(width, self.cols - dest_left);
+        if (copy_height == 0 or copy_width == 0) return;
+
+        const allocator = self.allocator orelse return;
+        const copy_cell_count = @as(u32, copy_height) * @as(u32, copy_width);
+        const temp = allocator.alloc(Cell, @intCast(copy_cell_count)) catch return;
+        defer allocator.free(temp);
+
+        var row: u16 = 0;
+        while (row < copy_height) : (row += 1) {
+            const temp_row_start = @as(u32, row) * @as(u32, copy_width);
+            var col: u16 = 0;
+            while (col < copy_width) : (col += 1) {
+                temp[@intCast(temp_row_start + @as(u32, col))] = self.cellInfoAt(source.top + row, source.left + col);
+            }
+        }
+
+        self.markDirtyRows(dest_top, dest_top + copy_height - 1);
+        row = 0;
+        while (row < copy_height) : (row += 1) {
+            const dest_start = self.rowStart(dest_top + row);
+            const temp_row_start = @as(u32, row) * @as(u32, copy_width);
+            var col: u16 = 0;
+            while (col < copy_width) : (col += 1) {
+                self.cells.?[@intCast(dest_start + @as(u32, dest_left) + @as(u32, col))] = temp[@intCast(temp_row_start + @as(u32, col))];
+            }
+        }
     }
 
     /// Insert columns at the cursor across the active vertical scroll region.
