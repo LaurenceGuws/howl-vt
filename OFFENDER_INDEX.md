@@ -172,15 +172,15 @@ fragmentation and indirect ownership are defects.
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 
 - Status: open
-- Path/symbol: `src/screen/history.zig` (1 occurrence);
-  `src/screen/resize.zig` (5). Repository total: 26 occurrences across
-  13 files;
+- Path/symbol: `src/mode.zig` (7 occurrences); `src/route.zig` (3);
+  `src/report.zig` (2). Repository total: 21 occurrences across 11 files;
   `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
   `src/screen/dirty.zig`, `src/screen/erase.zig`,
-  `src/screen/style.zig`, `src/screen/apply.zig`, and
-  `src/screen/rect.zig` now have zero.
+  `src/screen/style.zig`, `src/screen/apply.zig`,
+  `src/screen/rect.zig`, `src/screen/history.zig`, and
+  `src/screen/resize.zig` now have zero.
 - Defect: helpers accept undeclared field/method shapes, making dependencies,
   mutation authority, and compile failures implicit. This is indirection even
   when the helper body is small.
@@ -238,14 +238,17 @@ fragmentation and indirect ownership are defects.
   ordering, cursor metadata, wrap joining, and trailing-empty normalization.
   Resize and canonical-content tests consume the same owned snapshot.
   Resize computation now uses typed temporary values and a checked
-  `count32(usize)` conversion; its five remaining `anytype` functions all
-  construct or mutate Screen and are reserved for the owner-install slice.
+  `count32(usize)` conversion. Screen now owns detached replacement
+  construction, buffer installation, history authority replacement, and
+  cursor restoration; resize retains only typed computation and temporary
+  ownership.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
-- Status: open
-- Path/symbol: `src/screen/history.zig` and `src/screen/resize.zig` retain
-  structural Screen mutation helpers
+- Status: resolved
+- Path/symbol: `src/screen.zig` is the sole Screen mutation authority;
+  `src/screen/history.zig` retains values/arithmetic and
+  `src/screen/resize.zig` retains typed computation/temporary storage
 - Defect: one `Screen` authority is spread across structural helpers that
   reach into its fields through `anytype`. Mutation and invariants require
   cross-file reconstruction; file smallness has displaced ownership.
@@ -257,6 +260,11 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: each screen field has one evident mutation owner;
   helpers do not gain ambient structural access; cursor/margin/history/dirty
   invariants are asserted after mutation and resize.
+- Resolution: no helper outside `screen.zig` receives structural Screen
+  access. Resize buffers transfer exactly once through `ResizeBuffers.take`;
+  replacement failure deinitializes only detached state. Existing mutation,
+  resize, history, and exhaustive allocation tests prove field invariants and
+  source/pair transactionality.
 
 ### VT-009 — CSI/event routing crosses redundant vocabularies
 
@@ -280,9 +288,9 @@ fragmentation and indirect ownership are defects.
 - Status: open
 - Path/symbol: `src/screen.zig:appendProjectionRows`;
   `src/screen/resize.zig:reflowLogicalLines`,
-  `rebuildResizeAuthority`
-- Defect: row projection and storage replacement remain overlapping paths
-  with erased resize ownership and separate temporary allocations.
+  `src/screen.zig:rebuildResizeAuthority`
+- Defect: resize reflow is followed by authority reconstruction and a second
+  projected-history pass over the same logical content.
 - Bars: density, ownership, cleanup, bounds, invariants, maturity
 - Simpler shape: one typed reflow operation owns logical-line collection and
   projection; history storage installation remains transactional.
@@ -295,7 +303,8 @@ fragmentation and indirect ownership are defects.
   line-by-line rollback and cursor metadata to both resize and its canonical
   content test. History projection and resize reflow now share one
   zero-aware `rowCountForCells`; duplicate generic count conversion and
-  resize-local row-count arithmetic were deleted.
+  resize-local row-count arithmetic were deleted. Replacement installation
+  is now concrete Screen ownership; duplicate reprojection remains.
 
 ### VT-011 — Retained protocol state has coarse oversized bounds
 
@@ -319,8 +328,8 @@ fragmentation and indirect ownership are defects.
 ### VT-012 — Resize/history replacement was not transactional
 
 - Status: resolved
-- Path/symbol: `src/screen/resize.zig:prepareResize`;
-  `src/screen/history.zig:replaceAuthority` and `rebuildProjection`;
+- Path/symbol: `src/screen.zig:Screen.prepareResize`,
+  `replaceHistoryAuthority`, and `rebuildHistoryProjection`;
   `src/screen_set.zig:Set.resize`
 - Defect: resize installed visible buffers before history authority/projection
   allocation completed, and `Set.resize` committed primary before preparing

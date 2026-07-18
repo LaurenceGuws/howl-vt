@@ -13,7 +13,7 @@ const RewrappedRow = history_mod.RewrappedRow;
 const default_cell = cell.default_cell;
 
 /// Owned reflow rows, line projections, and projected cursor state.
-const ReflowState = struct {
+pub const ReflowState = struct {
     flat_rows: std.ArrayListUnmanaged(Cell) = .empty,
     rewrapped: std.ArrayListUnmanaged(RewrappedRow) = .empty,
     line_row_starts: std.ArrayListUnmanaged(u32) = .empty,
@@ -22,7 +22,8 @@ const ReflowState = struct {
     global_cursor_col: u16 = 0,
     next_wrap_pending: bool = false,
 
-    fn deinit(self: *ReflowState, allocator: std.mem.Allocator) void {
+    /// Release every reflow allocation and reset the value.
+    pub fn deinit(self: *ReflowState, allocator: std.mem.Allocator) void {
         self.flat_rows.deinit(allocator);
         self.rewrapped.deinit(allocator);
         self.line_row_starts.deinit(allocator);
@@ -32,7 +33,7 @@ const ReflowState = struct {
 };
 
 /// Derived viewport window into complete reflow output.
-const ViewportState = struct {
+pub const ViewportState = struct {
     total_rows: u32,
     visible_rows_kept: u16,
     visible_start: u32,
@@ -41,64 +42,38 @@ const ViewportState = struct {
 };
 
 /// Owned visible-grid buffers transferred together into a replacement Screen.
-const ResizeBuffers = struct {
+pub const ResizeBuffers = struct {
     cells: ?[]Cell,
     row_wraps: ?[]bool,
     dirty_state: dirty.DirtyState,
     tab_stops: ?[]bool,
-};
 
-/// Prepare complete resized screen state while preserving the source.
-pub fn prepareResize(self: anytype, allocator: std.mem.Allocator, rows: u16, cols: u16) error{OutOfMemory}!@TypeOf(self.*) {
-    var lines = try self.collectLogicalSnapshot(allocator);
-    defer lines.deinit(allocator);
-
-    var reflow = try reflowLogicalLines(allocator, lines, cols);
-    defer reflow.deinit(allocator);
-
-    const viewport = projectViewport(@intCast(lines.logical_lines.items.len), reflow, rows);
-    var buffers = try allocResizeBuffers(allocator, rows, cols, self.tab_stops);
-    errdefer freeResizeBuffers(allocator, buffers);
-
-    copyVisibleRows(buffers.cells, buffers.row_wraps, reflow, viewport, cols);
-    var replacement = replacementBase(self, allocator);
-    installResizeState(&replacement, rows, cols, buffers);
-    buffers = emptyResizeBuffers();
-    errdefer replacement.deinit(allocator);
-    try rebuildResizeAuthority(&replacement, allocator, lines, reflow, viewport, cols);
-    restoreCursor(&replacement, rows, cols, reflow, viewport);
-    return replacement;
-}
-
-// Mark all fields transferred so the error cleanup owns nothing.
-fn emptyResizeBuffers() ResizeBuffers {
-    return .{
+    const empty: ResizeBuffers = .{
         .cells = null,
         .row_wraps = null,
         .dirty_state = .{},
         .tab_stops = null,
     };
-}
 
-fn replacementBase(self: anytype, allocator: std.mem.Allocator) @TypeOf(self.*) {
-    var replacement = self.*;
-    replacement.allocator = allocator;
-    replacement.cells = null;
-    replacement.row_wraps = null;
-    replacement.dirty_state = .{};
-    replacement.tab_stops = null;
-    replacement.history = null;
-    replacement.history_wraps = null;
-    replacement.history_count = 0;
-    replacement.history_write_idx = 0;
-    replacement.history_lines = .empty;
-    replacement.history_lines_start = 0;
-    replacement.open_history_line = null;
-    replacement.open_history_reuse_slot = null;
-    return replacement;
-}
+    /// Release every owned buffer and reset the value.
+    pub fn deinit(self: *ResizeBuffers, allocator: std.mem.Allocator) void {
+        if (self.cells) |buf| allocator.free(buf);
+        if (self.row_wraps) |buf| allocator.free(buf);
+        self.dirty_state.deinit(allocator);
+        if (self.tab_stops) |buf| allocator.free(buf);
+        self.* = empty;
+    }
 
-fn reflowLogicalLines(allocator: std.mem.Allocator, lines: LogicalSnapshot, cols: u16) !ReflowState {
+    /// Transfer all buffers to one owner and leave this value empty.
+    pub fn take(self: *ResizeBuffers) ResizeBuffers {
+        const owned = self.*;
+        self.* = empty;
+        return owned;
+    }
+};
+
+/// Reflow one owned logical snapshot to `cols` without consuming it.
+pub fn reflowLogicalLines(allocator: std.mem.Allocator, lines: LogicalSnapshot, cols: u16) !ReflowState {
     var result = ReflowState{};
     errdefer result.deinit(allocator);
 
@@ -183,7 +158,8 @@ fn updateCursor(result: *ReflowState, row_cursor_base: u32, line_cursor_offset: 
     result.next_wrap_pending = false;
 }
 
-fn projectViewport(logical_line_count: u32, reflow: ReflowState, rows: u16) ViewportState {
+/// Select the visible tail and hidden-history boundary from reflow output.
+pub fn projectViewport(logical_line_count: u32, reflow: ReflowState, rows: u16) ViewportState {
     const total_rows: u32 = @intCast(reflow.rewrapped.items.len);
     const visible_rows_kept: u16 = @intCast(@min(@as(u32, rows), total_rows));
     const visible_start = total_rows - visible_rows_kept;
@@ -220,7 +196,8 @@ fn projectViewport(logical_line_count: u32, reflow: ReflowState, rows: u16) View
     };
 }
 
-fn allocResizeBuffers(allocator: std.mem.Allocator, rows: u16, cols: u16, old_tab_stops: ?[]bool) !ResizeBuffers {
+/// Allocate complete visible-grid replacement buffers.
+pub fn allocResizeBuffers(allocator: std.mem.Allocator, rows: u16, cols: u16, old_tab_stops: ?[]bool) !ResizeBuffers {
     const cell_count = cellCount(rows, cols);
     var cells: ?[]Cell = null;
     if (cell_count > 0) {
@@ -265,18 +242,10 @@ fn allocResizeBuffers(allocator: std.mem.Allocator, rows: u16, cols: u16, old_ta
     };
 }
 
-// Release every buffer before ownership transfer; callers then discard this value.
-fn freeResizeBuffers(allocator: std.mem.Allocator, buffers: ResizeBuffers) void {
-    if (buffers.cells) |buf| allocator.free(buf);
-    if (buffers.row_wraps) |buf| allocator.free(buf);
-    var dirty_state = buffers.dirty_state;
-    dirty_state.deinit(allocator);
-    if (buffers.tab_stops) |buf| allocator.free(buf);
-}
-
-fn copyVisibleRows(new_cells: ?[]Cell, new_row_wraps: ?[]bool, reflow: ReflowState, viewport: ViewportState, cols: u16) void {
-    const dst = new_cells orelse return;
-    const dst_wraps = new_row_wraps orelse return;
+/// Copy the selected visible rows into allocated replacement buffers.
+pub fn copyVisibleRows(buffers: *ResizeBuffers, reflow: ReflowState, viewport: ViewportState, cols: u16) void {
+    const dst = buffers.cells orelse return;
+    const dst_wraps = buffers.row_wraps orelse return;
 
     std.debug.assert(viewport.visible_start + viewport.visible_rows_kept <= viewport.total_rows);
     std.debug.assert(viewport.total_rows == history_mod.count32(reflow.rewrapped.items.len));
@@ -296,100 +265,6 @@ fn copyVisibleRows(new_cells: ?[]Cell, new_row_wraps: ?[]bool, reflow: ReflowSta
     }
 
     std.debug.assert(src_row == viewport.visible_start + viewport.visible_rows_kept);
-}
-
-fn installResizeState(self: anytype, rows: u16, cols: u16, buffers: ResizeBuffers) void {
-    self.rows = rows;
-    self.cols = cols;
-    self.cells = buffers.cells;
-    self.row_wraps = buffers.row_wraps;
-    self.dirty_state = buffers.dirty_state;
-    self.tab_stops = buffers.tab_stops;
-    self.history = null;
-    self.history_wraps = null;
-    self.history_count = 0;
-    self.history_write_idx = 0;
-    self.row_origin = 0;
-    self.view_padding_rows = 0;
-    self.scroll_top = 0;
-    self.scroll_bottom = rows -| 1;
-    self.left_right_margin_mode = false;
-    self.left_margin = 0;
-    self.right_margin = cols -| 1;
-    self.attr_change_extent_rect = false;
-    self.dirty_state.rows = dirty.rowsForFull(rows, self.dirty_state.cols_start, self.dirty_state.cols_end);
-
-    std.debug.assert(self.rows == rows);
-    std.debug.assert(self.cols == cols);
-    std.debug.assert((self.cells != null) == (rows > 0 and cols > 0));
-    std.debug.assert((self.row_wraps != null) == (rows > 0));
-    std.debug.assert((self.dirty_state.cols_start != null) == (rows > 0));
-    std.debug.assert((self.dirty_state.cols_end != null) == (rows > 0));
-    std.debug.assert((self.tab_stops != null) == (cols > 0));
-    if (self.cells) |buf| std.debug.assert(buf.len == cellCount(rows, cols));
-    if (self.row_wraps) |buf| std.debug.assert(buf.len == rows);
-    if (self.dirty_state.cols_start) |buf| std.debug.assert(buf.len == rows);
-    if (self.dirty_state.cols_end) |buf| std.debug.assert(buf.len == rows);
-    if (self.tab_stops) |buf| std.debug.assert(buf.len == cols);
-    std.debug.assert(self.history == null);
-    std.debug.assert(self.history_wraps == null);
-    std.debug.assert(self.history_count == 0);
-    std.debug.assert(self.history_write_idx == 0);
-    std.debug.assert(self.row_origin == 0);
-    std.debug.assert(self.view_padding_rows == 0);
-    std.debug.assert(self.scroll_top == 0);
-    std.debug.assert(self.scroll_bottom == rows -| 1);
-    std.debug.assert(self.left_right_margin_mode == false);
-    std.debug.assert(self.left_margin == 0);
-    std.debug.assert(self.right_margin == cols -| 1);
-}
-
-fn rebuildResizeAuthority(self: anytype, allocator: std.mem.Allocator, lines: LogicalSnapshot, reflow: ReflowState, viewport: ViewportState, cols: u16) !void {
-    std.debug.assert(reflow.line_row_starts.items.len == lines.logical_lines.items.len);
-    std.debug.assert(reflow.line_row_counts.items.len == lines.logical_lines.items.len);
-    std.debug.assert(viewport.total_rows == history_mod.count32(reflow.rewrapped.items.len));
-    std.debug.assert(viewport.first_visible_line <= history_mod.count32(lines.logical_lines.items.len));
-    if (viewport.first_visible_line < history_mod.count32(lines.logical_lines.items.len)) {
-        std.debug.assert(viewport.hidden_rows_in_first_visible_line < reflow.line_row_counts.items[@intCast(viewport.first_visible_line)]);
-    } else {
-        std.debug.assert(viewport.hidden_rows_in_first_visible_line == 0);
-    }
-
-    try history_mod.replaceAuthority(
-        self,
-        allocator,
-        lines.logical_lines.items,
-        reflow.line_row_starts.items,
-        reflow.line_row_counts.items,
-        viewport.first_visible_line,
-        viewport.hidden_rows_in_first_visible_line,
-        reflow.rewrapped.items,
-        cols,
-    );
-    try self.rebuildHistoryProjection(allocator);
-}
-
-fn restoreCursor(self: anytype, rows: u16, cols: u16, reflow: ReflowState, viewport: ViewportState) void {
-    if (rows == 0 or cols == 0 or viewport.total_rows == 0) {
-        self.cursor.setPositionStructural(0, 0);
-        self.wrap_pending = false;
-        std.debug.assert(self.cursor.row == 0);
-        std.debug.assert(self.cursor.col == 0);
-        std.debug.assert(self.wrap_pending == false);
-        return;
-    }
-
-    const last_visible_row = viewport.visible_start + viewport.visible_rows_kept - 1;
-    const clamped_cursor_row = std.math.clamp(reflow.global_cursor_row, viewport.visible_start, last_visible_row);
-    self.cursor.setPositionStructural(@intCast(clamped_cursor_row - viewport.visible_start), @min(reflow.global_cursor_col, cols - 1));
-    self.wrap_pending = reflow.next_wrap_pending and self.cursor.row < rows and self.cursor.col == cols - 1;
-
-    std.debug.assert(viewport.visible_rows_kept > 0);
-    std.debug.assert(clamped_cursor_row >= viewport.visible_start);
-    std.debug.assert(clamped_cursor_row <= last_visible_row);
-    std.debug.assert(self.cursor.row < rows);
-    std.debug.assert(self.cursor.col < cols);
-    if (self.wrap_pending) std.debug.assert(self.cursor.col == cols - 1);
 }
 
 fn boundedCursorOffset(line: LogicalLine, has_cursor: bool, cursor_offset: u32) u32 {
