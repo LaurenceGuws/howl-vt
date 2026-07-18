@@ -120,6 +120,23 @@ fragmentation and indirect ownership are defects.
 - Observed progress: every public terminal constructor and resize rejects zero
   dimensions with `error.InvalidDimensions`; rejected resize preserves the
   published dimensions.
+- Caller audit:
+  - `initWithOptions`, `initWithCellsAndOptions`, and
+    `initWithCellsHistoryAndOptions` have zero callers.
+  - Cursor-only `init` has six calls, all tests: one invalid-dimension proof,
+    one mode test, and four allocator-failure probes that do not require a
+    cursor-only ownership mode.
+  - `initWithCells` has 86 in-repository calls and is the only constructor used
+    by howl-headless.
+  - `initWithCellsAndHistory` has 16 calls across tests, simulations, and
+    benchmarks; retained history is a demonstrated distinct capability.
+  - Configurable initial cursor style has no Terminal constructor caller.
+    Cursor-style behavior is exercised through screen/protocol mutation.
+- Audit conclusion: cursor-only Terminal state and constructor-time cursor
+  style are test conveniences, not production or native embedding
+  requirements. Two storage-backed entrypoints are earned: without history
+  and with bounded history. Upper dimension and allocation-size acceptance
+  remain unproven and keep this offender open.
 
 ### VT-006 — Owner-boundary failures are inferred
 
