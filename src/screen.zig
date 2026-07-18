@@ -23,6 +23,9 @@ const HistoryLine = history_mod.HistoryLine;
 
 /// Terminal screen state for cursor, cells, margins, and history.
 pub const Screen = struct {
+    /// Failure while allocating owned Screen storage.
+    pub const InitError = error{OutOfMemory};
+
     pub const Rgb = color.Rgb;
     pub const Color = color.Color;
     pub const UnderlineStyle = cell.UnderlineStyle;
@@ -143,11 +146,11 @@ pub const Screen = struct {
     }
 
     /// Initialize screen with owned cell storage.
-    pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !Screen {
+    pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) InitError!Screen {
         return initWithCellsAndDefaultCursorStyle(allocator, rows, cols, cursor.default_cursor_style);
     }
 
-    fn initOwnedVisibleGrid(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) !Screen {
+    fn initOwnedVisibleGrid(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) InitError!Screen {
         const cell_count = cellCount(rows, cols);
         const cells: ?[]Cell = if (cell_count > 0) blk: {
             const buf = try allocator.alloc(Cell, @intCast(cell_count));
@@ -182,16 +185,16 @@ pub const Screen = struct {
         );
     }
 
-    pub fn initWithCellsAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) !Screen {
+    pub fn initWithCellsAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) InitError!Screen {
         return initOwnedVisibleGrid(allocator, rows, cols, cursor_style_default);
     }
 
     /// Initialize screen with cells and history storage.
-    pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !Screen {
+    pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) InitError!Screen {
         return initWithCellsHistoryAndDefaultCursorStyle(allocator, rows, cols, history_capacity, cursor.default_cursor_style);
     }
 
-    pub fn initWithCellsHistoryAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16, cursor_style_default: CursorStyle) !Screen {
+    pub fn initWithCellsHistoryAndDefaultCursorStyle(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16, cursor_style_default: CursorStyle) InitError!Screen {
         var screen = try initOwnedVisibleGrid(allocator, rows, cols, cursor_style_default);
         errdefer screen.deinit(allocator);
 

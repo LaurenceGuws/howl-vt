@@ -12,7 +12,7 @@ fragmentation and indirect ownership are defects.
 | TigerBeetle defensiveness | 7/10 | Terminal dimensions now reject zero exactly, but many internal owner boundaries infer errors and structural `anytype` hides required state. |
 | Character/capability density | 7/10 | ABI projection, compatibility constants, and four redundant Terminal constructors are gone; 643 public declarations across implementation modules still expose far more vocabulary than the one-symbol embedding root. |
 | Ownership/cleanup | 7/10 | Constructors and transactional Screen/Set resize have exhaustive allocation-failure cleanup proofs; history, host-state, and screen mechanics still rely heavily on structural helpers with ambient ownership. |
-| Exact failures | 6/10 | `Terminal` construction/resize, Screen/Set resize, input encoding, and consequence drains are exact; Screen construction, selection projection, and paste allocation still infer failures. |
+| Exact failures | 6/10 | Curated Terminal operations, selection projection, Screen construction/resize, Set resize, and paste allocation now expose exact failures; inferred errors remain elsewhere in internal protocol and host-state owners. |
 | Documentation | 3/10 | The tree has 101 `///` lines for 643 public declarations, and only 2 of 62 source files have `//!` owner contracts; many retained public implementation symbols remain undocumented. |
 | Hostile-input evidence | 6/10 | Limit and allocator-failure tests exist, plus deterministic random simulations, but no native fuzz target continuously feeds arbitrary bytes and operation sequences. |
 | Embedding surface | 7/10 | `src/howl_vt.zig` now exposes only `Terminal` and proves the current headless host path; additional contracts remain private until earned. |
@@ -139,7 +139,7 @@ fragmentation and indirect ownership are defects.
 
 ### VT-006 — Owner-boundary failures are inferred
 
-- Status: open
+- Status: resolved
 - Path/symbol: `src/screen.zig` storage-backed constructors;
   `src/input/encode.zig:encodePaste`
 - Defect: `!T` and `!void` hide whether failure means invalid input, overflow,
@@ -157,8 +157,15 @@ fragmentation and indirect ownership are defects.
   resize expose only `error.OutOfMemory` and have transactional failure proofs.
   `selection_projection.CopyError` now owns exact UTF-8/allocation failures;
   exhaustive allocation injection proves selection/content remain usable, and
-  invalid stored codepoints return errors rather than trapping. Screen
-  construction and the immediate paste-allocation helper remain inferred.
+  invalid stored codepoints return errors rather than trapping.
+- Resolution: `Screen.InitError` is the allocating Screen owner's single exact
+  `error{OutOfMemory}` set and every storage-backed constructor uses it; the
+  existing Terminal constructor allocation-failure sweep retains cleanup
+  evidence across those calls. `encodePaste` now returns exact OutOfMemory,
+  checks wrapper-size arithmetic, documents borrowing and ownership, and has
+  direct tests proving plain paste borrows without allocation, bracketed paste
+  owns the fixed CSI 200/201 pair, failure returns no partial owner, and both
+  successful variants accept one `Encoded.deinit`.
 
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 

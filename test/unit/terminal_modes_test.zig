@@ -314,6 +314,34 @@ test "bracketed paste wrappers are gated by DECSET 2004" {
     try std.testing.expectEqualStrings("", encodePasteStart(&terminal));
 }
 
+test "paste encoding distinguishes borrowed and owned results" {
+    const PasteMode = struct {
+        modes: struct { bracketed_paste: bool },
+    };
+    const text = "paste";
+    var no_storage: [0]u8 = .{};
+    var fixed = std.heap.FixedBufferAllocator.init(&no_storage);
+
+    var plain = try input_encode.encodePaste(&PasteMode{ .modes = .{ .bracketed_paste = false } }, fixed.allocator(), text);
+    try std.testing.expectEqualStrings(text, plain.bytes);
+    try std.testing.expectEqual(text.ptr, plain.bytes.ptr);
+    try std.testing.expectEqual(@as(?std.mem.Allocator, null), plain.allocator);
+    plain.deinit();
+    try std.testing.expectEqualStrings("", plain.bytes);
+
+    try std.testing.expectError(
+        error.OutOfMemory,
+        input_encode.encodePaste(&PasteMode{ .modes = .{ .bracketed_paste = true } }, fixed.allocator(), text),
+    );
+
+    var bracketed = try input_encode.encodePaste(&PasteMode{ .modes = .{ .bracketed_paste = true } }, std.testing.allocator, text);
+    try std.testing.expectEqualStrings("\x1b[200~paste\x1b[201~", bracketed.bytes);
+    try std.testing.expect(bracketed.allocator != null);
+    bracketed.deinit();
+    try std.testing.expectEqualStrings("", bracketed.bytes);
+    try std.testing.expectEqual(@as(?std.mem.Allocator, null), bracketed.allocator);
+}
+
 test "report queries append pending host output" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.init(allocator, 4, 8);

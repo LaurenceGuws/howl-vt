@@ -4,6 +4,10 @@ pub const Encoded = struct {
     allocator: ?std.mem.Allocator = null,
     bytes: []const u8 = "",
 
+    /// Release owned bytes, or only clear a borrowed result.
+    ///
+    /// Every successful input encoding result accepts one call. The value is
+    /// reset afterward so it retains neither ownership nor a borrowed slice.
     pub fn deinit(self: *Encoded) void {
         if (self.allocator) |allocator| allocator.free(self.bytes);
         self.* = .{};

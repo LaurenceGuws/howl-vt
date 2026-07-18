@@ -48,13 +48,21 @@ pub fn encodeFocusOut(vt: anytype, scratch: *Scratch) []const u8 {
     return fixed(scratch, if (vt.modes.focus_reporting) "\x1b[O" else "");
 }
 
-pub fn encodePaste(vt: anytype, allocator: std.mem.Allocator, text: []const u8) !encoded_owner.Encoded {
+/// Encode borrowed paste text for the active bracketed-paste mode.
+///
+/// Plain paste returns a borrowed view of `text` without allocating. Bracketed
+/// paste allocates one caller-owned result containing the fixed CSI 200/201
+/// pair; allocation-size overflow and allocation failure return OutOfMemory.
+/// The caller must call `Encoded.deinit` once for either result.
+pub fn encodePaste(vt: anytype, allocator: std.mem.Allocator, text: []const u8) error{OutOfMemory}!encoded_owner.Encoded {
     const start = if (vt.modes.bracketed_paste) "\x1b[200~" else "";
     const end = if (vt.modes.bracketed_paste) "\x1b[201~" else "";
     if (start.len == 0 and end.len == 0) return .{ .bytes = text };
 
-    const out = try allocator.alloc(u8, start.len + text.len + end.len);
-    std.debug.assert(out.len == start.len + text.len + end.len);
+    const prefix_and_text = std.math.add(usize, start.len, text.len) catch return error.OutOfMemory;
+    const encoded_len = std.math.add(usize, prefix_and_text, end.len) catch return error.OutOfMemory;
+    const out = try allocator.alloc(u8, encoded_len);
+    std.debug.assert(out.len == encoded_len);
     @memcpy(out[0..start.len], start);
     @memcpy(out[start.len .. start.len + text.len], text);
     @memcpy(out[start.len + text.len ..], end);
