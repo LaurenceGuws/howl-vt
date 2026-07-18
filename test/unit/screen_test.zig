@@ -326,6 +326,21 @@ test "screen: ECH uses current background without moving cursor" {
     }
 }
 
+test "screen: zero-count ECH defaults to one cell" {
+    const allocator = std.testing.allocator;
+    var screen = try Grid.initWithCells(allocator, 1, 4);
+    defer screen.deinit(allocator);
+
+    screen.writeText("abcd");
+    screen.cursor.setColByClient(1);
+    screen.eraseChars(0);
+
+    try std.testing.expectEqual(@as(u16, 1), screen.cursor.col);
+    try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'c'), screen.cellAt(0, 2));
+}
+
 test "screen: SL shifts scroll-region rows left" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 3, 5);

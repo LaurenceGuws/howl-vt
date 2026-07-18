@@ -362,8 +362,50 @@ pub const Screen = struct {
         right: u16,
     };
 
+    /// Erase display content according to `mode`, optionally preserving protected cells.
     pub fn eraseDisplay(self: *Screen, mode: EraseMode, protected: bool) void {
-        erase.eraseDisplay(self, mode, protected);
+        const cells = self.cells orelse return;
+        if (self.rows == 0 or self.cols == 0) return;
+        switch (mode) {
+            .cursor_to_end => {
+                self.markDirtyRows(self.cursor.row, self.rows -| 1);
+                self.clearDisplayRowRange(protected, self.cursor.row, self.cursor.col, self.cols);
+                var row = self.cursor.row + 1;
+                while (row < self.rows) : (row += 1) {
+                    self.clearDisplayRowRange(protected, row, 0, self.cols);
+                    self.setRowWrapped(row, false);
+                }
+            },
+            .start_to_cursor => {
+                self.markDirtyRows(0, self.cursor.row);
+                var row: u16 = 0;
+                while (row < self.cursor.row) : (row += 1) {
+                    self.clearDisplayRowRange(protected, row, 0, self.cols);
+                    self.setRowWrapped(row, false);
+                }
+                self.clearDisplayRowRange(protected, self.cursor.row, 0, self.cursor.col + 1);
+            },
+            .all => {
+                self.markAllRowsDirty();
+                if (protected) {
+                    var row: u16 = 0;
+                    while (row < self.rows) : (row += 1) self.clearDisplayRowRange(true, row, 0, self.cols);
+                } else {
+                    const erase_cell = self.eraseCell();
+                    @memset(cells, erase_cell);
+                }
+                if (self.row_wraps) |buf| @memset(buf, false);
+            },
+            .scrollback => self.clearScrollback(),
+        }
+    }
+
+    fn clearDisplayRowRange(self: *Screen, protected: bool, row: u16, start_col: u16, end_col_exclusive: u16) void {
+        if (protected) {
+            self.selectiveClearRowRange(row, start_col, end_col_exclusive);
+        } else {
+            self.clearRowRange(row, start_col, end_col_exclusive);
+        }
     }
 
     pub fn setCurrentLinkId(self: *Screen, link_id: u32) void {
@@ -431,20 +473,52 @@ pub const Screen = struct {
         return self.cell_pixel_size;
     }
 
+    /// Erase the active line range selected by `mode`.
     pub fn eraseLine(self: *Screen, mode: EraseMode) void {
-        erase.eraseLine(self, mode);
+        _ = self.cells orelse return;
+        if (self.rows == 0 or self.cols == 0) return;
+        switch (mode) {
+            .cursor_to_end => {
+                self.markDirtyCols(self.cursor.row, self.cursor.col, self.cols -| 1);
+                self.clearRowRange(self.cursor.row, self.cursor.col, self.cols);
+            },
+            .start_to_cursor => {
+                self.markDirtyCols(self.cursor.row, 0, self.cursor.col);
+                self.clearRowRange(self.cursor.row, 0, self.cursor.col + 1);
+            },
+            .all => {
+                self.markDirtyRow(self.cursor.row);
+                self.clearRowRange(self.cursor.row, 0, self.cols);
+                self.setRowWrapped(self.cursor.row, false);
+            },
+            .scrollback => {},
+        }
     }
 
+    /// Erase at least one character from the cursor through the active right boundary.
     pub fn eraseChars(self: *Screen, count: u16) void {
-        erase.eraseChars(self, count);
+        if (self.rows == 0 or self.cols == 0) return;
+        const amount = @min(@max(count, 1), self.rightBoundary() - self.cursor.col + 1);
+        self.markDirtyCols(self.cursor.row, self.cursor.col, self.cursor.col + amount - 1);
+        self.clearRowRange(self.cursor.row, self.cursor.col, self.cursor.col + amount);
     }
 
     pub fn changeRectAttrs(self: *Screen, area: rect.RectArea, attrs: []const u16, reverse: bool) void {
         rect.changeAttrs(self, area, attrs, reverse);
     }
 
+    /// Erase unprotected cells on the active line according to `mode`.
     pub fn selectiveEraseLine(self: *Screen, mode: EraseMode) void {
-        erase.selectiveEraseLine(self, mode);
+        if (self.rows == 0 or self.cols == 0) return;
+        switch (mode) {
+            .cursor_to_end => self.selectiveClearRowRange(self.cursor.row, self.cursor.col, self.cols),
+            .start_to_cursor => self.selectiveClearRowRange(self.cursor.row, 0, self.cursor.col + 1),
+            .all => {
+                self.selectiveClearRowRange(self.cursor.row, 0, self.cols);
+                self.setRowWrapped(self.cursor.row, false);
+            },
+            .scrollback => {},
+        }
     }
 
     pub fn eraseRect(self: *Screen, area: rect.RectArea, selective: bool) void {
@@ -951,12 +1025,25 @@ pub const Screen = struct {
         return history_mod.rowWrapped(self, history_idx);
     }
 
+    /// Fill an assumed in-bounds row range with the current erase cell.
     pub fn clearRowRange(self: *Screen, row: u16, start_col: u16, end_col_exclusive: u16) void {
-        erase.clearRowRange(self, row, start_col, end_col_exclusive);
+        const cells = self.cells orelse return;
+        const start = self.rowStart(row);
+        const erase_cell = self.eraseCell();
+        @memset(cells[@intCast(start + @as(u32, start_col))..@intCast(start + @as(u32, end_col_exclusive))], erase_cell);
     }
 
+    /// Fill unprotected cells in an assumed in-bounds row range with the erase cell.
     pub fn selectiveClearRowRange(self: *Screen, row: u16, start_col: u16, end_col_exclusive: u16) void {
-        erase.selectiveClearRowRange(self, row, start_col, end_col_exclusive);
+        const cells = self.cells orelse return;
+        const start = self.rowStart(row);
+        const erase_cell = self.eraseCell();
+        var col = start_col;
+        while (col < end_col_exclusive) : (col += 1) {
+            const idx = start + @as(u32, col);
+            if (cells[@intCast(idx)].attrs.protected) continue;
+            cells[@intCast(idx)] = erase_cell;
+        }
     }
 
     pub fn rectBounds(self: *const Screen, area: rect.RectArea) ?RectBounds {
@@ -972,12 +1059,15 @@ pub const Screen = struct {
         return .{ .top = top, .left = left, .bottom = bottom, .right = right };
     }
 
+    /// Construct an empty cell carrying the current erase attributes.
     pub fn eraseCell(self: *const Screen) Cell {
-        return erase.eraseCell(self);
+        return .{ .codepoint = 0, .attrs = self.current_attrs };
     }
 
     fn clearFullRow(self: *Screen, row: u16) void {
-        erase.clearFullRow(self, row);
+        if (self.cols == 0) return;
+        self.clearRowRange(row, 0, self.cols);
+        self.setRowWrapped(row, false);
     }
 
     fn copyRow(self: *Screen, dst_row: u16, src_row: u16) void {
