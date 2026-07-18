@@ -17,8 +17,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .link_libc = true,
     });
-    const mod_tests = add_test_artifact(b, "test-unit", unit_test_mod);
-    const run_mod_tests = add_test_run_artifact(b, mod_tests);
+    const mod_tests = addTestArtifact(b, "test-unit", unit_test_mod);
+    const run_mod_tests = addTestRunArtifact(b, mod_tests);
     const embedding_test_mod = b.createModule(.{
         .root_source_file = b.path("test/native_embedding.zig"),
         .target = target,
@@ -26,8 +26,8 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     embedding_test_mod.addImport("howl_vt", internal_mod);
-    const embedding_tests = add_test_artifact(b, "test-native-embedding", embedding_test_mod);
-    const run_embedding_tests = add_test_run_artifact(b, embedding_tests);
+    const embedding_tests = addTestArtifact(b, "test-native-embedding", embedding_test_mod);
+    const run_embedding_tests = addTestRunArtifact(b, embedding_tests);
 
     const check_step = b.step("check", "Build the native VT model");
     const test_step = b.step("test", "Run native VT correctness proofs");
@@ -42,12 +42,9 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&embedding_tests.step);
 
     const simulation_module = b.createModule(.{
-        .root_source_file = b.path("src/simulation_main.zig"),
+        .root_source_file = b.path("simulation_main.zig"),
         .target = target,
         .optimize = optimize,
-    });
-    simulation_module.addAnonymousImport("xterm-ctlseqs.ms", .{
-        .root_source_file = b.path("simulation/assets/xterm-ctlseqs.ms"),
     });
 
     const simulation_exe = b.addExecutable(.{
@@ -80,7 +77,7 @@ pub fn build(b: *std.Build) void {
     baseline_step.dependOn(&run_baseline.step);
 }
 
-fn add_test_artifact(b: *std.Build, name: []const u8, root_module: *std.Build.Module) *std.Build.Step.Compile {
+fn addTestArtifact(b: *std.Build, name: []const u8, root_module: *std.Build.Module) *std.Build.Step.Compile {
     const tests = b.addTest(.{
         .name = name,
         .root_module = root_module,
@@ -90,7 +87,7 @@ fn add_test_artifact(b: *std.Build, name: []const u8, root_module: *std.Build.Mo
     return tests;
 }
 
-fn add_test_run_artifact(b: *std.Build, tests: *std.Build.Step.Compile) *std.Build.Step.Run {
+fn addTestRunArtifact(b: *std.Build, tests: *std.Build.Step.Compile) *std.Build.Step.Run {
     const run_tests = b.addRunArtifact(tests);
     if (b.args != null) {
         run_tests.has_side_effects = true;

@@ -1,5 +1,5 @@
 const std = @import("std");
-const terminal_mod = @import("terminal.zig");
+const terminal_mod = @import("../src/terminal.zig");
 
 // Shared VT simulation helper for scrollback churn. Workloads use deterministic
 // seeded input space with explicit preservation claims.

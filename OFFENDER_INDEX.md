@@ -257,8 +257,7 @@ fragmentation and indirect ownership are defects.
 ### VT-013 — Hostile-input testing is simulation-only, not a fuzz boundary
 
 - Status: open
-- Path/symbol: `src/simulation_protocol.zig`,
-  `src/simulation_scrollback.zig`;
+- Path/symbol: `simulation/protocol.zig`, `simulation/scrollback.zig`;
   missing native arbitrary-byte/operation fuzz target in `build.zig`
 - Defect: deterministic random simulations cover selected generated actions,
   and unit tests cover known limits, but arbitrary byte chunking, malformed

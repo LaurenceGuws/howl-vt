@@ -1,6 +1,6 @@
 const std = @import("std");
-const protocol = @import("simulation_protocol.zig");
-const scrollback = @import("simulation_scrollback.zig");
+const protocol = @import("simulation/protocol.zig");
+const scrollback = @import("simulation/scrollback.zig");
 
 // Proof statement: this root runs deterministic VT-owned protocol and scrollback
 // simulation workloads with replayable seeds; it is not a unit test.

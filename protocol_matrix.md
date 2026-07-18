@@ -69,8 +69,8 @@ sqlite3 protocol_coverage.db \
   - `official_docs/xterm/ctlseqs-contents.md`
   - `official_docs/kitty/*.md`
 - Current deterministic simulations:
-  - `src/simulation_scrollback.zig`
-  - `src/simulation_protocol.zig`
+  - `simulation/scrollback.zig`
+  - `simulation/protocol.zig`
 
 - `protocols` is the authoritative implementation scope.
 - Source material exists for provenance and clarification, not for ongoing

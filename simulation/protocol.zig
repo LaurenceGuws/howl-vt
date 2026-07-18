@@ -1,14 +1,14 @@
 const std = @import("std");
-const owned_actions = @import("parser_owned_actions.zig");
-const parser_mod = @import("parser.zig");
-const terminal_mod = @import("terminal.zig");
+const owned_actions = @import("../src/parser_owned_actions.zig");
+const parser_mod = @import("../src/parser.zig");
+const terminal_mod = @import("../src/terminal.zig");
 
 const Terminal = terminal_mod.Terminal;
 
 const OscTerminator = parser_mod.OscTerminator;
 const CsiEvent = @FieldType(Event, "csi");
 const OscEvent = @FieldType(Event, "osc");
-const xterm_ctlseqs = @embedFile("xterm-ctlseqs.ms");
+const xterm_ctlseqs = @embedFile("assets/xterm-ctlseqs.ms");
 
 const IterationCount = u32;
 const OpCount = u32;
