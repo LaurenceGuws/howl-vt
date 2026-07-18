@@ -8,14 +8,14 @@ fragmentation and indirect ownership are defects.
 
 | Bar | Score | Blocking evidence |
 | --- | ---: | --- |
-| Foot directness | 6/10 | ABI translation is gone; screen behavior is still dispatched through broad structural helpers and CSI routing crosses six files. |
+| Foot directness | 7/10 | The embedding root now exposes one state owner; screen behavior is still dispatched through broad structural helpers and CSI routing crosses six files. |
 | TigerBeetle defensiveness | 7/10 | Terminal dimensions now reject zero exactly, but many internal owner boundaries infer errors and structural `anytype` hides required state. |
 | Character/capability density | 7/10 | ABI projection and compatibility constants are gone; six terminal constructors and a broad implementation-public surface still dilute the engine. |
 | Ownership/cleanup | 7/10 | Core owners generally use `errdefer`/`deinit`; allocator provenance and resize/history rollback remain implicit across helpers. |
 | Exact failures | 6/10 | `Terminal` construction/resize now expose exact errors; `Screen` construction/resize, selection copying, and paste encoding still infer failures. |
 | Documentation | 3/10 | 63 `///` comments cover 502 non-FFI public declarations; almost every source file lacks `//!`; `design.md` names paths that do not exist. |
 | Hostile-input evidence | 6/10 | Limit and allocator-failure tests exist, plus deterministic random simulations, but no native fuzz target continuously feeds arbitrary bytes and operation sequences. |
-| Embedding surface | 5/10 | Native Zig is now sole authority, but `src/howl_vt.zig` exports four broad namespaces/types while useful input and observation contracts are discovered through internals. |
+| Embedding surface | 7/10 | `src/howl_vt.zig` now exposes only `Terminal` and proves the current headless host path; additional contracts remain private until earned. |
 | Deliberate modification | 5/10 | `protocol_coverage.db` and simulations help, but no executable source-debt gates protect public docs, erased types, exact errors, or ABI absence. |
 | Source maturity | 6/10 | Strong protocol breadth and native tests remain, but stale design claims, broad erased helpers, and immature native contracts persist. |
 
@@ -63,20 +63,21 @@ fragmentation and indirect ownership are defects.
 
 ### VT-003 — Native embedding root is both broad and incomplete
 
-- Status: open
-- Path/symbol: `src/howl_vt.zig:Parser`, `ParserOwnedActions`, `ScreenSet`,
-  `Terminal`
-- Defect: the root exposes implementation namespaces wholesale, but does not
-  curate input events/encoding, feed failures, snapshots, cells, selection,
-  or host consequences. Embedders must inspect private modules.
+- Status: resolved
+- Path/symbol: `src/howl_vt.zig:Terminal`
+- Defect: the root exposed parser, owned-action, and screen-set implementation
+  namespaces wholesale even though the only external consumer uses the
+  terminal owner.
 - Bars: directness, density, documentation, embedding, maturity
-- Simpler shape: expose only earned native owner types and operations directly;
-  keep parser/screen implementation modules private unless they are genuine
-  embedding contracts.
+- Simpler shape: expose `Terminal` only; keep parser and screen implementation
+  modules private until an external embedding requirement earns them.
 - Depends on: VT-001, VT-002
 - Acceptance evidence: one native integration test imports only `howl_vt` and
-  can initialize, feed, observe, acknowledge, select/copy, encode input, drain
-  output, resize, and deinitialize without importing repository paths.
+  exercises the currently required initialize, feed, semantic snapshot,
+  acknowledge, resize, and cleanup path.
+- Observed: `Parser`, `ParserOwnedActions`, and `ScreenSet` were removed from
+  the root; simulations receive private build-only modules; the root-only
+  integration test passes.
 
 ### VT-004 — Public source is largely undocumented
 

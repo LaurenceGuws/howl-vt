@@ -1,30 +1,10 @@
-const action_route = @import("route.zig");
-const semantic_event = @import("semantic_event.zig");
-const input_encode = @import("input/encode.zig");
-const input_encoded = @import("input/encoded.zig");
-const input_event = @import("input/event.zig");
-const input_keyboard = @import("input/keyboard.zig");
-const input_mouse = @import("input/mouse.zig");
-const parser_mod = @import("parser.zig");
-const parser_owned_actions = @import("parser/owned_actions.zig");
-const screen_set = @import("screen_set.zig");
+//! Sole native embedding root for the host-neutral terminal model.
+
 const terminal_mod = @import("terminal.zig");
 
-pub const Parser = parser_mod;
-pub const ParserOwnedActions = parser_owned_actions;
-pub const ScreenSet = screen_set;
+/// Terminal state owner, byte-stream engine, and semantic surface publisher.
 pub const Terminal = terminal_mod.Terminal;
 
 test {
-    _ = action_route;
-    _ = semantic_event;
-    _ = input_encode;
-    _ = input_encoded;
-    _ = input_event;
-    _ = input_keyboard;
-    _ = input_mouse;
-    _ = parser_mod;
-    _ = parser_owned_actions;
-    _ = screen_set;
     _ = terminal_mod;
 }

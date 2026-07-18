@@ -1,10 +1,9 @@
 const std = @import("std");
-const howl_vt = @import("howl_vt");
+const howl_vt = @import("howl_vt_simulation");
 
 // Shared VT simulation helper for scrollback churn. Workloads use deterministic
 // seeded input space with explicit preservation claims.
 
-const screen_set = howl_vt.ScreenSet;
 const Terminal = howl_vt.Terminal;
 
 pub const RowsMin: u16 = 1;
@@ -82,7 +81,7 @@ pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: ScenarioOp
     return .{
         .structural_hash = hashStructural(&vt),
         .logical_hash = hashLogicalContent(&vt),
-        .history_count = screen_set.visibleView(&vt.screen_state, 0).history_count,
+        .history_count = vt.visibleHistoryCount(),
         .rows = vt.screen_state.activeConst().rows,
         .cols = vt.screen_state.activeConst().cols,
     };
@@ -258,8 +257,8 @@ fn hashStructural(vt: *const Terminal) u64 {
     h.update(std.mem.asBytes(&s.rows));
     h.update(std.mem.asBytes(&s.cols));
     h.update(std.mem.asBytes(&s.wrap_pending));
-    const history_count = screen_set.visibleView(&vt.screen_state, 0).history_count;
-    const history_capacity = screen_set.historyCapacity(&vt.screen_state);
+    const history_count = vt.visibleHistoryCount();
+    const history_capacity = s.historyCapacity();
     h.update(std.mem.asBytes(&history_count));
     h.update(std.mem.asBytes(&history_capacity));
     return h.final();
@@ -268,13 +267,13 @@ fn hashStructural(vt: *const Terminal) u64 {
 fn hashLogicalContent(vt: *const Terminal) u64 {
     var h = std.hash.Wyhash.init(0x9e3779b97f4a7c15);
     const s = vt.screen_state.activeConst();
-    const history = screen_set.visibleView(&vt.screen_state, 0).history_count;
+    const history = vt.visibleHistoryCount();
 
     var hr: u32 = 0;
     while (hr < history) : (hr += 1) {
         var col: u16 = 0;
         while (col < s.cols) : (col += 1) {
-            const cp = screen_set.historyRowAt(&vt.screen_state, hr, col);
+            const cp = s.historyRowAt(hr, col);
             h.update(std.mem.asBytes(&cp));
         }
     }
@@ -360,8 +359,8 @@ fn summarizeCoreState(vt: *const Terminal) CoreStateSummary {
         .rows = s.rows,
         .cols = s.cols,
         .wrap_pending = s.wrap_pending,
-        .history_count = screen_set.visibleView(&vt.screen_state, 0).history_count,
-        .history_capacity = screen_set.historyCapacity(&vt.screen_state),
+        .history_count = vt.visibleHistoryCount(),
+        .history_capacity = s.historyCapacity(),
     };
 }
 

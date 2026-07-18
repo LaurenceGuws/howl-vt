@@ -19,22 +19,39 @@ pub fn build(b: *std.Build) void {
     });
     const mod_tests = add_test_artifact(b, "test-unit", unit_test_mod);
     const run_mod_tests = add_test_run_artifact(b, mod_tests);
+    const embedding_test_mod = b.createModule(.{
+        .root_source_file = b.path("test/native_embedding.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    embedding_test_mod.addImport("howl_vt", internal_mod);
+    const embedding_tests = add_test_artifact(b, "test-native-embedding", embedding_test_mod);
+    const run_embedding_tests = add_test_run_artifact(b, embedding_tests);
 
     const check_step = b.step("check", "Build the native VT model");
     const test_step = b.step("test", "Run native VT correctness proofs");
     const test_unit_step = b.step("test:unit", "Run unit tests");
     const test_unit_build_step = b.step("test:unit:build", "Build unit tests");
     test_unit_build_step.dependOn(&mod_tests.step);
+    test_unit_build_step.dependOn(&embedding_tests.step);
     test_unit_step.dependOn(&run_mod_tests.step);
+    test_unit_step.dependOn(&run_embedding_tests.step);
     test_step.dependOn(test_unit_step);
     check_step.dependOn(&mod_tests.step);
+    check_step.dependOn(&embedding_tests.step);
 
+    const simulation_support = b.createModule(.{
+        .root_source_file = b.path("src/simulation.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const simulation_module = b.createModule(.{
         .root_source_file = b.path("simulation/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    simulation_module.addImport("howl_vt", internal_mod);
+    simulation_module.addImport("howl_vt_simulation", simulation_support);
 
     const simulation_exe = b.addExecutable(.{
         .name = "howl_vt_simulate",

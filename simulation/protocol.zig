@@ -1,9 +1,8 @@
 const std = @import("std");
-const howl_vt = @import("howl_vt");
+const howl_vt = @import("howl_vt_simulation");
 
 const owned_actions = howl_vt.ParserOwnedActions;
 const parser_mod = howl_vt.Parser;
-const screen_set = howl_vt.ScreenSet;
 const Terminal = howl_vt.Terminal;
 
 const OscTerminator = parser_mod.OscTerminator;
@@ -376,9 +375,9 @@ fn feedBytesToTerminal(
     }
 }
 
-fn digestTerminal(terminal: *const Terminal) VtDigest {
+fn digestTerminal(terminal: *Terminal) VtDigest {
     var hasher = std.hash.Wyhash.init(0);
-    const view = screen_set.visibleView(&terminal.screen_state, 0);
+    const view = terminal.surfaceSnapshot().snapshot.view;
 
     hashValue(&hasher, view.rows);
     hashValue(&hasher, view.cols);
@@ -398,7 +397,7 @@ fn digestTerminal(terminal: *const Terminal) VtDigest {
     while (history_idx < history_count) : (history_idx += 1) {
         var col: u16 = 0;
         while (col < view.cols) : (col += 1) {
-            hashCell(&hasher, screen_set.historyCellAt(&terminal.screen_state, history_idx, col));
+            hashCell(&hasher, view.sourceCellInfoAt(.{ .history = history_idx }, col));
         }
     }
 

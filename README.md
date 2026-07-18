@@ -10,6 +10,7 @@ Version `0.1.0-dev` interfaces may change without notice.
 
 - Native Zig module: `howl_vt`
 - Native root: `src/howl_vt.zig`
+- Curated owner: `howl_vt.Terminal`
 
 The native Zig model is the only embedding surface. The previous C ABI was
 removed because it projected contracts before the native state machine had
