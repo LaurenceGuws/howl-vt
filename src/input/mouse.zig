@@ -91,7 +91,7 @@ fn mouseCode(event: MouseEvent, tracking: MouseTrackingMode) u16 {
         .press => pressButtonCode(event.button),
         .release => 3,
         .wheel => wheelButtonCode(event.button),
-        .move => moveBaseCode(event, tracking),
+        .move => moveBaseCode(event),
     };
     if (tracking != .x10) {
         if (event.mod.shift) code += 4;
@@ -153,8 +153,7 @@ fn wheelButtonCode(button: MouseButton) u16 {
     };
 }
 
-fn moveBaseCode(event: MouseEvent, tracking: MouseTrackingMode) u16 {
-    _ = tracking;
+fn moveBaseCode(event: MouseEvent) u16 {
     if ((event.buttons_down & 0x01) != 0) return 0;
     if ((event.buttons_down & 0x02) != 0) return 1;
     if ((event.buttons_down & 0x04) != 0) return 2;

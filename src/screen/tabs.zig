@@ -3,7 +3,7 @@
 const std = @import("std");
 
 /// Allocates one tab-stop flag per column and installs default stops.
-pub fn allocTabStops(allocator: std.mem.Allocator, cols: u16) !?[]bool {
+pub fn allocTabStops(allocator: std.mem.Allocator, cols: u16) std.mem.Allocator.Error!?[]bool {
     if (cols == 0) return null;
     const buf = try allocator.alloc(bool, cols);
     setDefaultTabStops(buf);
@@ -18,7 +18,7 @@ pub fn setDefaultTabStops(stops: []bool) void {
     }
 }
 
-/// Copies equal-sized optional tab-stop arrays.
+/// Copies the overlapping prefix of optional old and replacement tab stops.
 pub fn copyTabStops(dst: ?[]bool, src: ?[]const bool) void {
     const d = dst orelse return;
     const s = src orelse return;

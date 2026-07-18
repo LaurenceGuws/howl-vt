@@ -34,7 +34,7 @@ pub const DirtyState = struct {
 };
 
 /// Allocates and initializes one u16 column bound per row when rows are nonzero.
-pub fn allocDirtyCols(allocator: std.mem.Allocator, rows: u16, initial: u16) !?[]u16 {
+pub fn allocDirtyCols(allocator: std.mem.Allocator, rows: u16, initial: u16) std.mem.Allocator.Error!?[]u16 {
     if (rows == 0) return null;
     const buf = try allocator.alloc(u16, rows);
     @memset(buf, initial);

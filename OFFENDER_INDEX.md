@@ -16,7 +16,7 @@ by themselves.
 | Documentation | 10/10 | The source audit covers every source owner and retained public declaration and guards the one-symbol embedding root. |
 | Hostile-input evidence | 10/10 | Structured native histories cover hostile bytes and every current typed host operation, including rejected limits, failed allocation, drains, acknowledgement, and reuse. |
 | Embedding surface | 10/10 | `src/howl_vt.zig` exports one directly owned native `Terminal`; current root-only integration proof exercises the accepted embedding shape. |
-| Deliberate modification | 8/10 | Unit, simulation, fuzz, coverage data, and source audits exist; parser/stream/OSC error contracts have direct failure proof, while broader exact-error and assertion-density audits remain manual. |
+| Deliberate modification | 9/10 | Unit, simulation, fuzz, coverage data, and narrow source audits exist; whether each narrowing conversion has sufficient local proof remains a semantic review responsibility. |
 | Source maturity | 10/10 | Protocol breadth, deterministic parsing, transactional history, allocation-free rectangle copy, and the complete current native host surface are proved. |
 
 ## Ordered offenders
@@ -129,7 +129,7 @@ by themselves.
 
 ### VT-021 — Source safety properties remain manually audited
 
-- Status: open
+- Status: resolved
 - Path/symbol: `tools/audit_source.sh`; repository-wide
 - Defect: the executable audit protects owner contracts and public
   declarations only. Inferred error unions, discarded fallible results,
@@ -141,6 +141,17 @@ by themselves.
 - Proof: each gate rejects one intentionally introduced violation and accepts
   every documented exception.
 - Depends on: VT-017, VT-019, and VT-020 establish the accepted patterns
+- Resolution: the source audit now rejects inferred public error returns,
+  empty `deinit`/`reset`/`clear` hooks, and discarded source results outside
+  compile-only root and parser test probes. It continues enforcing source-file
+  and public-declaration contracts. The audit exposed exact allocator returns
+  missing from dirty-column and tab-stop allocation, two discarded stream
+  summaries, an unnecessary mouse parameter, and a parse result used only to
+  satisfy the compiler; each was corrected at its owner. Stream adapters now
+  assert the real invariant that title mutation implies terminal mutation.
+  Narrowing safety and assertion sufficiency remain judgment-based because
+  proximity regexes cannot prove the value range; they are intentionally not
+  represented as automated coverage.
 
 ## Hardening loop
 

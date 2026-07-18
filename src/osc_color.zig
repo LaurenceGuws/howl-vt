@@ -168,8 +168,7 @@ fn specialColorKey(key: []const u8) ?SpecialKey {
 /// Reports whether a borrowed Kitty color key names supported state.
 pub fn isKnownColorKey(key: []const u8) bool {
     if (specialColorKey(key) != null) return true;
-    _ = std.fmt.parseUnsigned(u8, key, 10) catch return false;
-    return true;
+    return (std.fmt.parseUnsigned(u8, key, 10) catch null) != null;
 }
 
 /// Returns the current color for a recognized Kitty key.

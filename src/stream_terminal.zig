@@ -133,12 +133,14 @@ pub const Stream = struct {
 
     /// Feeds one byte and omits the optional mutation summary while preserving failures.
     pub fn next(self: *Stream, byte: u8) FeedError!void {
-        _ = try self.nextSummary(byte);
+        const summary = try self.nextSummary(byte);
+        std.debug.assert(!summary.title_changed or summary.state_changed);
     }
 
     /// Feeds a borrowed byte slice and omits the optional mutation summary.
     pub fn nextSlice(self: *Stream, bytes: []const u8) FeedError!void {
-        _ = try self.nextSliceSummary(bytes);
+        const summary = try self.nextSliceSummary(bytes);
+        std.debug.assert(!summary.title_changed or summary.state_changed);
     }
 
     fn nextSummary(self: *Stream, byte: u8) FeedError!FeedSummary {
