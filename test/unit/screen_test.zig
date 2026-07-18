@@ -228,6 +228,26 @@ test "screen: ICH inserts blanks and shifts suffix right" {
     try std.testing.expectEqual(@as(u16, 2), s.cursor.col);
 }
 
+test "screen: zero-count character edits default to one cell" {
+    const allocator = std.testing.allocator;
+    var screen = try Grid.initWithCells(allocator, 1, 4);
+    defer screen.deinit(allocator);
+
+    screen.writeText("abcd");
+    screen.cursor.setColByClient(1);
+    screen.insertChars(0);
+    try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'b'), screen.cellAt(0, 2));
+    try std.testing.expectEqual(@as(u21, 'c'), screen.cellAt(0, 3));
+
+    screen.deleteChars(0);
+    try std.testing.expectEqual(@as(u21, 'a'), screen.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'b'), screen.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'c'), screen.cellAt(0, 2));
+    try std.testing.expectEqual(@as(u21, 0), screen.cellAt(0, 3));
+}
+
 test "screen: REP repeats last written codepoint" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 1, 6);

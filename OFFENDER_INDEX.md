@@ -173,10 +173,9 @@ fragmentation and indirect ownership are defects.
 
 - Status: open
 - Path/symbol: `src/screen/history.zig` (25 occurrences);
-  `src/screen/edit.zig` (11);
   `src/screen/style.zig`, `erase.zig`, and `apply.zig` (9 each);
-  `src/screen/resize.zig` (7). Repository total: 94 occurrences across
-  18 files; `src/input/encode.zig`, `src/host_state.zig`,
+  `src/screen/resize.zig` (7). Repository total: 83 occurrences across
+  17 files; `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
   `src/screen/dirty.zig` now have zero.
@@ -215,13 +214,15 @@ fragmentation and indirect ownership are defects.
   `screen/dirty.zig` retains typed dirty-state allocation and projection
   mechanics. The complete write path now lives on Screen; the empty
   structural write module was deleted. Seven scrolling operations now live
-  directly on Screen; the empty structural scroll module was deleted.
+  directly on Screen; the empty structural scroll module was deleted. The
+  complete edit path now lives on Screen; the empty structural edit module
+  was deleted.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
 - Status: open
 - Path/symbol: `src/screen.zig` delegating to `src/screen/apply.zig`,
-  `edit.zig`, `erase.zig`, and `style.zig`
+  `erase.zig` and `style.zig`
 - Defect: one `Screen` authority is spread across structural helpers that
   reach into its fields through `anytype`. Mutation and invariants require
   cross-file reconstruction; file smallness has displaced ownership.
