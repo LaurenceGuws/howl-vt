@@ -26,6 +26,22 @@ test "native root owns the complete embedding contract" {
 
     _ = try terminal.feed("\x1b[?2004h");
     var input_scratch: howl_vt.Terminal.InputScratch = .{};
+    var named_key = try terminal.encodeInput(
+        std.testing.allocator,
+        &input_scratch,
+        .{ .key = .{ .key = .{ .named = .up } } },
+    );
+    defer named_key.deinit();
+    try std.testing.expectEqualStrings("\x1b[A", named_key.bytes);
+
+    var text = try terminal.encodeInput(
+        std.testing.allocator,
+        &input_scratch,
+        .{ .bytes = "λ" },
+    );
+    defer text.deinit();
+    try std.testing.expectEqualStrings("λ", text.bytes);
+
     var encoded = try terminal.encodeInput(
         std.testing.allocator,
         &input_scratch,

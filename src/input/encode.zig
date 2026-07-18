@@ -25,7 +25,7 @@ pub fn encodeKey(vt: anytype, scratch: *Scratch, key_value: keyboard.Key, mod: k
         kittyKeyboardFlags(vt),
     );
     std.debug.assert(encoded.len <= scratch.buf.len);
-    if (vt.modes.newline_mode and key_value == keyboard.key_enter and std.mem.eql(u8, encoded, "\r")) {
+    if (vt.modes.newline_mode and key_value == .named and key_value.named == .enter and std.mem.eql(u8, encoded, "\r")) {
         scratch.buf[0] = '\r';
         scratch.buf[1] = '\n';
         return scratch.buf[0..2];

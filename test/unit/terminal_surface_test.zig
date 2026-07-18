@@ -293,8 +293,8 @@ test "input encoding APIs are callable without terminal facade methods" {
     var snap_before = try captureSnapshot(&terminal);
     defer snap_before.deinit();
 
-    _ = encodeKey(&terminal, 'A', 0);
-    _ = encodeKey(&terminal, 'B', 0);
+    _ = encodeKey(&terminal, try input_keyboard.Key.initUnicode('A'), .{});
+    _ = encodeKey(&terminal, try input_keyboard.Key.initUnicode('B'), .{});
 
     var snap_after = try captureSnapshot(&terminal);
     defer snap_after.deinit();

@@ -310,17 +310,28 @@ fragmentation and indirect ownership are defects.
   explicitly, package and README agree on `0.1.0-dev`, and only native
   embedding is described.
 
-### VT-015 — Input vocabulary remains integerly typed
+### VT-015 — Input vocabulary was integerly typed
 
-- Status: open
-- Path/symbol: `src/input/keyboard.zig:Key`, `Modifier`, and public `key_*` /
-  `mod_*` constants
+- Status: resolved
+- Path/symbol: `src/input/keyboard.zig:Key`, `NamedKey`, `UnicodeScalar`,
+  `Modifier`; `src/input/event.zig:KeyEvent`
 - Defect: the C-era duplicate aliases are removed. The remaining native
   vocabulary is still `Key = u32`, `Modifier = u8`, plus many public integer
   constants, so invalid values and modifier bits are representable.
 - Bars: directness, density, embedding, documentation, maturity
-- Simpler shape: native Zig enums/structs and enum literals only; conversion
-  belongs to a future external projection if one is later earned.
+- Simpler shape: a tagged key identity separates named keys from validated
+  Unicode scalars; a packed modifier value exposes only Shift, Alt, and Control.
+- Acceptance evidence: encoding tests distinguish Unicode codepoint 1 from the
+  formerly colliding Enter value, reject surrogate construction, cover every
+  modifier combination, and exercise control, navigation, editing, function,
+  keypad, and modifier-only named-key classes. Existing mode tests preserve
+  Kitty keyboard, modify-other-keys, application cursor/keypad, and mouse
+  modifier behavior. The root-only embedding test sends a typed named key and
+  committed Unicode text through `Terminal.InputEvent`.
+- Resolution: all public `key_*` and `mod_*` integers are deleted without
+  aliases or conversion functions. `Key` is now `.named` or `.unicode`;
+  `UnicodeScalar.init` validates scalar identity, and `Modifier` is a packed
+  three-boolean value whose protocol arithmetic is private to the encoder.
 - Depends on: VT-001, VT-003
 - Acceptance evidence: key identity and modifier bits use native typed
   vocabulary; encoding tests cover valid values and explicit rejection of

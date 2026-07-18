@@ -90,9 +90,9 @@ fn mouseCode(event: MouseEvent, tracking: MouseTrackingMode) u16 {
         .move => moveBaseCode(event, tracking),
     };
     if (tracking != .x10) {
-        if ((event.mod & keyboard.mod_shift) != 0) code += 4;
-        if ((event.mod & keyboard.mod_alt) != 0) code += 8;
-        if ((event.mod & keyboard.mod_ctrl) != 0) code += 16;
+        if (event.mod.shift) code += 4;
+        if (event.mod.alt) code += 8;
+        if (event.mod.control) code += 16;
     }
     if (event.kind == .move) code += 32;
     return code;

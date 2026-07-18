@@ -108,7 +108,7 @@ test "encodeMouse returns empty output and does not mutate state" {
         .col = 3,
         .pixel_x = null,
         .pixel_y = null,
-        .mod = 0,
+        .mod = .{},
         .buttons_down = 1,
     };
 
@@ -139,7 +139,7 @@ test "mouse reporting is gated by DECSET mouse modes and SGR protocol" {
         .col = 3,
         .pixel_x = null,
         .pixel_y = null,
-        .mod = 0,
+        .mod = .{},
         .buttons_down = 1,
     };
 
@@ -154,7 +154,7 @@ test "mouse reporting is gated by DECSET mouse modes and SGR protocol" {
         .col = 3,
         .pixel_x = null,
         .pixel_y = null,
-        .mod = 0,
+        .mod = .{},
         .buttons_down = 1,
     };
     try std.testing.expectEqualStrings("", encodeMouse(&terminal, move_event));
@@ -168,7 +168,7 @@ test "mouse reporting is gated by DECSET mouse modes and SGR protocol" {
         .col = 1,
         .pixel_x = null,
         .pixel_y = null,
-        .mod = 0,
+        .mod = .{},
         .buttons_down = 0,
     };
     try std.testing.expectEqualStrings("\x1b[<35;2;2M", encodeMouse(&terminal, hover_event));
@@ -181,9 +181,9 @@ test "mouse reporting supports legacy x10 normal utf8 and urxvt encodings" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    const press = input_mouse.MouseEvent{ .kind = .press, .button = .left, .row = 2, .col = 3, .mod = input_keyboard.mod_shift | input_keyboard.mod_alt, .buttons_down = 1 };
-    const release = input_mouse.MouseEvent{ .kind = .release, .button = .left, .row = 2, .col = 3, .mod = 0, .buttons_down = 0 };
-    const wheel = input_mouse.MouseEvent{ .kind = .wheel, .button = .wheel_down, .row = 2, .col = 3, .mod = 0, .buttons_down = 0 };
+    const press = input_mouse.MouseEvent{ .kind = .press, .button = .left, .row = 2, .col = 3, .mod = .{ .shift = true, .alt = true }, .buttons_down = 1 };
+    const release = input_mouse.MouseEvent{ .kind = .release, .button = .left, .row = 2, .col = 3, .mod = .{}, .buttons_down = 0 };
+    const wheel = input_mouse.MouseEvent{ .kind = .wheel, .button = .wheel_down, .row = 2, .col = 3, .mod = .{}, .buttons_down = 0 };
 
     write(&stream, "\x1b[?9h");
     try std.testing.expectEqualStrings("\x1b[M $#", encodeMouse(&terminal, press));
@@ -195,7 +195,7 @@ test "mouse reporting supports legacy x10 normal utf8 and urxvt encodings" {
     try std.testing.expectEqualStrings("\x1b[Ma$#", encodeMouse(&terminal, wheel));
 
     write(&stream, "\x1b[?1005h");
-    const far_press = input_mouse.MouseEvent{ .kind = .press, .button = .left, .row = 240, .col = 240, .mod = 0, .buttons_down = 1 };
+    const far_press = input_mouse.MouseEvent{ .kind = .press, .button = .left, .row = 240, .col = 240, .mod = .{}, .buttons_down = 1 };
     try std.testing.expectEqualStrings("\x1b[M \xc4\x91\xc4\x91", encodeMouse(&terminal, far_press));
 
     write(&stream, "\x1b[?1015h");
@@ -224,12 +224,12 @@ test "application cursor mode changes arrow key encoding" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try std.testing.expectEqualStrings("\x1b[A", encodeKey(&terminal, input_keyboard.key_up, input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("\x1b[A", encodeKey(&terminal, .{ .named = .up }, .{}));
     write(&stream, "\x1b[?1h");
-    try std.testing.expectEqualStrings("\x1bOA", encodeKey(&terminal, input_keyboard.key_up, input_keyboard.mod_none));
-    try std.testing.expectEqualStrings("\x1b[1;5A", encodeKey(&terminal, input_keyboard.key_up, input_keyboard.mod_ctrl));
+    try std.testing.expectEqualStrings("\x1bOA", encodeKey(&terminal, .{ .named = .up }, .{}));
+    try std.testing.expectEqualStrings("\x1b[1;5A", encodeKey(&terminal, .{ .named = .up }, .{ .control = true }));
     write(&stream, "\x1b[?1l");
-    try std.testing.expectEqualStrings("\x1b[A", encodeKey(&terminal, input_keyboard.key_up, input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("\x1b[A", encodeKey(&terminal, .{ .named = .up }, .{}));
 }
 
 test "kitty keyboard set query push and pop flags" {
@@ -276,10 +276,10 @@ test "kitty keyboard mode switches existing keys to CSI-u family" {
     defer stream.deinit();
 
     write(&stream, "\x1b[=1u");
-    try std.testing.expectEqualStrings("\x1b[27u", encodeKey(&terminal, input_keyboard.key_escape, input_keyboard.mod_none));
-    try std.testing.expectEqualStrings("\x1b[127;5u", encodeKey(&terminal, input_keyboard.key_backspace, input_keyboard.mod_ctrl));
-    try std.testing.expectEqualStrings("\x1b[1;5A", encodeKey(&terminal, input_keyboard.key_up, input_keyboard.mod_ctrl));
-    try std.testing.expectEqualStrings("\x1b[15~", encodeKey(&terminal, input_keyboard.key_f5, input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("\x1b[27u", encodeKey(&terminal, .{ .named = .escape }, .{}));
+    try std.testing.expectEqualStrings("\x1b[127;5u", encodeKey(&terminal, .{ .named = .backspace }, .{ .control = true }));
+    try std.testing.expectEqualStrings("\x1b[1;5A", encodeKey(&terminal, .{ .named = .up }, .{ .control = true }));
+    try std.testing.expectEqualStrings("\x1b[15~", encodeKey(&terminal, .{ .named = .f5 }, .{}));
 }
 
 test "focus reports are gated by DECSET 1004" {
@@ -415,12 +415,12 @@ test "ANSI modes affect key encoding and insert writes" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try std.testing.expectEqualStrings("\r", encodeKey(&terminal, input_keyboard.key_enter, input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("\r", encodeKey(&terminal, .{ .named = .enter }, .{}));
     write(&stream, "\x1b[20h\x1b[2h");
-    try std.testing.expectEqualStrings("", encodeKey(&terminal, 'a', input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{}));
 
     write(&stream, "\x1b[2l");
-    try std.testing.expectEqualStrings("\r\n", encodeKey(&terminal, input_keyboard.key_enter, input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("\r\n", encodeKey(&terminal, .{ .named = .enter }, .{}));
 
     write(&stream, "ABCD\x1b[4h\x1b[1;2H!\x1b[4$p");
     const view = visibleView(&terminal, 0);
@@ -458,7 +458,7 @@ test "locator requests reply unavailable, then current position, then disable on
 
     clearPendingOutput(&terminal);
     write(&stream, "\x1b[1;0'z");
-    _ = encodeMouse(&terminal, .{ .kind = .move, .button = .none, .row = 2, .col = 3, .mod = 0, .buttons_down = 1 });
+    _ = encodeMouse(&terminal, .{ .kind = .move, .button = .none, .row = 2, .col = 3, .mod = .{}, .buttons_down = 1 });
     write(&stream, "\x1b[0'|");
     try std.testing.expectEqualStrings("\x1b[1;4;3;4;0&w", pendingOutput(&terminal));
 
@@ -479,16 +479,16 @@ test "locator button and filter events append DECLRP" {
 
     write(&stream, "\x1b[1;0'z\x1b[1;3'*{");
 
-    _ = encodeMouse(&terminal, .{ .kind = .press, .button = .left, .row = 1, .col = 2, .mod = 0, .buttons_down = 1 });
+    _ = encodeMouse(&terminal, .{ .kind = .press, .button = .left, .row = 1, .col = 2, .mod = .{}, .buttons_down = 1 });
     try std.testing.expectEqualStrings("\x1b[2;4;2;3;0&w", pendingOutput(&terminal));
 
     clearPendingOutput(&terminal);
-    _ = encodeMouse(&terminal, .{ .kind = .release, .button = .left, .row = 1, .col = 2, .mod = 0, .buttons_down = 0 });
+    _ = encodeMouse(&terminal, .{ .kind = .release, .button = .left, .row = 1, .col = 2, .mod = .{}, .buttons_down = 0 });
     try std.testing.expectEqualStrings("\x1b[3;0;2;3;0&w", pendingOutput(&terminal));
 
     clearPendingOutput(&terminal);
     write(&stream, "\x1b[2;2;2;2'w");
-    _ = encodeMouse(&terminal, .{ .kind = .move, .button = .none, .row = 3, .col = 3, .mod = 0, .buttons_down = 0 });
+    _ = encodeMouse(&terminal, .{ .kind = .move, .button = .none, .row = 3, .col = 3, .mod = .{}, .buttons_down = 0 });
     try std.testing.expectEqualStrings("\x1b[10;0;4;4;0&w", pendingOutput(&terminal));
 }
 
@@ -617,7 +617,7 @@ test "XTSAVE and XTRESTORE restore supported DEC private modes" {
     write(&stream, "\x1b[?1$p\x1b[?7$p\x1b[?25$p\x1b[?1004$p\x1b[?2004$p");
 
     const view = visibleView(&terminal, 0);
-    try std.testing.expectEqualStrings("\x1bOA", encodeKey(&terminal, input_keyboard.key_up, input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("\x1bOA", encodeKey(&terminal, .{ .named = .up }, .{}));
     try std.testing.expect(!view.screen.auto_wrap);
     try std.testing.expect(!view.cursor_visible);
     try std.testing.expectEqualStrings("\x1b[I", encodeFocusIn(&terminal));
@@ -632,18 +632,18 @@ test "application keypad modes affect keypad encoding and DECRQM" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try std.testing.expectEqualStrings("1", encodeKey(&terminal, input_keyboard.key_kp_1, input_keyboard.mod_none));
-    try std.testing.expectEqualStrings("\r", encodeKey(&terminal, input_keyboard.key_kp_enter, input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("1", encodeKey(&terminal, .{ .named = .keypad_1 }, .{}));
+    try std.testing.expectEqualStrings("\r", encodeKey(&terminal, .{ .named = .keypad_enter }, .{}));
 
     write(&stream, "\x1b=\x1b[?66$p");
     try std.testing.expect(input_encode.isApplicationKeypad(&terminal));
     try std.testing.expectEqualStrings("\x1b[?66;1$y", pendingOutput(&terminal));
-    try std.testing.expectEqualStrings("\x1bOq", encodeKey(&terminal, input_keyboard.key_kp_1, input_keyboard.mod_none));
-    try std.testing.expectEqualStrings("\x1bOM", encodeKey(&terminal, input_keyboard.key_kp_enter, input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("\x1bOq", encodeKey(&terminal, .{ .named = .keypad_1 }, .{}));
+    try std.testing.expectEqualStrings("\x1bOM", encodeKey(&terminal, .{ .named = .keypad_enter }, .{}));
 
     write(&stream, "\x1b>");
     try std.testing.expect(!input_encode.isApplicationKeypad(&terminal));
-    try std.testing.expectEqualStrings("1", encodeKey(&terminal, input_keyboard.key_kp_1, input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("1", encodeKey(&terminal, .{ .named = .keypad_1 }, .{}));
 }
 
 test "modifyOtherKeys set query disable and encoding" {
@@ -653,15 +653,15 @@ test "modifyOtherKeys set query disable and encoding" {
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    try std.testing.expectEqualStrings("a", encodeKey(&terminal, 'a', input_keyboard.mod_alt));
+    try std.testing.expectEqualStrings("a", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{ .alt = true }));
     write(&stream, "\x1b[>4;2m\x1b[?4m");
     try std.testing.expectEqual(@as(i8, 2), input_encode.modifyOtherKeys(&terminal));
     try std.testing.expectEqualStrings("\x1b[>4;2m", pendingOutput(&terminal));
-    try std.testing.expectEqualStrings("\x1b[27;3;97~", encodeKey(&terminal, 'a', input_keyboard.mod_alt));
-    try std.testing.expectEqualStrings("a", encodeKey(&terminal, 'a', input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("\x1b[27;3;97~", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{ .alt = true }));
+    try std.testing.expectEqualStrings("a", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{}));
 
     write(&stream, "\x1b[>4;3m");
-    try std.testing.expectEqualStrings("\x1b[27;1;97~", encodeKey(&terminal, 'a', input_keyboard.mod_none));
+    try std.testing.expectEqualStrings("\x1b[27;1;97~", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{}));
 
     write(&stream, "\x1b[>4n");
     try std.testing.expectEqual(@as(i8, -1), input_encode.modifyOtherKeys(&terminal));
@@ -677,7 +677,7 @@ test "xterm key format query reset and other-key encoding" {
     write(&stream, "\x1b[>4;1f\x1b[?4g\x1b[>4;1m");
     try std.testing.expectEqual(@as(u16, 1), input_encode.keyFormatOption(&terminal, 4));
     try std.testing.expectEqualStrings("\x1b[>4;1f", pendingOutput(&terminal));
-    try std.testing.expectEqualStrings("\x1b[97;3u", encodeKey(&terminal, 'a', input_keyboard.mod_alt));
+    try std.testing.expectEqualStrings("\x1b[97;3u", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{ .alt = true }));
 
     write(&stream, "\x1b[>4f\x1b[?4g");
     try std.testing.expectEqual(@as(u16, 0), input_encode.keyFormatOption(&terminal, 4));
