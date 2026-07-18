@@ -1,19 +1,6 @@
 const std = @import("std");
 
-/// Host physical-key identifier.
-pub const PhysicalKey = u32;
-
-/// Optional keyboard metadata attached to a key event.
-pub const KeyboardAlternateMetadata = struct {
-    physical_key: ?PhysicalKey = null,
-    produced_text_utf8: ?[]const u8 = null,
-    base_codepoint: ?u32 = null,
-    shifted_codepoint: ?u32 = null,
-    alternate_layout_codepoint: ?u32 = null,
-    text_is_composed: bool = false,
-};
-
-/// Named terminal key whose identity is distinct from Unicode input.
+/// Named physical key whose terminal identity is distinct from Unicode text.
 pub const NamedKey = enum {
     enter,
     tab,
@@ -67,29 +54,33 @@ pub const NamedKey = enum {
     keypad_enter,
 };
 
-/// Valid Unicode scalar used by a physical key event.
+/// Valid Unicode scalar produced by one physical key event.
 pub const UnicodeScalar = struct {
     value: u21,
 
-    /// Validate one Unicode scalar for key encoding.
+    /// Validate one scalar before it enters terminal keyboard encoding.
+    ///
+    /// Surrogate halves and values outside Unicode's scalar range are rejected.
     pub fn init(value: u21) error{InvalidUnicodeScalar}!UnicodeScalar {
         if (!std.unicode.utf8ValidCodepoint(value)) return error.InvalidUnicodeScalar;
         return .{ .value = value };
     }
 };
 
-/// Terminal key identity.
+/// Physical key identity consumed by terminal keyboard protocols.
 pub const Key = union(enum) {
     named: NamedKey,
     unicode: UnicodeScalar,
 
-    /// Construct a validated Unicode key identity.
+    /// Construct a Unicode key, rejecting non-scalar values.
     pub fn initUnicode(value: u21) error{InvalidUnicodeScalar}!Key {
         return .{ .unicode = try UnicodeScalar.init(value) };
     }
 };
 
-/// Shift, Alt, and Control state accepted by terminal protocols.
+/// Complete modifier state accepted by terminal keyboard and mouse protocols.
+///
+/// The packed representation has no spare bits, so every value is valid.
 pub const Modifier = packed struct(u3) {
     shift: bool = false,
     alt: bool = false,

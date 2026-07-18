@@ -10,14 +10,14 @@ fragmentation and indirect ownership are defects.
 | --- | ---: | --- |
 | Foot directness | 7/10 | The embedding root now exposes one state owner; screen behavior is still dispatched through broad structural helpers and CSI routing crosses six files. |
 | TigerBeetle defensiveness | 7/10 | Terminal dimensions now reject zero exactly, but many internal owner boundaries infer errors and structural `anytype` hides required state. |
-| Character/capability density | 7/10 | ABI projection and compatibility constants are gone; six terminal constructors and a broad implementation-public surface still dilute the engine. |
-| Ownership/cleanup | 7/10 | Core owners generally use `errdefer`/`deinit`; allocator provenance and resize/history rollback remain implicit across helpers. |
-| Exact failures | 6/10 | `Terminal` construction/resize now expose exact errors; `Screen` construction/resize, selection copying, and paste encoding still infer failures. |
-| Documentation | 3/10 | 63 `///` comments cover 502 non-FFI public declarations; almost every source file lacks `//!`; `design.md` names paths that do not exist. |
+| Character/capability density | 7/10 | ABI projection, compatibility constants, and four redundant Terminal constructors are gone; 643 public declarations across implementation modules still expose far more vocabulary than the one-symbol embedding root. |
+| Ownership/cleanup | 7/10 | Constructors and transactional Screen/Set resize have exhaustive allocation-failure cleanup proofs; history, host-state, and screen mechanics still rely heavily on structural helpers with ambient ownership. |
+| Exact failures | 6/10 | `Terminal` construction/resize, Screen/Set resize, input encoding, and consequence drains are exact; Screen construction, selection projection, and paste allocation still infer failures. |
+| Documentation | 3/10 | The tree has 101 `///` lines for 643 public declarations, and only 2 of 62 source files have `//!` owner contracts; many retained public implementation symbols remain undocumented. |
 | Hostile-input evidence | 6/10 | Limit and allocator-failure tests exist, plus deterministic random simulations, but no native fuzz target continuously feeds arbitrary bytes and operation sequences. |
 | Embedding surface | 7/10 | `src/howl_vt.zig` now exposes only `Terminal` and proves the current headless host path; additional contracts remain private until earned. |
 | Deliberate modification | 5/10 | `protocol_coverage.db` and simulations help, but no executable source-debt gates protect public docs, erased types, exact errors, or ABI absence. |
-| Source maturity | 6/10 | Strong protocol breadth and native tests remain, but stale design claims, broad erased helpers, and immature native contracts persist. |
+| Source maturity | 6/10 | Strong protocol breadth, native tests, and current design paths remain, but broad erased helpers, undocumented implementation-public symbols, and inferred internal failures persist. |
 
 ## Ordered offenders
 
@@ -88,7 +88,7 @@ fragmentation and indirect ownership are defects.
   `src/screen_set.zig:View`, `src/stream_terminal.zig:Stream`, and
   `src/howl_vt.zig`
 - Defect: 63 `///` comments cover 502 non-FFI public declarations. Public
-  methods such as `Terminal.feed`, `resize`, `surfaceSnapshot`, and selection
+  methods such as `Terminal.feed`, `surfaceSnapshot`, and selection
   mutation omit ownership, bounds, invalidation, and failure meaning. Almost
   every source file lacks `//!`.
 - Bars: documentation, deliberate modification, maturity
@@ -217,7 +217,7 @@ fragmentation and indirect ownership are defects.
 - Status: open
 - Path/symbol: `src/screen/history.zig:collectLogicalLines`,
   `appendProjectionRows`, `projectedRowCountForCells`;
-  `src/screen/resize.zig:collectLogicalLines`, `rewrapLogicalLines`,
+  `src/screen/resize.zig:collectLogicalLines`, `reflowLogicalLines`,
   `rebuildResizeAuthority`
 - Defect: logical-line collection, row projection, row-count arithmetic, and
   storage replacement are implemented in overlapping paths with erased owner
@@ -315,9 +315,9 @@ fragmentation and indirect ownership are defects.
 - Status: resolved
 - Path/symbol: `src/input/keyboard.zig:Key`, `NamedKey`, `UnicodeScalar`,
   `Modifier`; `src/input/event.zig:KeyEvent`
-- Defect: the C-era duplicate aliases are removed. The remaining native
-  vocabulary is still `Key = u32`, `Modifier = u8`, plus many public integer
-  constants, so invalid values and modifier bits are representable.
+- Defect: after the C-era aliases were removed, native input still used
+  `Key = u32`, `Modifier = u8`, and public integer constants, so Unicode values
+  collided with named keys and arbitrary modifier bits remained representable.
 - Bars: directness, density, embedding, documentation, maturity
 - Simpler shape: a tagged key identity separates named keys from validated
   Unicode scalars; a packed modifier value exposes only Shift, Alt, and Control.
@@ -332,12 +332,9 @@ fragmentation and indirect ownership are defects.
   aliases or conversion functions. `Key` is now `.named` or `.unicode`;
   `UnicodeScalar.init` validates scalar identity, and `Modifier` is a packed
   three-boolean value whose protocol arithmetic is private to the encoder.
+  Unused `PhysicalKey` and `KeyboardAlternateMetadata` declarations were
+  deleted rather than retained as speculative host metadata.
 - Depends on: VT-001, VT-003
-- Acceptance evidence: key identity and modifier bits use native typed
-  vocabulary; encoding tests cover valid values and explicit rejection of
-  invalid external integers at any future conversion boundary.
-- Observed progress: repository audit finds no `VTERM_` or duplicate mouse
-  aliases; enum completion is not claimed.
 
 ## Hardening loop
 

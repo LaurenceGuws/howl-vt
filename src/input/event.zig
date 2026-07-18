@@ -2,7 +2,7 @@ const std = @import("std");
 const keyboard = @import("keyboard.zig");
 const mouse = @import("mouse.zig");
 
-/// Physical key event with typed key identity and modifier state.
+/// Borrow-free physical key event with typed identity and complete modifiers.
 pub const KeyEvent = struct {
     key: keyboard.Key,
     mods: keyboard.Modifier = .{},
@@ -13,10 +13,11 @@ pub const FocusEvent = enum {
     out,
 };
 
-/// Host input accepted by the terminal embedding surface.
+/// Host input borrowed by one terminal encoding call.
 ///
 /// `bytes` carries committed text, while `key` carries a named or validated
-/// Unicode physical-key event for terminal keyboard protocol encoding.
+/// Unicode physical-key event for terminal keyboard protocol encoding. Byte
+/// and paste slices must remain valid until `Terminal.encodeInput` returns.
 pub const Event = union(enum) {
     bytes: []const u8,
     key: KeyEvent,
