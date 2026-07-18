@@ -575,6 +575,32 @@ test "screen: DECOM with DECSLRM makes cursor addressing margin-relative" {
     try std.testing.expectEqual(@as(u16, 1), s.cursor.col);
 }
 
+test "screen: dirty regions union partial columns and full rows" {
+    const allocator = std.testing.allocator;
+    var screen = try Grid.initWithCells(allocator, 3, 8);
+    defer screen.deinit(allocator);
+    screen.clearDirtyRows();
+
+    screen.markDirtyCols(2, 5, 3);
+    screen.markDirtyCols(2, 1, 4);
+    screen.markDirtyCols(0, 99, 6);
+
+    var dirty_rows = screen.peekDirtyRows().?;
+    try std.testing.expectEqual(@as(u16, 0), dirty_rows.start_row);
+    try std.testing.expectEqual(@as(u16, 2), dirty_rows.end_row);
+    try std.testing.expectEqual(@as(u16, 6), dirty_rows.dirty_cols_start[0]);
+    try std.testing.expectEqual(@as(u16, 7), dirty_rows.dirty_cols_end[0]);
+    try std.testing.expectEqual(@as(u16, 1), dirty_rows.dirty_cols_start[2]);
+    try std.testing.expectEqual(@as(u16, 5), dirty_rows.dirty_cols_end[2]);
+
+    screen.markDirtyRows(1, 2);
+    dirty_rows = screen.peekDirtyRows().?;
+    try std.testing.expectEqual(@as(u16, 0), dirty_rows.start_row);
+    try std.testing.expectEqual(@as(u16, 2), dirty_rows.end_row);
+    try std.testing.expectEqual(@as(u16, 0), dirty_rows.dirty_cols_start[1]);
+    try std.testing.expectEqual(@as(u16, 7), dirty_rows.dirty_cols_end[2]);
+}
+
 test "screen: SU scrolls only within configured region" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 4, 4);
