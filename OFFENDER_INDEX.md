@@ -1,485 +1,114 @@
 # Howl VT Offender Index
 
-Audited against the current native tree on 2026-07-18. The target is 10/10
-for every bar. File length is not a score: coherent large owners may remain;
-fragmentation and indirect ownership are defects.
+Audited from `8606bd5` on 2026-07-18. Scores measure executable ownership,
+failure, bounds, invariants, and proof. Comments and file size earn no points
+by themselves.
 
 ## Current score
 
 | Bar | Score | Blocking evidence |
 | --- | ---: | --- |
-| Foot directness | 7/10 | The embedding root exposes one state owner and SemanticEvent dispatches directly to concrete owners; protocol classification remains fragmented across CSI-family files. |
-| TigerBeetle defensiveness | 7/10 | Terminal dimensions now reject zero exactly, but many internal owner boundaries infer errors and structural `anytype` hides required state. |
-| Character/capability density | 8/10 | ABI projection, compatibility constants, redundant Terminal constructors, and 169 accidental public declarations are gone; remaining density work belongs to concrete owner boundaries. |
-| Ownership/cleanup | 7/10 | Constructors and transactional Screen/Set resize have exhaustive allocation-failure cleanup proofs; routed mutation now enters concrete Screen, Terminal, report, Kitty, or host owners without mirrored action unions. |
-| Exact failures | 6/10 | Curated Terminal operations, selection projection, Screen construction/resize, Set resize, and paste allocation now expose exact failures; inferred errors remain elsewhere in internal protocol and host-state owners. |
-| Documentation | 10/10 | All 57 source files state their owner boundary and every retained public declaration has a specific adjacent contract; the executable audit rejects drift. |
-| Hostile-input evidence | 6/10 | Limit and allocator-failure tests, deterministic simulations, and a native arbitrary-byte/operation fuzz target exist; bounded fuzz runs complete and preserve their corpus. |
-| Embedding surface | 7/10 | `src/howl_vt.zig` now exposes only `Terminal` and proves the current headless host path; additional contracts remain private until earned. |
-| Deliberate modification | 7/10 | `protocol_coverage.db`, simulations, and the source audit protect tested behavior, owner contracts, public documentation, and the one-symbol embedding root; erased-type and exact-error gates remain future work. |
-| Source maturity | 7/10 | Strong protocol breadth, native tests, current design paths, and complete owner documentation remain; broad erased helpers and inferred internal failures still block the final bar. |
+| Foot directness | 10/10 | Current control flow keeps protocol classification and execution direct; no concrete indirection defect is indexed. |
+| TigerBeetle defensiveness | 8/10 | Locator input now propagates operating failures and proves reuse; screen history and rectangle-copy mutation still silently discard allocation failures. |
+| Character/capability density | 10/10 | The root exports one direct native `Terminal` owner without compatibility layers or additional ownership machinery. |
+| Ownership/cleanup | 7/10 | Resize replacement is transactional, while runtime history retention can partially extend `open_history_line` before silently abandoning projection on allocation failure. |
+| Exact failures | 7/10 | `Terminal.encodeInput` now owns paste and locator-consequence failures; parser, OSC decode, and resize/history helpers still infer error sets. |
+| Documentation | 10/10 | The source audit covers every source owner and retained public declaration and guards the one-symbol embedding root. |
+| Hostile-input evidence | 7/10 | Native fuzzing covers bytes, resize, reset, inspection, and post-error reuse, but not typed input encoding, allocator failure during input, selection mutation, or output drains. |
+| Embedding surface | 10/10 | `src/howl_vt.zig` exports one directly owned native `Terminal`; current root-only integration proof exercises the accepted embedding shape. |
+| Deliberate modification | 7/10 | Unit, simulation, fuzz, coverage data, and source audits exist; exact-error, assertion-density, and inferred-discard audits remain manual. |
+| Source maturity | 8/10 | Protocol breadth and deterministic parsing are substantial; silent partial progress, inferred failure boundaries, and missing typed hostile-operation proof remain. |
 
 ## Ordered offenders
 
-### VT-001 — Premature C ABI obstructs the native model
+### VT-016 — Locator input turns operating failures into panics
 
 - Status: resolved
-- Path/symbol: `include/howl_vt.h`; `src/libhowl_vt.zig`; `src/ffi/`;
-  `test/abi.zig`; `test_abi.zig`; `test_ffi.zig`; ABI branches in `build.zig`
-  and `test_unit.zig`
-- Defect: a header, export root, 13 translation files, ABI build graph, and
-  ABI tests duplicate and freeze immature state/projection contracts.
-- Bars: directness, density, ownership, exact failures, embedding, maturity
-- Simpler shape: delete the entire current ABI. `src/howl_vt.zig` is the sole
-  embedding root. A future ABI, if earned, starts from scratch.
+- Path/symbol: `src/locator.zig:handleMouseEvent`;
+  `src/terminal.zig:Terminal.encodeInput`, `encodeMouseInput`
+- Defect: locator reports append to bounded heap-backed host output, but both
+  `OutOfMemory` and `ConsequenceLimit` are caught as `unreachable`.
+  `Terminal.encodeInput` consequently advertises only paste failures.
+- Bars: defensiveness, exact failures, hostile-input evidence, maturity
+- Shape: propagate the existing exact host consequence errors through mouse
+  input and combine them with paste errors at the terminal boundary.
+- Proof: allocation failure and output-capacity rejection return exact errors,
+  preserve pending output, leave locator state reusable, and never panic.
 - Depends on: nothing
-- Acceptance evidence: `rg -n
-  'howl_vt_|callconv\\(\\.c\\)|@export|c_abi|src/ffi|include/howl_vt.h|test[_/:]abi'
-  . --glob '!OFFENDER_INDEX.md'` finds no ABI surface, target, test, alias, or
-  compatibility shim;
-  `zig build check` and `zig build test` exercise native code only.
-- Observed: header, export root, 13 translation files, ABI build/tests, and
-  exported symbols deleted; repository audit is empty; native build/tests pass.
+- Resolution: `handleMouseEvent` returns `host_state.ApplyError` and mutates
+  one-shot/filter latches only after report publication succeeds.
+  `Terminal.InputError` combines exact paste and retained-consequence errors.
+  Direct tests induce locator allocation failure and a full 64 KiB output
+  queue, verify unchanged output, then prove successful reuse and one-shot
+  consumption.
 
-### VT-002 — ABI-only render projection duplicates terminal truth
+### VT-017 — Screen runtime mutation silently loses allocation failures
 
-- Status: resolved
-- Path/symbol: `src/render_state.zig:RenderState`;
-  `src/ffi/render_state.zig:FfiRenderState`
-- Defect: a 603-line copied render model and an 828-line reflective getter /
-  iterator translation layer duplicate cells, colors, cursor, selection,
-  dirty state, and allocation ownership. Outside tests, `RenderState` is used
-  only by the ABI.
-- Bars: directness, density, ownership, embedding, maturity
-- Simpler shape: delete the ABI translation and its ABI-only copied state;
-  native embedders consume a documented borrowed snapshot/view owned by
-  `Terminal`.
-- Depends on: VT-001
-- Acceptance evidence: no `render_state` import remains; native snapshot,
-  dirty acknowledgement, selection, hyperlink, and color tests pass against
-  terminal-owned views.
-- Observed: both render projection files and imports deleted; native terminal
-  surface tests pass.
+- Status: open
+- Path/symbol: `src/screen.zig:storeHistoryRow`, `copyRect`
+- Defect: history retention may partially extend an open logical line before
+  projection allocation fails; rectangular copy silently ignores temporary
+  allocation failure. Callers cannot distinguish applied, rejected, and
+  partially retained mutations.
+- Bars: defensiveness, ownership, exact failures, hostile-input evidence
+- Shape: make each mutation transactional or propagate its exact operating
+  failure through semantic routing and `Terminal.feed`.
+- Proof: exhaustive allocation failure leaves screen authority and projection
+  paired, then accepts a succeeding mutation.
+- Depends on: VT-016 establishes operating-error propagation at another
+  terminal boundary
 
-### VT-003 — Native embedding root is both broad and incomplete
+### VT-019 — Allocation owners expose inferred failure sets
 
-- Status: resolved
-- Path/symbol: `src/howl_vt.zig:Terminal`
-- Defect: the root exposed parser, owned-action, and screen-set implementation
-  namespaces wholesale even though the only external consumer uses the
-  terminal owner.
-- Bars: directness, density, documentation, embedding, maturity
-- Simpler shape: expose `Terminal` only; keep parser and screen implementation
-  modules private until an external embedding requirement earns them.
-- Depends on: VT-001, VT-002
-- Acceptance evidence: one native integration test imports only `howl_vt` and
-  can initialize, feed, observe, acknowledge, select/copy, encode input, drain
-  output and host consequences, resize, and deinitialize without importing
-  repository paths.
-- Observed: `Parser`, `ParserOwnedActions`, and `ScreenSet` were removed from
-  the root. The root-only test proves initialize, feed, semantic snapshot,
-  acknowledge, selection/copy, mode-aware paste encoding, pending reply drain,
-  clipboard-consequence drain, resize, and cleanup.
+- Status: open
+- Path/symbol: `src/parser.zig:Parser.init`;
+  `src/stream_terminal.zig:DcsCapture.start`, `put`,
+  `TerminalStreamState.initAlloc`; `src/osc.zig:decodeClipboardSet`;
+  `src/screen/resize.zig:reflowLogicalLines`, `allocResizeBuffers`;
+  `src/screen.zig:collectLogicalSnapshot`
+- Defect: these allocation and decode boundaries infer their error sets, so
+  callers cannot review the complete failure vocabulary from the owner
+  contract and implementation changes can widen it silently.
+- Bars: defensiveness, exact failures, deliberate modification
+- Shape: give each owner the smallest exact error set supported by its current
+  operations, preserving direct propagation through existing callers.
+- Proof: compile-time assignments pin each public boundary to its declared
+  errors and direct tests exercise each reachable failure.
+- Depends on: VT-017 for the screen mutation chain; parser, stream, and OSC
+  owners are independent
 
-### VT-004 — Public source is largely undocumented
+### VT-020 — Native hostile proof omits typed host operations
 
-- Status: resolved
-- Path/symbol: repository-wide; immediately `src/terminal.zig:Terminal`,
-  `src/screen_set.zig:View`, `src/stream_terminal.zig:Stream`, and
-  `src/howl_vt.zig`
-- Defect: retained public declarations lacked contracts for ownership, bounds,
-  invalidation, and failure meaning, while almost every source file lacked an
-  owner boundary.
-- Bars: documentation, deliberate modification, maturity
-- Simpler shape: reduce accidental `pub`; document every retained public owner
-  and non-obvious local invariant where it lives.
-- Depends on: VT-001 through VT-003, so deleted/transient symbols are not
-  documented
-- Acceptance evidence: an audit lists no undocumented retained public symbol
-  or owned file; comments match executable tests and current paths.
-- Resolution: compiler-checked unit, simulation, fuzz, benchmark, and native
-  embedding paths reduced source visibility from 571 to 402 public
-  declarations without aliases. All 57 source files and every retained public
-  declaration now carry current contracts. `tools/audit_source.sh` enforces
-  both requirements and keeps `src/howl_vt.zig` limited to the single
-  `Terminal` export through the `zig build check` gate.
+- Status: open
+- Path/symbol: `test/fuzz_terminal.zig:fuzzTerminal`
+- Defect: the current operation model generates feed, resize, reset, and
+  inspect only. Keyboard, mouse, focus, paste, selection, drain, acknowledge
+  rejection, and allocator-failure transitions are absent.
+- Bars: defensiveness, hostile-input evidence, deliberate modification
+- Shape: extend the bounded native operation vocabulary only as each public
+  owner gains exact invariants and failure semantics.
+- Proof: generated typed operations assert bounds, ownership, post-error reuse,
+  and deinitialization through the curated root.
+- Depends on: VT-016; screen allocation transitions depend on VT-017
 
-### VT-005 — Terminal construction had six overlapping paths
+### VT-021 — Source safety properties remain manually audited
 
-- Status: resolved
-- Path/symbol: `src/terminal.zig:Terminal.init`,
-  `Terminal.initWithHistory`
-- Defect: callers chose between cursor-only and storage-backed states through
-  six names. Constructor-time cursor style and a cursor-only terminal were
-  exposed despite having no production or native embedding requirement.
-- Bars: directness, density, bounds, invariants, exact failures, embedding
-- Simpler shape: one direct storage-backed initializer and one initializer for
-  the demonstrated distinct bounded-history ownership mode, both with exact
-  invalid-dimension/allocation failures.
-- Depends on: VT-003
-- Acceptance evidence: `test/unit/terminal_test.zig` proves exact zero-dimension
-  errors and exhaustively injects failure at every allocation point for both
-  retained constructors. A compile-time invariant proves every `u16` row/column
-  product fits the grid's `u32` count and `usize`; allocator size failure remains
-  exact `error.OutOfMemory`.
-- Resolution: `Terminal.init` now always owns primary and alternate storage;
-  `Terminal.initWithHistory` adds bounded primary history. The four option or
-  cursor-only variants and `InitOptions` are deleted without aliases.
-- Caller audit:
-  - `initWithOptions`, `initWithCellsAndOptions`, and
-    `initWithCellsHistoryAndOptions` have zero callers.
-  - Cursor-only `init` has six calls, all tests: one invalid-dimension proof,
-    one mode test, and four allocator-failure probes that do not require a
-    cursor-only ownership mode.
-  - `initWithCells` has 86 in-repository calls and is the only constructor used
-    by howl-headless.
-  - `initWithCellsAndHistory` has 16 calls across tests, simulations, and
-    benchmarks; retained history is a demonstrated distinct capability.
-  - Configurable initial cursor style has no Terminal constructor caller.
-    Cursor-style behavior is exercised through screen/protocol mutation.
-- Audit conclusion: cursor-only Terminal state and constructor-time cursor
-  style are test conveniences, not production or native embedding
-  requirements. Two storage-backed entrypoints are earned: without history
-  and with bounded history.
-
-### VT-006 — Owner-boundary failures are inferred
-
-- Status: resolved
-- Path/symbol: `src/screen.zig` storage-backed constructors;
-  `src/input/encode.zig:encodePaste`
-- Defect: `!T` and `!void` hide whether failure means invalid input, overflow,
-  allocation failure, retained-state limit, or internal inconsistency.
-- Bars: defensiveness, exact failures, embedding, deliberate modification
-- Simpler shape: each public owner declares its exact error set; internal
-  helpers narrow or translate failures at the owning boundary.
-- Depends on: VT-003, VT-005
-- Acceptance evidence: no inferred error union remains on the curated native
-  surface; tests assert each public failure and unchanged/valid post-failure
-  state.
-- Observed progress: the curated Terminal surface now has exact errors for
-  construction, feed, runtime progress, resize, selection copying, input
-  encoding, hyperlink lookup, and pending consequence drains. Screen/Set
-  resize expose only `error.OutOfMemory` and have transactional failure proofs.
-  `selection_projection.CopyError` now owns exact UTF-8/allocation failures;
-  exhaustive allocation injection proves selection/content remain usable, and
-  invalid stored codepoints return errors rather than trapping.
-- Resolution: `Screen.InitError` is the storage owner's exact
-  `error{InvalidDimensions, OutOfMemory}` set. Direct tests reject zero rows or
-  columns; the only zero-sized caller uses the distinct nonallocating
-  cursor-only `Screen.init`. Existing Terminal constructor failure injection
-  retains cleanup evidence across every Screen allocation point. `encodePaste`
-  owns `PasteError`, distinguishing `LengthOverflow` from `OutOfMemory`; its
-  production length helper has a direct overflow test. Plain paste still
-  borrows without allocation, bracketed paste owns the fixed CSI 200/201 pair,
-  failure returns no partial owner, and both successful variants accept one
-  `Encoded.deinit`. `Terminal.encodeInput` exposes `PasteError` unchanged.
-
-### VT-007 — Structural `anytype` erases screen and terminal ownership
-
-- Status: resolved
-- Path/symbol: `src/report.zig:formatOutput`,
-  `src/locator.zig:formatOutput`, `src/osc_color.zig:formatOscReply`.
-  Repository total: 3 intentional occurrences across 3 files;
-  `src/input/encode.zig`, `src/host_state.zig`,
-  `src/kitty/state.zig`, `src/selection.zig`, and
-  `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
-  `src/screen/dirty.zig`, `src/screen/erase.zig`,
-  `src/screen/style.zig`,
-  `src/screen/rect.zig`, `src/screen/history.zig`, and
-  `src/screen/resize.zig` now have zero.
-- Defect: helpers accept undeclared field/method shapes, making dependencies,
-  mutation authority, and compile failures implicit. This is indirection even
-  when the helper body is small.
-- Bars: directness, defensiveness, ownership, deliberate modification,
-  maturity
-- Simpler shape: methods on concrete owners or narrow named value parameters;
-  generics remain only where multiple proven owner types require them.
-- Depends on: VT-003, then owner-by-owner
-- Acceptance evidence: every retained `anytype` has at least two concrete,
-  intentional callers and a documented reason; owner tests compile through
-  explicit types.
-- Observed progress: `Terminal.encodeInput` now directly orchestrates its
-  public Event, modes, Kitty flags, locator consequences, allocator, and
-  scratch lifetime. It calls the pure keyboard/mouse encoders directly;
-  newline adjustment, focus markers, and locator routing stay with Terminal.
-  `src/input/encode.zig` retains only Scratch copying and paste allocation
-  ownership, with zero `anytype`. Flattened dependency lists and four
-  field-proxy query helpers were deleted; no context/config wrapper was added.
-  `host_state.State` now owns consequence retention through concrete methods
-  and one lifetime allocator; Terminal drains and bounded title replacement
-  call State directly. Four terminal-mode proxies and the structural title
-  helper were deleted, while shared bounded output-list mechanics retain
-  narrow `*std.ArrayList(u8)` parameters. Kitty global and active-screen
-  queries are concrete owner methods; active-screen queries receive only the
-  explicit `alt_active` domain fact. Five test-only selection forwarders were
-  deleted; tests exercise Terminal's existing concrete selection surface.
-  Five cursor boundary calculations now live directly on concrete Screen;
-  `screen/cursor.zig` retains only cursor value state and behavior. Screen now
-  owns its three margin mutations directly; the empty structural margins
-  module was deleted. Seven tab behaviors now live directly on Screen, while
-  `screen/tabs.zig` retains only typed buffer allocation/default/copy
-  mechanics. Four dirty-region mutations now live directly on Screen, while
-  `screen/dirty.zig` retains typed dirty-state allocation and projection
-  mechanics. The complete write path now lives on Screen; the empty
-  structural write module was deleted. Seven scrolling operations now live
-  directly on Screen; the empty structural scroll module was deleted. The
-  complete edit path now lives on Screen; the empty structural edit module
-  was deleted. Nine erase behaviors now live directly on Screen;
-  `screen/erase.zig` retains only the shared `EraseMode` value definition.
-  The complete SGR path now lives on Screen; `screen/style.zig` retains only
-  the typed rectangular-attribute operation used by `screen/rect.zig`.
-  The exhaustive canonical SemanticEvent dispatch and its eight Screen
-  mutation groups live on concrete Screen; the duplicate ScreenAction file
-  was deleted.
-  Four rectangular mutations now live on concrete Screen;
-  `screen/rect.zig` retains only typed protocol/request values, while the
-  narrow cell-attribute algorithm remains typed in `screen/style.zig`.
-  Eight history ring/projection queries now live on concrete Screen; history
-  mutation and resize callers invoke those typed methods directly.
-  Runtime history retention, pruning, projection growth/replacement, ring
-  advancement, authority cleanup, and projection rebuild now live on
-  concrete Screen. `storeHistoryRow` retains its silent allocation-failure
-  and partial-progress ordering.
-  One concrete `Screen.collectLogicalSnapshot` now owns retained/open/visible
-  ordering, cursor metadata, wrap joining, and trailing-empty normalization.
-  Resize and canonical-content tests consume the same owned snapshot.
-  Resize computation now uses typed temporary values and a checked
-  `count32(usize)` conversion. Screen now owns detached replacement
-  construction, buffer installation, history authority replacement, and
-  cursor restoration; resize retains only typed computation and temporary
-  ownership. Terminal now owns mode mutation, DEC/ANSI changes, mode
-  save/restore, and screen-switch orchestration directly. `mode.zig` retains
-  only typed protocol actions, state/value vocabulary, and pure bounded
-  query/storage mechanics, with zero `anytype`. Route application now accepts
-  only concrete `*Terminal`, and OSC mapping accepts concrete parser
-  `OscAction`; `route.zig` has zero structural generics. Report application
-  now accepts only concrete `*Terminal`. Its retained `formatOutput` generic
-  is direct `std.fmt.bufPrint` use instantiated by intentional one-, two-, and
-  four-value argument tuples with decimal and hexadecimal formats. Host
-  consequence application now accepts only concrete `*Terminal`;
-  `host_apply.zig` has zero structural generics while `host_state.State`
-  retains allocator-bound consequence ownership and rollback. Kitty
-  application now accepts only concrete `*Terminal`; Kitty modules retain
-  their bounded state/value mechanics and `kitty/apply.zig` has zero
-  structural generics. An unused ScreenSet projection helper and both of its
-  unproven output/map generics were deleted without replacement. Kitty
-  keyboard reporting now formats its sole fixed `u32` value directly, with no
-  generic helper. CSI parameter length conversion now accepts its exact
-  `[]const i32` parser boundary while retaining the checked `usize` to `u32`
-  assertion. OSC accumulation now checks and converts its concrete byte
-  buffer length directly at the policy-limit comparison.
-- Resolution: every structural generic was removed. The three retained
-  formatting generics directly call `std.fmt.bufPrint`: report uses
-  `{i8}`, `{u8,u16}`, `{u16}`, `{u16,u16}`, `{u16,u8}`, `{u8,u8}`,
-  `{u8,u32}`, and `{u8,u32,u32,u32}` tuples; locator uses `{}` and
-  `{u16,u16,u32,u32}`; OSC color uses `{u3}`, `{u8}`, and `{u16}`.
-
-### VT-008 — Screen mutation is fragmented by mechanics, not owners
-
-- Status: resolved
-- Path/symbol: `src/screen.zig` is the sole Screen mutation authority;
-  `src/screen/history.zig` retains values/arithmetic and
-  `src/screen/resize.zig` retains typed computation/temporary storage
-- Defect: one `Screen` authority is spread across structural helpers that
-  reach into its fields through `anytype`. Mutation and invariants require
-  cross-file reconstruction; file smallness has displaced ownership.
-- Bars: directness, density, ownership, invariants, maturity
-- Simpler shape: group behavior by coherent state owner. A large `Screen`
-  implementation is acceptable; split only independently owned state or
-  algorithms with explicit typed inputs/outputs.
-- Depends on: VT-007
-- Acceptance evidence: each screen field has one evident mutation owner;
-  helpers do not gain ambient structural access; cursor/margin/history/dirty
-  invariants are asserted after mutation and resize.
-- Resolution: no helper outside `screen.zig` receives structural Screen
-  access. Resize buffers transfer exactly once through `ResizeBuffers.take`;
-  replacement failure deinitializes only detached state. Existing mutation,
-  resize, history, and exhaustive allocation tests prove field invariants and
-  source/pair transactionality.
-
-### VT-009 — CSI/event routing crosses redundant vocabularies
-
-- Status: resolved
-- Path/symbol: `src/csi.zig`, `csi_plain.zig`, `csi_private.zig`,
-  `csi_intermediate.zig`, `csi_leader.zig`, `semantic_event.zig`,
-  `route.zig`, `screen.zig`, `terminal.zig`, `report.zig`,
-  `kitty/apply.zig`, `host_apply.zig`
-- Defect: resolved; parser classifiers previously produced SemanticEvent,
-  which route translated into five mirrored action unions before concrete
-  owners could mutate state.
-- Bars: directness, density, deliberate modification, maturity
-- Simpler shape: parser syntax remains pure and classifies once into canonical
-  SemanticEvent; route dispatches that event directly to concrete owners.
-- Depends on: VT-007; audit protocol coverage before changing mappings
-- Acceptance evidence: every retained dispatch hop names an owner boundary;
-  protocol mapping and terminal end-to-end tests preserve supported controls.
-- Resolution: ScreenAction, ModeAction, ReportAction, KittyAction, HostAction,
-  and all five conversion switches were deleted. SemanticEvent is consumed
-  directly by Screen, Terminal mode ownership, report emission, Kitty state,
-  and host consequence ownership. Route has one exhaustive owner switch.
-  Cursor-color controls retain their canonical color event while route applies
-  both the derived Screen cursor mutation and host color consequence.
-
-### VT-010 — History and resize duplicate reflow mechanics
-
-- Status: resolved
-- Path/symbol: `src/screen/resize.zig:reflowLogicalLines`;
-  `src/screen.zig:rebuildResizeAuthority`, `installResizeProjection`
-- Defect: resolved; resize previously reflowed once for the viewport, then
-  rebuilt projected history by rewrapping reconstructed authority.
-- Bars: density, ownership, cleanup, bounds, invariants, maturity
-- Simpler shape: one typed resize reflow supplies the viewport, retained
-  authority boundary, and projected bounded history; runtime scroll projection
-  remains independently owned by Screen.
-- Depends on: VT-007, VT-008
-- Acceptance evidence: resize performs one logical snapshot and one reflow;
-  projected history installs directly from that typed result. Allocation
-  failure at every temporary and installation boundary leaves the original
-  screen valid and leak-free; randomized scrollback/resize simulation passes.
-- Observed progress: duplicate history/resize logical collectors were deleted.
-  One owned `LogicalSnapshot` and `LogicalLine.deinit` now provide exact
-  line-by-line rollback and cursor metadata to both resize and its canonical
-  content test. History projection and resize reflow now share one
-  zero-aware `rowCountForCells`; duplicate generic count conversion and
-  resize-local row-count arithmetic were deleted. Replacement installation
-  and bounded projected history now consume that same reflow result directly;
-  no second snapshot, reflow, or authority reprojection occurs during resize.
-
-### VT-011 — Retained protocol state has coarse oversized bounds
-
-- Status: resolved
-- Path/symbol: `src/parser.zig`, `src/parser/string_control.zig`,
-  `src/stream_terminal.zig`, `src/host_state.zig`, `src/kitty/state.zig`,
-  `src/kitty/apply.zig`
-- Defect: resolved; parser acceptance, discarded streaming controls, and
-  retained host consequences previously shared coarse metadata, 1 MiB, and
-  65 MiB buckets without matching protocol ownership.
-- Bars: bounds, ownership, density, hostile-input evidence, maturity
-- Simpler shape: protocol-family limits sized from native ownership and
-  retention behavior; streaming or rejection where bulk payload ownership
-  does not belong in VT.
-- Depends on: VT-003 and protocol-owner audit
-- Acceptance evidence: each retained payload limit has a concrete consumer and
-  boundary test at limit-1/limit/limit+1; rejected input resets parser state
-  and does not retain partial payloads.
-- Resolution: ordinary OSC and DCS metadata accepts 2 KiB, matching Ghostty's
-  fixed OSC buffer scale. Titles retain 1 KiB. OSC 52 alone accepts and retains
-  one unchunked 1 MiB clipboard packet. Kitty OSC 5113 and 5522 accept and
-  retain 8 KiB packets, covering their specified 4096-byte decoded chunks plus
-  base64 and command metadata. APC and PM payload bytes stream to their
-  terminators without allocation or retained counters because Howl implements
-  neither protocol family. Pending replies stop at 64 KiB. DCS payloads,
-  hyperlink URIs, shell marks, notification parts, and text-size requests stop
-  at 2 KiB. Howl's local notification policy retains at most 128 requests per
-  terminal lifetime, bounding allocation count without attributing that choice
-  to Kitty. Native fuzzing also exposed SOS entering the shared string state
-  without an exact parser kind; SOS now has distinct parser phases while
-  production streams and discards its bytes. Exact boundary, replacement
-  rollback, parser reuse, ignored-stream continuation, simulation, and native
-  fuzz gates exercise the resulting owners. The root unit-test index now
-  includes every `test/unit/**/*_test.zig` file; the duplicate nested index was
-  removed after it hid terminal-surface and terminal-cursor proofs from
-  `zig build test`.
-
-### VT-012 — Resize/history replacement was not transactional
-
-- Status: resolved
-- Path/symbol: `src/screen.zig:Screen.prepareResize`,
-  `replaceHistoryAuthority`, and `installResizeProjection`;
-  `src/screen_set.zig:Set.resize`
-- Defect: resize installed visible buffers before history authority/projection
-  allocation completed, and `Set.resize` committed primary before preparing
-  alternate. Failure could leave one Screen partially replaced or the pair at
-  divergent dimensions. History clones also leaked if destination append
-  failed.
-- Bars: defensiveness, ownership, cleanup, hostile-input evidence
-- Simpler shape: prepare complete replacement state, validate it, then swap
-  once; one deinitializer for every temporary owner.
-- Depends on: VT-002, VT-010
-- Acceptance evidence: `std.testing.checkAllAllocationFailures` covers each
-  retained transactional owner and verifies the pre-operation state remains
-  usable after every failure.
-- Resolution: `prepareResize` builds a complete replacement Screen without
-  mutating its source. `Screen.resize` swaps one completed replacement;
-  `Set.resize` prepares both screens before either swap and deinitializes old
-  storage only after commit. Failure injection covers Screen directly and a
-  history-enabled Terminal in both active-screen modes, proving dimensions,
-  content/history, selection, configured cursor defaults, margins, active mode,
-  and publication generation remain unchanged and usable after failure.
-
-### VT-013 — Hostile-input testing is simulation-only, not a fuzz boundary
-
-- Status: resolved
-- Path/symbol: `test/fuzz_terminal.zig`; `build.zig:fuzz:terminal`
-- Defect: deterministic random simulations cover selected generated actions,
-  and unit tests cover known limits, but arbitrary byte chunking, malformed
-  UTF-8/control interleaving, resize/feed sequences, and post-error reuse are
-  not continuously explored through the native embedding root.
-- Bars: defensiveness, hostile-input evidence, deliberate modification,
-  maturity
-- Simpler shape: one native fuzz entry feeds arbitrary bytes and bounded model
-  operations directly into `Terminal`, asserting state invariants and cleanup.
-- Depends on: VT-003, VT-005, VT-006
-- Acceptance evidence: ordinary `zig build test` runs the empty corpus through
-  the public `howl_vt` root. `zig build fuzz:terminal --fuzz=<iterations>`
-  coverage-guides bounded arbitrary byte feeds and feed/resize/reset/reuse
-  sequences through real Terminal ownership. Zig persists an exact crashing
-  input at the reported cache path; adding that file through
-  `FuzzInputOptions.corpus` replays it. Every input deinitializes Terminal and
-  is leak-checked by the Zig test runner.
-- Observed proof: the Terminal artifact alone uses the repository-local Zig
-  0.16 server runner with its error-return trace call corrected. A bounded
-  coverage-guided run entered `Terminal.feed`, resumed its existing cache from
-  382 to 1,670 runs, increased coverage from 1,435 to 1,643 of 13,798
-  instrumented points, and exited successfully.
-
-### VT-014 — Design and package metadata describe dead structure
-
-- Status: resolved
-- Path/symbol: `design.md`; `README.md`; `build.zig.zon:.version`
-- Defect: design names nonexistent `src/ffi.zig`, `src/action/`, `src/host/`,
-  `src/selection/state.zig`, and `src/xterm/`; current prose centers C ABI;
-  package version remains `0.0.0`.
-- Bars: documentation, embedding, deliberate modification, maturity
-- Simpler shape: development version `0.1.x-dev`; docs describe only current
-  native owners and explicitly defer any future external ABI design.
-- Depends on: VT-001 so deleted structure is not rewritten twice
-- Acceptance evidence: every documented path exists; package/version docs
-  agree; repository-wide search finds no claim that a current C ABI exists.
-- Observed: stale owner paths removed, current fragmented paths named
-  explicitly, package and README agree on `0.1.0-dev`, and only native
-  embedding is described.
-
-### VT-015 — Input vocabulary was integerly typed
-
-- Status: resolved
-- Path/symbol: `src/input/keyboard.zig:Key`, `NamedKey`, `UnicodeScalar`,
-  `Modifier`; `src/input/event.zig:KeyEvent`
-- Defect: after the C-era aliases were removed, native input still used
-  `Key = u32`, `Modifier = u8`, and public integer constants, so Unicode values
-  collided with named keys and arbitrary modifier bits remained representable.
-- Bars: directness, density, embedding, documentation, maturity
-- Simpler shape: a tagged key identity separates named keys from validated
-  Unicode scalars; a packed modifier value exposes only Shift, Alt, and Control.
-- Acceptance evidence: encoding tests distinguish Unicode codepoint 1 from the
-  formerly colliding Enter value, reject surrogate construction, cover every
-  modifier combination, and exercise control, navigation, editing, function,
-  keypad, and modifier-only named-key classes. Existing mode tests preserve
-  Kitty keyboard, modify-other-keys, application cursor/keypad, and mouse
-  modifier behavior. The root-only embedding test sends a typed named key and
-  committed Unicode text through `Terminal.InputEvent`.
-- Resolution: all public `key_*` and `mod_*` integers are deleted without
-  aliases or conversion functions. `Key` is now `.named` or `.unicode`;
-  `UnicodeScalar.init` validates scalar identity, and `Modifier` is a packed
-  three-boolean value whose protocol arithmetic is private to the encoder.
-  Unused `PhysicalKey` and `KeyboardAlternateMetadata` declarations were
-  deleted rather than retained as speculative host metadata.
-- Depends on: VT-001, VT-003
+- Status: open
+- Path/symbol: `tools/audit_source.sh`; repository-wide
+- Defect: the executable audit protects owner contracts and public
+  declarations only. Inferred error unions, discarded fallible results,
+  `anytype`, and assertion gaps can enter silently.
+- Bars: defensiveness, exact failures, deliberate modification, maturity
+- Shape: add narrow executable checks only after each forbidden pattern has a
+  proven exception model; avoid brittle text policy pretending to prove
+  semantics.
+- Proof: each gate rejects one intentionally introduced violation and accepts
+  every documented exception.
+- Depends on: VT-017, VT-019, and VT-020 establish the accepted patterns
 
 ## Hardening loop
 
-For each offender: confirm the cited code still exists, make one owner-sized
-change, add only evidence that exercises the changed boundary, run native
-format/build/tests plus the relevant simulation, update status and score only
-from observed evidence, then commit. Newly discovered concrete debt is added
-with a path and symbol before it is changed.
+Confirm each cited defect against the live source, implement one coherent
+owner slice, add evidence at its real boundary, run format/check/unit,
+simulation, fuzz, audit, and diff gates, then update scores only from observed
+behavior.

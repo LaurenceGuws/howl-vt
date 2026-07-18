@@ -42,6 +42,8 @@ pub const Terminal = struct {
     pub const InputScratch = input_encode.Scratch;
     /// Returns encoded input with explicit borrowed-or-owned byte lifetime.
     pub const EncodedInput = input_encoded.Encoded;
+    /// Reports paste construction or bounded locator-report retention failure.
+    pub const InputError = input_encode.PasteError || host_state.ApplyError;
 
     const ScreenSet = screen_set.Set;
 
@@ -518,17 +520,19 @@ pub const Terminal = struct {
     /// Non-paste results borrow `scratch` or event bytes. Paste encoding may
     /// allocate through `allocator`; callers must always call `deinit` on the
     /// returned value. Paste length overflow is reported separately from
-    /// allocator exhaustion.
+    /// allocator exhaustion. Mouse input may also fail while retaining a
+    /// bounded locator report; failure preserves pending output and report
+    /// latches.
     pub fn encodeInput(
         self: *Terminal,
         allocator: std.mem.Allocator,
         scratch: *InputScratch,
         event: InputEvent,
-    ) input_encode.PasteError!EncodedInput {
+    ) InputError!EncodedInput {
         return switch (event) {
             .bytes => |bytes| .{ .bytes = bytes },
             .key => |key| .{ .bytes = self.encodeKeyInput(scratch, key) },
-            .mouse => |mouse| .{ .bytes = self.encodeMouseInput(scratch, mouse) },
+            .mouse => |mouse| .{ .bytes = try self.encodeMouseInput(scratch, mouse) },
             .focus => |focus| .{ .bytes = self.encodeFocusInput(scratch, focus) },
             .paste => |text| input_encode.encodePaste(self.modes.bracketed_paste, allocator, text),
         };
@@ -553,8 +557,8 @@ pub const Terminal = struct {
         return encoded;
     }
 
-    fn encodeMouseInput(self: *Terminal, scratch: *InputScratch, event: input_mouse.MouseEvent) []const u8 {
-        locator.handleMouseEvent(&self.host.locator, self.allocator, &self.host.pending_output, scratch.buf[0..], event);
+    fn encodeMouseInput(self: *Terminal, scratch: *InputScratch, event: input_mouse.MouseEvent) host_state.ApplyError![]const u8 {
+        try locator.handleMouseEvent(&self.host.locator, self.allocator, &self.host.pending_output, scratch.buf[0..], event);
         const encoded = input_mouse.encodeMouse(scratch.buf[0..], event, self.modes.mouse_tracking, self.modes.mouse_protocol);
         std.debug.assert(encoded.len <= scratch.buf.len);
         return encoded;

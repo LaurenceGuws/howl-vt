@@ -500,6 +500,83 @@ test "locator button and filter events append DECLRP" {
     try std.testing.expectEqualStrings("\x1b[10;0;4;4;0&w", pendingOutput(&terminal));
 }
 
+test "locator mouse allocation failure is exact and preserves one-shot reporting" {
+    const setup = "\x1b[2;0'z\x1b[1'*{";
+    const event: input_mouse.MouseEvent = .{
+        .kind = .press,
+        .button = .left,
+        .row = 1,
+        .col = 2,
+        .mod = .{},
+        .buttons_down = 1,
+    };
+
+    var probe_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    {
+        var terminal = try Terminal.init(probe_allocator.allocator(), 4, 8);
+        defer terminal.deinit();
+        var stream = try StreamHarness.init(&terminal);
+        try stream.nextSlice(setup);
+    }
+
+    var failing_allocator = std.testing.FailingAllocator.init(
+        std.testing.allocator,
+        .{ .fail_index = probe_allocator.alloc_index },
+    );
+    var terminal = try Terminal.init(failing_allocator.allocator(), 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    try stream.nextSlice(setup);
+
+    try std.testing.expectError(
+        error.OutOfMemory,
+        terminal.encodeInput(failing_allocator.allocator(), &encode_scratch, .{ .mouse = event }),
+    );
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+
+    failing_allocator.fail_index = std.math.maxInt(usize);
+    var encoded = try terminal.encodeInput(failing_allocator.allocator(), &encode_scratch, .{ .mouse = event });
+    encoded.deinit();
+    try std.testing.expectEqualStrings("\x1b[2;4;2;3;0&w", pendingOutput(&terminal));
+
+    clearPendingOutput(&terminal);
+    encoded = try terminal.encodeInput(failing_allocator.allocator(), &encode_scratch, .{ .mouse = event });
+    encoded.deinit();
+    try std.testing.expectEqualStrings("", pendingOutput(&terminal));
+}
+
+test "locator mouse output limit is exact and preserves pending output" {
+    const allocator = std.testing.allocator;
+    var terminal = try Terminal.init(allocator, 4, 8);
+    defer terminal.deinit();
+    var stream = try StreamHarness.init(&terminal);
+    try stream.nextSlice("\x1b[1;0'z\x1b[1'*{");
+
+    const fill = try allocator.alloc(u8, host_state.pending_output_max_bytes);
+    defer allocator.free(fill);
+    @memset(fill, 'x');
+    try terminal.host.appendPendingOutput(fill);
+
+    const event: input_mouse.MouseEvent = .{
+        .kind = .press,
+        .button = .left,
+        .row = 1,
+        .col = 2,
+        .mod = .{},
+        .buttons_down = 1,
+    };
+    try std.testing.expectError(
+        error.ConsequenceLimit,
+        terminal.encodeInput(allocator, &encode_scratch, .{ .mouse = event }),
+    );
+    try std.testing.expectEqual(@as(usize, host_state.pending_output_max_bytes), pendingOutput(&terminal).len);
+
+    clearPendingOutput(&terminal);
+    var encoded = try terminal.encodeInput(allocator, &encode_scratch, .{ .mouse = event });
+    defer encoded.deinit();
+    try std.testing.expectEqualStrings("\x1b[2;4;2;3;0&w", pendingOutput(&terminal));
+}
+
 test "DECCIR cursor information request is not supported" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.init(allocator, 3, 10);

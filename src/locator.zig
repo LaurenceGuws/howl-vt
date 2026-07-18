@@ -96,8 +96,8 @@ pub fn appendDeviceStatusReport(allocator: std.mem.Allocator, output: *std.Array
     try host_state.appendOutput(output, allocator, text);
 }
 
-/// Emits enabled locator events and updates one-shot and filter latches.
-pub fn handleMouseEvent(state: *Locator, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event: input_mouse.MouseEvent) void {
+/// Updates locator position and appends enabled reports, preserving report latches on failure.
+pub fn handleMouseEvent(state: *Locator, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event: input_mouse.MouseEvent) host_state.ApplyError!void {
     if (event.row < 0) return;
     const row: u16 = @intCast(event.row);
     const col = event.col;
@@ -111,7 +111,7 @@ pub fn handleMouseEvent(state: *Locator, allocator: std.mem.Allocator, output: *
 
     if (state.filter_rect) |filter| {
         if (row < filter.top or row > filter.bottom or col < filter.left or col > filter.right) {
-            appendReport(state, allocator, output, encode_buf, 10, event.buttons_down, row, col) catch unreachable;
+            try appendReport(state, allocator, output, encode_buf, 10, event.buttons_down, row, col);
             state.filter_rect = null;
             return;
         }
@@ -132,7 +132,7 @@ pub fn handleMouseEvent(state: *Locator, allocator: std.mem.Allocator, output: *
         } else null,
         else => null,
     };
-    if (event_code) |code| appendReport(state, allocator, output, encode_buf, code, event.buttons_down, row, col) catch unreachable;
+    if (event_code) |code| try appendReport(state, allocator, output, encode_buf, code, event.buttons_down, row, col);
 }
 
 fn appendReport(state: *Locator, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8, event_code: u16, buttons_down: u8, row: u16, col: u16) host_state.ApplyError!void {
