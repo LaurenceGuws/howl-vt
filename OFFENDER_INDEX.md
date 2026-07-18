@@ -285,18 +285,19 @@ fragmentation and indirect ownership are defects.
 
 ### VT-010 — History and resize duplicate reflow mechanics
 
-- Status: open
-- Path/symbol: `src/screen.zig:appendProjectionRows`;
-  `src/screen/resize.zig:reflowLogicalLines`,
-  `src/screen.zig:rebuildResizeAuthority`
-- Defect: resize reflow is followed by authority reconstruction and a second
-  projected-history pass over the same logical content.
+- Status: resolved
+- Path/symbol: `src/screen/resize.zig:reflowLogicalLines`;
+  `src/screen.zig:rebuildResizeAuthority`, `installResizeProjection`
+- Defect: resolved; resize previously reflowed once for the viewport, then
+  rebuilt projected history by rewrapping reconstructed authority.
 - Bars: density, ownership, cleanup, bounds, invariants, maturity
-- Simpler shape: one typed reflow operation owns logical-line collection and
-  projection; history storage installation remains transactional.
+- Simpler shape: one typed resize reflow supplies the viewport, retained
+  authority boundary, and projected bounded history; runtime scroll projection
+  remains independently owned by Screen.
 - Depends on: VT-007, VT-008
-- Acceptance evidence: resize/history share one arithmetic and projection
-  path; allocation failure at every temporary buffer leaves the original
+- Acceptance evidence: resize performs one logical snapshot and one reflow;
+  projected history installs directly from that typed result. Allocation
+  failure at every temporary and installation boundary leaves the original
   screen valid and leak-free; randomized scrollback/resize simulation passes.
 - Observed progress: duplicate history/resize logical collectors were deleted.
   One owned `LogicalSnapshot` and `LogicalLine.deinit` now provide exact
@@ -304,7 +305,8 @@ fragmentation and indirect ownership are defects.
   content test. History projection and resize reflow now share one
   zero-aware `rowCountForCells`; duplicate generic count conversion and
   resize-local row-count arithmetic were deleted. Replacement installation
-  is now concrete Screen ownership; duplicate reprojection remains.
+  and bounded projected history now consume that same reflow result directly;
+  no second snapshot, reflow, or authority reprojection occurs during resize.
 
 ### VT-011 — Retained protocol state has coarse oversized bounds
 
@@ -329,7 +331,7 @@ fragmentation and indirect ownership are defects.
 
 - Status: resolved
 - Path/symbol: `src/screen.zig:Screen.prepareResize`,
-  `replaceHistoryAuthority`, and `rebuildHistoryProjection`;
+  `replaceHistoryAuthority`, and `installResizeProjection`;
   `src/screen_set.zig:Set.resize`
 - Defect: resize installed visible buffers before history authority/projection
   allocation completed, and `Set.resize` committed primary before preparing

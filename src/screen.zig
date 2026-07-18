@@ -363,7 +363,34 @@ pub const Screen = struct {
             reflow.rewrapped.items,
             cols,
         );
-        try self.rebuildHistoryProjection(allocator);
+        try self.installResizeProjection(allocator, reflow, viewport);
+    }
+
+    fn installResizeProjection(self: *Screen, allocator: std.mem.Allocator, reflow: ReflowState, viewport: ViewportState) !void {
+        self.history_count = 0;
+        self.history_write_idx = 0;
+        if (self.history_capacity == 0 or self.cols == 0) return;
+
+        const kept_complete_start = viewport.first_visible_line -| self.history_capacity;
+        const first_projected_row = if (kept_complete_start < history_mod.count32(reflow.line_row_starts.items.len))
+            reflow.line_row_starts.items[@intCast(kept_complete_start)]
+        else
+            viewport.visible_start;
+        std.debug.assert(first_projected_row <= viewport.visible_start);
+        std.debug.assert(viewport.visible_start <= history_mod.count32(reflow.rewrapped.items.len));
+
+        var row_index = first_projected_row;
+        while (row_index < viewport.visible_start) : (row_index += 1) {
+            const row = reflow.rewrapped.items[@intCast(row_index)];
+            const row_end = row.start + self.cols;
+            std.debug.assert(row.len <= self.cols);
+            std.debug.assert(row_end <= history_mod.count32(reflow.flat_rows.items.len));
+            try self.appendProjectedRow(
+                allocator,
+                reflow.flat_rows.items[@intCast(row.start)..@intCast(row.start + row.len)],
+                row.wrapped,
+            );
+        }
     }
 
     fn replaceHistoryAuthority(

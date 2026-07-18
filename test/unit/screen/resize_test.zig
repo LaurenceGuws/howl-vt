@@ -158,3 +158,19 @@ test "screen resize: canonical logical content survives reflow when projected hi
 
     try std.testing.expectEqualSlices(u21, before, after);
 }
+
+test "screen resize: projected history keeps the bounded tail of a hidden partial line" {
+    const gpa = std.testing.allocator;
+    var s = try Grid.initWithCellsAndHistory(gpa, 2, 4, 2);
+    defer s.deinit(gpa);
+
+    apply(&s, SemanticEvent{ .write_text = "ABCDEFGHIJ" });
+    try s.resize(gpa, 1, 3);
+
+    try std.testing.expectEqual(@as(u32, 2), s.historyCount());
+    try std.testing.expectEqual(@as(u21, 'G'), s.historyRowAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'I'), s.historyRowAt(0, 2));
+    try std.testing.expectEqual(@as(u21, 'D'), s.historyRowAt(1, 0));
+    try std.testing.expectEqual(@as(u21, 'F'), s.historyRowAt(1, 2));
+    try std.testing.expectEqual(@as(u21, 'J'), s.cellAt(0, 0));
+}
