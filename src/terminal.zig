@@ -238,6 +238,123 @@ pub const Terminal = struct {
         self.screen_state.primary.markAllRowsDirty();
     }
 
+    /// Apply one routed terminal mode action.
+    pub fn applyModeAction(self: *Terminal, action: TerminalModeNs.ModeAction) void {
+        switch (action) {
+            .application_cursor_keys => |enabled| self.modes.application_cursor_keys = enabled,
+            .application_keypad => |enabled| self.modes.application_keypad = enabled,
+            .reverse_screen_mode => |enabled| self.modes.reverse_screen_mode = enabled,
+            .ansi_mode_set => |modes| self.setAnsiModes(modes.params[0..modes.param_count], true),
+            .ansi_mode_reset => |modes| self.setAnsiModes(modes.params[0..modes.param_count], false),
+            .modify_other_keys_set => |value| self.modes.modify_other_keys = value,
+            .modify_other_keys_disable => self.modes.modify_other_keys = -1,
+            .key_format_change => |change| {
+                if (change.resource) |resource| {
+                    if (isKeyFormatResource(resource)) self.modes.key_format[resource] = change.value orelse 0;
+                } else {
+                    self.modes.key_format = [_]u16{0} ** 8;
+                }
+            },
+            .pointer_mode => |value| self.modes.pointer_mode = value,
+            .kitty_clipboard_mode => |enabled| self.modes.kitty_clipboard = enabled,
+            .reverse_wraparound_mode => |enabled| self.modes.reverse_wraparound_mode = enabled,
+            .extended_reverse_wraparound_mode => |enabled| self.modes.extended_reverse_wraparound_mode = enabled,
+            .focus_reporting => |enabled| self.modes.focus_reporting = enabled,
+            .bracketed_paste => |enabled| self.modes.bracketed_paste = enabled,
+            .synchronized_output => |enabled| self.modes.synchronized_output = enabled,
+            .mouse_tracking_off => self.modes.mouse_tracking = .off,
+            .mouse_tracking_x10 => self.modes.mouse_tracking = .x10,
+            .mouse_tracking_normal => self.modes.mouse_tracking = .normal,
+            .mouse_tracking_button_event => self.modes.mouse_tracking = .button_event,
+            .mouse_tracking_any_event => self.modes.mouse_tracking = .any_event,
+            .mouse_protocol_utf8 => |enabled| self.modes.mouse_protocol = if (enabled) .utf8 else .none,
+            .mouse_protocol_sgr => |enabled| self.modes.mouse_protocol = if (enabled) .sgr else .none,
+            .mouse_protocol_urxvt => |enabled| self.modes.mouse_protocol = if (enabled) .urxvt else .none,
+            .dec_mode_save => |modes| self.saveDecModes(modes.params[0..modes.param_count]),
+            .dec_mode_restore => |modes| self.restoreDecModes(modes.params[0..modes.param_count]),
+        }
+    }
+
+    fn decModeState(self: *const Terminal, mode_number: u16) u8 {
+        const active = self.screen_state.activeConst();
+        return TerminalModeNs.decModeStateForView(.{
+            .application_cursor_keys = self.modes.application_cursor_keys,
+            .application_keypad = self.modes.application_keypad,
+            .reverse_screen_mode = self.modes.reverse_screen_mode,
+            .auto_wrap = active.auto_wrap,
+            .left_right_margin_mode = active.left_right_margin_mode,
+            .cursor_visible = active.cursor.visible,
+            .alt_active = self.screen_state.alt_active,
+            .mouse_tracking = self.modes.mouse_tracking,
+            .mouse_protocol = self.modes.mouse_protocol,
+            .focus_reporting = self.modes.focus_reporting,
+            .bracketed_paste = self.modes.bracketed_paste,
+            .synchronized_output = self.modes.synchronized_output,
+            .kitty_clipboard = self.modes.kitty_clipboard,
+        }, mode_number);
+    }
+
+    fn saveDecModes(self: *Terminal, mode_numbers: []const u16) void {
+        for (mode_numbers) |mode_number| {
+            if (!TerminalModeNs.canSetDecMode(mode_number)) continue;
+            const slot = TerminalModeNs.savedDecModeSlot(self.modes.saved_dec_modes[0..], &self.modes.saved_dec_mode_count, mode_number);
+            self.modes.saved_dec_modes[@intCast(slot)] = .{
+                .mode = mode_number,
+                .state = self.decModeState(mode_number),
+            };
+        }
+    }
+
+    fn restoreDecModes(self: *Terminal, mode_numbers: []const u16) void {
+        for (mode_numbers) |mode_number| {
+            const state = TerminalModeNs.savedDecModeState(self.modes.saved_dec_modes[0..], self.modes.saved_dec_mode_count, mode_number) orelse continue;
+            switch (state) {
+                1 => self.setDecMode(mode_number, true),
+                2 => self.setDecMode(mode_number, false),
+                else => {},
+            }
+        }
+    }
+
+    fn setDecMode(self: *Terminal, mode_number: u16, enabled: bool) void {
+        const active = self.screen_state.active();
+        switch (mode_number) {
+            1 => self.modes.application_cursor_keys = enabled,
+            5 => self.modes.reverse_screen_mode = enabled,
+            6 => active.applyScreen(.{ .origin_mode = enabled }),
+            7 => active.applyScreen(.{ .auto_wrap = enabled }),
+            69 => active.applyScreen(.{ .left_right_margin_mode = enabled }),
+            25 => active.applyScreen(.{ .cursor_visible = enabled }),
+            66 => self.modes.application_keypad = enabled,
+            47 => self.switchScreenMode(enabled, false, false),
+            1047 => self.switchScreenMode(enabled, true, false),
+            1049 => self.switchScreenMode(enabled, true, true),
+            9 => self.modes.mouse_tracking = if (enabled) .x10 else .off,
+            1000 => self.modes.mouse_tracking = if (enabled) .normal else .off,
+            1002 => self.modes.mouse_tracking = if (enabled) .button_event else .off,
+            1003 => self.modes.mouse_tracking = if (enabled) .any_event else .off,
+            1004 => self.modes.focus_reporting = enabled,
+            1005 => self.modes.mouse_protocol = if (enabled) .utf8 else .none,
+            1006 => self.modes.mouse_protocol = if (enabled) .sgr else .none,
+            1015 => self.modes.mouse_protocol = if (enabled) .urxvt else .none,
+            2004 => self.modes.bracketed_paste = enabled,
+            2026 => self.modes.synchronized_output = enabled,
+            5522 => self.modes.kitty_clipboard = enabled,
+            else => {},
+        }
+    }
+
+    fn setAnsiModes(self: *Terminal, mode_numbers: []const u16, enabled: bool) void {
+        const active = self.screen_state.active();
+        for (mode_numbers) |mode_number| switch (mode_number) {
+            2 => self.modes.keyboard_action_mode = enabled,
+            4 => active.applyScreen(.{ .insert_mode = enabled }),
+            12 => self.modes.send_receive_mode = enabled,
+            20 => self.modes.newline_mode = enabled,
+            else => {},
+        };
+    }
+
     pub fn ackSurface(self: *Terminal, snapshot_seq: u64) bool {
         if (snapshot_seq == 0) return false;
         if (self.surface_publication.canAck(snapshot_seq, self.dirty_generation)) {
@@ -520,6 +637,10 @@ pub const Terminal = struct {
 
 fn validateDimensions(rows: u16, cols: u16) error{InvalidDimensions}!void {
     if (rows == 0 or cols == 0) return error.InvalidDimensions;
+}
+
+fn isKeyFormatResource(resource: u8) bool {
+    return resource <= 4 or resource == 6 or resource == 7;
 }
 
 comptime {

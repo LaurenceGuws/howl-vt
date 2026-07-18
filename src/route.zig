@@ -168,7 +168,7 @@ fn applySemantic(vt: anytype, event: SemanticEvent) host_state.ApplyError!bool {
         return try kitty_apply.apply(vt, kitty_action);
     }
     if (modeAction(event)) |mode_action| {
-        mode_apply.apply(vt, mode_action);
+        vt.applyModeAction(mode_action);
         return true;
     }
     if (hostAction(event)) |host_action| {
