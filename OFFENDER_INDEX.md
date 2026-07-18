@@ -173,7 +173,7 @@ fragmentation and indirect ownership are defects.
 
 - Status: open
 - Path/symbol: `src/report.zig:formatOutput` (1 intentional formatting
-  generic). Repository total: 6 occurrences across 6 files;
+  generic). Repository total: 5 occurrences across 5 files;
   `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
@@ -256,7 +256,9 @@ fragmentation and indirect ownership are defects.
   application now accepts only concrete `*Terminal`; Kitty modules retain
   their bounded state/value mechanics and `kitty/apply.zig` has zero
   structural generics. An unused ScreenSet projection helper and both of its
-  unproven output/map generics were deleted without replacement.
+  unproven output/map generics were deleted without replacement. Kitty
+  keyboard reporting now formats its sole fixed `u32` value directly, with no
+  generic helper.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 

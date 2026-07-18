@@ -36,12 +36,8 @@ pub const Stack = struct {
     }
 
     pub fn appendReport(self: *const Stack, allocator: std.mem.Allocator, output: *std.ArrayList(u8), encode_buf: []u8) host_state.ApplyError!void {
-        const text = formatOutput(encode_buf, "\x1b[?{d}u", .{self.flags});
+        std.debug.assert(encode_buf.len >= format_output_max_bytes);
+        const text = std.fmt.bufPrint(encode_buf, "\x1b[?{d}u", .{self.flags}) catch unreachable;
         try host_state.appendOutput(output, allocator, text);
     }
 };
-
-fn formatOutput(encode_buf: []u8, comptime fmt: []const u8, args: anytype) []const u8 {
-    std.debug.assert(encode_buf.len >= format_output_max_bytes);
-    return std.fmt.bufPrint(encode_buf, fmt, args) catch unreachable;
-}
