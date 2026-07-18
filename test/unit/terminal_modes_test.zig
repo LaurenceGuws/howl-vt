@@ -58,35 +58,35 @@ fn write(stream: *StreamHarness, bytes: []const u8) void {
 }
 
 fn pendingOutput(terminal: *const Terminal) []const u8 {
-    return HostState.pendingOutput(terminal);
+    return terminal.host.pendingOutput();
 }
 
 fn clearPendingOutput(terminal: *Terminal) void {
-    HostState.clearPendingOutput(terminal);
+    terminal.host.clearPendingOutput();
 }
 
 fn dcsPayloadKind(terminal: *const Terminal) ?dcs_payload.DcsPayloadKind {
-    return HostState.dcsPayloadKind(terminal);
+    return terminal.host.dcsPayloadKind();
 }
 
 fn dcsPayload(terminal: *const Terminal) ?[]const u8 {
-    return HostState.dcsPayload(terminal);
+    return terminal.host.dcsPayload();
 }
 
 fn legacyControl(terminal: *const Terminal) ?legacy_control.LegacyControlKind {
-    return HostState.legacyControl(terminal);
+    return terminal.host.legacyControl();
 }
 
 fn reverseWraparoundMode(terminal: *const Terminal) bool {
-    return HostState.reverseWraparoundMode(terminal);
+    return terminal.modes.reverse_wraparound_mode;
 }
 
 fn extendedReverseWraparoundMode(terminal: *const Terminal) bool {
-    return HostState.extendedReverseWraparoundMode(terminal);
+    return terminal.modes.extended_reverse_wraparound_mode;
 }
 
 fn mediaCopyRequest(terminal: *const Terminal) ?u16 {
-    return HostState.mediaCopyRequest(terminal);
+    return terminal.host.mediaCopyRequest();
 }
 
 test "encodeMouse returns empty output and does not mutate state" {
@@ -368,7 +368,7 @@ test "report query limit fails without partial pending output" {
     const fill = try allocator.alloc(u8, fill_len);
     defer allocator.free(fill);
     @memset(fill, 'x');
-    try HostState.appendPendingOutput(&terminal, fill);
+    try terminal.host.appendPendingOutput(fill);
 
     try std.testing.expectError(error.ConsequenceLimit, stream.nextSlice("\x1b[5n"));
     try std.testing.expectEqual(fill_len, pendingOutput(&terminal).len);

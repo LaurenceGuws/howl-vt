@@ -73,7 +73,7 @@ pub const Terminal = struct {
             .allocator = allocator,
             .stream_state = stream_state,
             .screen_state = ScreenSet.init(state, alt_state),
-            .host = HostState.init(),
+            .host = HostState.init(allocator),
         };
     }
 
@@ -111,7 +111,7 @@ pub const Terminal = struct {
     /// Release Terminal resources.
     pub fn deinit(self: *Terminal) void {
         const allocator = self.allocator;
-        self.host.deinit(allocator);
+        self.host.deinit();
         self.kitty.deinit(allocator);
         self.screen_state.deinit(allocator);
         self.stream_state.deinit();
@@ -339,14 +339,14 @@ pub const Terminal = struct {
         if (publication.snapshot_seq != snapshot_seq) return error.InvalidArgument;
         const view = publication.snapshot.view;
         if (row >= view.rows or col >= view.cols) return error.InvalidArgument;
-        return host_state.hyperlinkUriForId(self, view.cellInfoAt(row, col).attrs.link_id);
+        return self.host.hyperlinkUriForId(view.cellInfoAt(row, col).attrs.link_id);
     }
 
     pub fn visibleCellHyperlinkUriCurrent(self: *Terminal, row: u16, col: u16) ?[]const u8 {
         const publication = self.surfaceSnapshot();
         const view = publication.snapshot.view;
         if (row >= view.rows or col >= view.cols) return null;
-        return host_state.hyperlinkUriForId(self, view.cellInfoAt(row, col).attrs.link_id);
+        return self.host.hyperlinkUriForId(view.cellInfoAt(row, col).attrs.link_id);
     }
 
     pub fn selectionState(self: *const Terminal) ?selection.TerminalSelection {
@@ -449,8 +449,8 @@ pub const Terminal = struct {
     /// Allocation failure preserves the pending bytes. The caller must free a
     /// successful result with `allocator`.
     pub fn drainPendingOutput(self: *Terminal, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
-        const owned = try allocator.dupe(u8, host_state.pendingOutput(self));
-        host_state.clearPendingOutput(self);
+        const owned = try allocator.dupe(u8, self.host.pendingOutput());
+        self.host.clearPendingOutput();
         return owned;
     }
 
@@ -459,7 +459,7 @@ pub const Terminal = struct {
     /// A returned slice is owned by `allocator`; `null` means no decodable set
     /// request was pending. Allocation failure preserves the request.
     pub fn drainPendingClipboard(self: *Terminal, allocator: std.mem.Allocator) error{OutOfMemory}!?[]u8 {
-        return host_state.drainPendingClipboardSet(self, allocator);
+        return self.host.drainPendingClipboardSet(allocator);
     }
 
     fn noteSelectionChanged(self: *Terminal) void {

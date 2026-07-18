@@ -52,15 +52,15 @@ pub fn apply(vt: anytype, action: HostAction) HostState.ApplyError!void {
                 else => {},
             }
         },
-        .hyperlink_set => |uri| vt.screen_state.active().setCurrentLinkId(try HostState.internHyperlink(vt, uri)),
+        .hyperlink_set => |uri| vt.screen_state.active().setCurrentLinkId(try vt.host.internHyperlink(uri)),
         .hyperlink_clear => vt.screen_state.active().setCurrentLinkId(0),
-        .clipboard_set => |payload| try HostState.replaceClipboard(vt, payload),
+        .clipboard_set => |payload| try vt.host.replaceClipboard(payload),
         .locator_reporting => |cfg| LocatorNs.setReporting(&vt.host.locator, cfg.mode, cfg.unit),
         .locator_filter => |area| LocatorNs.setFilter(&vt.host.locator, area),
         .locator_events => |modes| LocatorNs.setEvents(&vt.host.locator, modes.params[0..modes.param_count]),
         .locator_request => |param| try LocatorNs.appendReportForRequest(&vt.host.locator, allocator, &vt.host.pending_output, scratch.buf[0..], param),
         .media_copy_request => |param| vt.host.media_copy_request = param,
-        .dcs_payload => |payload| try HostState.replaceDcsPayload(vt, payload),
+        .dcs_payload => |payload| try vt.host.replaceDcsPayload(payload),
         .legacy_control => |kind| vt.host.legacy_control = kind,
     }
 }

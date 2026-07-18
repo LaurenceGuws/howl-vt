@@ -70,10 +70,10 @@ pub fn apply(vt: anytype, action: KittyAction) host_state.ApplyError!bool {
         },
         .kitty_multiple_cursor => |cmd| {
             switch (cmd) {
-                .support_query => try host_state.appendPendingOutput(vt, "\x1b[>1;2;3;29;30;40;100;101 q"),
+                .support_query => try vt.host.appendPendingOutput("\x1b[>1;2;3;29;30;40;100;101 q"),
                 .clear_all => active_screen.multiple_cursor_count = 0,
-                .cursor_query => try host_state.appendPendingOutput(vt, "\x1b[>100 q"),
-                .color_query => try host_state.appendPendingOutput(vt, "\x1b[>101;30:0;40:0 q"),
+                .cursor_query => try vt.host.appendPendingOutput("\x1b[>100 q"),
+                .color_query => try vt.host.appendPendingOutput("\x1b[>101;30:0;40:0 q"),
             }
             return true;
         },

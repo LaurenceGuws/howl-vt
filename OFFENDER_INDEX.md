@@ -173,10 +173,10 @@ fragmentation and indirect ownership are defects.
 
 - Status: open
 - Path/symbol: `src/screen/history.zig` (25 occurrences);
-  `src/host_state.zig` (21); `src/screen/edit.zig` (11);
+  `src/screen/edit.zig` (11);
   `src/screen/style.zig`, `erase.zig`, and `apply.zig` (9 each);
-  `src/screen/resize.zig` (7). Repository total: 160 occurrences across
-  27 files; `src/input/encode.zig` now has zero.
+  `src/screen/resize.zig` (7). Repository total: 139 occurrences across
+  26 files; `src/input/encode.zig` and `src/host_state.zig` now have zero.
 - Defect: helpers accept undeclared field/method shapes, making dependencies,
   mutation authority, and compile failures implicit. This is indirection even
   when the helper body is small.
@@ -195,6 +195,10 @@ fragmentation and indirect ownership are defects.
   `src/input/encode.zig` retains only Scratch copying and paste allocation
   ownership, with zero `anytype`. Flattened dependency lists and four
   field-proxy query helpers were deleted; no context/config wrapper was added.
+  `host_state.State` now owns consequence retention through concrete methods
+  and one lifetime allocator; Terminal drains call State directly. Four
+  terminal-mode proxies were deleted, while shared bounded output-list
+  mechanics retain narrow `*std.ArrayList(u8)` parameters.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
