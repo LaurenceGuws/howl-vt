@@ -30,6 +30,30 @@ fn colonSeparator(after_param_idx: u8) parser_mod.CsiSeparatorList {
     return separators;
 }
 
+test "screen: remaining action mappings mutate their concrete owners" {
+    const gpa = std.testing.allocator;
+    var screen = try Grid.initWithCells(gpa, 2, 4);
+    defer screen.deinit(gpa);
+
+    apply(&screen, .{ .write_text = "abcd" });
+    screen.cursor.setPositionByClient(0, 1);
+    apply(&screen, .{ .insert_mode = true });
+    apply(&screen, .{ .write_codepoint = 'X' });
+    try std.testing.expectEqual(@as(u21, 'X'), screen.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'b'), screen.cellAt(0, 2));
+
+    apply(&screen, .next_line);
+    try std.testing.expectEqual(@as(u16, 1), screen.cursor.row);
+    try std.testing.expectEqual(@as(u16, 0), screen.cursor.col);
+
+    apply(&screen, .{ .erase_display_scroll_complete = false });
+    for (0..2) |row| {
+        for (0..4) |col| {
+            try std.testing.expectEqual(@as(u21, 0), screen.cellAt(@intCast(row), @intCast(col)));
+        }
+    }
+}
+
 test "screen: erase_line mode 0 clears from cursor to end of line" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 4, 10);
