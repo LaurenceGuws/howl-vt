@@ -18,7 +18,7 @@ pub const AttrParams = struct {
     param_count: u8,
 };
 
-fn count32(items: anytype) u32 {
+fn count32(items: []const i32) u32 {
     std.debug.assert(items.len <= std.math.maxInt(u32));
     return @intCast(items.len);
 }
