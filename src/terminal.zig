@@ -1,10 +1,14 @@
 const std = @import("std");
+const input_encode = @import("input/encode.zig");
+const input_encoded = @import("input/encoded.zig");
+const input_event = @import("input/event.zig");
 const mode = @import("mode.zig");
 const screen = @import("screen.zig");
 const host_state = @import("host_state.zig");
 const kitty_state = @import("kitty/state.zig");
 const parser_mod = @import("parser.zig");
 const selection = @import("selection.zig");
+const selection_projection = @import("selection_projection.zig");
 const screen_set = @import("screen_set.zig");
 const stream_terminal = @import("stream_terminal.zig");
 const surface_publication = @import("publication.zig");
@@ -22,6 +26,14 @@ pub const Terminal = struct {
     pub const Stream = stream_terminal.Stream;
     pub const InitError = error{ InvalidDimensions, OutOfMemory };
     pub const ResizeError = error{ InvalidDimensions, OutOfMemory };
+    pub const CopySelectionError = error{
+        CodepointTooLarge,
+        OutOfMemory,
+        Utf8CannotEncodeSurrogateHalf,
+    };
+    pub const InputEvent = input_event.Event;
+    pub const InputScratch = input_encode.Scratch;
+    pub const EncodedInput = input_encoded.Encoded;
 
     const ScreenSet = screen_set.Set;
 
@@ -397,6 +409,56 @@ pub const Terminal = struct {
         if (self.selectionState() == null) return;
         self.screen_state.activeSelection().clear();
         self.noteSelectionChanged();
+    }
+
+    /// Copy selected terminal text into caller-owned memory.
+    ///
+    /// The returned slice is always owned by `allocator`, including when no
+    /// selection exists, and the caller must free it.
+    pub fn copySelection(self: *const Terminal, allocator: std.mem.Allocator) CopySelectionError![]const u8 {
+        if (self.selectionState() == null) return allocator.dupe(u8, "");
+        return selection_projection.copyText(allocator, &self.screen_state, self.selectionState());
+    }
+
+    /// Encode one host input event according to current terminal modes.
+    ///
+    /// Non-paste results borrow `scratch` or event bytes. Paste encoding may
+    /// allocate through `allocator`; callers must always call `deinit` on the
+    /// returned value.
+    pub fn encodeInput(
+        self: *Terminal,
+        allocator: std.mem.Allocator,
+        scratch: *InputScratch,
+        event: InputEvent,
+    ) error{OutOfMemory}!EncodedInput {
+        return switch (event) {
+            .bytes => |bytes| .{ .bytes = bytes },
+            .key => |key| .{ .bytes = input_encode.encodeKey(self, scratch, key.key, key.mods) },
+            .mouse => |mouse| .{ .bytes = input_encode.encodeMouse(self, scratch, mouse) },
+            .focus => |focus| .{ .bytes = switch (focus) {
+                .in => input_encode.encodeFocusIn(self, scratch),
+                .out => input_encode.encodeFocusOut(self, scratch),
+            } },
+            .paste => |text| input_encode.encodePaste(self, allocator, text),
+        };
+    }
+
+    /// Drain pending terminal reply bytes into caller-owned memory.
+    ///
+    /// Allocation failure preserves the pending bytes. The caller must free a
+    /// successful result with `allocator`.
+    pub fn drainPendingOutput(self: *Terminal, allocator: std.mem.Allocator) error{OutOfMemory}![]u8 {
+        const owned = try allocator.dupe(u8, host_state.pendingOutput(self));
+        host_state.clearPendingOutput(self);
+        return owned;
+    }
+
+    /// Drain and decode a pending OSC 52 clipboard-set consequence.
+    ///
+    /// A returned slice is owned by `allocator`; `null` means no decodable set
+    /// request was pending. Allocation failure preserves the request.
+    pub fn drainPendingClipboard(self: *Terminal, allocator: std.mem.Allocator) error{OutOfMemory}!?[]u8 {
+        return host_state.drainPendingClipboardSet(self, allocator);
     }
 
     fn noteSelectionChanged(self: *Terminal) void {

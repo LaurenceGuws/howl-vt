@@ -186,11 +186,15 @@ pub fn clearPendingClipboardSet(vt: anytype) void {
 
 pub fn drainPendingClipboardSet(vt: anytype, allocator: std.mem.Allocator) !?[]u8 {
     const pending = pendingClipboardSet(vt) orelse return null;
-    defer clearPendingClipboardSet(vt);
-    return osc.decodeClipboardSet(allocator, pending) catch |err| switch (err) {
+    const decoded = osc.decodeClipboardSet(allocator, pending) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
-        else => null,
+        else => {
+            clearPendingClipboardSet(vt);
+            return null;
+        },
     };
+    clearPendingClipboardSet(vt);
+    return decoded;
 }
 
 pub fn drainPendingClipboardSetInto(vt: anytype, out: []u8) ClipboardDrainResult {

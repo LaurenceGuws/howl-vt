@@ -63,7 +63,7 @@ fragmentation and indirect ownership are defects.
 
 ### VT-003 — Native embedding root is both broad and incomplete
 
-- Status: open
+- Status: resolved
 - Path/symbol: `src/howl_vt.zig:Terminal`
 - Defect: the root exposed parser, owned-action, and screen-set implementation
   namespaces wholesale even though the only external consumer uses the
@@ -77,9 +77,9 @@ fragmentation and indirect ownership are defects.
   output and host consequences, resize, and deinitialize without importing
   repository paths.
 - Observed: `Parser`, `ParserOwnedActions`, and `ScreenSet` were removed from
-  the root. The existing root-only test proves initialize, feed, snapshot,
-  acknowledge, resize, and cleanup only; selection/copy, input encoding, and
-  consequence draining remain unproven.
+  the root. The root-only test proves initialize, feed, semantic snapshot,
+  acknowledge, selection/copy, mode-aware paste encoding, pending reply drain,
+  clipboard-consequence drain, resize, and cleanup.
 
 ### VT-004 — Public source is largely undocumented
 
@@ -257,7 +257,8 @@ fragmentation and indirect ownership are defects.
 ### VT-013 — Hostile-input testing is simulation-only, not a fuzz boundary
 
 - Status: open
-- Path/symbol: `simulation/protocol.zig`, `simulation/scrollback.zig`;
+- Path/symbol: `src/simulation_protocol.zig`,
+  `src/simulation_scrollback.zig`;
   missing native arbitrary-byte/operation fuzz target in `build.zig`
 - Defect: deterministic random simulations cover selected generated actions,
   and unit tests cover known limits, but arbitrary byte chunking, malformed

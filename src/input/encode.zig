@@ -48,9 +48,9 @@ pub fn encodeFocusOut(vt: anytype, scratch: *Scratch) []const u8 {
     return fixed(scratch, if (vt.modes.focus_reporting) "\x1b[O" else "");
 }
 
-pub fn encodePaste(vt: anytype, allocator: std.mem.Allocator, scratch: *Scratch, text: []const u8) !encoded_owner.Encoded {
-    const start = encodePasteStart(vt, scratch);
-    const end = encodePasteEnd(vt, scratch);
+pub fn encodePaste(vt: anytype, allocator: std.mem.Allocator, text: []const u8) !encoded_owner.Encoded {
+    const start = if (vt.modes.bracketed_paste) "\x1b[200~" else "";
+    const end = if (vt.modes.bracketed_paste) "\x1b[201~" else "";
     if (start.len == 0 and end.len == 0) return .{ .bytes = text };
 
     const out = try allocator.alloc(u8, start.len + text.len + end.len);

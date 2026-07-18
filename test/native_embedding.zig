@@ -3,19 +3,46 @@
 const std = @import("std");
 const howl_vt = @import("howl_vt");
 
-test "native root owns feed snapshot acknowledgement resize and cleanup" {
+test "native root owns the complete embedding contract" {
     var terminal = try howl_vt.Terminal.initWithCells(std.testing.allocator, 2, 8);
     defer terminal.deinit();
 
-    const feed = try terminal.feed("A\x1b[31mB");
+    const feed = try terminal.feed("ABCD");
     try std.testing.expect(feed.state_changed);
 
     const publication = terminal.surfaceSnapshot();
     try std.testing.expectEqual(@as(u16, 2), publication.snapshot.view.rows);
     try std.testing.expectEqual(@as(u16, 8), publication.snapshot.view.cols);
     try std.testing.expectEqual(@as(u21, 'A'), publication.snapshot.view.cellAt(0, 0));
-    try std.testing.expectEqual(@as(u21, 'B'), publication.snapshot.view.cellAt(0, 1));
+    try std.testing.expectEqual(@as(u21, 'D'), publication.snapshot.view.cellAt(0, 3));
     try std.testing.expect(terminal.ackSurface(publication.snapshot_seq));
+
+    terminal.startSelection(0, 1);
+    terminal.updateSelection(0, 2);
+    terminal.finishSelection();
+    const selected = try terminal.copySelection(std.testing.allocator);
+    defer std.testing.allocator.free(selected);
+    try std.testing.expectEqualStrings("BC", selected);
+
+    _ = try terminal.feed("\x1b[?2004h");
+    var input_scratch: howl_vt.Terminal.InputScratch = .{};
+    var encoded = try terminal.encodeInput(
+        std.testing.allocator,
+        &input_scratch,
+        .{ .paste = "paste" },
+    );
+    defer encoded.deinit();
+    try std.testing.expectEqualStrings("\x1b[200~paste\x1b[201~", encoded.bytes);
+
+    _ = try terminal.feed("\x1b[5n");
+    const output = try terminal.drainPendingOutput(std.testing.allocator);
+    defer std.testing.allocator.free(output);
+    try std.testing.expectEqualStrings("\x1b[0n", output);
+
+    _ = try terminal.feed("\x1b]52;c;SG93bA==\x07");
+    const clipboard = (try terminal.drainPendingClipboard(std.testing.allocator)).?;
+    defer std.testing.allocator.free(clipboard);
+    try std.testing.expectEqualStrings("Howl", clipboard);
 
     try terminal.resize(3, 10);
     const resized = terminal.surfaceSnapshot().snapshot.view;
