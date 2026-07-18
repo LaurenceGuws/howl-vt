@@ -28,6 +28,15 @@ pub fn build(b: *std.Build) void {
     embedding_test_mod.addImport("howl_vt", internal_mod);
     const embedding_tests = addTestArtifact(b, "test-native-embedding", embedding_test_mod);
     const run_embedding_tests = addTestRunArtifact(b, embedding_tests);
+    const terminal_fuzz_mod = b.createModule(.{
+        .root_source_file = b.path("test/fuzz_terminal.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    terminal_fuzz_mod.addImport("howl_vt", internal_mod);
+    const terminal_fuzz_tests = addTestArtifact(b, "fuzz-terminal", terminal_fuzz_mod);
+    const run_terminal_fuzz_tests = addTestRunArtifact(b, terminal_fuzz_tests);
 
     const check_step = b.step("check", "Build the native VT model");
     const test_step = b.step("test", "Run native VT correctness proofs");
@@ -38,8 +47,15 @@ pub fn build(b: *std.Build) void {
     test_unit_step.dependOn(&run_mod_tests.step);
     test_unit_step.dependOn(&run_embedding_tests.step);
     test_step.dependOn(test_unit_step);
+    test_step.dependOn(&run_terminal_fuzz_tests.step);
     check_step.dependOn(&mod_tests.step);
     check_step.dependOn(&embedding_tests.step);
+    check_step.dependOn(&terminal_fuzz_tests.step);
+
+    const terminal_fuzz_step = b.step("fuzz:terminal", "Fuzz the native Terminal ownership boundary");
+    const terminal_fuzz_build_step = b.step("fuzz:terminal:build", "Build the native Terminal fuzz target");
+    terminal_fuzz_build_step.dependOn(&terminal_fuzz_tests.step);
+    terminal_fuzz_step.dependOn(&run_terminal_fuzz_tests.step);
 
     const simulation_module = b.createModule(.{
         .root_source_file = b.path("simulation_main.zig"),

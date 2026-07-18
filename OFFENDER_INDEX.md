@@ -389,8 +389,7 @@ fragmentation and indirect ownership are defects.
 ### VT-013 — Hostile-input testing is simulation-only, not a fuzz boundary
 
 - Status: open
-- Path/symbol: `simulation/protocol.zig`, `simulation/scrollback.zig`;
-  missing native arbitrary-byte/operation fuzz target in `build.zig`
+- Path/symbol: `test/fuzz_terminal.zig`; `build.zig:fuzz:terminal`
 - Defect: deterministic random simulations cover selected generated actions,
   and unit tests cover known limits, but arbitrary byte chunking, malformed
   UTF-8/control interleaving, resize/feed sequences, and post-error reuse are
@@ -400,9 +399,18 @@ fragmentation and indirect ownership are defects.
 - Simpler shape: one native fuzz entry feeds arbitrary bytes and bounded model
   operations directly into `Terminal`, asserting state invariants and cleanup.
 - Depends on: VT-003, VT-005, VT-006
-- Acceptance evidence: reproducible seeded corpus tests run under `zig build
-  test`; a dedicated fuzz command reports seed/input and minimizes failures
-  without introducing product runtime machinery.
+- Acceptance evidence: ordinary `zig build test` runs the empty corpus through
+  the public `howl_vt` root. `zig build fuzz:terminal --fuzz=<iterations>`
+  coverage-guides bounded arbitrary byte feeds and feed/resize/reset/reuse
+  sequences through real Terminal ownership. Zig persists an exact crashing
+  input at the reported cache path; adding that file through
+  `FuzzInputOptions.corpus` replays it. Every input deinitializes Terminal and
+  is leak-checked by the Zig test runner.
+- Toolchain blocker: installed Zig 0.16.0 fails while rebuilding its own
+  `compiler/test_runner.zig` in fuzz mode because `builtin.StackTrace` no longer
+  matches `std.debug.StackTrace`. The target builds and its ordinary corpus
+  passes, but coverage-guided execution cannot close this offender until the
+  local Zig package repairs that standard-library mismatch.
 
 ### VT-014 — Design and package metadata describe dead structure
 
