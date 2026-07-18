@@ -3,11 +3,6 @@ const parser_mod = @import("../parser.zig");
 
 const ByteLimit = u32;
 
-fn count32(items: anytype) u32 {
-    std.debug.assert(items.len <= std.math.maxInt(u32));
-    return @intCast(items.len);
-}
-
 /// String-control terminator.
 pub const Finish = enum {
     bel,
@@ -357,7 +352,9 @@ pub const OscControl = struct {
     }
 
     fn append(self: *OscControl, byte: u8) void {
-        if (count32(self.buffer.items) >= self.policy.max_len) {
+        std.debug.assert(self.buffer.items.len <= std.math.maxInt(u32));
+        const buffer_len: u32 = @intCast(self.buffer.items.len);
+        if (buffer_len >= self.policy.max_len) {
             self.overflowed = true;
             return;
         }

@@ -173,7 +173,7 @@ fragmentation and indirect ownership are defects.
 
 - Status: open
 - Path/symbol: `src/report.zig:formatOutput` (1 intentional formatting
-  generic). Repository total: 4 occurrences across 4 files;
+  generic). Repository total: 3 occurrences across 3 files;
   `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
@@ -260,7 +260,8 @@ fragmentation and indirect ownership are defects.
   keyboard reporting now formats its sole fixed `u32` value directly, with no
   generic helper. CSI parameter length conversion now accepts its exact
   `[]const i32` parser boundary while retaining the checked `usize` to `u32`
-  assertion.
+  assertion. OSC accumulation now checks and converts its concrete byte
+  buffer length directly at the policy-limit comparison.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
