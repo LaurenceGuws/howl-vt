@@ -41,7 +41,7 @@ pub fn collectLogicalLines(self: anytype, allocator: std.mem.Allocator, rows: u1
 
     var history_line_idx: u32 = 0;
     while (history_line_idx < self.history_lines.items.len) : (history_line_idx += 1) {
-        const line = historyLineAt(self, history_line_idx);
+        const line = self.historyLineAt(history_line_idx);
         var copied = try cloneHistoryLine(allocator, line.cells.items);
         copied.cursor_offset = null;
         try logical_lines.append(allocator, copied);
@@ -223,7 +223,7 @@ pub fn rebuildProjection(self: anytype, allocator: std.mem.Allocator) !void {
 
     var line_idx: u32 = 0;
     while (line_idx < count32(self.history_lines.items)) : (line_idx += 1) {
-        const line = historyLineAt(self, line_idx);
+        const line = self.historyLineAt(line_idx);
         try appendProjectionRows(self, allocator, line.cells.items, false);
     }
     if (self.open_history_line) |line| {
@@ -262,28 +262,6 @@ pub fn storeRow(self: anytype, row: u16) void {
             pruneLines(self, allocator);
         }
     }
-}
-
-pub fn historyLineAt(self: anytype, logical_index: u32) HistoryLine {
-    const slot = (self.history_lines_start + logical_index) % historyLineCount(self);
-    return self.history_lines.items[@intCast(slot)];
-}
-
-pub fn slotForLogicalRow(self: anytype, logical_row: u32) ?u32 {
-    const capacity = projectedCapacity(self);
-    if (logical_row >= self.history_count or capacity == 0) return null;
-    return (self.history_write_idx + logical_row) % capacity;
-}
-
-pub fn slotForRecency(self: anytype, history_idx: u32) ?u32 {
-    if (history_idx >= self.history_count) return null;
-    return slotForLogicalRow(self, self.history_count - 1 - history_idx);
-}
-
-pub fn rowWrapped(self: anytype, history_idx: u32) bool {
-    const wraps = self.history_wraps orelse return false;
-    const slot = slotForRecency(self, history_idx) orelse return false;
-    return wraps[@intCast(slot)];
 }
 
 fn sourceRowContentLen(self: anytype, row_index: u16, cols: u16) u16 {
@@ -353,7 +331,7 @@ fn pruneLines(self: anytype, allocator: std.mem.Allocator) void {
     std.debug.assert(drop <= self.history_lines.items.len);
     var i: u32 = 0;
     while (i < drop) : (i += 1) {
-        dropOldestProjectedRows(self, projectedRowCountForCells(self, self.history_lines.items[@intCast(i)].cells.items));
+        dropOldestProjectedRows(self, self.projectedRowCountForCells(self.history_lines.items[@intCast(i)].cells.items));
         self.history_lines.items[@intCast(i)].deinit(allocator);
     }
     std.mem.copyForwards(HistoryLine, self.history_lines.items[0 .. self.history_lines.items.len - drop], self.history_lines.items[drop..]);
@@ -365,8 +343,8 @@ fn takeReusableLine(self: anytype) struct { line: HistoryLine, slot: ?u32 } {
     const slot = self.history_lines_start;
     var reusable = self.history_lines.items[@intCast(slot)];
     self.history_lines.items[@intCast(slot)] = .{};
-    dropOldestProjectedRows(self, projectedRowCountForCells(self, reusable.cells.items));
-    self.history_lines_start = (self.history_lines_start + 1) % historyLineCount(self);
+    dropOldestProjectedRows(self, self.projectedRowCountForCells(reusable.cells.items));
+    self.history_lines_start = (self.history_lines_start + 1) % self.historyLineCount();
     reusable.cells.clearRetainingCapacity();
     return .{ .line = reusable, .slot = slot };
 }
@@ -381,7 +359,7 @@ fn appendProjectedRow(self: anytype, allocator: std.mem.Allocator, cells: []cons
     if (self.history_count == self.history_capacity) {
         dropOldestProjectedRows(self, 1);
     }
-    const slot = projectedAppendSlot(self);
+    const slot = self.projectedAppendSlot();
     const cols = colCount(self.cols);
     const base = slot * cols;
 
@@ -398,7 +376,7 @@ fn appendProjectedRow(self: anytype, allocator: std.mem.Allocator, cells: []cons
 fn ensureProjectedCapacity(self: anytype, allocator: std.mem.Allocator, min_rows: u32) !void {
     if (self.cols == 0) return;
 
-    const current_rows = projectedCapacity(self);
+    const current_rows = self.projectedCapacity();
     if (current_rows >= min_rows) return;
 
     const new_rows = @max(min_rows, @max(current_rows * 2, @as(u32, 8)));
@@ -415,7 +393,7 @@ fn ensureProjectedCapacity(self: anytype, allocator: std.mem.Allocator, min_rows
     std.debug.assert(old_count <= current_rows);
     var logical_row: u32 = 0;
     while (logical_row < old_count) : (logical_row += 1) {
-        const old_slot = slotForLogicalRow(self, logical_row) orelse break;
+        const old_slot = self.historySlotForLogicalRow(logical_row) orelse break;
         const src_start = old_slot * cols;
         const dst_start = logical_row * cols;
         std.debug.assert(old_slot < current_rows);
@@ -434,28 +412,11 @@ fn ensureProjectedCapacity(self: anytype, allocator: std.mem.Allocator, min_rows
     self.history_write_idx = 0;
 }
 
-fn projectedAppendSlot(self: anytype) u32 {
-    const capacity = projectedCapacity(self);
-    if (capacity == 0) return 0;
-    return (self.history_write_idx + self.history_count) % capacity;
-}
-
-fn projectedCapacity(self: anytype) u32 {
-    const wraps = self.history_wraps orelse return 0;
-    std.debug.assert(wraps.len <= std.math.maxInt(u32));
-    return @intCast(wraps.len);
-}
-
-fn projectedRowCountForCells(self: anytype, cells: []const Cell) u32 {
-    if (self.cols == 0) return 0;
-    return rowCountForCells(@intCast(cells.len), self.cols);
-}
-
 fn dropOldestProjectedRows(self: anytype, row_count: u32) void {
     if (row_count == 0 or self.history_count == 0) return;
 
     const drop = @min(row_count, self.history_count);
-    const capacity = projectedCapacity(self);
+    const capacity = self.projectedCapacity();
     std.debug.assert(drop <= self.history_count);
     if (drop == self.history_count or capacity == 0) {
         self.history_row_base += self.history_count;
@@ -476,9 +437,4 @@ fn colCount(cols: u16) u32 {
 
 fn rowCountForCells(cell_count: u32, cols: u16) u32 {
     return @max(@as(u32, 1), std.math.divCeil(u32, cell_count, cols) catch unreachable);
-}
-
-fn historyLineCount(self: anytype) u32 {
-    std.debug.assert(self.history_lines.items.len <= std.math.maxInt(u32));
-    return @intCast(self.history_lines.items.len);
 }

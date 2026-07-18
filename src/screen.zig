@@ -1349,16 +1349,56 @@ pub const Screen = struct {
         wraps[@intCast(idx)] = wrapped;
     }
 
-    fn historySlotForLogicalRow(self: *const Screen, logical_row: u32) ?u32 {
-        return history_mod.slotForLogicalRow(self, logical_row);
+    /// Return a value view whose cells borrow the retained logical history line.
+    pub fn historyLineAt(self: *const Screen, logical_index: u32) HistoryLine {
+        const slot = (self.history_lines_start + logical_index) % self.historyLineCount();
+        return self.history_lines.items[@intCast(slot)];
     }
 
-    fn historySlotForRecency(self: *const Screen, history_idx: u32) ?u32 {
-        return history_mod.slotForRecency(self, history_idx);
+    /// Resolve an oldest-first projected history row to its physical ring slot.
+    pub fn historySlotForLogicalRow(self: *const Screen, logical_row: u32) ?u32 {
+        const capacity = self.projectedCapacity();
+        if (logical_row >= self.history_count or capacity == 0) return null;
+        return (self.history_write_idx + logical_row) % capacity;
     }
 
+    /// Resolve a newest-first projected history row to its physical ring slot.
+    pub fn historySlotForRecency(self: *const Screen, history_idx: u32) ?u32 {
+        if (history_idx >= self.history_count) return null;
+        return self.historySlotForLogicalRow(self.history_count - 1 - history_idx);
+    }
+
+    /// Return whether a newest-first projected history row continues logically.
     pub fn historyRowWrapped(self: *const Screen, history_idx: u32) bool {
-        return history_mod.rowWrapped(self, history_idx);
+        const wraps = self.history_wraps orelse return false;
+        const slot = self.historySlotForRecency(history_idx) orelse return false;
+        return wraps[@intCast(slot)];
+    }
+
+    /// Return the physical ring slot for the next projected history row.
+    pub fn projectedAppendSlot(self: *const Screen) u32 {
+        const capacity = self.projectedCapacity();
+        if (capacity == 0) return 0;
+        return (self.history_write_idx + self.history_count) % capacity;
+    }
+
+    /// Return allocated projected-history row capacity.
+    pub fn projectedCapacity(self: *const Screen) u32 {
+        const wraps = self.history_wraps orelse return 0;
+        std.debug.assert(wraps.len <= std.math.maxInt(u32));
+        return @intCast(wraps.len);
+    }
+
+    /// Return projected row count for `cells` at the current column width.
+    pub fn projectedRowCountForCells(self: *const Screen, cells: []const Cell) u32 {
+        if (self.cols == 0) return 0;
+        return @max(@as(u32, 1), std.math.divCeil(u32, @intCast(cells.len), self.cols) catch unreachable);
+    }
+
+    /// Return retained logical history-line count.
+    pub fn historyLineCount(self: *const Screen) u32 {
+        std.debug.assert(self.history_lines.items.len <= std.math.maxInt(u32));
+        return @intCast(self.history_lines.items.len);
     }
 
     /// Fill an assumed in-bounds row range with the current erase cell.

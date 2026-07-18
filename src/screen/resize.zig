@@ -111,7 +111,7 @@ fn collectLogicalLines(self: anytype, allocator: std.mem.Allocator, old_rows: u1
 
     var history_line_idx: u32 = 0;
     while (history_line_idx < self.history_lines.items.len) : (history_line_idx += 1) {
-        const line = history_mod.historyLineAt(self, history_line_idx);
+        const line = self.historyLineAt(history_line_idx);
         var copied = try history_mod.cloneHistoryLine(allocator, line.cells.items);
         copied.cursor_offset = null;
         try result.logical_lines.append(allocator, copied);
