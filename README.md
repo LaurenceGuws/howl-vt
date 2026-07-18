@@ -2,6 +2,8 @@
 
 Host-neutral terminal model for Howl.
 
+Version `0.1.0-dev` has no API-stability or compatibility promise.
+
 `howl-vt` parses terminal byte streams, routes parser events into terminal actions, mutates screen state, owns selection truth, encodes host input according to terminal modes, and exposes visible-surface and protocol consequences through a C ABI.
 
 ## Embedding surfaces

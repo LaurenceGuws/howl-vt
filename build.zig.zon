@@ -1,7 +1,7 @@
 .{
     .name = .howl_vt,
 
-    .version = "0.0.0",
+    .version = "0.1.0-dev",
 
     .fingerprint = 0xaf7816cfd19f37da,
 
