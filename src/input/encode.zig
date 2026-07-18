@@ -6,6 +6,7 @@ const mouse = @import("mouse.zig");
 
 const LocatorNs = locator;
 
+/// Caller-owned fixed storage for nonallocating input encodings.
 pub const Scratch = struct {
     buf: [64]u8 = undefined,
 };
@@ -13,22 +14,36 @@ pub const Scratch = struct {
 /// Exact failures while constructing an encoded paste result.
 pub const PasteError = error{ LengthOverflow, OutOfMemory };
 
-pub fn encodeKey(vt: anytype, scratch: *Scratch, key_value: keyboard.Key, mod: keyboard.Modifier) []const u8 {
-    if (vt.modes.keyboard_action_mode) {
+/// Encode one typed key from explicit terminal keyboard mode values.
+///
+/// The returned bytes borrow `scratch` and remain valid until its next use.
+pub fn encodeKey(
+    scratch: *Scratch,
+    key_value: keyboard.Key,
+    mod: keyboard.Modifier,
+    keyboard_action_mode: bool,
+    application_cursor_keys: bool,
+    application_keypad: bool,
+    modify_other_keys: i8,
+    format_other_keys: u16,
+    kitty_keyboard_flags: u32,
+    newline_mode: bool,
+) []const u8 {
+    if (keyboard_action_mode) {
         return scratch.buf[0..0];
     }
     const encoded = keyboard.encodeKey(
         scratch.buf[0..],
         key_value,
         mod,
-        vt.modes.application_cursor_keys,
-        vt.modes.application_keypad,
-        vt.modes.modify_other_keys,
-        vt.modes.key_format[4],
-        kittyKeyboardFlags(vt),
+        application_cursor_keys,
+        application_keypad,
+        modify_other_keys,
+        format_other_keys,
+        kitty_keyboard_flags,
     );
     std.debug.assert(encoded.len <= scratch.buf.len);
-    if (vt.modes.newline_mode and key_value == .named and key_value.named == .enter and std.mem.eql(u8, encoded, "\r")) {
+    if (newline_mode and key_value == .named and key_value.named == .enter and std.mem.eql(u8, encoded, "\r")) {
         scratch.buf[0] = '\r';
         scratch.buf[1] = '\n';
         return scratch.buf[0..2];
@@ -36,19 +51,33 @@ pub fn encodeKey(vt: anytype, scratch: *Scratch, key_value: keyboard.Key, mod: k
     return encoded;
 }
 
-pub fn encodeMouse(vt: anytype, scratch: *Scratch, event: mouse.MouseEvent) []const u8 {
-    LocatorNs.handleMouseEvent(&vt.host.locator, vt.allocator, &vt.host.pending_output, scratch.buf[0..], event);
-    const encoded = mouse.encodeMouse(scratch.buf[0..], event, vt.modes.mouse_tracking, vt.modes.mouse_protocol);
+/// Encode one mouse event and update locator host consequences.
+///
+/// Locator reports may append to `pending_output`; terminal mouse protocol
+/// bytes borrow `scratch` until its next use.
+pub fn encodeMouse(
+    scratch: *Scratch,
+    locator_state: *LocatorNs.Locator,
+    allocator: std.mem.Allocator,
+    pending_output: *std.ArrayList(u8),
+    tracking: mouse.MouseTrackingMode,
+    protocol: mouse.MouseProtocol,
+    event: mouse.MouseEvent,
+) []const u8 {
+    LocatorNs.handleMouseEvent(locator_state, allocator, pending_output, scratch.buf[0..], event);
+    const encoded = mouse.encodeMouse(scratch.buf[0..], event, tracking, protocol);
     std.debug.assert(encoded.len <= scratch.buf.len);
     return encoded;
 }
 
-pub fn encodeFocusIn(vt: anytype, scratch: *Scratch) []const u8 {
-    return fixed(scratch, if (vt.modes.focus_reporting) "\x1b[I" else "");
+/// Encode focus-in bytes, borrowing `scratch`.
+pub fn encodeFocusIn(scratch: *Scratch, focus_reporting: bool) []const u8 {
+    return fixed(scratch, if (focus_reporting) "\x1b[I" else "");
 }
 
-pub fn encodeFocusOut(vt: anytype, scratch: *Scratch) []const u8 {
-    return fixed(scratch, if (vt.modes.focus_reporting) "\x1b[O" else "");
+/// Encode focus-out bytes, borrowing `scratch`.
+pub fn encodeFocusOut(scratch: *Scratch, focus_reporting: bool) []const u8 {
+    return fixed(scratch, if (focus_reporting) "\x1b[O" else "");
 }
 
 /// Encode borrowed paste text for the active bracketed-paste mode.
@@ -57,9 +86,9 @@ pub fn encodeFocusOut(vt: anytype, scratch: *Scratch) []const u8 {
 /// paste allocates one caller-owned result containing the fixed CSI 200/201
 /// pair. Encoded-length overflow is distinct from allocator exhaustion. The
 /// caller must call `Encoded.deinit` once for either successful result.
-pub fn encodePaste(vt: anytype, allocator: std.mem.Allocator, text: []const u8) PasteError!encoded_owner.Encoded {
-    const start = if (vt.modes.bracketed_paste) "\x1b[200~" else "";
-    const end = if (vt.modes.bracketed_paste) "\x1b[201~" else "";
+pub fn encodePaste(bracketed_paste: bool, allocator: std.mem.Allocator, text: []const u8) PasteError!encoded_owner.Encoded {
+    const start = if (bracketed_paste) "\x1b[200~" else "";
+    const end = if (bracketed_paste) "\x1b[201~" else "";
     if (start.len == 0 and end.len == 0) return .{ .bytes = text };
 
     const encoded_len = try bracketedPasteLength(text.len);
@@ -76,32 +105,14 @@ fn bracketedPasteLength(text_len: usize) error{LengthOverflow}!usize {
     return std.math.add(usize, with_start, "\x1b[201~".len) catch return error.LengthOverflow;
 }
 
-pub fn encodePasteStart(vt: anytype, scratch: *Scratch) []const u8 {
-    return fixed(scratch, if (vt.modes.bracketed_paste) "\x1b[200~" else "");
+/// Encode the bracketed-paste start marker, borrowing `scratch`.
+pub fn encodePasteStart(scratch: *Scratch, bracketed_paste: bool) []const u8 {
+    return fixed(scratch, if (bracketed_paste) "\x1b[200~" else "");
 }
 
-pub fn encodePasteEnd(vt: anytype, scratch: *Scratch) []const u8 {
-    return fixed(scratch, if (vt.modes.bracketed_paste) "\x1b[201~" else "");
-}
-
-pub fn kittyKeyboardFlags(vt: anytype) u32 {
-    return vt.kitty.activeScreenConst(vt.screen_state.alt_active).keyboard.flags;
-}
-
-pub fn keyFormatOption(vt: anytype, resource: u8) u16 {
-    return if (isKeyFormatResource(resource)) vt.modes.key_format[resource] else 0;
-}
-
-pub fn isApplicationKeypad(vt: anytype) bool {
-    return vt.modes.application_keypad;
-}
-
-pub fn modifyOtherKeys(vt: anytype) i8 {
-    return vt.modes.modify_other_keys;
-}
-
-pub fn isKeyFormatResource(resource: u8) bool {
-    return resource <= 4 or resource == 6 or resource == 7;
+/// Encode the bracketed-paste end marker, borrowing `scratch`.
+pub fn encodePasteEnd(scratch: *Scratch, bracketed_paste: bool) []const u8 {
+    return fixed(scratch, if (bracketed_paste) "\x1b[201~" else "");
 }
 
 fn fixed(scratch: *Scratch, encoded: []const u8) []const u8 {

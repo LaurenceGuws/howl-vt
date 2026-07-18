@@ -400,13 +400,32 @@ pub const Terminal = struct {
     ) input_encode.PasteError!EncodedInput {
         return switch (event) {
             .bytes => |bytes| .{ .bytes = bytes },
-            .key => |key| .{ .bytes = input_encode.encodeKey(self, scratch, key.key, key.mods) },
-            .mouse => |mouse| .{ .bytes = input_encode.encodeMouse(self, scratch, mouse) },
+            .key => |key| .{ .bytes = input_encode.encodeKey(
+                scratch,
+                key.key,
+                key.mods,
+                self.modes.keyboard_action_mode,
+                self.modes.application_cursor_keys,
+                self.modes.application_keypad,
+                self.modes.modify_other_keys,
+                self.modes.key_format[4],
+                self.kitty.activeScreenConst(self.screen_state.alt_active).keyboard.flags,
+                self.modes.newline_mode,
+            ) },
+            .mouse => |mouse| .{ .bytes = input_encode.encodeMouse(
+                scratch,
+                &self.host.locator,
+                self.allocator,
+                &self.host.pending_output,
+                self.modes.mouse_tracking,
+                self.modes.mouse_protocol,
+                mouse,
+            ) },
             .focus => |focus| .{ .bytes = switch (focus) {
-                .in => input_encode.encodeFocusIn(self, scratch),
-                .out => input_encode.encodeFocusOut(self, scratch),
+                .in => input_encode.encodeFocusIn(scratch, self.modes.focus_reporting),
+                .out => input_encode.encodeFocusOut(scratch, self.modes.focus_reporting),
             } },
-            .paste => |text| input_encode.encodePaste(self, allocator, text),
+            .paste => |text| input_encode.encodePaste(self.modes.bracketed_paste, allocator, text),
         };
     }
 

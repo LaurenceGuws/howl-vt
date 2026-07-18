@@ -173,8 +173,10 @@ fragmentation and indirect ownership are defects.
 
 - Status: open
 - Path/symbol: `src/screen/history.zig` (25 occurrences);
-  `src/host_state.zig` (21); `src/screen/edit.zig` and
-  `src/input/encode.zig` (11 each); `src/screen/resize.zig` (7)
+  `src/host_state.zig` (21); `src/screen/edit.zig` (11);
+  `src/screen/style.zig`, `erase.zig`, and `apply.zig` (9 each);
+  `src/screen/resize.zig` (7). Repository total: 160 occurrences across
+  27 files; `src/input/encode.zig` now has zero.
 - Defect: helpers accept undeclared field/method shapes, making dependencies,
   mutation authority, and compile failures implicit. This is indirection even
   when the helper body is small.
@@ -186,6 +188,11 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: every retained `anytype` has at least two concrete,
   intentional callers and a documented reason; owner tests compile through
   explicit types.
+- Observed progress: input encoding now accepts explicit keyboard mode values,
+  typed mouse tracking/protocol values, and concrete Locator/output owners.
+  Pure key/focus/paste encoding remains separate from mouse encoding that may
+  append locator reports. Four field-proxy query helpers were deleted; no
+  context/config wrapper or Terminal import was added.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 

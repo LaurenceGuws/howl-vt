@@ -18,27 +18,46 @@ const StreamHarness = stream_harness.Harness;
 var encode_scratch: input_encode.Scratch = .{};
 
 fn encodeKey(terminal: *Terminal, key: input_keyboard.Key, mod: input_keyboard.Modifier) []const u8 {
-    return input_encode.encodeKey(terminal, &encode_scratch, key, mod);
+    return input_encode.encodeKey(
+        &encode_scratch,
+        key,
+        mod,
+        terminal.modes.keyboard_action_mode,
+        terminal.modes.application_cursor_keys,
+        terminal.modes.application_keypad,
+        terminal.modes.modify_other_keys,
+        terminal.modes.key_format[4],
+        terminal.kitty.activeScreenConst(terminal.screen_state.alt_active).keyboard.flags,
+        terminal.modes.newline_mode,
+    );
 }
 
 fn encodeMouse(terminal: *Terminal, event: input_mouse.MouseEvent) []const u8 {
-    return input_encode.encodeMouse(terminal, &encode_scratch, event);
+    return input_encode.encodeMouse(
+        &encode_scratch,
+        &terminal.host.locator,
+        terminal.allocator,
+        &terminal.host.pending_output,
+        terminal.modes.mouse_tracking,
+        terminal.modes.mouse_protocol,
+        event,
+    );
 }
 
 fn encodeFocusIn(terminal: *Terminal) []const u8 {
-    return input_encode.encodeFocusIn(terminal, &encode_scratch);
+    return input_encode.encodeFocusIn(&encode_scratch, terminal.modes.focus_reporting);
 }
 
 fn encodeFocusOut(terminal: *Terminal) []const u8 {
-    return input_encode.encodeFocusOut(terminal, &encode_scratch);
+    return input_encode.encodeFocusOut(&encode_scratch, terminal.modes.focus_reporting);
 }
 
 fn encodePasteStart(terminal: *Terminal) []const u8 {
-    return input_encode.encodePasteStart(terminal, &encode_scratch);
+    return input_encode.encodePasteStart(&encode_scratch, terminal.modes.bracketed_paste);
 }
 
 fn encodePasteEnd(terminal: *Terminal) []const u8 {
-    return input_encode.encodePasteEnd(terminal, &encode_scratch);
+    return input_encode.encodePasteEnd(&encode_scratch, terminal.modes.bracketed_paste);
 }
 
 fn visibleView(terminal: *const Terminal, scrollback_offset: u32) screen_set.View {
@@ -240,17 +259,14 @@ test "kitty keyboard set query push and pop flags" {
     defer stream.deinit();
 
     write(&stream, "\x1b[=5u\x1b[?u");
-    try std.testing.expectEqual(@as(u32, 5), input_encode.kittyKeyboardFlags(&terminal));
     try std.testing.expectEqualStrings("\x1b[?5u", pendingOutput(&terminal));
     clearPendingOutput(&terminal);
 
     write(&stream, "\x1b[>1u\x1b[?u");
-    try std.testing.expectEqual(@as(u32, 1), input_encode.kittyKeyboardFlags(&terminal));
     try std.testing.expectEqualStrings("\x1b[?1u", pendingOutput(&terminal));
     clearPendingOutput(&terminal);
 
     write(&stream, "\x1b[<u\x1b[?u");
-    try std.testing.expectEqual(@as(u32, 5), input_encode.kittyKeyboardFlags(&terminal));
     try std.testing.expectEqualStrings("\x1b[?5u", pendingOutput(&terminal));
 }
 
@@ -263,9 +279,12 @@ test "kitty keyboard flags stay separate across alternate screen" {
 
     write(&stream, "\x1b[=1u\x1b[?1049h\x1b[=8u");
     try std.testing.expect(visibleView(&terminal, 0).is_alternate_screen);
-    try std.testing.expectEqual(@as(u32, 8), input_encode.kittyKeyboardFlags(&terminal));
+    write(&stream, "\x1b[?u");
+    try std.testing.expectEqualStrings("\x1b[?8u", pendingOutput(&terminal));
+    clearPendingOutput(&terminal);
     write(&stream, "\x1b[?1049l");
-    try std.testing.expectEqual(@as(u32, 1), input_encode.kittyKeyboardFlags(&terminal));
+    write(&stream, "\x1b[?u");
+    try std.testing.expectEqualStrings("\x1b[?1u", pendingOutput(&terminal));
 }
 
 test "kitty keyboard mode switches existing keys to CSI-u family" {
@@ -315,14 +334,11 @@ test "bracketed paste wrappers are gated by DECSET 2004" {
 }
 
 test "paste encoding distinguishes borrowed and owned results" {
-    const PasteMode = struct {
-        modes: struct { bracketed_paste: bool },
-    };
     const text = "paste";
     var no_storage: [0]u8 = .{};
     var fixed = std.heap.FixedBufferAllocator.init(&no_storage);
 
-    var plain = try input_encode.encodePaste(&PasteMode{ .modes = .{ .bracketed_paste = false } }, fixed.allocator(), text);
+    var plain = try input_encode.encodePaste(false, fixed.allocator(), text);
     try std.testing.expectEqualStrings(text, plain.bytes);
     try std.testing.expectEqual(text.ptr, plain.bytes.ptr);
     try std.testing.expectEqual(@as(?std.mem.Allocator, null), plain.allocator);
@@ -331,10 +347,10 @@ test "paste encoding distinguishes borrowed and owned results" {
 
     try std.testing.expectError(
         error.OutOfMemory,
-        input_encode.encodePaste(&PasteMode{ .modes = .{ .bracketed_paste = true } }, fixed.allocator(), text),
+        input_encode.encodePaste(true, fixed.allocator(), text),
     );
 
-    var bracketed = try input_encode.encodePaste(&PasteMode{ .modes = .{ .bracketed_paste = true } }, std.testing.allocator, text);
+    var bracketed = try input_encode.encodePaste(true, std.testing.allocator, text);
     try std.testing.expectEqualStrings("\x1b[200~paste\x1b[201~", bracketed.bytes);
     try std.testing.expect(bracketed.allocator != null);
     bracketed.deinit();
@@ -664,13 +680,11 @@ test "application keypad modes affect keypad encoding and DECRQM" {
     try std.testing.expectEqualStrings("\r", encodeKey(&terminal, .{ .named = .keypad_enter }, .{}));
 
     write(&stream, "\x1b=\x1b[?66$p");
-    try std.testing.expect(input_encode.isApplicationKeypad(&terminal));
     try std.testing.expectEqualStrings("\x1b[?66;1$y", pendingOutput(&terminal));
     try std.testing.expectEqualStrings("\x1bOq", encodeKey(&terminal, .{ .named = .keypad_1 }, .{}));
     try std.testing.expectEqualStrings("\x1bOM", encodeKey(&terminal, .{ .named = .keypad_enter }, .{}));
 
     write(&stream, "\x1b>");
-    try std.testing.expect(!input_encode.isApplicationKeypad(&terminal));
     try std.testing.expectEqualStrings("1", encodeKey(&terminal, .{ .named = .keypad_1 }, .{}));
 }
 
@@ -683,7 +697,6 @@ test "modifyOtherKeys set query disable and encoding" {
 
     try std.testing.expectEqualStrings("a", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{ .alt = true }));
     write(&stream, "\x1b[>4;2m\x1b[?4m");
-    try std.testing.expectEqual(@as(i8, 2), input_encode.modifyOtherKeys(&terminal));
     try std.testing.expectEqualStrings("\x1b[>4;2m", pendingOutput(&terminal));
     try std.testing.expectEqualStrings("\x1b[27;3;97~", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{ .alt = true }));
     try std.testing.expectEqualStrings("a", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{}));
@@ -692,7 +705,7 @@ test "modifyOtherKeys set query disable and encoding" {
     try std.testing.expectEqualStrings("\x1b[27;1;97~", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{}));
 
     write(&stream, "\x1b[>4n");
-    try std.testing.expectEqual(@as(i8, -1), input_encode.modifyOtherKeys(&terminal));
+    try std.testing.expectEqualStrings("a", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{ .alt = true }));
 }
 
 test "xterm key format query reset and other-key encoding" {
@@ -703,12 +716,10 @@ test "xterm key format query reset and other-key encoding" {
     defer stream.deinit();
 
     write(&stream, "\x1b[>4;1f\x1b[?4g\x1b[>4;1m");
-    try std.testing.expectEqual(@as(u16, 1), input_encode.keyFormatOption(&terminal, 4));
     try std.testing.expectEqualStrings("\x1b[>4;1f", pendingOutput(&terminal));
     try std.testing.expectEqualStrings("\x1b[97;3u", encodeKey(&terminal, try input_keyboard.Key.initUnicode('a'), .{ .alt = true }));
 
     write(&stream, "\x1b[>4f\x1b[?4g");
-    try std.testing.expectEqual(@as(u16, 0), input_encode.keyFormatOption(&terminal, 4));
     try std.testing.expectEqualStrings("\x1b[>4;1f\x1b[>4;0f", pendingOutput(&terminal));
 }
 
