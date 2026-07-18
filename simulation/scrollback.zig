@@ -104,7 +104,7 @@ pub fn runCanonicalPreservation(allocator: std.mem.Allocator, seed: u64, options
         try applyWriteBurst(&vt, rand);
     }
 
-    const before = try canonicalLogicalHash(allocator, &vt);
+    const before = canonicalLogicalHash(&vt);
 
     var churn_idx: ScenarioOpCount = 0;
     while (churn_idx < options.churn_ops) : (churn_idx += 1) {
@@ -113,7 +113,7 @@ pub fn runCanonicalPreservation(allocator: std.mem.Allocator, seed: u64, options
             try applyResizeStep(&vt, rand)
         else
             try applyZoomJitterStep(&vt, rand);
-        const actual = try canonicalLogicalHash(allocator, &vt);
+        const actual = canonicalLogicalHash(&vt);
         if (actual != before) {
             logBreakpoint(churn_idx, pre_state, step, before, actual, summarizeCoreState(&vt));
             return error.CanonicalContentMismatch;
@@ -131,7 +131,7 @@ pub fn runCanonicalPreservation(allocator: std.mem.Allocator, seed: u64, options
     } };
     try ensureCoreInvariants(&vt);
 
-    const after = try canonicalLogicalHash(allocator, &vt);
+    const after = canonicalLogicalHash(&vt);
     if (after != before) {
         logBreakpoint(options.churn_ops, restore_pre_state, restore_step, before, after, summarizeCoreState(&vt));
         return error.CanonicalContentMismatch;
@@ -289,8 +289,7 @@ fn hashLogicalContent(vt: *const Terminal) u64 {
     return h.final();
 }
 
-fn canonicalLogicalHash(allocator: std.mem.Allocator, vt: *const Terminal) !u64 {
-    _ = allocator;
+fn canonicalLogicalHash(vt: *const Terminal) u64 {
     var h = std.hash.Wyhash.init(0xd1b54a32d192ed03);
 
     const s = vt.screen_state.activeConst();

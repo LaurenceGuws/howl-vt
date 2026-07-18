@@ -14,6 +14,17 @@ fn apply(screen: *Screen, event: SemanticEvent) void {
     screen.applyScreen(event);
 }
 
+fn expectRows(screen: *const Screen, expected: []const u8) !void {
+    try std.testing.expectEqual(@as(usize, screen.rows) * screen.cols, expected.len);
+    var row: u16 = 0;
+    while (row < screen.rows) : (row += 1) {
+        var col: u16 = 0;
+        while (col < screen.cols) : (col += 1) {
+            try std.testing.expectEqual(@as(u21, expected[@as(usize, row) * screen.cols + col]), screen.cellAt(row, col));
+        }
+    }
+}
+
 test "screen storage constructors reject zero dimensions exactly" {
     try std.testing.expectError(error.InvalidDimensions, Grid.initWithCells(std.testing.allocator, 0, 1));
     try std.testing.expectError(error.InvalidDimensions, Grid.initWithCells(std.testing.allocator, 1, 0));
@@ -485,28 +496,40 @@ test "screen: DECFRA fills clipped rectangle with current attrs" {
     try std.testing.expectEqual(Grid.Color.rgbComponents(40, 44, 52), cell.attrs.bg);
 }
 
-test "screen: DECCRA copies overlapping rectangle through temporary buffer" {
-    const gpa = std.testing.allocator;
-    var s = try Grid.initWithCells(gpa, 3, 7);
-    defer s.deinit(gpa);
+test "screen: DECCRA copies overlapping rectangles without allocation" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var s = try Grid.initWithCells(failing.allocator(), 4, 4);
+    defer s.deinit(failing.allocator());
 
     apply(&s, SemanticEvent{ .cursor_position = .{ .row = 0, .col = 0 } });
-    apply(&s, SemanticEvent{ .write_text = "ABC" });
+    apply(&s, SemanticEvent{ .write_text = "ABCD" });
     apply(&s, SemanticEvent{ .cursor_position = .{ .row = 1, .col = 0 } });
-    apply(&s, SemanticEvent{ .write_text = "DEF" });
+    apply(&s, SemanticEvent{ .write_text = "EFGH" });
     apply(&s, SemanticEvent{ .cursor_position = .{ .row = 2, .col = 0 } });
-    apply(&s, SemanticEvent{ .write_text = "GHI" });
+    apply(&s, SemanticEvent{ .write_text = "IJKL" });
+    apply(&s, SemanticEvent{ .cursor_position = .{ .row = 3, .col = 0 } });
+    apply(&s, SemanticEvent{ .write_text = "MNOP" });
+
+    failing.fail_index = failing.alloc_index;
     apply(&s, SemanticEvent{ .rect_copy = .{
         .area = .{ .top = 0, .left = 0, .bottom = 2, .right = 2 },
         .source_page = 1,
-        .dest_top = 0,
-        .dest_left = 3,
+        .dest_top = 1,
+        .dest_left = 1,
         .dest_page = 1,
     } });
 
-    try std.testing.expectEqual(@as(u21, 'A'), s.cellAt(0, 3));
-    try std.testing.expectEqual(@as(u21, 'D'), s.cellAt(1, 3));
-    try std.testing.expectEqual(@as(u21, 'G'), s.cellAt(2, 3));
+    try expectRows(&s, "ABCDEABCIEFGMIJK");
+
+    apply(&s, SemanticEvent{ .rect_copy = .{
+        .area = .{ .top = 1, .left = 1, .bottom = 3, .right = 3 },
+        .source_page = 1,
+        .dest_top = 0,
+        .dest_left = 0,
+        .dest_page = 1,
+    } });
+    try expectRows(&s, "ABCDEFGCIJKGMIJK");
+    try std.testing.expect(!failing.has_induced_failure);
 }
 
 test "screen: DECIC and DECDC shift columns inside scroll region" {

@@ -9,15 +9,15 @@ by themselves.
 | Bar | Score | Blocking evidence |
 | --- | ---: | --- |
 | Foot directness | 10/10 | Current control flow keeps protocol classification and execution direct; no concrete indirection defect is indexed. |
-| TigerBeetle defensiveness | 8/10 | Locator input now propagates operating failures and proves reuse; screen history and rectangle-copy mutation still silently discard allocation failures. |
+| TigerBeetle defensiveness | 9/10 | Input failures propagate exactly and Screen runtime allocation failure preserves paired history state; broader typed hostile-operation proof remains. |
 | Character/capability density | 10/10 | The root exports one direct native `Terminal` owner without compatibility layers or additional ownership machinery. |
-| Ownership/cleanup | 7/10 | Resize replacement is transactional, while runtime history retention can partially extend `open_history_line` before silently abandoning projection on allocation failure. |
+| Ownership/cleanup | 9/10 | Resize and runtime history replacement are transactional; every temporary owner has failure cleanup and successful reuse proof. |
 | Exact failures | 7/10 | `Terminal.encodeInput` now owns paste and locator-consequence failures; parser, OSC decode, and resize/history helpers still infer error sets. |
 | Documentation | 10/10 | The source audit covers every source owner and retained public declaration and guards the one-symbol embedding root. |
-| Hostile-input evidence | 7/10 | Native fuzzing covers bytes, resize, reset, inspection, and post-error reuse, but not typed input encoding, allocator failure during input, selection mutation, or output drains. |
+| Hostile-input evidence | 8/10 | Native fuzzing covers bytes, resize, reset, inspection, and post-error reuse; exhaustive allocation proof now covers input and runtime history, while other typed host operations remain absent. |
 | Embedding surface | 10/10 | `src/howl_vt.zig` exports one directly owned native `Terminal`; current root-only integration proof exercises the accepted embedding shape. |
 | Deliberate modification | 7/10 | Unit, simulation, fuzz, coverage data, and source audits exist; exact-error, assertion-density, and inferred-discard audits remain manual. |
-| Source maturity | 8/10 | Protocol breadth and deterministic parsing are substantial; silent partial progress, inferred failure boundaries, and missing typed hostile-operation proof remain. |
+| Source maturity | 9/10 | Protocol breadth, deterministic parsing, transactional history, and allocation-free rectangle copy are proved; inferred failure boundaries and missing typed hostile-operation proof remain. |
 
 ## Ordered offenders
 
@@ -44,7 +44,7 @@ by themselves.
 
 ### VT-017 — Screen runtime mutation silently loses allocation failures
 
-- Status: open
+- Status: resolved
 - Path/symbol: `src/screen.zig:storeHistoryRow`, `copyRect`
 - Defect: history retention may partially extend an open logical line before
   projection allocation fails; rectangular copy silently ignores temporary
@@ -57,6 +57,16 @@ by themselves.
   paired, then accepts a succeeding mutation.
 - Depends on: VT-016 establishes operating-error propagation at another
   terminal boundary
+- Resolution: `storeHistoryRow` builds the next logical line and reserves
+  projection and authority capacity before committing either representation.
+  Allocation failure drops only the departing visible row; retained logical
+  authority and projected rows remain paired and the next scroll can succeed.
+  Full history releases one oldest logical owner and replaces its ring slot in
+  constant time. `copyRect` uses overlap-aware row and column direction and
+  performs no allocation. Terminal-level failure
+  injection covers every allocation while starting and extending logical
+  history, then proves successful reuse; Screen tests cover both rectangle
+  overlap directions with the allocator set to fail.
 
 ### VT-019 — Allocation owners expose inferred failure sets
 

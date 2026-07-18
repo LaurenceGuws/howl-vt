@@ -89,7 +89,6 @@ pub const Screen = struct {
     history_lines: std.ArrayListUnmanaged(HistoryLine),
     history_lines_start: u32,
     open_history_line: ?HistoryLine,
-    open_history_reuse_slot: ?u32,
     last_graphic_codepoint: ?u21,
     current_attrs: CellAttrs,
     dirty_state: dirty.DirtyState,
@@ -141,7 +140,6 @@ pub const Screen = struct {
             .history_lines = .empty,
             .history_lines_start = 0,
             .open_history_line = null,
-            .open_history_reuse_slot = null,
             .last_graphic_codepoint = null,
             .current_attrs = default_cell_attrs,
             .dirty_state = dirty_state,
@@ -297,7 +295,6 @@ pub const Screen = struct {
         replacement.history_lines = .empty;
         replacement.history_lines_start = 0;
         replacement.open_history_line = null;
-        replacement.open_history_reuse_slot = null;
         return replacement;
     }
 
@@ -494,38 +491,54 @@ pub const Screen = struct {
         if (self.wrap_pending) std.debug.assert(self.cursor.col == cols - 1);
     }
 
-    /// Retain one visible row in bounded history, silently stopping on allocation failure.
+    /// Retain one visible row only after all authority and projection allocations succeed.
+    ///
+    /// Allocation failure drops this row while preserving paired retained state for the next scroll.
     fn storeHistoryRow(self: *Screen, row: u16) void {
         if (self.history_capacity == 0) return;
         const allocator = self.allocator orelse return;
         const wrapped = self.rowWrapped(row);
         const len = self.visibleRowContentLen(row);
-        if (self.open_history_line == null) {
-            const reusable = self.takeReusableLine();
-            self.open_history_line = reusable.line;
-            self.open_history_reuse_slot = reusable.slot;
-        }
-        const open_line = &self.open_history_line.?;
+        var next_line = cloneAuthorityLine(
+            allocator,
+            if (self.open_history_line) |line| line.cells.items else &.{},
+        ) catch return;
+        defer next_line.deinit(allocator);
+
+        next_line.cells.ensureTotalCapacity(allocator, next_line.cells.items.len + len) catch return;
         var col: u16 = 0;
         while (col < len) : (col += 1) {
-            open_line.cells.append(allocator, self.cellInfoAt(row, col)) catch return;
+            next_line.cells.appendAssumeCapacity(self.cellInfoAt(row, col));
         }
-        self.appendProjectedRow(allocator, open_line.cells.items[open_line.cells.items.len - len .. open_line.cells.items.len], wrapped) catch return;
-        if (!wrapped) {
-            const finalized = self.open_history_line.?;
-            self.open_history_line = null;
-            if (self.open_history_reuse_slot) |slot| {
-                self.open_history_reuse_slot = null;
-                self.history_lines.items[slot] = finalized;
-            } else {
-                self.history_lines.append(allocator, finalized) catch {
-                    var failed = finalized;
-                    failed.deinit(allocator);
-                    return;
-                };
-                self.pruneLines(allocator);
-            }
+
+        const replacing_oldest = !wrapped and self.history_lines.items.len == self.history_capacity;
+        const projected_drop = if (replacing_oldest)
+            self.projectedRowCountForCells(self.historyLineAt(0).cells.items)
+        else
+            0;
+        const projected_after_drop = self.history_count -| projected_drop;
+        const projected_target = @min(projected_after_drop + 1, @as(u32, self.history_capacity));
+        self.ensureProjectedCapacity(allocator, projected_target) catch return;
+        if (!wrapped and !replacing_oldest) {
+            self.history_lines.ensureTotalCapacity(allocator, self.history_lines.items.len + 1) catch return;
         }
+
+        const replacement_slot = if (replacing_oldest) self.dropOldestHistoryLine(allocator) else null;
+        self.appendProjectedRowAssumeCapacity(
+            next_line.cells.items[next_line.cells.items.len - len ..],
+            wrapped,
+        );
+
+        if (self.open_history_line) |*line| line.deinit(allocator);
+        self.open_history_line = null;
+        if (wrapped) {
+            self.open_history_line = next_line;
+        } else if (replacement_slot) |slot| {
+            self.history_lines.items[@intCast(slot)] = next_line;
+        } else {
+            self.history_lines.appendAssumeCapacity(next_line);
+        }
+        next_line = .{};
     }
 
     /// Release retained logical history while preserving list capacity.
@@ -535,7 +548,6 @@ pub const Screen = struct {
         self.history_lines_start = 0;
         if (self.open_history_line) |*line| line.deinit(allocator);
         self.open_history_line = null;
-        self.open_history_reuse_slot = null;
     }
 
     /// Rebuild projected history rows from retained logical authority.
@@ -682,37 +694,27 @@ pub const Screen = struct {
         return 0;
     }
 
-    fn pruneLines(self: *Screen, allocator: std.mem.Allocator) void {
-        if (self.history_lines.items.len <= self.history_capacity) return;
-        const drop = self.history_lines.items.len - self.history_capacity;
-        std.debug.assert(drop <= self.history_lines.items.len);
-        var index: u32 = 0;
-        while (index < drop) : (index += 1) {
-            self.dropOldestProjectedRows(self.projectedRowCountForCells(self.history_lines.items[@intCast(index)].cells.items));
-            self.history_lines.items[@intCast(index)].deinit(allocator);
-        }
-        std.mem.copyForwards(HistoryLine, self.history_lines.items[0 .. self.history_lines.items.len - drop], self.history_lines.items[drop..]);
-        self.history_lines.shrinkRetainingCapacity(self.history_lines.items.len - drop);
-    }
-
-    fn takeReusableLine(self: *Screen) struct { line: HistoryLine, slot: ?u32 } {
-        if (self.history_capacity == 0 or self.history_lines.items.len < self.history_capacity) return .{ .line = .{}, .slot = null };
+    fn dropOldestHistoryLine(self: *Screen, allocator: std.mem.Allocator) u32 {
+        std.debug.assert(self.historyLineCount() == self.history_capacity);
         const slot = self.history_lines_start;
-        var reusable = self.history_lines.items[@intCast(slot)];
+        self.dropOldestProjectedRows(self.projectedRowCountForCells(self.history_lines.items[@intCast(slot)].cells.items));
+        self.history_lines.items[@intCast(slot)].deinit(allocator);
         self.history_lines.items[@intCast(slot)] = .{};
-        self.dropOldestProjectedRows(self.projectedRowCountForCells(reusable.cells.items));
         self.history_lines_start = (self.history_lines_start + 1) % self.historyLineCount();
-        reusable.cells.clearRetainingCapacity();
-        return .{ .line = reusable, .slot = slot };
+        return slot;
     }
 
     fn appendProjectedRow(self: *Screen, allocator: std.mem.Allocator, cells: []const Cell, wrapped: bool) !void {
         if (self.cols == 0) return;
         const capacity_target = @min(self.history_count + 1, @as(u32, self.history_capacity));
         try self.ensureProjectedCapacity(allocator, capacity_target);
+        self.appendProjectedRowAssumeCapacity(cells, wrapped);
+    }
 
+    fn appendProjectedRowAssumeCapacity(self: *Screen, cells: []const Cell, wrapped: bool) void {
         const wraps = self.history_wraps orelse return;
         const history = self.history orelse return;
+        std.debug.assert(self.projectedCapacity() >= @min(self.history_count + 1, @as(u32, self.history_capacity)));
         if (self.history_count == self.history_capacity) {
             self.dropOldestProjectedRows(1);
         }
@@ -1301,12 +1303,11 @@ pub const Screen = struct {
         }
     }
 
-    /// Copy one clipped page-one rectangle through temporary owned storage.
+    /// Copy one clipped page-one rectangle in overlap-safe row and column order.
     ///
-    /// Unsupported pages, missing storage, and allocation failure leave the
-    /// destination unchanged.
+    /// Unsupported pages and missing storage leave the destination unchanged.
     fn copyRect(self: *Screen, request: rect.RectCopy) void {
-        if (self.cells == null) return;
+        const cells = self.cells orelse return;
         if (request.source_page != 1 or request.dest_page != 1) return;
         const source = self.rectBounds(request.area) orelse return;
         const row_base: u16 = if (self.origin_mode) self.scroll_top else 0;
@@ -1320,28 +1321,18 @@ pub const Screen = struct {
         const copy_width = @min(width, self.cols - dest_left);
         if (copy_height == 0 or copy_width == 0) return;
 
-        const allocator = self.allocator orelse return;
-        const copy_cell_count = @as(u32, copy_height) * @as(u32, copy_width);
-        const temp = allocator.alloc(Cell, @intCast(copy_cell_count)) catch return;
-        defer allocator.free(temp);
-
-        var row: u16 = 0;
-        while (row < copy_height) : (row += 1) {
-            const temp_row_start = @as(u32, row) * @as(u32, copy_width);
-            var col: u16 = 0;
-            while (col < copy_width) : (col += 1) {
-                temp[@intCast(temp_row_start + @as(u32, col))] = self.cellInfoAt(source.top + row, source.left + col);
-            }
-        }
-
         self.markDirtyRows(dest_top, dest_top + copy_height - 1);
-        row = 0;
-        while (row < copy_height) : (row += 1) {
-            const dest_start = self.rowStart(dest_top + row);
-            const temp_row_start = @as(u32, row) * @as(u32, copy_width);
-            var col: u16 = 0;
-            while (col < copy_width) : (col += 1) {
-                self.cells.?[@intCast(dest_start + @as(u32, dest_left) + @as(u32, col))] = temp[@intCast(temp_row_start + @as(u32, col))];
+        var copied_rows: u16 = 0;
+        while (copied_rows < copy_height) : (copied_rows += 1) {
+            const row = if (dest_top > source.top) copy_height - copied_rows - 1 else copied_rows;
+            const source_start = self.rowStart(source.top + row) + source.left;
+            const dest_start = self.rowStart(dest_top + row) + dest_left;
+            const source_cells = cells[@intCast(source_start)..@intCast(source_start + copy_width)];
+            const dest_cells = cells[@intCast(dest_start)..@intCast(dest_start + copy_width)];
+            if (dest_start > source_start) {
+                std.mem.copyBackwards(Cell, dest_cells, source_cells);
+            } else {
+                std.mem.copyForwards(Cell, dest_cells, source_cells);
             }
         }
     }
@@ -1934,6 +1925,7 @@ pub const Screen = struct {
 
     /// Return a value view whose cells borrow the retained logical history line.
     fn historyLineAt(self: *const Screen, logical_index: u32) HistoryLine {
+        std.debug.assert(logical_index < self.historyLineCount());
         const slot = (self.history_lines_start + logical_index) % self.historyLineCount();
         return self.history_lines.items[@intCast(slot)];
     }

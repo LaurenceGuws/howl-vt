@@ -26,6 +26,119 @@ fn initTerminalWithHistory(allocator: std.mem.Allocator) !void {
     terminal.deinit();
 }
 
+fn feedChanged(terminal: *Terminal, bytes: []const u8) !void {
+    const summary = try terminal.feed(bytes);
+    try std.testing.expect(summary.state_changed);
+}
+
+test "terminal history retention is transactional at every allocation failure" {
+    var probe = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var terminal = try Terminal.initWithHistory(probe.allocator(), 2, 4, 8);
+    defer terminal.deinit();
+    try feedChanged(&terminal, "AAAA\r\nBBBB");
+    const first_history_allocation = probe.alloc_index;
+    try feedChanged(&terminal, "\r\nCCCC");
+    const allocation_limit = probe.alloc_index;
+    try std.testing.expect(allocation_limit > first_history_allocation);
+
+    var fail_index = first_history_allocation;
+    while (fail_index < allocation_limit) : (fail_index += 1) {
+        try historyRetentionFailure(fail_index);
+    }
+
+    var wrapped_probe = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var wrapped_terminal = try Terminal.initWithHistory(wrapped_probe.allocator(), 2, 4, 8);
+    defer wrapped_terminal.deinit();
+    try feedChanged(&wrapped_terminal, "ABCDEFGHIJKL");
+    const first_wrapped_allocation = wrapped_probe.alloc_index;
+    try feedChanged(&wrapped_terminal, "M");
+    const wrapped_allocation_limit = wrapped_probe.alloc_index;
+    try std.testing.expect(wrapped_allocation_limit > first_wrapped_allocation);
+
+    fail_index = first_wrapped_allocation;
+    while (fail_index < wrapped_allocation_limit) : (fail_index += 1) {
+        try openHistoryRetentionFailure(fail_index);
+    }
+
+    var full_probe = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var full_terminal = try Terminal.initWithHistory(full_probe.allocator(), 2, 4, 2);
+    defer full_terminal.deinit();
+    try feedChanged(&full_terminal, "AAAA\r\nBBBB\r\nCCCC\r\nDDDD");
+    const first_full_allocation = full_probe.alloc_index;
+    try feedChanged(&full_terminal, "\r\nEEEE");
+    const full_allocation_limit = full_probe.alloc_index;
+    try std.testing.expect(full_allocation_limit > first_full_allocation);
+
+    fail_index = first_full_allocation;
+    while (fail_index < full_allocation_limit) : (fail_index += 1) {
+        try fullHistoryRetentionFailure(fail_index);
+    }
+}
+
+fn historyRetentionFailure(fail_index: usize) !void {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+    var terminal = try Terminal.initWithHistory(failing.allocator(), 2, 4, 8);
+    defer terminal.deinit();
+    try feedChanged(&terminal, "AAAA\r\nBBBB");
+
+    try feedChanged(&terminal, "\r\nCCCC");
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expectEqual(@as(u32, 0), terminal.screen_state.primary.historyCount());
+    try std.testing.expectEqual(@as(usize, 0), terminal.screen_state.primary.history_lines.items.len);
+    try std.testing.expect(terminal.screen_state.primary.open_history_line == null);
+    try std.testing.expectEqual(@as(u21, 'B'), terminal.screen_state.primary.cellAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'C'), terminal.screen_state.primary.cellAt(1, 0));
+
+    failing.fail_index = std.math.maxInt(usize);
+    try feedChanged(&terminal, "\r\nDDDD");
+    try std.testing.expectEqual(@as(u32, 1), terminal.screen_state.primary.historyCount());
+    try std.testing.expectEqual(@as(usize, 1), terminal.screen_state.primary.history_lines.items.len);
+    try std.testing.expectEqual(@as(u21, 'B'), terminal.screen_state.primary.historyRowAt(0, 0));
+}
+
+fn openHistoryRetentionFailure(fail_index: usize) !void {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+    var terminal = try Terminal.initWithHistory(failing.allocator(), 2, 4, 8);
+    defer terminal.deinit();
+    try feedChanged(&terminal, "ABCDEFGHIJKL");
+
+    try feedChanged(&terminal, "M");
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expectEqual(@as(u32, 1), terminal.screen_state.primary.historyCount());
+    try std.testing.expectEqual(@as(usize, 0), terminal.screen_state.primary.history_lines.items.len);
+    try std.testing.expectEqual(@as(usize, 4), terminal.screen_state.primary.open_history_line.?.cells.items.len);
+    try std.testing.expectEqual(@as(u21, 'A'), terminal.screen_state.primary.historyRowAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'I'), terminal.screen_state.primary.cellAt(0, 0));
+
+    failing.fail_index = std.math.maxInt(usize);
+    try feedChanged(&terminal, "NOPQ");
+    try std.testing.expectEqual(@as(u32, 2), terminal.screen_state.primary.historyCount());
+    try std.testing.expectEqual(@as(usize, 8), terminal.screen_state.primary.open_history_line.?.cells.items.len);
+    try std.testing.expectEqual(@as(u21, 'I'), terminal.screen_state.primary.historyRowAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'A'), terminal.screen_state.primary.historyRowAt(1, 0));
+}
+
+fn fullHistoryRetentionFailure(fail_index: usize) !void {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+    var terminal = try Terminal.initWithHistory(failing.allocator(), 2, 4, 2);
+    defer terminal.deinit();
+    try feedChanged(&terminal, "AAAA\r\nBBBB\r\nCCCC\r\nDDDD");
+
+    try feedChanged(&terminal, "\r\nEEEE");
+    try std.testing.expect(failing.has_induced_failure);
+    try std.testing.expectEqual(@as(u32, 2), terminal.screen_state.primary.historyCount());
+    try std.testing.expectEqual(@as(usize, 2), terminal.screen_state.primary.history_lines.items.len);
+    try std.testing.expectEqual(@as(u21, 'B'), terminal.screen_state.primary.historyRowAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'A'), terminal.screen_state.primary.historyRowAt(1, 0));
+
+    failing.fail_index = std.math.maxInt(usize);
+    try feedChanged(&terminal, "\r\nFFFF");
+    try std.testing.expectEqual(@as(u32, 2), terminal.screen_state.primary.historyCount());
+    try std.testing.expectEqual(@as(usize, 2), terminal.screen_state.primary.history_lines.items.len);
+    try std.testing.expectEqual(@as(u21, 'D'), terminal.screen_state.primary.historyRowAt(0, 0));
+    try std.testing.expectEqual(@as(u21, 'B'), terminal.screen_state.primary.historyRowAt(1, 0));
+}
+
 test "terminal resize is transactional in both active-screen modes" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, resizeTerminalTransaction, .{false});
     try std.testing.checkAllAllocationFailures(std.testing.allocator, resizeTerminalTransaction, .{true});
