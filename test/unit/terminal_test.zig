@@ -5,6 +5,22 @@ const stream_harness = @import("../support/stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;
 
+test "terminal rejects zero dimensions exactly" {
+    try std.testing.expectError(error.InvalidDimensions, Terminal.init(std.testing.allocator, 0, 1));
+    try std.testing.expectError(error.InvalidDimensions, Terminal.initWithCells(std.testing.allocator, 1, 0));
+    try std.testing.expectError(error.InvalidDimensions, Terminal.initWithCellsAndHistory(std.testing.allocator, 0, 0, 8));
+}
+
+test "terminal rejects zero resize without changing dimensions" {
+    var terminal = try Terminal.initWithCells(std.testing.allocator, 2, 3);
+    defer terminal.deinit();
+
+    try std.testing.expectError(error.InvalidDimensions, terminal.resize(0, 3));
+    const view = terminal.surfaceSnapshot().snapshot.view;
+    try std.testing.expectEqual(@as(u16, 2), view.rows);
+    try std.testing.expectEqual(@as(u16, 3), view.cols);
+}
+
 test "terminal tracks synchronized output private mode" {
     var vt = try Terminal.init(std.testing.allocator, 2, 8);
     defer vt.deinit();

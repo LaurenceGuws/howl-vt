@@ -9,10 +9,10 @@ fragmentation and indirect ownership are defects.
 | Bar | Score | Blocking evidence |
 | --- | ---: | --- |
 | Foot directness | 6/10 | ABI translation is gone; screen behavior is still dispatched through broad structural helpers and CSI routing crosses six files. |
-| TigerBeetle defensiveness | 6/10 | Bounds exist for string controls, but dimensions accept zero, many owner boundaries infer errors, and structural `anytype` hides required state. |
+| TigerBeetle defensiveness | 7/10 | Terminal dimensions now reject zero exactly, but many internal owner boundaries infer errors and structural `anytype` hides required state. |
 | Character/capability density | 7/10 | ABI projection and compatibility constants are gone; six terminal constructors and a broad implementation-public surface still dilute the engine. |
 | Ownership/cleanup | 7/10 | Core owners generally use `errdefer`/`deinit`; allocator provenance and resize/history rollback remain implicit across helpers. |
-| Exact failures | 5/10 | `Terminal` construction/resize, `Screen` construction/resize, selection copying, and paste encoding expose inferred `!` errors. |
+| Exact failures | 6/10 | `Terminal` construction/resize now expose exact errors; `Screen` construction/resize, selection copying, and paste encoding still infer failures. |
 | Documentation | 3/10 | 63 `///` comments cover 502 non-FFI public declarations; almost every source file lacks `//!`; `design.md` names paths that do not exist. |
 | Hostile-input evidence | 6/10 | Limit and allocator-failure tests exist, plus deterministic random simulations, but no native fuzz target continuously feeds arbitrary bytes and operation sequences. |
 | Embedding surface | 5/10 | Native Zig is now sole authority, but `src/howl_vt.zig` exports four broad namespaces/types while useful input and observation contracts are discovered through internals. |
@@ -113,6 +113,9 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: zero dimensions return exact errors; maximum accepted
   dimensions prove multiplication/allocation bounds; all initialization
   failure points pass allocator-failure cleanup checks.
+- Observed progress: every public terminal constructor and resize rejects zero
+  dimensions with `error.InvalidDimensions`; rejected resize preserves the
+  published dimensions.
 
 ### VT-006 — Owner-boundary failures are inferred
 
@@ -131,6 +134,8 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: no inferred error union remains on the curated native
   surface; tests assert each public failure and unchanged/valid post-failure
   state.
+- Observed progress: `Terminal.InitError` and `Terminal.ResizeError` now name
+  invalid dimensions and allocation failure exactly.
 
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 

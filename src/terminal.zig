@@ -20,6 +20,8 @@ pub const Terminal = struct {
     const HostState = host_state.State;
     const KittyState = kitty_state.KittyState;
     pub const Stream = stream_terminal.Stream;
+    pub const InitError = error{ InvalidDimensions, OutOfMemory };
+    pub const ResizeError = error{ InvalidDimensions, OutOfMemory };
 
     const ScreenSet = screen_set.Set;
 
@@ -69,12 +71,16 @@ pub const Terminal = struct {
         };
     }
 
-    /// Initialize Terminal without cell storage.
-    pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
+    /// Initialize terminal state without cell storage.
+    ///
+    /// Both dimensions must be nonzero. The caller owns the returned terminal
+    /// and must call `deinit`.
+    pub fn init(allocator: std.mem.Allocator, rows: u16, cols: u16) InitError!Terminal {
         return initWithOptions(allocator, rows, cols, .{});
     }
 
-    pub fn initWithOptions(allocator: std.mem.Allocator, rows: u16, cols: u16, options: InitOptions) !Terminal {
+    pub fn initWithOptions(allocator: std.mem.Allocator, rows: u16, cols: u16, options: InitOptions) InitError!Terminal {
+        try validateDimensions(rows, cols);
         var stream_state = try stream_terminal.TerminalStreamState.initAlloc(allocator);
         errdefer stream_state.deinit();
         const state = ScreenNs.initWithDefaultCursorStyle(rows, cols, options.default_cursor_style);
@@ -82,12 +88,16 @@ pub const Terminal = struct {
         return initWithScreens(allocator, stream_state, state, alt_state);
     }
 
-    /// Initialize Terminal with cell storage.
-    pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) !Terminal {
+    /// Initialize terminal state with owned cell storage.
+    ///
+    /// Both dimensions must be nonzero. The caller owns the returned terminal
+    /// and must call `deinit`.
+    pub fn initWithCells(allocator: std.mem.Allocator, rows: u16, cols: u16) InitError!Terminal {
         return initWithCellsAndOptions(allocator, rows, cols, .{});
     }
 
-    pub fn initWithCellsAndOptions(allocator: std.mem.Allocator, rows: u16, cols: u16, options: InitOptions) !Terminal {
+    pub fn initWithCellsAndOptions(allocator: std.mem.Allocator, rows: u16, cols: u16, options: InitOptions) InitError!Terminal {
+        try validateDimensions(rows, cols);
         var stream_state = try stream_terminal.TerminalStreamState.initAlloc(allocator);
         errdefer stream_state.deinit();
         var state = try ScreenNs.initWithCellsAndDefaultCursorStyle(allocator, rows, cols, options.default_cursor_style);
@@ -97,12 +107,16 @@ pub const Terminal = struct {
         return initWithScreens(allocator, stream_state, state, alt_state);
     }
 
-    /// Initialize Terminal with cell and history storage.
-    pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) !Terminal {
+    /// Initialize terminal state with owned cells and bounded history storage.
+    ///
+    /// Both dimensions must be nonzero. The caller owns the returned terminal
+    /// and must call `deinit`.
+    pub fn initWithCellsAndHistory(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16) InitError!Terminal {
         return initWithCellsHistoryAndOptions(allocator, rows, cols, history_capacity, .{});
     }
 
-    pub fn initWithCellsHistoryAndOptions(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16, options: InitOptions) !Terminal {
+    pub fn initWithCellsHistoryAndOptions(allocator: std.mem.Allocator, rows: u16, cols: u16, history_capacity: u16, options: InitOptions) InitError!Terminal {
+        try validateDimensions(rows, cols);
         var stream_state = try stream_terminal.TerminalStreamState.initAlloc(allocator);
         errdefer stream_state.deinit();
         var state = try ScreenNs.initWithCellsHistoryAndDefaultCursorStyle(allocator, rows, cols, history_capacity, options.default_cursor_style);
@@ -142,7 +156,13 @@ pub const Terminal = struct {
         if (state_changed) self.dirty_generation +%= 1;
     }
 
-    pub fn resize(self: *Terminal, rows: u16, cols: u16) !void {
+    /// Resize both terminal screens.
+    ///
+    /// Both dimensions must be nonzero; rejection leaves state unchanged.
+    /// Allocation failure may occur after the primary screen is resized, so
+    /// paired-screen rollback remains open under VT-012.
+    pub fn resize(self: *Terminal, rows: u16, cols: u16) ResizeError!void {
+        try validateDimensions(rows, cols);
         try self.screen_state.resize(self.allocator, rows, cols);
         self.screen_state.activeSelection().clearIfInvalidatedByGrid(
             self.screen_state.activeConst(),
@@ -434,6 +454,10 @@ pub const Terminal = struct {
         };
     }
 };
+
+fn validateDimensions(rows: u16, cols: u16) error{InvalidDimensions}!void {
+    if (rows == 0 or cols == 0) return error.InvalidDimensions;
+}
 
 test "terminal scroll viewport owns bottom intent" {
     var vt = try Terminal.initWithCellsAndHistory(std.testing.allocator, 3, 5, 8);
