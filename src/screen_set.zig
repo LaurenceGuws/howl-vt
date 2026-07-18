@@ -118,7 +118,7 @@ pub const Set = struct {
         return if (self.alt_active) &self.alternate_selection else &self.primary_selection;
     }
 
-    /// Resets both screens, selections, and active-screen state.
+    /// Resets the active screen while preserving selection and alternate-screen state.
     pub fn reset(self: *Set) void {
         self.active().reset();
     }

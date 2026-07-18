@@ -1,6 +1,6 @@
 # Howl VT Offender Index
 
-Audited from `8606bd5` on 2026-07-18. Scores measure executable ownership,
+Re-audited from `d34ad6f` on 2026-07-18. Scores measure executable ownership,
 failure, bounds, invariants, and proof. Comments and file size earn no points
 by themselves.
 
@@ -20,6 +20,20 @@ by themselves.
 | Source maturity | 10/10 | Protocol breadth, deterministic parsing, transactional history, allocation-free rectangle copy, and the complete current native host surface are proved. |
 
 ## Ordered offenders
+
+### VT-022 — Stale surface acknowledgement reports success
+
+- Status: resolved
+- Path/symbol: `src/terminal.zig:Terminal.ackSurface`;
+  `src/publication.zig:Publication.canAck`
+- Defect: every nonzero snapshot identity returned `true`, including stale
+  identities rejected by `Publication.canAck`. Dirty state remained retained,
+  so the return value contradicted the operation result.
+- Bars: defensiveness, embedding surface, hostile-input evidence
+- Resolution: `ackSurface` now returns `false` unless publication identity and
+  current dirty generation both match. Native embedding proof mutates after a
+  publication, rejects its stale identity without clearing dirty state, then
+  accepts the current identity and observes clean state.
 
 ### VT-016 — Locator input turns operating failures into panics
 

@@ -369,10 +369,8 @@ pub const Terminal = struct {
 
     /// Acknowledges a published snapshot and retires dirty state only for valid identities.
     pub fn ackSurface(self: *Terminal, snapshot_seq: u64) bool {
-        if (snapshot_seq == 0) return false;
-        if (self.surface_publication.canAck(snapshot_seq, self.dirty_generation)) {
-            screen_set.clearDirtyRows(&self.screen_state);
-        }
+        if (!self.surface_publication.canAck(snapshot_seq, self.dirty_generation)) return false;
+        screen_set.clearDirtyRows(&self.screen_state);
         return true;
     }
 

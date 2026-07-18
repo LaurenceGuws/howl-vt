@@ -17,6 +17,15 @@ test "native root owns the complete embedding contract" {
     try std.testing.expectEqual(@as(u21, 'D'), publication.snapshot.view.cellAt(0, 3));
     try std.testing.expect(terminal.ackSurface(publication.snapshot_seq));
 
+    const stale = terminal.surfaceSnapshot();
+    _ = try terminal.feed("E");
+    try std.testing.expect(!terminal.ackSurface(stale.snapshot_seq));
+    const current = terminal.surfaceSnapshot();
+    try std.testing.expect(current.snapshot.dirty != null);
+    try std.testing.expect(current.snapshot_seq != stale.snapshot_seq);
+    try std.testing.expect(terminal.ackSurface(current.snapshot_seq));
+    try std.testing.expect(terminal.surfaceSnapshot().snapshot.dirty == null);
+
     terminal.startSelection(0, 1);
     terminal.updateSelection(0, 2);
     terminal.finishSelection();
