@@ -4,55 +4,38 @@ const kitty_protocol = @import("protocol.zig");
 const kitty_state = @import("state.zig");
 const input_encode = @import("../input/encode.zig");
 const host_state = @import("../host_state.zig");
+const semantic_event = @import("../semantic_event.zig");
 const terminal_mod = @import("../terminal.zig");
 
 const KittyNotificationCommand = kitty_protocol.KittyNotificationCommand;
 const KittyShellMark = kitty_protocol.KittyShellMark;
 const Terminal = terminal_mod.Terminal;
+const SemanticEvent = semantic_event.SemanticEvent;
 
-pub const KittyAction = union(enum) {
-    kitty_keyboard_set: struct { flags: u32, mode: u8 },
-    kitty_keyboard_query,
-    kitty_keyboard_push: u32,
-    kitty_keyboard_pop: u16,
-    kitty_shell_mark: kitty_protocol.KittyShellMark,
-    kitty_notification: kitty_protocol.KittyNotificationCommand,
-    kitty_pointer_shape: kitty_protocol.KittyPointerShapeCommand,
-    kitty_color_stack: kitty_protocol.KittyColorStackCommand,
-    kitty_multiple_cursor: kitty_protocol.KittyMultipleCursorCommand,
-    kitty_file_transfer: []const u8,
-    kitty_text_size: []const u8,
-};
-
-pub fn apply(vt: *Terminal, action: KittyAction) host_state.ApplyError!bool {
+/// Apply one Kitty-directed semantic event to terminal-owned Kitty state.
+pub fn apply(vt: *Terminal, event: SemanticEvent) host_state.ApplyError!void {
     var scratch: input_encode.Scratch = .{};
     const allocator = vt.allocator;
     const active_screen = vt.kitty.activeScreen(vt.screen_state.alt_active);
     const active_screen_const = vt.kitty.activeScreenConst(vt.screen_state.alt_active);
-    switch (action) {
+    switch (event) {
         .kitty_keyboard_set => |req| {
             active_screen.keyboard.set(req.flags, req.mode);
-            return true;
         },
         .kitty_keyboard_query => {
             try active_screen_const.keyboard.appendReport(allocator, &vt.host.pending_output, scratch.buf[0..]);
-            return true;
         },
         .kitty_keyboard_push => |flags| {
             active_screen.keyboard.push(flags);
-            return true;
         },
         .kitty_keyboard_pop => |count| {
             active_screen.keyboard.pop(count);
-            return true;
         },
         .kitty_shell_mark => |mark| {
             try setShellMark(allocator, &vt.kitty.global.shell_mark, mark);
-            return true;
         },
         .kitty_notification => |notification| {
             try appendNotification(allocator, &vt.kitty.global.notifications, notification);
-            return true;
         },
         .kitty_pointer_shape => |cmd| {
             switch (cmd.action) {
@@ -61,14 +44,12 @@ pub fn apply(vt: *Terminal, action: KittyAction) host_state.ApplyError!bool {
                 '?' => try active_screen_const.pointer.appendQuery(allocator, &vt.host.pending_output, cmd.names),
                 else => active_screen.pointer.set(cmd.names),
             }
-            return true;
         },
         .kitty_color_stack => |cmd| {
             switch (cmd) {
                 .push => kitty_color.pushState(&vt.kitty.global.color_stack, &vt.host.colors, &vt.kitty.global.color_stack_depth),
                 .pop => kitty_color.popState(&vt.kitty.global.color_stack, &vt.host.colors, &vt.kitty.global.color_stack_depth),
             }
-            return true;
         },
         .kitty_multiple_cursor => |cmd| {
             switch (cmd) {
@@ -77,16 +58,14 @@ pub fn apply(vt: *Terminal, action: KittyAction) host_state.ApplyError!bool {
                 .cursor_query => try vt.host.appendPendingOutput("\x1b[>100 q"),
                 .color_query => try vt.host.appendPendingOutput("\x1b[>101;30:0;40:0 q"),
             }
-            return true;
         },
         .kitty_file_transfer => |payload| {
             try setOptionalPayload(allocator, &vt.kitty.global.file_transfer_request, payload);
-            return true;
         },
         .kitty_text_size => |payload| {
             try setOptionalPayload(allocator, &vt.kitty.global.text_size_request, payload);
-            return true;
         },
+        else => unreachable,
     }
 }
 

@@ -1,38 +1,9 @@
 const std = @import("std");
-const csi_params = @import("csi_params.zig");
 const input_mouse = @import("input/mouse.zig");
 
 pub const KeyFormatChange = struct {
     resource: ?u8,
     value: ?u16,
-};
-
-pub const ModeAction = union(enum) {
-    application_cursor_keys: bool,
-    application_keypad: bool,
-    reverse_screen_mode: bool,
-    ansi_mode_set: csi_params.ModeParams,
-    ansi_mode_reset: csi_params.ModeParams,
-    modify_other_keys_set: i8,
-    modify_other_keys_disable,
-    key_format_change: KeyFormatChange,
-    pointer_mode: u2,
-    kitty_clipboard_mode: bool,
-    reverse_wraparound_mode: bool,
-    extended_reverse_wraparound_mode: bool,
-    focus_reporting: bool,
-    bracketed_paste: bool,
-    synchronized_output: bool,
-    mouse_tracking_off,
-    mouse_tracking_x10,
-    mouse_tracking_normal,
-    mouse_tracking_button_event,
-    mouse_tracking_any_event,
-    mouse_protocol_utf8: bool,
-    mouse_protocol_sgr: bool,
-    mouse_protocol_urxvt: bool,
-    dec_mode_save: csi_params.ModeParams,
-    dec_mode_restore: csi_params.ModeParams,
 };
 
 const saved_dec_mode_limit = 16;

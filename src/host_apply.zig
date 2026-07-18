@@ -1,40 +1,23 @@
 const std = @import("std");
-const csi_params = @import("csi_params.zig");
-const dcs_payload = @import("dcs_payload.zig");
-const legacy_control = @import("legacy_control.zig");
 const locator = @import("locator.zig");
 const osc_color = @import("osc_color.zig");
-const rect = @import("screen/rect.zig");
 const screen = @import("screen.zig");
 const kitty_color = @import("kitty/color.zig");
 const input_encode = @import("input/encode.zig");
-const terminal_color_control = @import("terminal_color_control.zig");
+const semantic_event = @import("semantic_event.zig");
 const terminal_mod = @import("terminal.zig");
 
 const LocatorNs = locator;
 const OscColorNs = osc_color;
 const HostState = @import("host_state.zig");
 const Terminal = terminal_mod.Terminal;
+const SemanticEvent = semantic_event.SemanticEvent;
 
-pub const HostAction = union(enum) {
-    title_set: []const u8,
-    color_control: terminal_color_control.TerminalColorControlCommand,
-    hyperlink_set: []const u8,
-    hyperlink_clear,
-    clipboard_set: []const u8,
-    locator_reporting: struct { mode: u16, unit: u16 },
-    locator_filter: rect.OptionalRectArea,
-    locator_events: csi_params.ModeParams,
-    locator_request: u16,
-    media_copy_request: u16,
-    dcs_payload: dcs_payload.DcsPayload,
-    legacy_control: legacy_control.LegacyControlKind,
-};
-
-pub fn apply(vt: *Terminal, action: HostAction) HostState.ApplyError!void {
+/// Apply one host-directed semantic event and retain its bounded consequence.
+pub fn apply(vt: *Terminal, event: SemanticEvent) HostState.ApplyError!void {
     var scratch: input_encode.Scratch = .{};
     const allocator = vt.allocator;
-    switch (action) {
+    switch (event) {
         .title_set => |title| try vt.host.replaceTitle(title),
         .color_control => |cmd| {
             switch (cmd.command) {
@@ -64,5 +47,6 @@ pub fn apply(vt: *Terminal, action: HostAction) HostState.ApplyError!void {
         .media_copy_request => |param| vt.host.media_copy_request = param,
         .dcs_payload => |payload| try vt.host.replaceDcsPayload(payload),
         .legacy_control => |kind| vt.host.legacy_control = kind,
+        else => unreachable,
     }
 }

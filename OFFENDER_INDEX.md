@@ -8,13 +8,13 @@ fragmentation and indirect ownership are defects.
 
 | Bar | Score | Blocking evidence |
 | --- | ---: | --- |
-| Foot directness | 7/10 | The embedding root now exposes one state owner; screen behavior is still dispatched through broad structural helpers and CSI routing crosses six files. |
+| Foot directness | 7/10 | The embedding root exposes one state owner and SemanticEvent dispatches directly to concrete owners; protocol classification remains fragmented across CSI-family files. |
 | TigerBeetle defensiveness | 7/10 | Terminal dimensions now reject zero exactly, but many internal owner boundaries infer errors and structural `anytype` hides required state. |
 | Character/capability density | 7/10 | ABI projection, compatibility constants, and four redundant Terminal constructors are gone; 643 public declarations across implementation modules still expose far more vocabulary than the one-symbol embedding root. |
-| Ownership/cleanup | 7/10 | Constructors and transactional Screen/Set resize have exhaustive allocation-failure cleanup proofs; history, host-state, and screen mechanics still rely heavily on structural helpers with ambient ownership. |
+| Ownership/cleanup | 7/10 | Constructors and transactional Screen/Set resize have exhaustive allocation-failure cleanup proofs; routed mutation now enters concrete Screen, Terminal, report, Kitty, or host owners without mirrored action unions. |
 | Exact failures | 6/10 | Curated Terminal operations, selection projection, Screen construction/resize, Set resize, and paste allocation now expose exact failures; inferred errors remain elsewhere in internal protocol and host-state owners. |
 | Documentation | 3/10 | The tree has 101 `///` lines for 643 public declarations, and only 2 of 62 source files have `//!` owner contracts; many retained public implementation symbols remain undocumented. |
-| Hostile-input evidence | 6/10 | Limit and allocator-failure tests exist, plus deterministic random simulations, but no native fuzz target continuously feeds arbitrary bytes and operation sequences. |
+| Hostile-input evidence | 6/10 | Limit and allocator-failure tests, deterministic simulations, and a native arbitrary-byte/operation fuzz target exist; bounded fuzz runs complete and preserve their corpus. |
 | Embedding surface | 7/10 | `src/howl_vt.zig` now exposes only `Terminal` and proves the current headless host path; additional contracts remain private until earned. |
 | Deliberate modification | 5/10 | `protocol_coverage.db` and simulations help, but no executable source-debt gates protect public docs, erased types, exact errors, or ABI absence. |
 | Source maturity | 6/10 | Strong protocol breadth, native tests, and current design paths remain, but broad erased helpers, undocumented implementation-public symbols, and inferred internal failures persist. |
@@ -179,7 +179,7 @@ fragmentation and indirect ownership are defects.
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
   `src/screen/dirty.zig`, `src/screen/erase.zig`,
-  `src/screen/style.zig`, `src/screen/apply.zig`,
+  `src/screen/style.zig`,
   `src/screen/rect.zig`, `src/screen/history.zig`, and
   `src/screen/resize.zig` now have zero.
 - Defect: helpers accept undeclared field/method shapes, making dependencies,
@@ -223,9 +223,9 @@ fragmentation and indirect ownership are defects.
   `screen/erase.zig` retains only the shared `EraseMode` value definition.
   The complete SGR path now lives on Screen; `screen/style.zig` retains only
   the typed rectangular-attribute operation used by `screen/rect.zig`.
-  The exhaustive ScreenAction dispatch and its eight mutation groups now
-  live on concrete Screen; `screen/apply.zig` retains only the shared typed
-  action vocabulary and its value imports.
+  The exhaustive canonical SemanticEvent dispatch and its eight Screen
+  mutation groups live on concrete Screen; the duplicate ScreenAction file
+  was deleted.
   Four rectangular mutations now live on concrete Screen;
   `screen/rect.zig` retains only typed protocol/request values, while the
   narrow cell-attribute algorithm remains typed in `screen/style.zig`.
@@ -294,20 +294,26 @@ fragmentation and indirect ownership are defects.
 
 ### VT-009 — CSI/event routing crosses redundant vocabularies
 
-- Status: open
+- Status: resolved
 - Path/symbol: `src/csi.zig`, `csi_plain.zig`, `csi_private.zig`,
   `csi_intermediate.zig`, `csi_leader.zig`, `semantic_event.zig`,
-  `route.zig`
-- Defect: CSI classification fragments across five dispatch files, then maps
-  through a large semantic-event vocabulary and a second route layer before
-  reaching owners. The hops do not consistently correspond to independent
-  state ownership.
+  `route.zig`, `screen.zig`, `terminal.zig`, `report.zig`,
+  `kitty/apply.zig`, `host_apply.zig`
+- Defect: resolved; parser classifiers previously produced SemanticEvent,
+  which route translated into five mirrored action unions before concrete
+  owners could mutate state.
 - Bars: directness, density, deliberate modification, maturity
-- Simpler shape: parse once into the smallest action owned by the mutation
-  target; retain a routing layer only where it enforces a real boundary.
+- Simpler shape: parser syntax remains pure and classifies once into canonical
+  SemanticEvent; route dispatches that event directly to concrete owners.
 - Depends on: VT-007; audit protocol coverage before changing mappings
 - Acceptance evidence: every retained dispatch hop names an owner boundary;
   protocol mapping and terminal end-to-end tests preserve supported controls.
+- Resolution: ScreenAction, ModeAction, ReportAction, KittyAction, HostAction,
+  and all five conversion switches were deleted. SemanticEvent is consumed
+  directly by Screen, Terminal mode ownership, report emission, Kitty state,
+  and host consequence ownership. Route has one exhaustive owner switch.
+  Cursor-color controls retain their canonical color event while route applies
+  both the derived Screen cursor mutation and host color consequence.
 
 ### VT-010 — History and resize duplicate reflow mechanics
 

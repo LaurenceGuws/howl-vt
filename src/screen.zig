@@ -6,7 +6,6 @@ const color = @import("screen/color.zig");
 const cursor = @import("screen/cursor.zig");
 const dirty = @import("screen/dirty.zig");
 const erase = @import("screen/erase.zig");
-const screen_apply = @import("screen/apply.zig");
 const history_mod = @import("screen/history.zig");
 const rect = @import("screen/rect.zig");
 const resize_mod = @import("screen/resize.zig");
@@ -14,7 +13,6 @@ const style_mod = @import("screen/style.zig");
 const tabs = @import("screen/tabs.zig");
 
 const SemanticEvent = semantic_event.SemanticEvent;
-const ScreenAction = screen_apply.ScreenAction;
 const HistoryLine = history_mod.HistoryLine;
 const LogicalLine = history_mod.LogicalLine;
 const LogicalSnapshot = history_mod.LogicalSnapshot;
@@ -872,20 +870,53 @@ pub const Screen = struct {
     }
 
     /// Apply one routed screen mutation request to this Screen.
-    pub fn applyScreen(self: *Screen, event: ScreenAction) void {
+    pub fn applyScreen(self: *Screen, event: SemanticEvent) void {
         switch (event) {
-            .cursor_up, .cursor_down, .cursor_forward, .cursor_back, .cursor_next_line, .cursor_prev_line, .cursor_horizontal_absolute, .cursor_vertical_absolute, .cursor_position => self.applyCursorMove(event),
+            .cursor_up,
+            .cursor_down,
+            .cursor_forward,
+            .cursor_back,
+            .cursor_next_line,
+            .cursor_prev_line,
+            .cursor_horizontal_absolute,
+            .cursor_vertical_absolute,
+            .cursor_position,
+            => self.applyCursorMove(event),
             .write_text, .write_codepoint, .repeat_preceding, .sgr => self.applyRetainedState(event),
             .line_feed, .next_line, .reverse_index, .carriage_return, .backspace, .horizontal_tab, .horizontal_tab_forward, .horizontal_tab_back => self.applyFlowMove(event),
             .horizontal_tab_set, .tab_clear_current, .tab_clear_all, .reset_default_tab_stops => self.applyTabState(event),
-            .cursor_visible, .cursor_style, .cursor_color, .cursor_text_color, .auto_wrap, .origin_mode, .insert_mode, .character_protection, .attr_change_extent_rect, .left_right_margin_mode, .set_left_right_margins => self.applyScreenState(event),
+            .cursor_visible,
+            .cursor_style,
+            .cursor_color,
+            .cursor_text_color,
+            .auto_wrap,
+            .origin_mode,
+            .insert_mode,
+            .character_protection,
+            .attr_change_extent_rect,
+            .left_right_margin_mode,
+            .set_left_right_margins,
+            => self.applyScreenState(event),
             .insert_lines, .delete_lines, .insert_chars, .delete_chars, .scroll_up_lines, .scroll_down_lines, .set_scroll_region, .reset_screen => self.applyLineEdit(event),
-            .erase_display_below, .erase_display_above, .erase_display_complete, .erase_display_scrollback, .erase_display_scroll_complete, .erase_line, .selective_erase_line, .erase_chars, .shift_left_columns, .shift_right_columns, .insert_columns, .delete_columns => self.applyGridEdit(event),
+            .erase_display_below,
+            .erase_display_above,
+            .erase_display_complete,
+            .erase_display_scrollback,
+            .erase_display_scroll_complete,
+            .erase_line,
+            .selective_erase_line,
+            .erase_chars,
+            .shift_left_columns,
+            .shift_right_columns,
+            .insert_columns,
+            .delete_columns,
+            => self.applyGridEdit(event),
             .rect_erase, .rect_selective_erase, .rect_fill, .rect_copy, .rect_attrs_change => self.applyRectEdit(event),
+            else => unreachable,
         }
     }
 
-    fn applyCursorMove(self: *Screen, event: ScreenAction) void {
+    fn applyCursorMove(self: *Screen, event: SemanticEvent) void {
         self.wrap_pending = false;
         switch (event) {
             .cursor_up => |n| self.cursor.setRowByClient(self.cursor.row -| n),
@@ -901,7 +932,7 @@ pub const Screen = struct {
         }
     }
 
-    fn applyRetainedState(self: *Screen, event: ScreenAction) void {
+    fn applyRetainedState(self: *Screen, event: SemanticEvent) void {
         switch (event) {
             .write_text => |text| self.writeText(text),
             .write_codepoint => |codepoint| self.writeCell(codepoint),
@@ -911,7 +942,7 @@ pub const Screen = struct {
         }
     }
 
-    fn applyFlowMove(self: *Screen, event: ScreenAction) void {
+    fn applyFlowMove(self: *Screen, event: SemanticEvent) void {
         self.wrap_pending = false;
         switch (event) {
             .line_feed => {
@@ -933,7 +964,7 @@ pub const Screen = struct {
         }
     }
 
-    fn applyTabState(self: *Screen, event: ScreenAction) void {
+    fn applyTabState(self: *Screen, event: SemanticEvent) void {
         switch (event) {
             .horizontal_tab_set => self.setTabStop(),
             .tab_clear_current => self.clearCurrentTabStop(),
@@ -943,7 +974,7 @@ pub const Screen = struct {
         }
     }
 
-    fn applyScreenState(self: *Screen, event: ScreenAction) void {
+    fn applyScreenState(self: *Screen, event: SemanticEvent) void {
         switch (event) {
             .cursor_visible => |visible| self.cursor.visible = visible,
             .cursor_style => |cursor_style| switch (cursor_style) {
@@ -970,7 +1001,7 @@ pub const Screen = struct {
         }
     }
 
-    fn applyLineEdit(self: *Screen, event: ScreenAction) void {
+    fn applyLineEdit(self: *Screen, event: SemanticEvent) void {
         switch (event) {
             .insert_lines => |count| {
                 self.wrap_pending = false;
@@ -1005,7 +1036,7 @@ pub const Screen = struct {
         }
     }
 
-    fn applyGridEdit(self: *Screen, event: ScreenAction) void {
+    fn applyGridEdit(self: *Screen, event: SemanticEvent) void {
         self.wrap_pending = false;
         switch (event) {
             .erase_display_below => |protected| self.eraseDisplay(.cursor_to_end, protected),
@@ -1024,7 +1055,7 @@ pub const Screen = struct {
         }
     }
 
-    fn applyRectEdit(self: *Screen, event: ScreenAction) void {
+    fn applyRectEdit(self: *Screen, event: SemanticEvent) void {
         self.wrap_pending = false;
         switch (event) {
             .rect_erase => |area| self.eraseRect(area, false),
@@ -1156,7 +1187,7 @@ pub const Screen = struct {
 
     /// Erase the active line range selected by `mode`.
     pub fn eraseLine(self: *Screen, mode: EraseMode) void {
-        _ = self.cells orelse return;
+        if (self.cells == null) return;
         if (self.rows == 0 or self.cols == 0) return;
         switch (mode) {
             .cursor_to_end => {
@@ -1252,7 +1283,7 @@ pub const Screen = struct {
     /// Unsupported pages, missing storage, and allocation failure leave the
     /// destination unchanged.
     pub fn copyRect(self: *Screen, request: rect.RectCopy) void {
-        _ = self.cells orelse return;
+        if (self.cells == null) return;
         if (request.source_page != 1 or request.dest_page != 1) return;
         const source = self.rectBounds(request.area) orelse return;
         const row_base: u16 = if (self.origin_mode) self.scroll_top else 0;
@@ -1439,7 +1470,11 @@ pub const Screen = struct {
 
         self.markDirtyCols(row, left, right);
         if (move_len > 0) {
-            std.mem.copyForwards(Cell, cells[@intCast(left_idx)..@intCast(left_idx + move_len)], cells[@intCast(left_idx + colCount(amount))..@intCast(left_idx + colCount(amount) + move_len)]);
+            std.mem.copyForwards(
+                Cell,
+                cells[@intCast(left_idx)..@intCast(left_idx + move_len)],
+                cells[@intCast(left_idx + colCount(amount))..@intCast(left_idx + colCount(amount) + move_len)],
+            );
         }
         @memset(cells[@intCast(left_idx + move_len)..@intCast(left_idx + colCount(width))], self.eraseCell());
         self.setRowWrapped(row, false);
@@ -1465,7 +1500,11 @@ pub const Screen = struct {
 
         self.markDirtyCols(row, left, right);
         if (move_len > 0) {
-            std.mem.copyBackwards(Cell, cells[@intCast(left_idx + colCount(amount))..@intCast(left_idx + colCount(amount) + move_len)], cells[@intCast(left_idx)..@intCast(left_idx + move_len)]);
+            std.mem.copyBackwards(
+                Cell,
+                cells[@intCast(left_idx + colCount(amount))..@intCast(left_idx + colCount(amount) + move_len)],
+                cells[@intCast(left_idx)..@intCast(left_idx + move_len)],
+            );
         }
         @memset(cells[@intCast(left_idx)..@intCast(left_idx + colCount(amount))], self.eraseCell());
         self.setRowWrapped(row, false);
@@ -1852,7 +1891,7 @@ pub const Screen = struct {
     }
 
     fn rowWrapIndex(self: *const Screen, logical_row: u16) ?u16 {
-        _ = self.row_wraps orelse return null;
+        if (self.row_wraps == null) return null;
         if (self.rows == 0 or logical_row >= self.rows) return null;
         return (self.row_origin + logical_row) % self.rows;
     }

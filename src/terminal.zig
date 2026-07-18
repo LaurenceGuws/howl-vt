@@ -10,6 +10,7 @@ const screen = @import("screen.zig");
 const host_state = @import("host_state.zig");
 const kitty_state = @import("kitty/state.zig");
 const parser_mod = @import("parser.zig");
+const semantic_event = @import("semantic_event.zig");
 const selection = @import("selection.zig");
 const selection_projection = @import("selection_projection.zig");
 const screen_set = @import("screen_set.zig");
@@ -21,6 +22,7 @@ const ScreenNs = screen.Screen;
 const TerminalModeNs = mode;
 const FeedSummary = stream_terminal.FeedSummary;
 const FeedError = stream_terminal.FeedError;
+const SemanticEvent = semantic_event.SemanticEvent;
 
 /// Host-neutral terminal state and protocol engine.
 pub const Terminal = struct {
@@ -50,16 +52,6 @@ pub const Terminal = struct {
     dirty_generation: u64 = 1,
     surface_publication: surface_publication.Publication = .{},
     scrollback_offset: u32 = 0,
-
-    pub const RuntimeObligation = struct {
-        pending_now: bool,
-        deadline_ns: u64,
-    };
-
-    pub const RuntimeProgress = struct {
-        state_changed: bool,
-        obligation: RuntimeObligation,
-    };
 
     pub const ScrollViewport = union(enum) {
         top,
@@ -238,9 +230,9 @@ pub const Terminal = struct {
         self.screen_state.primary.markAllRowsDirty();
     }
 
-    /// Apply one routed terminal mode action.
-    pub fn applyModeAction(self: *Terminal, action: TerminalModeNs.ModeAction) void {
-        switch (action) {
+    /// Apply one canonical semantic mode event.
+    pub fn applyModeEvent(self: *Terminal, event: SemanticEvent) void {
+        switch (event) {
             .application_cursor_keys => |enabled| self.modes.application_cursor_keys = enabled,
             .application_keypad => |enabled| self.modes.application_keypad = enabled,
             .reverse_screen_mode => |enabled| self.modes.reverse_screen_mode = enabled,
@@ -272,6 +264,7 @@ pub const Terminal = struct {
             .mouse_protocol_urxvt => |enabled| self.modes.mouse_protocol = if (enabled) .urxvt else .none,
             .dec_mode_save => |modes| self.saveDecModes(modes.params[0..modes.param_count]),
             .dec_mode_restore => |modes| self.restoreDecModes(modes.params[0..modes.param_count]),
+            else => unreachable,
         }
     }
 
@@ -432,21 +425,6 @@ pub const Terminal = struct {
             .is_alternate_screen = view.is_alternate_screen,
             .snapshot_seq = publication.snapshot_seq,
             .dirty_generation = publication.dirty_generation,
-        };
-    }
-
-    pub fn runtimeObligation(self: *const Terminal, now_ns: u64) RuntimeObligation {
-        _ = self;
-        _ = now_ns;
-        return .{ .pending_now = false, .deadline_ns = 0 };
-    }
-
-    pub fn progressRuntime(self: *Terminal, now_ns: u64) host_state.ApplyError!RuntimeProgress {
-        _ = self;
-        _ = now_ns;
-        return .{
-            .state_changed = false,
-            .obligation = .{ .pending_now = false, .deadline_ns = 0 },
         };
     }
 
@@ -654,7 +632,8 @@ test "terminal scroll viewport owns bottom intent" {
     var vt = try Terminal.initWithHistory(std.testing.allocator, 3, 5, 8);
     defer vt.deinit();
 
-    _ = try vt.feed("1AAAA\r\n2BBBB\r\n3CCCC\r\n4DDDD");
+    const feed = try vt.feed("1AAAA\r\n2BBBB\r\n3CCCC\r\n4DDDD");
+    try std.testing.expect(feed.state_changed);
     try std.testing.expect(vt.visibleHistoryCount() > 0);
     try std.testing.expect(vt.scrollViewport(.top));
     try std.testing.expect(vt.scrollback_offset > 0);
@@ -667,12 +646,14 @@ test "terminal feed preserves scrolled viewport as history grows" {
     var vt = try Terminal.initWithHistory(std.testing.allocator, 3, 5, 8);
     defer vt.deinit();
 
-    _ = try vt.feed("1AAAA\r\n2BBBB\r\n3CCCC\r\n4DDDD");
+    const initial_feed = try vt.feed("1AAAA\r\n2BBBB\r\n3CCCC\r\n4DDDD");
+    try std.testing.expect(initial_feed.state_changed);
     try std.testing.expect(vt.scrollViewport(.{ .absolute = 1 }));
     const before = vt.surfaceSnapshot().snapshot.view.cellAt(0, 0);
     const offset_before = vt.scrollback_offset;
 
-    _ = try vt.feed("\r\n5EEEE");
+    const append_feed = try vt.feed("\r\n5EEEE");
+    try std.testing.expect(append_feed.state_changed);
 
     try std.testing.expect(vt.scrollback_offset > offset_before);
     try std.testing.expectEqual(before, vt.surfaceSnapshot().snapshot.view.cellAt(0, 0));

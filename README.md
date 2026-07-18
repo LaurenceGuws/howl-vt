@@ -4,7 +4,7 @@ Host-neutral terminal model for Howl.
 
 Version `0.1.0-dev` interfaces may change without notice.
 
-`howl-vt` parses terminal byte streams, routes parser events into terminal actions, mutates screen state, owns selection truth, encodes host input according to terminal modes, and exposes visible-surface and protocol consequences through native Zig interfaces.
+`howl-vt` parses terminal byte streams, classifies parser events into one semantic mutation vocabulary, dispatches directly to concrete state owners, owns selection truth, encodes host input according to terminal modes, and exposes visible-surface and protocol consequences through native Zig interfaces.
 
 ## Embedding surfaces
 

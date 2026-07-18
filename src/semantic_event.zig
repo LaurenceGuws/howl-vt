@@ -9,7 +9,7 @@ const rect = @import("screen/rect.zig");
 const screen_color = @import("screen/color.zig");
 const terminal_color_control = @import("terminal_color_control.zig");
 
-/// Screen-directed semantic event union.
+/// Canonical parser-to-domain event consumed synchronously by terminal state owners.
 pub const SemanticEvent = union(enum) {
     cursor_up: u16,
     cursor_down: u16,

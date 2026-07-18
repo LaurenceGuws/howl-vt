@@ -5,6 +5,7 @@ const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
 const input_encode = @import("input/encode.zig");
 const host_state = @import("host_state.zig");
+const semantic_event = @import("semantic_event.zig");
 const terminal_mod = @import("terminal.zig");
 
 const Screen = screen_mod.Screen;
@@ -12,31 +13,7 @@ const Grid = Screen;
 const LocatorNs = locator;
 const TerminalModeNs = mode_mod;
 const Terminal = terminal_mod.Terminal;
-
-pub const ReportAction = union(enum) {
-    ansi_mode_query: u16,
-    modify_other_keys_query,
-    key_format_query: u8,
-    dec_mode_query: u16,
-    dcs_request_status: []const u8,
-    dcs_request_termcap: []const u8,
-    dcs_request_resource: []const u8,
-    device_status_report,
-    dec_device_status_report: u16,
-    cursor_position_report,
-    dec_cursor_position_report,
-    primary_device_attributes,
-    secondary_device_attributes,
-    tertiary_device_attributes,
-    xtversion,
-    xttitlepos,
-    xtchecksum: u16,
-    rect_checksum_request: struct { request_id: u16, page: u16, area: rect.RectArea },
-    selected_graphic_rendition_report: rect.RectArea,
-    screen_extent_report,
-    parameters_report: u16,
-    xtreportcolors,
-};
+const SemanticEvent = semantic_event.SemanticEvent;
 
 const xtversion_text = "howl-vt dev";
 const format_output_max_bytes = 64;
@@ -52,7 +29,8 @@ pub const RectChecksumRequest = struct {
     request_id: u16,
 };
 
-pub fn apply(vt: *Terminal, event: ReportAction) host_state.ApplyError!void {
+/// Apply one report-directed semantic event to bounded host output.
+pub fn apply(vt: *Terminal, event: SemanticEvent) host_state.ApplyError!void {
     var scratch: input_encode.Scratch = .{};
     const allocator = vt.allocator;
     const pending_output = &vt.host.pending_output;
@@ -114,6 +92,7 @@ pub fn apply(vt: *Terminal, event: ReportAction) host_state.ApplyError!void {
         .screen_extent_report => try appendScreenExtentReport(allocator, pending_output, encode_buf, render_view),
         .parameters_report => |kind| try appendTerminalParametersReport(allocator, pending_output, encode_buf, kind),
         .xtreportcolors => try appendColorStackReport(allocator, pending_output, encode_buf, vt.kitty.global.color_stack.len),
+        else => unreachable,
     }
 }
 

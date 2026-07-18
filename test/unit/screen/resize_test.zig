@@ -1,9 +1,9 @@
 const std = @import("std");
 const screen_mod = @import("../../../src/screen.zig");
-const screen_apply = @import("../../../src/screen/apply.zig");
+const semantic_event = @import("../../../src/semantic_event.zig");
 
 const Grid = screen_mod.Screen;
-const SemanticEvent = screen_apply.ScreenAction;
+const SemanticEvent = semantic_event.SemanticEvent;
 
 fn apply(screen: *Grid, event: SemanticEvent) void {
     screen.applyScreen(event);
