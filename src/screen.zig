@@ -309,8 +309,12 @@ pub const Screen = struct {
         return c[@intCast(start + @as(u32, col))];
     }
 
+    /// Return whether `col` is a configured stop, using default eight-column stops without storage.
     pub fn tabStopAt(self: *const Screen, col: u16) bool {
-        return tabs.isStop(self, col);
+        if (self.tab_stops) |stops| {
+            if (col < stops.len) return stops[col];
+        }
+        return col != 0 and col % 8 == 0;
     }
 
     /// Read history cell by recency index and column.
@@ -498,28 +502,51 @@ pub const Screen = struct {
         style_mod.applySgr(self, params, separators);
     }
 
+    /// Move forward through at most `count` tab stops, clamping at the last column.
     pub fn horizontalTabForward(self: *Screen, count: u16) void {
-        tabs.horizontalForward(self, count);
+        if (self.cols == 0) return;
+        var remaining = count;
+        while (remaining > 0) : (remaining -= 1) {
+            if (self.cursor.col >= self.cols - 1) break;
+            var col = self.cursor.col + 1;
+            while (col < self.cols and !self.tabStopAt(col)) : (col += 1) {}
+            self.cursor.setColByClient(if (col < self.cols) col else self.cols - 1);
+        }
     }
 
+    /// Move backward through at most `count` tab stops, clamping at column zero.
     pub fn horizontalTabBack(self: *Screen, count: u16) void {
-        tabs.horizontalBack(self, count);
+        var remaining = count;
+        while (remaining > 0) : (remaining -= 1) {
+            if (self.cursor.col == 0) break;
+            var col = self.cursor.col - 1;
+            while (col > 0 and !self.tabStopAt(col)) : (col -= 1) {}
+            self.cursor.setColByClient(if (self.tabStopAt(col)) col else 0);
+        }
     }
 
+    /// Set a stored tab stop at the current in-bounds cursor column.
     pub fn setTabStop(self: *Screen) void {
-        tabs.setStop(self);
+        if (self.tab_stops) |stops| {
+            if (self.cursor.col < stops.len) stops[self.cursor.col] = true;
+        }
     }
 
+    /// Clear a stored tab stop at the current in-bounds cursor column.
     pub fn clearCurrentTabStop(self: *Screen) void {
-        tabs.clearCurrentStop(self);
+        if (self.tab_stops) |stops| {
+            if (self.cursor.col < stops.len) stops[self.cursor.col] = false;
+        }
     }
 
+    /// Clear every stored tab stop.
     pub fn clearAllTabStops(self: *Screen) void {
-        tabs.clearAllStops(self);
+        if (self.tab_stops) |stops| @memset(stops, false);
     }
 
+    /// Restore default eight-column stops in the stored tab-stop buffer.
     pub fn resetDefaultTabStops(self: *Screen) void {
-        tabs.resetDefaultStops(self);
+        if (self.tab_stops) |stops| tabs.setDefaultTabStops(stops);
     }
 
     pub fn lineFeed(self: *Screen) void {
