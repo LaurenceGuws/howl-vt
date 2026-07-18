@@ -424,7 +424,7 @@ fn rebuildResizeAuthority(self: anytype, allocator: std.mem.Allocator, lines: Lo
         reflow.rewrapped.items,
         cols,
     );
-    try history_mod.rebuildProjection(self, allocator);
+    try self.rebuildHistoryProjection(allocator);
 }
 
 fn restoreCursor(self: anytype, rows: u16, cols: u16, reflow: ReflowState, viewport: ViewportState) void {

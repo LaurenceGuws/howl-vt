@@ -172,8 +172,8 @@ fragmentation and indirect ownership are defects.
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 
 - Status: open
-- Path/symbol: `src/screen/history.zig` (17 occurrences);
-  `src/screen/resize.zig` (7). Repository total: 44 occurrences across
+- Path/symbol: `src/screen/history.zig` (7 occurrences);
+  `src/screen/resize.zig` (7). Repository total: 34 occurrences across
   13 files;
   `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
@@ -230,6 +230,10 @@ fragmentation and indirect ownership are defects.
   narrow cell-attribute algorithm remains typed in `screen/style.zig`.
   Eight history ring/projection queries now live on concrete Screen; history
   mutation and resize callers invoke those typed methods directly.
+  Runtime history retention, pruning, projection growth/replacement, ring
+  advancement, authority cleanup, and projection rebuild now live on
+  concrete Screen. `storeHistoryRow` retains its silent allocation-failure
+  and partial-progress ordering.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 

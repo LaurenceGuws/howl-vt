@@ -249,12 +249,200 @@ pub const Screen = struct {
         return resize_mod.prepareResize(self, allocator, rows, cols);
     }
 
+    /// Retain one visible row in bounded history, silently stopping on allocation failure.
     pub fn storeHistoryRow(self: *Screen, row: u16) void {
-        history_mod.storeRow(self, row);
+        if (self.history_capacity == 0) return;
+        const allocator = self.allocator orelse return;
+        const wrapped = self.rowWrapped(row);
+        const len = self.visibleRowContentLen(row);
+        if (self.open_history_line == null) {
+            const reusable = self.takeReusableLine();
+            self.open_history_line = reusable.line;
+            self.open_history_reuse_slot = reusable.slot;
+        }
+        const open_line = &self.open_history_line.?;
+        var col: u16 = 0;
+        while (col < len) : (col += 1) {
+            open_line.cells.append(allocator, self.cellInfoAt(row, col)) catch return;
+        }
+        self.appendProjectedRow(allocator, open_line.cells.items[open_line.cells.items.len - len .. open_line.cells.items.len], wrapped) catch return;
+        if (!wrapped) {
+            const finalized = self.open_history_line.?;
+            self.open_history_line = null;
+            if (self.open_history_reuse_slot) |slot| {
+                self.open_history_reuse_slot = null;
+                self.history_lines.items[slot] = finalized;
+            } else {
+                self.history_lines.append(allocator, finalized) catch {
+                    var failed = finalized;
+                    failed.deinit(allocator);
+                    return;
+                };
+                self.pruneLines(allocator);
+            }
+        }
     }
 
-    fn clearHistoryAuthority(self: *Screen, allocator: std.mem.Allocator) void {
-        history_mod.clearAuthority(self, allocator);
+    /// Release retained logical history while preserving list capacity.
+    pub fn clearHistoryAuthority(self: *Screen, allocator: std.mem.Allocator) void {
+        for (self.history_lines.items) |*line| line.deinit(allocator);
+        self.history_lines.clearRetainingCapacity();
+        self.history_lines_start = 0;
+        if (self.open_history_line) |*line| line.deinit(allocator);
+        self.open_history_line = null;
+        self.open_history_reuse_slot = null;
+    }
+
+    /// Rebuild projected history rows from retained logical authority.
+    pub fn rebuildHistoryProjection(self: *Screen, allocator: std.mem.Allocator) !void {
+        self.history_count = 0;
+        self.history_write_idx = 0;
+
+        if (self.history_capacity == 0 or self.cols == 0) return;
+
+        var line_idx: u32 = 0;
+        while (line_idx < self.historyLineCount()) : (line_idx += 1) {
+            const line = self.historyLineAt(line_idx);
+            try self.appendProjectionRows(allocator, line.cells.items, false);
+        }
+        if (self.open_history_line) |line| {
+            try self.appendProjectionRows(allocator, line.cells.items, true);
+        }
+    }
+
+    fn appendProjectionRows(self: *Screen, allocator: std.mem.Allocator, cells: []const Cell, continues_to_visible: bool) !void {
+        const cols: u32 = self.cols;
+        if (cols == 0) return;
+        const cell_count: u32 = @intCast(cells.len);
+        const row_count = @max(@as(u32, 1), std.math.divCeil(u32, cell_count, self.cols) catch unreachable);
+        std.debug.assert(row_count > 0);
+
+        var row_idx: u32 = 0;
+        while (row_idx < row_count) : (row_idx += 1) {
+            const start = row_idx * cols;
+            const end = @min(cell_count, start + cols);
+            std.debug.assert(start <= end);
+            std.debug.assert(end <= cell_count);
+            try self.appendProjectedRow(allocator, cells[@intCast(start)..@intCast(end)], row_idx + 1 < row_count or continues_to_visible);
+        }
+    }
+
+    fn visibleRowContentLen(self: *const Screen, row: u16) u16 {
+        var col = self.cols;
+        while (col > 0) {
+            const idx = col - 1;
+            if (self.cellInfoAt(row, idx).codepoint != 0) return col;
+            col -= 1;
+        }
+        if (self.rowWrapped(row) and self.cols > 0) return self.cols;
+        return 0;
+    }
+
+    fn pruneLines(self: *Screen, allocator: std.mem.Allocator) void {
+        if (self.history_lines.items.len <= self.history_capacity) return;
+        const drop = self.history_lines.items.len - self.history_capacity;
+        std.debug.assert(drop <= self.history_lines.items.len);
+        var index: u32 = 0;
+        while (index < drop) : (index += 1) {
+            self.dropOldestProjectedRows(self.projectedRowCountForCells(self.history_lines.items[@intCast(index)].cells.items));
+            self.history_lines.items[@intCast(index)].deinit(allocator);
+        }
+        std.mem.copyForwards(HistoryLine, self.history_lines.items[0 .. self.history_lines.items.len - drop], self.history_lines.items[drop..]);
+        self.history_lines.shrinkRetainingCapacity(self.history_lines.items.len - drop);
+    }
+
+    fn takeReusableLine(self: *Screen) struct { line: HistoryLine, slot: ?u32 } {
+        if (self.history_capacity == 0 or self.history_lines.items.len < self.history_capacity) return .{ .line = .{}, .slot = null };
+        const slot = self.history_lines_start;
+        var reusable = self.history_lines.items[@intCast(slot)];
+        self.history_lines.items[@intCast(slot)] = .{};
+        self.dropOldestProjectedRows(self.projectedRowCountForCells(reusable.cells.items));
+        self.history_lines_start = (self.history_lines_start + 1) % self.historyLineCount();
+        reusable.cells.clearRetainingCapacity();
+        return .{ .line = reusable, .slot = slot };
+    }
+
+    fn appendProjectedRow(self: *Screen, allocator: std.mem.Allocator, cells: []const Cell, wrapped: bool) !void {
+        if (self.cols == 0) return;
+        const capacity_target = @min(self.history_count + 1, @as(u32, self.history_capacity));
+        try self.ensureProjectedCapacity(allocator, capacity_target);
+
+        const wraps = self.history_wraps orelse return;
+        const history = self.history orelse return;
+        if (self.history_count == self.history_capacity) {
+            self.dropOldestProjectedRows(1);
+        }
+        const slot = self.projectedAppendSlot();
+        const cols: u32 = self.cols;
+        const base = slot * cols;
+        const cell_count: u32 = @intCast(cells.len);
+
+        std.debug.assert(cell_count <= cols);
+        std.debug.assert(slot < wraps.len);
+        std.debug.assert(base + cols <= history.len);
+
+        @memset(history[@intCast(base)..@intCast(base + cols)], default_cell);
+        @memcpy(history[@intCast(base)..@intCast(base + cell_count)], cells);
+        wraps[@intCast(slot)] = wrapped;
+        self.history_count += 1;
+    }
+
+    fn ensureProjectedCapacity(self: *Screen, allocator: std.mem.Allocator, min_rows: u32) !void {
+        if (self.cols == 0) return;
+
+        const current_rows = self.projectedCapacity();
+        if (current_rows >= min_rows) return;
+
+        const new_rows = @max(min_rows, @max(current_rows * 2, @as(u32, 8)));
+        const cols: u32 = self.cols;
+        const new_history = try allocator.alloc(Cell, @intCast(new_rows * cols));
+        errdefer allocator.free(new_history);
+        @memset(new_history, default_cell);
+
+        const new_wraps = try allocator.alloc(bool, @intCast(new_rows));
+        errdefer allocator.free(new_wraps);
+        @memset(new_wraps, false);
+
+        const old_count = self.history_count;
+        std.debug.assert(old_count <= current_rows);
+        var logical_row: u32 = 0;
+        while (logical_row < old_count) : (logical_row += 1) {
+            const old_slot = self.historySlotForLogicalRow(logical_row) orelse break;
+            const source_start = old_slot * cols;
+            const dest_start = logical_row * cols;
+            std.debug.assert(old_slot < current_rows);
+            std.debug.assert(source_start + cols <= if (self.history) |history| history.len else 0);
+            std.debug.assert(dest_start + cols <= new_history.len);
+            if (self.history) |history| {
+                @memcpy(new_history[@intCast(dest_start)..@intCast(dest_start + cols)], history[@intCast(source_start)..@intCast(source_start + cols)]);
+            }
+            if (self.history_wraps) |wraps| new_wraps[@intCast(logical_row)] = wraps[@intCast(old_slot)];
+        }
+
+        if (self.history) |history| allocator.free(history);
+        if (self.history_wraps) |wraps| allocator.free(wraps);
+        self.history = new_history;
+        self.history_wraps = new_wraps;
+        self.history_write_idx = 0;
+    }
+
+    fn dropOldestProjectedRows(self: *Screen, row_count: u32) void {
+        if (row_count == 0 or self.history_count == 0) return;
+
+        const drop = @min(row_count, self.history_count);
+        const capacity = self.projectedCapacity();
+        std.debug.assert(drop <= self.history_count);
+        if (drop == self.history_count or capacity == 0) {
+            self.history_row_base += self.history_count;
+            self.history_count = 0;
+            self.history_write_idx = 0;
+            return;
+        }
+
+        std.debug.assert(self.history_write_idx < capacity);
+        self.history_write_idx = (self.history_write_idx + drop) % capacity;
+        self.history_count -= drop;
+        self.history_row_base += drop;
     }
 
     /// Reset visible grid state to defaults.
