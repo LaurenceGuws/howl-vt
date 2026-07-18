@@ -103,8 +103,9 @@ fragmentation and indirect ownership are defects.
   `initWithCellsAndOptions`, `initWithCellsAndHistory`,
   `initWithCellsHistoryAndOptions`
 - Defect: callers choose between cursor-only and storage-backed states through
-  names rather than one explicit configuration. Zero rows/columns are accepted
-  and propagated into saturating `rows -| 1` / `cols -| 1` state.
+  six names rather than one explicit configuration. Nonzero dimensions are
+  enforced, but upper dimensions, cell-count multiplication, allocation size,
+  and failure-point cleanup are not proven at the terminal boundary.
 - Bars: directness, density, bounds, invariants, exact failures, embedding
 - Simpler shape: one storage-backed `Terminal.init` with an explicit config and
   exact invalid-dimension/allocation failures; cursor-only machinery, if still
@@ -127,6 +128,9 @@ fragmentation and indirect ownership are defects.
   `src/input/encode.zig:encodePaste`
 - Defect: `!T` and `!void` hide whether failure means invalid input, overflow,
   allocation failure, retained-state limit, or internal inconsistency.
+  `Terminal.ResizeError` now has exact membership, but that does not constitute
+  a transactional owner contract: allocation failure can leave primary and
+  alternate screens at divergent dimensions.
 - Bars: defensiveness, exact failures, embedding, deliberate modification
 - Simpler shape: each public owner declares its exact error set; internal
   helpers narrow or translate failures at the owning boundary.
@@ -135,7 +139,8 @@ fragmentation and indirect ownership are defects.
   surface; tests assert each public failure and unchanged/valid post-failure
   state.
 - Observed progress: `Terminal.InitError` and `Terminal.ResizeError` now name
-  invalid dimensions and allocation failure exactly.
+  invalid dimensions and allocation failure exactly; resize rollback remains
+  unproven and is tracked by VT-012.
 
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 
@@ -232,10 +237,12 @@ fragmentation and indirect ownership are defects.
 - Status: open
 - Path/symbol: `src/screen/resize.zig:resizeWithReflow`;
   `src/screen/history.zig:replaceAuthority` and `rebuildProjection`;
-  `src/render_state.zig:update` while it remains
+  `src/screen_set.zig:Set.resize`
 - Defect: implementation uses cleanup branches, but allocator-failure tests
   concentrate on OSC handling. Resize/history replacement has many temporary
   lists and buffers without exhaustive failure-point evidence.
+  `Set.resize` mutates the primary screen before resizing the alternate, so
+  allocation failure can leave paired screens at divergent dimensions.
 - Bars: defensiveness, ownership, cleanup, hostile-input evidence
 - Simpler shape: prepare complete replacement state, validate it, then swap
   once; one deinitializer for every temporary owner.
@@ -279,22 +286,23 @@ fragmentation and indirect ownership are defects.
   explicitly, package and README agree on `0.1.0-dev`, and only native
   embedding is described.
 
-### VT-015 — Input vocabulary retains C-era aliases
+### VT-015 — Input vocabulary remains integerly typed
 
 - Status: open
-- Path/symbol: `src/input/keyboard.zig:VTERM_KEY_*`, `VTERM_MOD_*`, duplicate
-  lowercase aliases; `src/input/mouse.zig:mouse_button_*`, `mouse_*`
-- Defect: integer aliases duplicate native enums/constants and preserve an
-  external naming scheme inside the Zig model, inflating the public surface
-  without adding capability.
+- Path/symbol: `src/input/keyboard.zig:Key`, `Modifier`, and public `key_*` /
+  `mod_*` constants
+- Defect: the C-era duplicate aliases are removed. The remaining native
+  vocabulary is still `Key = u32`, `Modifier = u8`, plus many public integer
+  constants, so invalid values and modifier bits are representable.
 - Bars: directness, density, embedding, documentation, maturity
 - Simpler shape: native Zig enums/structs and enum literals only; conversion
   belongs to a future external projection if one is later earned.
 - Depends on: VT-001, VT-003
-- Acceptance evidence: no `VTERM_` or duplicate lowercase compatibility
-  constants remain; native keyboard/mouse encoding tests use typed values.
-- Observed: repository audit finds no `VTERM_` or duplicate mouse aliases;
-  native input tests pass.
+- Acceptance evidence: key identity and modifier bits use native typed
+  vocabulary; encoding tests cover valid values and explicit rejection of
+  invalid external integers at any future conversion boundary.
+- Observed progress: repository audit finds no `VTERM_` or duplicate mouse
+  aliases; enum completion is not claimed.
 
 ## Hardening loop
 
