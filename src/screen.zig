@@ -10,7 +10,6 @@ const screen_apply = @import("screen/apply.zig");
 const history_mod = @import("screen/history.zig");
 const rect = @import("screen/rect.zig");
 const resize_mod = @import("screen/resize.zig");
-const style_mod = @import("screen/style.zig");
 const tabs = @import("screen/tabs.zig");
 
 const SemanticEvent = semantic_event.SemanticEvent;
@@ -788,8 +787,105 @@ pub const Screen = struct {
         return .{ .row = self.cursor.row, .col = self.cursor.col - 1 };
     }
 
+    /// Apply SGR parameters to the retained attributes used by subsequent writes.
     pub fn applySgr(self: *Screen, params: []const i32, separators: parser_mod.CsiSeparatorList) void {
-        style_mod.applySgr(self, params, separators);
+        if (params.len == 0) {
+            self.current_attrs = default_cell_attrs;
+            return;
+        }
+
+        std.debug.assert(params.len <= std.math.maxInt(u8));
+        const param_len: u8 = @intCast(params.len);
+        var idx: u8 = 0;
+        while (idx < param_len) : (idx += 1) {
+            const param = params[idxOf(idx)];
+            switch (param) {
+                4 => self.applyUnderlineStyle(params, separators, &idx),
+                38 => self.applyExtendedColor(params, &idx, true),
+                48 => self.applyExtendedColor(params, &idx, false),
+                58 => self.applyUnderlineColor(params, &idx),
+                else => self.applyBasicSgr(param),
+            }
+        }
+    }
+
+    fn applyBasicSgr(self: *Screen, param: i32) void {
+        switch (param) {
+            0 => self.current_attrs = default_cell_attrs,
+            1 => self.current_attrs.bold = true,
+            2 => self.current_attrs.dim = true,
+            3 => self.current_attrs.italic = true,
+            5, 6 => self.current_attrs.blink = true,
+            7 => self.current_attrs.reverse = true,
+            8 => self.current_attrs.invisible = true,
+            9 => self.current_attrs.strikethrough = true,
+            22 => {
+                self.current_attrs.bold = false;
+                self.current_attrs.dim = false;
+            },
+            23 => self.current_attrs.italic = false,
+            24 => self.clearUnderline(),
+            25 => self.clearBlink(),
+            27 => self.current_attrs.reverse = false,
+            28 => self.current_attrs.invisible = false,
+            29 => self.current_attrs.strikethrough = false,
+            30...37 => self.current_attrs.fg = ansi16Color(@intCast(param - 30)),
+            39 => self.current_attrs.fg = default_cell_attrs.fg,
+            40...47 => self.current_attrs.bg = ansi16Color(@intCast(param - 40)),
+            49 => self.current_attrs.bg = default_cell_attrs.bg,
+            59 => self.current_attrs.underline_color = default_underline_color,
+            90...97 => self.current_attrs.fg = ansi16Color(@intCast((param - 90) + 8)),
+            100...107 => self.current_attrs.bg = ansi16Color(@intCast((param - 100) + 8)),
+            else => {},
+        }
+    }
+
+    fn applyUnderlineStyle(self: *Screen, params: []const i32, separators: parser_mod.CsiSeparatorList, idx: *u8) void {
+        const next = idx.* + 1;
+        if (next < params.len and separators.isSet(idx.*)) {
+            self.setUnderlineStyle(params[idxOf(next)]);
+            idx.* += 1;
+            return;
+        }
+        self.current_attrs.underline = true;
+        self.current_attrs.underline_style = .straight;
+    }
+
+    fn setUnderlineStyle(self: *Screen, value: i32) void {
+        switch (value) {
+            0 => self.clearUnderline(),
+            1 => self.setUnderline(.straight),
+            2 => self.setUnderline(.double),
+            3 => self.setUnderline(.curly),
+            4 => self.setUnderline(.dotted),
+            5 => self.setUnderline(.dashed),
+            else => {},
+        }
+    }
+
+    fn setUnderline(self: *Screen, underline_style: UnderlineStyle) void {
+        self.current_attrs.underline = true;
+        self.current_attrs.underline_style = underline_style;
+    }
+
+    fn clearUnderline(self: *Screen) void {
+        self.current_attrs.underline = false;
+        self.current_attrs.underline_style = .straight;
+    }
+
+    fn clearBlink(self: *Screen) void {
+        self.current_attrs.blink = false;
+        self.current_attrs.blink_fast = false;
+    }
+
+    fn applyExtendedColor(self: *Screen, params: []const i32, idx: *u8, is_fg: bool) void {
+        const sgr_color = decodeExtendedColor(params, idx) orelse return;
+        if (is_fg) self.current_attrs.fg = sgr_color else self.current_attrs.bg = sgr_color;
+    }
+
+    fn applyUnderlineColor(self: *Screen, params: []const i32, idx: *u8) void {
+        const sgr_color = decodeExtendedColor(params, idx) orelse return;
+        self.current_attrs.underline_color = sgr_color;
     }
 
     /// Move forward through at most `count` tab stops, clamping at the last column.
@@ -1162,6 +1258,42 @@ pub const Screen = struct {
 
 fn colCount(value: u16) u32 {
     return value;
+}
+
+fn decodeExtendedColor(params: []const i32, idx: *u8) ?color.Color {
+    const next = idx.* + 1;
+    if (next >= params.len) return null;
+    const mode = params[idxOf(next)];
+    if (mode == 5) {
+        if (idx.* + 2 >= params.len) return null;
+        idx.* += 2;
+        return .indexed(clampByte(params[idxOf(idx.*)]));
+    }
+    if (mode == 2) {
+        if (idx.* + 4 >= params.len) return null;
+        idx.* += 4;
+        return color.Color.rgb(.{
+            .r = clampByte(params[idxOf(idx.* - 2)]),
+            .g = clampByte(params[idxOf(idx.* - 1)]),
+            .b = clampByte(params[idxOf(idx.*)]),
+        });
+    }
+    return null;
+}
+
+fn idxOf(value: u8) usize {
+    return @intCast(value);
+}
+
+fn clampByte(value: i32) u8 {
+    return @intCast(@max(0, @min(255, value)));
+}
+
+fn ansi16Color(idx: u8) color.Color {
+    return switch (idx) {
+        0...15 => .indexed(idx),
+        else => cell.default_cell_attrs.fg,
+    };
 }
 
 fn isTrailingCombiningCodepoint(cp: u21) bool {

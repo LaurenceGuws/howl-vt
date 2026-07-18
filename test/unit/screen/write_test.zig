@@ -116,6 +116,25 @@ test "screen write: style attrs and kitty underline forms apply correctly" {
     try std.testing.expectEqual(Grid.default_underline_color, c.cellInfoAt(0, 1).attrs.underline_color);
 }
 
+test "screen write: SGR clamps colors and preserves malformed parameter advancement" {
+    var screen = Screen.init(1, 1);
+
+    const rgb_params = [_]i32{ 38, 2, -1, 300, 42 };
+    screen.applySgr(rgb_params[0..], emptySeparators());
+    try std.testing.expectEqual(Grid.Color.rgbComponents(0, 255, 42), screen.current_attrs.fg);
+
+    const malformed_params = [_]i32{ 31, 38, 5 };
+    screen.applySgr(malformed_params[0..], emptySeparators());
+    try std.testing.expectEqual(Grid.Color.indexed(1), screen.current_attrs.fg);
+    try std.testing.expect(screen.current_attrs.blink);
+
+    screen.current_attrs.blink_fast = true;
+    const clear_blink_params = [_]i32{25};
+    screen.applySgr(clear_blink_params[0..], emptySeparators());
+    try std.testing.expect(!screen.current_attrs.blink);
+    try std.testing.expect(!screen.current_attrs.blink_fast);
+}
+
 test "screen write: wrapping and exact-fill behavior remain explicit" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCells(gpa, 4, 5);

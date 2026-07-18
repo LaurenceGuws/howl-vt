@@ -173,12 +173,13 @@ fragmentation and indirect ownership are defects.
 
 - Status: open
 - Path/symbol: `src/screen/history.zig` (25 occurrences);
-  `src/screen/style.zig` and `apply.zig` (9 each);
-  `src/screen/resize.zig` (7). Repository total: 74 occurrences across
-  16 files; `src/input/encode.zig`, `src/host_state.zig`,
+  `src/screen/apply.zig` (9); `src/screen/resize.zig` (7).
+  Repository total: 65 occurrences across 15 files;
+  `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
-  `src/screen/dirty.zig` and `src/screen/erase.zig` now have zero.
+  `src/screen/dirty.zig`, `src/screen/erase.zig`, and
+  `src/screen/style.zig` now have zero.
 - Defect: helpers accept undeclared field/method shapes, making dependencies,
   mutation authority, and compile failures implicit. This is indirection even
   when the helper body is small.
@@ -218,12 +219,14 @@ fragmentation and indirect ownership are defects.
   complete edit path now lives on Screen; the empty structural edit module
   was deleted. Nine erase behaviors now live directly on Screen;
   `screen/erase.zig` retains only the shared `EraseMode` value definition.
+  The complete SGR path now lives on Screen; `screen/style.zig` retains only
+  the typed rectangular-attribute operation used by `screen/rect.zig`.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
 - Status: open
-- Path/symbol: `src/screen.zig` delegating to `src/screen/apply.zig`,
-  and `style.zig`
+- Path/symbol: `src/screen.zig` delegating mutation dispatch to
+  `src/screen/apply.zig`
 - Defect: one `Screen` authority is spread across structural helpers that
   reach into its fields through `anytype`. Mutation and invariants require
   cross-file reconstruction; file smallness has displaced ownership.
