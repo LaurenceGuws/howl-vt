@@ -370,16 +370,24 @@ pub const Screen = struct {
         self.current_attrs.link_id = link_id;
     }
 
+    /// Resolve a zero-based row against the active origin region, saturating at its bottom.
     pub fn resolveAbsoluteRow(self: *const Screen, row: u16) u16 {
-        return cursor.resolveAbsoluteRow(self, row);
+        if (!self.origin_mode) return row;
+        const bottom = if (self.rows == 0) 0 else @min(self.scroll_bottom, self.rows - 1);
+        const region_len = bottom - self.scroll_top;
+        return self.scroll_top + @min(row, region_len);
     }
 
+    /// Resolve a zero-based column against active origin-mode horizontal margins.
     pub fn resolveAbsoluteCol(self: *const Screen, col: u16) u16 {
-        return cursor.resolveAbsoluteCol(self, col);
+        if (!(self.origin_mode and self.left_right_margin_mode)) return col;
+        const region_len = self.right_margin - self.left_margin;
+        return self.left_margin + @min(col, region_len);
     }
 
+    /// Return the line-home column selected by origin and horizontal-margin modes.
     pub fn lineHomeCol(self: *const Screen) u16 {
-        return cursor.lineHomeCol(self);
+        return if (self.origin_mode and self.left_right_margin_mode) self.left_margin else 0;
     }
 
     pub fn clearVisibleCells(self: *Screen) void {
@@ -394,12 +402,14 @@ pub const Screen = struct {
         self.current_attrs = default_cell_attrs;
     }
 
+    /// Return the active horizontal editing boundary on the left.
     pub fn leftBoundary(self: *const Screen) u16 {
-        return cursor.leftBoundary(self);
+        return if (self.left_right_margin_mode) self.left_margin else 0;
     }
 
+    /// Return the active horizontal editing boundary on the right.
     pub fn rightBoundary(self: *const Screen) u16 {
-        return cursor.rightBoundary(self);
+        return if (self.left_right_margin_mode) self.right_margin else self.cols -| 1;
     }
 
     pub fn clearScrollback(self: *Screen) void {

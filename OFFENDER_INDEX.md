@@ -175,9 +175,10 @@ fragmentation and indirect ownership are defects.
 - Path/symbol: `src/screen/history.zig` (25 occurrences);
   `src/screen/edit.zig` (11);
   `src/screen/style.zig`, `erase.zig`, and `apply.zig` (9 each);
-  `src/screen/resize.zig` (7). Repository total: 125 occurrences across
-  24 files; `src/input/encode.zig`, `src/host_state.zig`,
-  `src/kitty/state.zig`, and `src/selection.zig` now have zero.
+  `src/screen/resize.zig` (7). Repository total: 120 occurrences across
+  23 files; `src/input/encode.zig`, `src/host_state.zig`,
+  `src/kitty/state.zig`, `src/selection.zig`, and
+  `src/screen/cursor.zig` now have zero.
 - Defect: helpers accept undeclared field/method shapes, making dependencies,
   mutation authority, and compile failures implicit. This is indirection even
   when the helper body is small.
@@ -204,6 +205,8 @@ fragmentation and indirect ownership are defects.
   queries are concrete owner methods; active-screen queries receive only the
   explicit `alt_active` domain fact. Five test-only selection forwarders were
   deleted; tests exercise Terminal's existing concrete selection surface.
+  Five cursor boundary calculations now live directly on concrete Screen;
+  `screen/cursor.zig` retains only cursor value state and behavior.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
