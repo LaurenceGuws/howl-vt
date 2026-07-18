@@ -111,6 +111,14 @@ pub const State = struct {
         try appendOutput(&self.pending_output, self.allocator, bytes);
     }
 
+    /// Replace the bounded title after allocation succeeds, preserving the old title on failure.
+    pub fn replaceTitle(self: *State, title: []const u8) ApplyError!void {
+        try ensureRetainedBound(byteCount(title), title_max_bytes);
+        const owned = try self.allocator.dupe(u8, title);
+        if (self.current_title) |old| self.allocator.free(old);
+        self.current_title = owned;
+    }
+
     /// Replace the retained clipboard request after bounds and allocation succeed.
     pub fn replaceClipboard(self: *State, payload: []const u8) ApplyError!void {
         try ensureRetainedBound(byteCount(payload), retained_payload_max_bytes);
@@ -230,14 +238,6 @@ pub fn appendOutput(output: *std.ArrayList(u8), allocator: std.mem.Allocator, by
     try output.appendSlice(allocator, bytes);
 }
 
-pub fn replaceOwned(allocator: std.mem.Allocator, current: *?[]u8, next: []const u8, max_len: u32) ApplyError![]const u8 {
-    try ensureRetainedBound(byteCount(next), max_len);
-    const owned = try allocator.dupe(u8, next);
-    if (current.*) |old| allocator.free(old);
-    current.* = owned;
-    return owned;
-}
-
 pub fn restorePendingOutput(output: *std.ArrayList(u8), len: u32) void {
     std.debug.assert(len <= byteCount(output.items));
     output.items.len = len;
@@ -254,6 +254,21 @@ fn ensureRetainedBound(len: u32, max_len: u32) ApplyError!void {
 
 test "clipboard replacement preserves the retained request on allocation failure" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, replaceClipboardAllocation, .{});
+}
+
+test "title replacement preserves the retained title on allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, replaceTitleAllocation, .{});
+}
+
+fn replaceTitleAllocation(allocator: std.mem.Allocator) !void {
+    var state = State.init(allocator);
+    defer state.deinit();
+    try state.replaceTitle("old");
+    state.replaceTitle("new") catch |err| {
+        try std.testing.expectEqualStrings("old", state.current_title.?);
+        return err;
+    };
+    try std.testing.expectEqualStrings("new", state.current_title.?);
 }
 
 fn replaceClipboardAllocation(allocator: std.mem.Allocator) !void {

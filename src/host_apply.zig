@@ -33,7 +33,7 @@ pub fn apply(vt: anytype, action: HostAction) HostState.ApplyError!void {
     var scratch: input_encode.Scratch = .{};
     const allocator = vt.allocator;
     switch (action) {
-        .title_set => |title| try setCurrentTitle(vt, title),
+        .title_set => |title| try vt.host.replaceTitle(title),
         .color_control => |cmd| {
             switch (cmd.command) {
                 21 => try kitty_color.handleKittyControl(allocator, &vt.host.colors, &vt.host.pending_output, cmd.payload),
@@ -63,8 +63,4 @@ pub fn apply(vt: anytype, action: HostAction) HostState.ApplyError!void {
         .dcs_payload => |payload| try vt.host.replaceDcsPayload(payload),
         .legacy_control => |kind| vt.host.legacy_control = kind,
     }
-}
-
-pub fn setCurrentTitle(vt: anytype, title: []const u8) HostState.ApplyError!void {
-    _ = try HostState.replaceOwned(vt.allocator, &vt.host.current_title, title, HostState.title_max_bytes);
 }
