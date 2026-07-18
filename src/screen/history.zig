@@ -8,9 +8,31 @@ fn count32(items: anytype) u32 {
     return @intCast(items.len);
 }
 
+/// Owned logical terminal line used while reflowing retained content.
 pub const LogicalLine = struct {
     cells: std.ArrayListUnmanaged(Cell) = .empty,
     cursor_offset: ?u32 = null,
+
+    /// Release cloned cells and reset the line.
+    pub fn deinit(self: *LogicalLine, allocator: std.mem.Allocator) void {
+        self.cells.deinit(allocator);
+        self.* = .{};
+    }
+};
+
+/// Owned logical-content snapshot and cursor location used by resize.
+pub const LogicalSnapshot = struct {
+    logical_lines: std.ArrayListUnmanaged(LogicalLine) = .empty,
+    cursor_found: bool = false,
+    cursor_line_index: u32 = 0,
+    cursor_offset: u32 = 0,
+
+    /// Release every cloned line and reset the snapshot.
+    pub fn deinit(self: *LogicalSnapshot, allocator: std.mem.Allocator) void {
+        for (self.logical_lines.items) |*line| line.deinit(allocator);
+        self.logical_lines.deinit(allocator);
+        self.* = .{};
+    }
 };
 
 pub const HistoryLine = struct {
@@ -27,108 +49,6 @@ pub const RewrappedRow = struct {
     len: u16,
     wrapped: bool,
 };
-
-pub fn collectLogicalLines(self: anytype, allocator: std.mem.Allocator, rows: u16) !std.ArrayListUnmanaged(LogicalLine) {
-    var logical_lines: std.ArrayListUnmanaged(LogicalLine) = .empty;
-    errdefer {
-        for (logical_lines.items) |*line| line.cells.deinit(allocator);
-        logical_lines.deinit(allocator);
-    }
-
-    var current_line = try cloneOpenHistoryAsLogicalLine(self, allocator);
-    defer current_line.cells.deinit(allocator);
-
-    var history_line_idx: u32 = 0;
-    while (history_line_idx < self.history_lines.items.len) : (history_line_idx += 1) {
-        const line = self.historyLineAt(history_line_idx);
-        var copied = try cloneHistoryLine(allocator, line.cells.items);
-        copied.cursor_offset = null;
-        try logical_lines.append(allocator, copied);
-    }
-
-    var cursor_found = false;
-    var cursor_line_index: u32 = 0;
-    var cursor_offset: u32 = 0;
-    var row: u16 = 0;
-    while (row < rows) : (row += 1) {
-        try appendSourceRowToLogicalLines(
-            self,
-            allocator,
-            &logical_lines,
-            &current_line,
-            row,
-            self.cols,
-            &cursor_found,
-            &cursor_line_index,
-            &cursor_offset,
-        );
-    }
-
-    if (current_line.cells.items.len > 0 or current_line.cursor_offset != null or logical_lines.items.len == 0) {
-        try logical_lines.append(allocator, current_line);
-        current_line = .{};
-    }
-
-    while (logical_lines.items.len > 1) {
-        const last_idx = logical_lines.items.len - 1;
-        const last = &logical_lines.items[last_idx];
-        if (last.cells.items.len > 0) break;
-        last.cells.deinit(allocator);
-        logical_lines.items.len = last_idx;
-    }
-
-    return logical_lines;
-}
-
-pub fn appendSourceRowToLogicalLines(
-    self: anytype,
-    allocator: std.mem.Allocator,
-    logical_lines: *std.ArrayListUnmanaged(LogicalLine),
-    current_line: *LogicalLine,
-    row_index: u16,
-    cols: u16,
-    cursor_found: *bool,
-    cursor_line_index: *u32,
-    cursor_offset: *u32,
-) !void {
-    const wrapped = self.rowWrapped(row_index);
-    const is_cursor_row = row_index == self.cursor.row;
-    const content_len = sourceRowContentLen(self, row_index, cols);
-
-    if (is_cursor_row) {
-        const row_cursor_offset = cursorOffsetInRow(self, cols);
-        current_line.cursor_offset = @as(u32, @intCast(current_line.cells.items.len)) + row_cursor_offset;
-    }
-
-    var col: u16 = 0;
-    while (col < content_len) : (col += 1) {
-        try current_line.cells.append(allocator, self.cellInfoAt(row_index, col));
-    }
-
-    if (!wrapped) {
-        if (current_line.cursor_offset) |offset| {
-            cursor_found.* = true;
-            cursor_line_index.* = @intCast(logical_lines.items.len);
-            cursor_offset.* = offset;
-        }
-        try logical_lines.append(allocator, current_line.*);
-        current_line.* = .{};
-    }
-}
-
-pub fn cloneHistoryLine(allocator: std.mem.Allocator, cells: []const Cell) !LogicalLine {
-    var line = LogicalLine{};
-    try line.cells.appendSlice(allocator, cells);
-    return line;
-}
-
-pub fn cloneOpenHistoryAsLogicalLine(self: anytype, allocator: std.mem.Allocator) !LogicalLine {
-    var line = LogicalLine{};
-    if (self.open_history_line) |open_line| {
-        try line.cells.appendSlice(allocator, open_line.cells.items);
-    }
-    return line;
-}
 
 pub fn firstLineForRowBounded(line_row_starts: []const u32, line_row_counts: []const u16, row_index: u32) ?u32 {
     std.debug.assert(line_row_starts.len == line_row_counts.len);
@@ -205,44 +125,9 @@ pub fn replaceAuthority(
     }
 }
 
-fn sourceRowContentLen(self: anytype, row_index: u16, cols: u16) u16 {
-    var last_non_zero: u16 = 0;
-    var has_content = false;
-    var col: u16 = 0;
-    while (col < cols) : (col += 1) {
-        const value = self.cellInfoAt(row_index, col);
-        if (value.codepoint != 0) {
-            has_content = true;
-            last_non_zero = col + 1;
-        }
-    }
-
-    var len: u16 = if (has_content) last_non_zero else 0;
-    if (self.rowWrapped(row_index) and cols > 0) {
-        len = @max(len, cols);
-    }
-    return len;
-}
-
-fn cursorOffsetInRow(self: anytype, cols: u16) u32 {
-    if (cols == 0) return 0;
-    if (self.wrap_pending and self.cursor.col == cols - 1) {
-        return cols;
-    }
-    return self.cursor.col;
-}
-
 fn cloneAuthorityLine(allocator: std.mem.Allocator, cells: []const Cell) !HistoryLine {
     var line = HistoryLine{};
     errdefer line.deinit(allocator);
     try line.cells.appendSlice(allocator, cells);
     return line;
-}
-
-fn colCount(cols: u16) u32 {
-    return cols;
-}
-
-fn rowCountForCells(cell_count: u32, cols: u16) u32 {
-    return @max(@as(u32, 1), std.math.divCeil(u32, cell_count, cols) catch unreachable);
 }

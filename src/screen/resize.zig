@@ -6,20 +6,9 @@ const tabs = @import("tabs.zig");
 
 const Cell = cell.Cell;
 const LogicalLine = history_mod.LogicalLine;
+const LogicalSnapshot = history_mod.LogicalSnapshot;
 const RewrappedRow = history_mod.RewrappedRow;
 const default_cell = cell.default_cell;
-
-const LogicalLinesState = struct {
-    logical_lines: std.ArrayListUnmanaged(LogicalLine) = .empty,
-    cursor_found: bool = false,
-    cursor_line_index: u32 = 0,
-    cursor_offset: u32 = 0,
-
-    fn deinit(self: *LogicalLinesState, allocator: std.mem.Allocator) void {
-        for (self.logical_lines.items) |*line| line.cells.deinit(allocator);
-        self.logical_lines.deinit(allocator);
-    }
-};
 
 const ReflowState = struct {
     flat_rows: std.ArrayListUnmanaged(Cell) = .empty,
@@ -55,7 +44,7 @@ const ResizeBuffers = struct {
 
 /// Prepare complete resized screen state while preserving the source.
 pub fn prepareResize(self: anytype, allocator: std.mem.Allocator, rows: u16, cols: u16) error{OutOfMemory}!@TypeOf(self.*) {
-    var lines = try collectLogicalLines(self, allocator, self.rows);
+    var lines = try self.collectLogicalSnapshot(allocator);
     defer lines.deinit(allocator);
 
     var reflow = try reflowLogicalLines(allocator, lines, cols);
@@ -102,62 +91,7 @@ fn replacementBase(self: anytype, allocator: std.mem.Allocator) @TypeOf(self.*) 
     return replacement;
 }
 
-fn collectLogicalLines(self: anytype, allocator: std.mem.Allocator, old_rows: u16) !LogicalLinesState {
-    var result = LogicalLinesState{};
-    errdefer result.deinit(allocator);
-
-    var current_line = try history_mod.cloneOpenHistoryAsLogicalLine(self, allocator);
-    defer current_line.cells.deinit(allocator);
-
-    var history_line_idx: u32 = 0;
-    while (history_line_idx < self.history_lines.items.len) : (history_line_idx += 1) {
-        const line = self.historyLineAt(history_line_idx);
-        var copied = try history_mod.cloneHistoryLine(allocator, line.cells.items);
-        copied.cursor_offset = null;
-        try result.logical_lines.append(allocator, copied);
-    }
-
-    var row: u16 = 0;
-    while (row < old_rows) : (row += 1) {
-        try history_mod.appendSourceRowToLogicalLines(
-            self,
-            allocator,
-            &result.logical_lines,
-            &current_line,
-            row,
-            self.cols,
-            &result.cursor_found,
-            &result.cursor_line_index,
-            &result.cursor_offset,
-        );
-    }
-
-    try finishLogicalLines(allocator, &result, &current_line);
-    return result;
-}
-
-fn finishLogicalLines(allocator: std.mem.Allocator, result: *LogicalLinesState, current_line: *LogicalLine) !void {
-    if (current_line.cells.items.len > 0 or current_line.cursor_offset != null or result.logical_lines.items.len == 0) {
-        if (current_line.cursor_offset) |offset| {
-            result.cursor_found = true;
-            result.cursor_line_index = @intCast(result.logical_lines.items.len);
-            result.cursor_offset = offset;
-        }
-        try result.logical_lines.append(allocator, current_line.*);
-        current_line.* = .{};
-    }
-
-    while (result.logical_lines.items.len > 1) {
-        const last_idx = result.logical_lines.items.len - 1;
-        const last = &result.logical_lines.items[last_idx];
-        if (last.cells.items.len > 0) break;
-        if (result.cursor_found and result.cursor_line_index == last_idx) break;
-        last.cells.deinit(allocator);
-        result.logical_lines.items.len = last_idx;
-    }
-}
-
-fn reflowLogicalLines(allocator: std.mem.Allocator, lines: LogicalLinesState, cols: u16) !ReflowState {
+fn reflowLogicalLines(allocator: std.mem.Allocator, lines: LogicalSnapshot, cols: u16) !ReflowState {
     var result = ReflowState{};
     errdefer result.deinit(allocator);
 
@@ -402,7 +336,7 @@ fn installResizeState(self: anytype, rows: u16, cols: u16, buffers: ResizeBuffer
     std.debug.assert(self.right_margin == cols -| 1);
 }
 
-fn rebuildResizeAuthority(self: anytype, allocator: std.mem.Allocator, lines: LogicalLinesState, reflow: ReflowState, viewport: ViewportState, cols: u16) !void {
+fn rebuildResizeAuthority(self: anytype, allocator: std.mem.Allocator, lines: LogicalSnapshot, reflow: ReflowState, viewport: ViewportState, cols: u16) !void {
     std.debug.assert(reflow.line_row_starts.items.len == lines.logical_lines.items.len);
     std.debug.assert(reflow.line_row_counts.items.len == lines.logical_lines.items.len);
     std.debug.assert(viewport.total_rows == count32(reflow.rewrapped.items));

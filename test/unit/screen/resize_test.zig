@@ -1,7 +1,6 @@
 const std = @import("std");
 const screen_mod = @import("../../../src/screen.zig");
 const screen_apply = @import("../../../src/screen/apply.zig");
-const history_mod = @import("../../../src/screen/history.zig");
 
 const Grid = screen_mod.Screen;
 const SemanticEvent = screen_apply.ScreenAction;
@@ -11,16 +10,13 @@ fn apply(screen: *Grid, event: SemanticEvent) void {
 }
 
 fn canonicalLogicalStream(allocator: std.mem.Allocator, screen: *const Grid) ![]u21 {
-    var logical_lines = try history_mod.collectLogicalLines(screen, allocator, screen.rows);
-    defer {
-        for (logical_lines.items) |*line| line.cells.deinit(allocator);
-        logical_lines.deinit(allocator);
-    }
+    var snapshot = try screen.collectLogicalSnapshot(allocator);
+    defer snapshot.deinit(allocator);
 
     var lines: std.ArrayList(u21) = .empty;
     defer lines.deinit(allocator);
 
-    for (logical_lines.items) |line| {
+    for (snapshot.logical_lines.items) |line| {
         try lines.append(allocator, 0);
         for (line.cells.items) |cell| {
             try lines.append(allocator, @intCast(cell.codepoint));

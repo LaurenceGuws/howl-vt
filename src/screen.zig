@@ -16,6 +16,8 @@ const tabs = @import("screen/tabs.zig");
 const SemanticEvent = semantic_event.SemanticEvent;
 const ScreenAction = screen_apply.ScreenAction;
 const HistoryLine = history_mod.HistoryLine;
+const LogicalLine = history_mod.LogicalLine;
+const LogicalSnapshot = history_mod.LogicalSnapshot;
 
 /// Terminal screen state for cursor, cells, margins, and history.
 pub const Screen = struct {
@@ -308,6 +310,105 @@ pub const Screen = struct {
         if (self.open_history_line) |line| {
             try self.appendProjectionRows(allocator, line.cells.items, true);
         }
+    }
+
+    /// Clone retained, open, and visible content into one owned logical snapshot.
+    pub fn collectLogicalSnapshot(self: *const Screen, allocator: std.mem.Allocator) !LogicalSnapshot {
+        var result = LogicalSnapshot{};
+        errdefer result.deinit(allocator);
+
+        var current_line = try cloneLogicalLine(
+            allocator,
+            if (self.open_history_line) |line| line.cells.items else &.{},
+        );
+        defer current_line.deinit(allocator);
+
+        var history_line_idx: u32 = 0;
+        while (history_line_idx < self.historyLineCount()) : (history_line_idx += 1) {
+            const line = self.historyLineAt(history_line_idx);
+            var copied = try cloneLogicalLine(allocator, line.cells.items);
+            result.logical_lines.append(allocator, copied) catch |err| {
+                copied.deinit(allocator);
+                return err;
+            };
+        }
+
+        var row: u16 = 0;
+        while (row < self.rows) : (row += 1) {
+            try self.appendSourceRowToLogicalSnapshot(allocator, &result, &current_line, row);
+        }
+
+        if (current_line.cells.items.len > 0 or current_line.cursor_offset != null or result.logical_lines.items.len == 0) {
+            if (current_line.cursor_offset) |offset| {
+                result.cursor_found = true;
+                result.cursor_line_index = @intCast(result.logical_lines.items.len);
+                result.cursor_offset = offset;
+            }
+            try result.logical_lines.append(allocator, current_line);
+            current_line = .{};
+        }
+
+        while (result.logical_lines.items.len > 1) {
+            const last_idx = result.logical_lines.items.len - 1;
+            const last = &result.logical_lines.items[last_idx];
+            if (last.cells.items.len > 0) break;
+            if (result.cursor_found and result.cursor_line_index == last_idx) break;
+            last.deinit(allocator);
+            result.logical_lines.items.len = last_idx;
+        }
+        return result;
+    }
+
+    fn appendSourceRowToLogicalSnapshot(
+        self: *const Screen,
+        allocator: std.mem.Allocator,
+        result: *LogicalSnapshot,
+        current_line: *LogicalLine,
+        row: u16,
+    ) !void {
+        const wrapped = self.rowWrapped(row);
+        const content_len = self.sourceRowContentLen(row);
+
+        if (row == self.cursor.row) {
+            current_line.cursor_offset = @as(u32, @intCast(current_line.cells.items.len)) + self.cursorOffsetInRow();
+        }
+
+        var col: u16 = 0;
+        while (col < content_len) : (col += 1) {
+            try current_line.cells.append(allocator, self.cellInfoAt(row, col));
+        }
+
+        if (!wrapped) {
+            if (current_line.cursor_offset) |offset| {
+                result.cursor_found = true;
+                result.cursor_line_index = @intCast(result.logical_lines.items.len);
+                result.cursor_offset = offset;
+            }
+            try result.logical_lines.append(allocator, current_line.*);
+            current_line.* = .{};
+        }
+    }
+
+    fn sourceRowContentLen(self: *const Screen, row: u16) u16 {
+        var last_non_zero: u16 = 0;
+        var has_content = false;
+        var col: u16 = 0;
+        while (col < self.cols) : (col += 1) {
+            if (self.cellInfoAt(row, col).codepoint != 0) {
+                has_content = true;
+                last_non_zero = col + 1;
+            }
+        }
+
+        var len: u16 = if (has_content) last_non_zero else 0;
+        if (self.rowWrapped(row) and self.cols > 0) len = @max(len, self.cols);
+        return len;
+    }
+
+    fn cursorOffsetInRow(self: *const Screen) u32 {
+        if (self.cols == 0) return 0;
+        if (self.wrap_pending and self.cursor.col == self.cols - 1) return self.cols;
+        return self.cursor.col;
     }
 
     fn appendProjectionRows(self: *Screen, allocator: std.mem.Allocator, cells: []const Cell, continues_to_visible: bool) !void {
@@ -1726,6 +1827,13 @@ pub const Screen = struct {
 
 fn colCount(value: u16) u32 {
     return value;
+}
+
+fn cloneLogicalLine(allocator: std.mem.Allocator, cells: []const cell.Cell) !LogicalLine {
+    var line = LogicalLine{};
+    errdefer line.deinit(allocator);
+    try line.cells.appendSlice(allocator, cells);
+    return line;
 }
 
 fn decodeExtendedColor(params: []const i32, idx: *u8) ?color.Color {

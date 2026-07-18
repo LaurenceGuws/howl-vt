@@ -172,8 +172,8 @@ fragmentation and indirect ownership are defects.
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 
 - Status: open
-- Path/symbol: `src/screen/history.zig` (7 occurrences);
-  `src/screen/resize.zig` (7). Repository total: 34 occurrences across
+- Path/symbol: `src/screen/history.zig` (2 occurrences);
+  `src/screen/resize.zig` (6). Repository total: 28 occurrences across
   13 files;
   `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
@@ -234,6 +234,9 @@ fragmentation and indirect ownership are defects.
   advancement, authority cleanup, and projection rebuild now live on
   concrete Screen. `storeHistoryRow` retains its silent allocation-failure
   and partial-progress ordering.
+  One concrete `Screen.collectLogicalSnapshot` now owns retained/open/visible
+  ordering, cursor metadata, wrap joining, and trailing-empty normalization.
+  Resize and canonical-content tests consume the same owned snapshot.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
@@ -272,13 +275,12 @@ fragmentation and indirect ownership are defects.
 ### VT-010 — History and resize duplicate reflow mechanics
 
 - Status: open
-- Path/symbol: `src/screen/history.zig:collectLogicalLines`,
-  `appendProjectionRows`, `projectedRowCountForCells`;
-  `src/screen/resize.zig:collectLogicalLines`, `reflowLogicalLines`,
+- Path/symbol: `src/screen.zig:appendProjectionRows`,
+  `projectedRowCountForCells`; `src/screen/resize.zig:reflowLogicalLines`,
   `rebuildResizeAuthority`
-- Defect: logical-line collection, row projection, row-count arithmetic, and
-  storage replacement are implemented in overlapping paths with erased owner
-  types and separate temporary allocations.
+- Defect: row projection, row-count arithmetic, and storage replacement
+  remain overlapping paths with erased resize ownership and separate
+  temporary allocations.
 - Bars: density, ownership, cleanup, bounds, invariants, maturity
 - Simpler shape: one typed reflow operation owns logical-line collection and
   projection; history storage installation remains transactional.
@@ -286,6 +288,10 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: resize/history share one arithmetic and projection
   path; allocation failure at every temporary buffer leaves the original
   screen valid and leak-free; randomized scrollback/resize simulation passes.
+- Observed progress: duplicate history/resize logical collectors were deleted.
+  One owned `LogicalSnapshot` and `LogicalLine.deinit` now provide exact
+  line-by-line rollback and cursor metadata to both resize and its canonical
+  content test.
 
 ### VT-011 — Retained protocol state has coarse oversized bounds
 
