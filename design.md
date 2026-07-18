@@ -1,8 +1,8 @@
 # howl-vt Design
 
-Updated: 2026-05-30.
+Updated: 2026-07-18.
 
-Shared rules: [`../AGENTS.md`](../AGENTS.md), [`../project-memory.md`](../project-memory.md), [`../libs.yaml`](../libs.yaml)
+Shared rules: [`../AGENTS.md`](../AGENTS.md), [`../libs.yaml`](../libs.yaml)
 
 ## Purpose
 
@@ -24,14 +24,19 @@ It does not own PTY transport, host wake policy, host event loops, render text s
 
 - `src/terminal.zig` owns terminal lifecycle and composes parser, screen, host, kitty, selection, and input state.
 - `src/stream_terminal.zig` owns byte-stream batching and parent routing into terminal-owned state.
-- `src/parser/` owns byte-step syntax recognition and parser-event materialization.
-- `src/action/` owns terminal action vocabulary and parsed-event routing.
+- `src/parser.zig` and `src/parser/` own byte-step syntax recognition and
+  parser-event materialization.
+- `src/semantic_event.zig` owns the mutation vocabulary, while `src/route.zig`
+  maps parsed events to current mutation owners.
 - `src/screen.zig` and `src/screen/` own one-screen mutable state and screen mutation.
 - `src/screen_set.zig` owns primary/alternate screen composition and visible-history projection.
-- `src/selection.zig` and `src/selection/state.zig` own selection state and mutation.
-- `src/host/` owns host-facing retained consequences such as title, pending output, clipboard, hyperlink, dynamic color, and visible-surface metadata.
+- `src/selection.zig` and `src/selection_projection.zig` own selection state,
+  mutation, visible projection, and copied text.
+- `src/host_state.zig` owns retained host consequences; `src/host_apply.zig`
+  mutates them from routed actions.
 - `src/input/` owns key/mouse/focus/paste input vocabulary and encoding.
-- `src/xterm/` owns xterm-family control routing.
+- `src/csi*.zig`, `src/osc*.zig`, `src/dcs.zig`, and `src/report.zig` own the
+  currently fragmented xterm-family control mapping and replies.
 - `src/kitty/` owns kitty protocol state, parsing, and consequences.
 
 ## Main Flow

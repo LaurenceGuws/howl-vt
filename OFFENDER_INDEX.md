@@ -259,7 +259,7 @@ fragmentation and indirect ownership are defects.
 
 ### VT-014 — Design and package metadata describe dead structure
 
-- Status: open
+- Status: resolved
 - Path/symbol: `design.md`; `README.md`; `build.zig.zon:.version`
 - Defect: design names nonexistent `src/ffi.zig`, `src/action/`, `src/host/`,
   `src/selection/state.zig`, and `src/xterm/`; current prose centers C ABI;
@@ -270,6 +270,9 @@ fragmentation and indirect ownership are defects.
 - Depends on: VT-001 so deleted structure is not rewritten twice
 - Acceptance evidence: every documented path exists; package/version docs
   agree; repository-wide search finds no claim that a current C ABI exists.
+- Observed: stale owner paths removed, current fragmented paths named
+  explicitly, package and README agree on `0.1.0-dev`, and only native
+  embedding is described.
 
 ### VT-015 — Input vocabulary retains C-era aliases
 
