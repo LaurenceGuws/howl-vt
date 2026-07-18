@@ -1,12 +1,10 @@
 const std = @import("std");
 const host_state = @import("../../src/host_state.zig");
-const kitty_state = @import("../../src/kitty/state.zig");
 const terminal_mod = @import("../../src/terminal.zig");
 const screen_mod = @import("../../src/screen.zig");
 const stream_harness = @import("../support/stream_harness.zig");
 
 const HostState = host_state;
-const KittyState = kitty_state;
 const Terminal = terminal_mod.Terminal;
 const Screen = screen_mod.Screen;
 const Grid = Screen;
@@ -144,8 +142,8 @@ test "kitty file transfer and text sizing OSC payloads are retained" {
 
     try stream.nextSlice("\x1b]5113;cmd=data;AAAA\x1b\\\x1b]66;s=2;Hi\x1b\\");
 
-    try std.testing.expectEqualStrings("cmd=data;AAAA", KittyState.fileTransferRequest(&terminal).?);
-    try std.testing.expectEqualStrings("s=2;Hi", KittyState.textSizeRequest(&terminal).?);
+    try std.testing.expectEqualStrings("cmd=data;AAAA", terminal.kitty.global.fileTransferRequest().?);
+    try std.testing.expectEqualStrings("s=2;Hi", terminal.kitty.global.textSizeRequest().?);
 }
 
 test "kitty file transfer OOM fails feed without dropping retained request" {
@@ -170,10 +168,10 @@ test "kitty file transfer OOM fails feed without dropping retained request" {
     defer stream.deinit();
 
     try stream.nextSlice(seq_a);
-    try std.testing.expectEqualStrings("cmd=data;AAAA", KittyState.fileTransferRequest(&terminal).?);
+    try std.testing.expectEqualStrings("cmd=data;AAAA", terminal.kitty.global.fileTransferRequest().?);
 
     try std.testing.expectError(error.OutOfMemory, stream.nextSlice(seq_b));
-    try std.testing.expectEqualStrings("cmd=data;AAAA", KittyState.fileTransferRequest(&terminal).?);
+    try std.testing.expectEqualStrings("cmd=data;AAAA", terminal.kitty.global.fileTransferRequest().?);
 }
 
 test "kitty shell integration OSC 133 records latest mark" {
@@ -185,7 +183,7 @@ test "kitty shell integration OSC 133 records latest mark" {
 
     try stream.nextSlice("\x1b]133;C;cmdline=ls\x07\x1b]133;D;2\x07");
 
-    const mark = KittyState.shellMark(&terminal);
+    const mark = terminal.kitty.global.shellMark();
     try std.testing.expectEqual(@as(u8, 'D'), mark.kind);
     try std.testing.expectEqual(@as(?i32, 2), mark.status);
     try std.testing.expectEqualStrings("2", mark.metadata);
@@ -200,11 +198,12 @@ test "kitty notification OSC 99 queues host-neutral request" {
 
     try stream.nextSlice("\x1b]99;i=1:d=0;Hello\x1b\\\x1b]99;i=1:p=body;World\x1b\\");
 
-    try std.testing.expectEqual(@as(u32, 2), KittyState.notificationCount(&terminal));
-    try std.testing.expectEqualStrings("i=1:d=0", KittyState.notificationAt(&terminal, 0).?.metadata);
-    try std.testing.expectEqualStrings("Hello", KittyState.notificationAt(&terminal, 0).?.payload);
-    try std.testing.expectEqualStrings("i=1:p=body", KittyState.notificationAt(&terminal, 1).?.metadata);
-    try std.testing.expectEqualStrings("World", KittyState.notificationAt(&terminal, 1).?.payload);
+    try std.testing.expectEqual(@as(u32, 2), terminal.kitty.global.notificationCount());
+    try std.testing.expectEqualStrings("i=1:d=0", terminal.kitty.global.notificationAt(0).?.metadata);
+    try std.testing.expectEqualStrings("Hello", terminal.kitty.global.notificationAt(0).?.payload);
+    try std.testing.expectEqualStrings("i=1:p=body", terminal.kitty.global.notificationAt(1).?.metadata);
+    try std.testing.expectEqualStrings("World", terminal.kitty.global.notificationAt(1).?.payload);
+    try std.testing.expect(terminal.kitty.global.notificationAt(2) == null);
 }
 
 test "kitty notification OOM fails feed without dropping queued requests" {
@@ -229,14 +228,14 @@ test "kitty notification OOM fails feed without dropping queued requests" {
     defer stream.deinit();
 
     try stream.nextSlice(seq_a);
-    try std.testing.expectEqual(@as(u32, 1), KittyState.notificationCount(&terminal));
-    try std.testing.expectEqualStrings("i=1:p=body", KittyState.notificationAt(&terminal, 0).?.metadata);
-    try std.testing.expectEqualStrings("Hello", KittyState.notificationAt(&terminal, 0).?.payload);
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.global.notificationCount());
+    try std.testing.expectEqualStrings("i=1:p=body", terminal.kitty.global.notificationAt(0).?.metadata);
+    try std.testing.expectEqualStrings("Hello", terminal.kitty.global.notificationAt(0).?.payload);
 
     try std.testing.expectError(error.OutOfMemory, stream.nextSlice(seq_b));
-    try std.testing.expectEqual(@as(u32, 1), KittyState.notificationCount(&terminal));
-    try std.testing.expectEqualStrings("i=1:p=body", KittyState.notificationAt(&terminal, 0).?.metadata);
-    try std.testing.expectEqualStrings("Hello", KittyState.notificationAt(&terminal, 0).?.payload);
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.global.notificationCount());
+    try std.testing.expectEqualStrings("i=1:p=body", terminal.kitty.global.notificationAt(0).?.metadata);
+    try std.testing.expectEqualStrings("Hello", terminal.kitty.global.notificationAt(0).?.payload);
 }
 
 test "kitty notification OSC 9 alias queues host-neutral request" {
@@ -248,9 +247,9 @@ test "kitty notification OSC 9 alias queues host-neutral request" {
 
     try stream.nextSlice("\x1b]9;i=3:p=body;Alias\x1b\\");
 
-    try std.testing.expectEqual(@as(u32, 1), KittyState.notificationCount(&terminal));
-    try std.testing.expectEqualStrings("i=3:p=body", KittyState.notificationAt(&terminal, 0).?.metadata);
-    try std.testing.expectEqualStrings("Alias", KittyState.notificationAt(&terminal, 0).?.payload);
+    try std.testing.expectEqual(@as(u32, 1), terminal.kitty.global.notificationCount());
+    try std.testing.expectEqualStrings("i=3:p=body", terminal.kitty.global.notificationAt(0).?.metadata);
+    try std.testing.expectEqualStrings("Alias", terminal.kitty.global.notificationAt(0).?.payload);
 }
 
 test "kitty pointer shape OSC 22 maintains per-screen stack and replies to queries" {
@@ -262,12 +261,14 @@ test "kitty pointer shape OSC 22 maintains per-screen stack and replies to queri
 
     try stream.nextSlice("\x1b]22;pointer\x1b\\\x1b]22;>wait,crosshair\x1b\\\x1b]22;?__current__,pointer,no-such\x1b\\");
 
-    try std.testing.expectEqualStrings("crosshair", KittyState.pointerShape(&terminal));
+    try std.testing.expectEqualStrings("crosshair", terminal.kitty.pointerShape(terminal.screen_state.alt_active));
     try std.testing.expectEqualStrings("\x1b]22;crosshair,1,0\x1b\\", terminal.host.pendingOutput());
 
     terminal.host.clearPendingOutput();
-    try stream.nextSlice("\x1b[?1049h\x1b]22;text\x1b\\\x1b[?1049l");
-    try std.testing.expectEqualStrings("crosshair", KittyState.pointerShape(&terminal));
+    try stream.nextSlice("\x1b[?1049h\x1b]22;text\x1b\\");
+    try std.testing.expectEqualStrings("text", terminal.kitty.pointerShape(terminal.screen_state.alt_active));
+    try stream.nextSlice("\x1b[?1049l");
+    try std.testing.expectEqualStrings("crosshair", terminal.kitty.pointerShape(terminal.screen_state.alt_active));
 }
 
 test "kitty multiple cursor support clear and empty queries" {
@@ -279,7 +280,7 @@ test "kitty multiple cursor support clear and empty queries" {
 
     try stream.nextSlice("\x1b[> q\x1b[>100 q\x1b[>101 q\x1b[>0;4 q");
 
-    try std.testing.expectEqual(@as(u16, 0), KittyState.multipleCursorCount(&terminal));
+    try std.testing.expectEqual(@as(u16, 0), terminal.kitty.multipleCursorCount(terminal.screen_state.alt_active));
     try std.testing.expectEqualStrings("\x1b[>1;2;3;29;30;40;100;101 q\x1b[>100 q\x1b[>101;30:0;40:0 q", terminal.host.pendingOutput());
 }
 
@@ -309,7 +310,7 @@ test "kitty color stack OSC 30001 and 30101 track depth" {
     defer stream.deinit();
 
     try stream.nextSlice("\x1b]30001\x1b\\\x1b]30001\x1b\\\x1b]30101\x1b\\");
-    try std.testing.expectEqual(@as(u16, 1), KittyState.colorStackDepth(&terminal));
+    try std.testing.expectEqual(@as(u16, 1), terminal.kitty.global.colorStackDepth());
 }
 
 test "kitty OSC 21 sets queries and resets terminal colors" {
@@ -440,7 +441,7 @@ test "kitty color stack restores terminal color snapshots" {
     try stream.nextSlice("\x1b]21;foreground=#010203;1=#040506\x1b\\\x1b]30001\x1b\\");
     try stream.nextSlice("\x1b]21;foreground=#aabbcc;1=#ddeeff\x1b\\\x1b]30101\x1b\\");
 
-    try std.testing.expectEqual(@as(u16, 0), KittyState.colorStackDepth(&terminal));
+    try std.testing.expectEqual(@as(u16, 0), terminal.kitty.global.colorStackDepth());
     try std.testing.expectEqual(Rgb{ .r = 1, .g = 2, .b = 3 }, terminal.host.terminalColorState().foreground);
     try std.testing.expectEqual(Rgb{ .r = 4, .g = 5, .b = 6 }, terminal.host.terminalColorState().palette[1]);
 }
@@ -455,7 +456,7 @@ test "kitty tui CSI save and restore colors use the same stack" {
     try stream.nextSlice("\x1b]21;foreground=#010203;1=#040506\x1b\\\x1b[#P");
     try stream.nextSlice("\x1b]21;foreground=#aabbcc;1=#ddeeff\x1b\\\x1b[#Q");
 
-    try std.testing.expectEqual(@as(u16, 0), KittyState.colorStackDepth(&terminal));
+    try std.testing.expectEqual(@as(u16, 0), terminal.kitty.global.colorStackDepth());
     try std.testing.expectEqual(Rgb{ .r = 1, .g = 2, .b = 3 }, terminal.host.terminalColorState().foreground);
     try std.testing.expectEqual(Rgb{ .r = 4, .g = 5, .b = 6 }, terminal.host.terminalColorState().palette[1]);
 }

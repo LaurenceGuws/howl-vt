@@ -40,6 +40,38 @@ pub const GlobalState = struct {
         if (self.file_transfer_request) |payload| allocator.free(payload);
         if (self.text_size_request) |payload| allocator.free(payload);
     }
+
+    /// Return the current shell mark; its metadata borrows GlobalState storage.
+    pub fn shellMark(self: *const GlobalState) ShellMark {
+        return self.shell_mark;
+    }
+
+    /// Return the bounded number of retained notification requests.
+    pub fn notificationCount(self: *const GlobalState) NotificationIndex {
+        std.debug.assert(self.notifications.items.len <= std.math.maxInt(NotificationIndex));
+        return @intCast(self.notifications.items.len);
+    }
+
+    /// Return a notification whose slices borrow GlobalState storage, or null when out of bounds.
+    pub fn notificationAt(self: *const GlobalState, idx: NotificationIndex) ?NotificationRequest {
+        if (idx >= self.notificationCount()) return null;
+        return self.notifications.items[@intCast(idx)];
+    }
+
+    /// Borrow the retained file-transfer request until GlobalState mutation.
+    pub fn fileTransferRequest(self: *const GlobalState) ?[]const u8 {
+        return self.file_transfer_request;
+    }
+
+    /// Borrow the retained text-size request until GlobalState mutation.
+    pub fn textSizeRequest(self: *const GlobalState) ?[]const u8 {
+        return self.text_size_request;
+    }
+
+    /// Return the current depth of the bounded terminal-color stack.
+    pub fn colorStackDepth(self: *const GlobalState) u16 {
+        return self.color_stack_depth;
+    }
 };
 
 pub const KittyState = struct {
@@ -59,6 +91,16 @@ pub const KittyState = struct {
         return if (alt_active) &self.alt else &self.main;
     }
 
+    /// Borrow the active screen's pointer name until its pointer stack mutates.
+    pub fn pointerShape(self: *const KittyState, alt_active: bool) []const u8 {
+        return self.activeScreenConst(alt_active).pointer.currentName();
+    }
+
+    /// Return the active screen's retained multiple-cursor count.
+    pub fn multipleCursorCount(self: *const KittyState, alt_active: bool) u16 {
+        return self.activeScreenConst(alt_active).multiple_cursor_count;
+    }
+
     pub fn resetTerminalState(self: *KittyState, allocator: std.mem.Allocator) void {
         _ = allocator;
         self.main.pointer.len = 0;
@@ -66,40 +108,6 @@ pub const KittyState = struct {
         self.global.color_stack_depth = 0;
     }
 };
-
-pub fn shellMark(vt: anytype) ShellMark {
-    return vt.kitty.global.shell_mark;
-}
-
-pub fn notificationCount(vt: anytype) NotificationIndex {
-    std.debug.assert(vt.kitty.global.notifications.items.len <= std.math.maxInt(NotificationIndex));
-    return @intCast(vt.kitty.global.notifications.items.len);
-}
-
-pub fn notificationAt(vt: anytype, idx: NotificationIndex) ?NotificationRequest {
-    if (idx >= notificationCount(vt)) return null;
-    return vt.kitty.global.notifications.items[@intCast(idx)];
-}
-
-pub fn fileTransferRequest(vt: anytype) ?[]const u8 {
-    return vt.kitty.global.file_transfer_request;
-}
-
-pub fn textSizeRequest(vt: anytype) ?[]const u8 {
-    return vt.kitty.global.text_size_request;
-}
-
-pub fn pointerShape(vt: anytype) []const u8 {
-    return vt.kitty.activeScreenConst(vt.screen_state.alt_active).pointer.currentName();
-}
-
-pub fn multipleCursorCount(vt: anytype) u16 {
-    return vt.kitty.activeScreenConst(vt.screen_state.alt_active).multiple_cursor_count;
-}
-
-pub fn colorStackDepth(vt: anytype) u16 {
-    return vt.kitty.global.color_stack_depth;
-}
 
 test "global state deinit releases notification storage" {
     const allocator = std.testing.allocator;
