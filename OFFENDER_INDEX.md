@@ -175,9 +175,9 @@ fragmentation and indirect ownership are defects.
 - Path/symbol: `src/screen/history.zig` (25 occurrences);
   `src/screen/edit.zig` (11);
   `src/screen/style.zig`, `erase.zig`, and `apply.zig` (9 each);
-  `src/screen/resize.zig` (7). Repository total: 130 occurrences across
-  25 files; `src/input/encode.zig`, `src/host_state.zig`, and
-  `src/kitty/state.zig` now have zero.
+  `src/screen/resize.zig` (7). Repository total: 125 occurrences across
+  24 files; `src/input/encode.zig`, `src/host_state.zig`,
+  `src/kitty/state.zig`, and `src/selection.zig` now have zero.
 - Defect: helpers accept undeclared field/method shapes, making dependencies,
   mutation authority, and compile failures implicit. This is indirection even
   when the helper body is small.
@@ -202,7 +202,8 @@ fragmentation and indirect ownership are defects.
   helper were deleted, while shared bounded output-list mechanics retain
   narrow `*std.ArrayList(u8)` parameters. Kitty global and active-screen
   queries are concrete owner methods; active-screen queries receive only the
-  explicit `alt_active` domain fact.
+  explicit `alt_active` domain fact. Five test-only selection forwarders were
+  deleted; tests exercise Terminal's existing concrete selection surface.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 

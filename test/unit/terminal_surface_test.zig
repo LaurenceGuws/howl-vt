@@ -4,7 +4,6 @@ const terminal_mod = @import("../../src/terminal.zig");
 const screen = @import("../../src/screen.zig");
 const screen_capture = @import("../support/screen_capture.zig");
 const screen_set = @import("../../src/screen_set.zig");
-const selection = @import("../../src/selection.zig");
 const selection_projection = @import("../../src/selection_projection.zig");
 const input_encode = @import("../../src/input/encode.zig");
 const input_keyboard = @import("../../src/input/keyboard.zig");
@@ -12,7 +11,6 @@ const stream_harness = @import("../support/stream_harness.zig");
 
 const Terminal = terminal_mod.Terminal;
 const Screen = screen.Screen;
-const Selection = selection;
 const StreamHarness = stream_harness.Harness;
 
 var encode_scratch: input_encode.Scratch = .{};
@@ -50,26 +48,6 @@ fn captureSnapshot(terminal: *const Terminal) !screen_capture.Capture {
 fn resizeTerminal(terminal: *Terminal, rows: u16, cols: u16) !void {
     try terminal.screen_state.resize(terminal.allocator, rows, cols);
     terminal.screen_state.activeSelection().clearIfInvalidatedByGrid(terminal.screen_state.activeConst());
-}
-
-fn selectionState(terminal: *const Terminal) ?Selection.TerminalSelection {
-    return Selection.terminalState(terminal);
-}
-
-fn selectionStart(terminal: *Terminal, row: i32, col: u16) void {
-    Selection.terminalStart(terminal, row, col);
-}
-
-fn selectionUpdate(terminal: *Terminal, row: i32, col: u16) void {
-    Selection.terminalUpdate(terminal, row, col);
-}
-
-fn selectionFinish(terminal: *Terminal) void {
-    Selection.terminalFinish(terminal);
-}
-
-fn selectionClear(terminal: *Terminal) void {
-    Selection.terminalClear(terminal);
 }
 
 test "snapshot capture remains deterministic" {
@@ -188,17 +166,17 @@ test "alternate screen switching clears selection on the screen-set owner path" 
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
 
-    selectionStart(&terminal, 0, 0);
-    try std.testing.expect(selectionState(&terminal) != null);
+    terminal.startSelection(0, 0);
+    try std.testing.expect(terminal.selectionState() != null);
 
     try stream.nextSlice("\x1b[?1049h");
-    try std.testing.expectEqual(@as(?Selection.TerminalSelection, null), selectionState(&terminal));
+    try std.testing.expect(terminal.selectionState() == null);
 
-    selectionStart(&terminal, 0, 0);
-    try std.testing.expect(selectionState(&terminal) != null);
+    terminal.startSelection(0, 0);
+    try std.testing.expect(terminal.selectionState() != null);
 
     try stream.nextSlice("\x1b[?1049l");
-    try std.testing.expectEqual(@as(?Selection.TerminalSelection, null), selectionState(&terminal));
+    try std.testing.expect(terminal.selectionState() == null);
 }
 
 test "full-screen scroll dirties only exposed bottom row" {
@@ -316,17 +294,17 @@ test "selection follows viewport movement through scrollback rows" {
 
     try stream.nextSlice("aa\r\nbb\r\ncc");
 
-    selectionStart(&terminal, 1, 0);
-    selectionUpdate(&terminal, 2, 1);
-    selectionFinish(&terminal);
+    terminal.startSelection(1, 0);
+    terminal.updateSelection(2, 1);
+    terminal.finishSelection();
 
     const live = visibleView(&terminal, 0);
-    try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(live, selectionState(&terminal).?, 0));
-    try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(live, selectionState(&terminal).?, 1));
+    try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(live, terminal.selectionState().?, 0));
+    try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(live, terminal.selectionState().?, 1));
 
     const scrolled = visibleView(&terminal, 1);
-    try std.testing.expectEqual(@as(?selection_projection.Range, null), selection_projection.visibleRange(scrolled, selectionState(&terminal).?, 0));
-    try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(scrolled, selectionState(&terminal).?, 1));
+    try std.testing.expectEqual(@as(?selection_projection.Range, null), selection_projection.visibleRange(scrolled, terminal.selectionState().?, 0));
+    try std.testing.expectEqual(@as(?selection_projection.Range, .{ .start = 0, .end_exclusive = 2 }), selection_projection.visibleRange(scrolled, terminal.selectionState().?, 1));
 }
 
 test "cursor hides when viewport is scrolled off live bottom" {
