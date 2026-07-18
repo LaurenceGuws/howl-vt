@@ -26,6 +26,65 @@ fn initTerminalWithHistory(allocator: std.mem.Allocator) !void {
     terminal.deinit();
 }
 
+test "terminal resize is transactional in both active-screen modes" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, resizeTerminalTransaction, .{false});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, resizeTerminalTransaction, .{true});
+}
+
+fn resizeTerminalTransaction(allocator: std.mem.Allocator, alternate_active: bool) !void {
+    var terminal = try Terminal.initWithHistory(allocator, 2, 4, 8);
+    defer terminal.deinit();
+
+    terminal.screen_state.primary.writeText("PRIMARY-ROWS");
+    terminal.screen_state.alternate.writeText("ALTERNATE");
+    terminal.screen_state.alt_active = alternate_active;
+    terminal.screen_state.primary.cursor.setDefaultStyle(.{ .shape = .bar, .blink = false });
+    terminal.screen_state.alternate.cursor.setDefaultStyle(.{ .shape = .underline, .blink = true });
+    terminal.screen_state.primary.left_right_margin_mode = true;
+    terminal.screen_state.primary.left_margin = 1;
+    terminal.screen_state.primary.right_margin = 2;
+    terminal.startSelection(0, 0);
+    terminal.finishSelection();
+
+    const primary_history_count = terminal.screen_state.primary.historyCount();
+    const primary_history_cell = terminal.screen_state.primary.historyRowAt(0, 0);
+    const alternate_cell = terminal.screen_state.alternate.cellAt(0, 0);
+    const selection_before = terminal.selectionState();
+    const dirty_generation_before = terminal.dirty_generation;
+
+    terminal.resize(3, 3) catch |err| {
+        try std.testing.expectEqual(@as(u16, 2), terminal.screen_state.primary.rows);
+        try std.testing.expectEqual(@as(u16, 4), terminal.screen_state.primary.cols);
+        try std.testing.expectEqual(@as(u16, 2), terminal.screen_state.alternate.rows);
+        try std.testing.expectEqual(@as(u16, 4), terminal.screen_state.alternate.cols);
+        try std.testing.expectEqual(primary_history_count, terminal.screen_state.primary.historyCount());
+        try std.testing.expectEqual(primary_history_cell, terminal.screen_state.primary.historyRowAt(0, 0));
+        try std.testing.expectEqual(alternate_cell, terminal.screen_state.alternate.cellAt(0, 0));
+        try std.testing.expectEqual(alternate_active, terminal.screen_state.alt_active);
+        try std.testing.expectEqual(selection_before, terminal.selectionState());
+        try std.testing.expectEqual(dirty_generation_before, terminal.dirty_generation);
+        try std.testing.expect(terminal.screen_state.primary.left_right_margin_mode);
+        try std.testing.expectEqual(@as(u16, 1), terminal.screen_state.primary.left_margin);
+        try std.testing.expectEqual(@as(u16, 2), terminal.screen_state.primary.right_margin);
+        try std.testing.expectEqual(.bar, terminal.screen_state.primary.cursor.default_style.shape);
+        try std.testing.expectEqual(.underline, terminal.screen_state.alternate.cursor.default_style.shape);
+        terminal.screen_state.active().writeText("Z");
+        return err;
+    };
+
+    try std.testing.expectEqual(@as(u16, 3), terminal.screen_state.primary.rows);
+    try std.testing.expectEqual(@as(u16, 3), terminal.screen_state.primary.cols);
+    try std.testing.expectEqual(@as(u16, 3), terminal.screen_state.alternate.rows);
+    try std.testing.expectEqual(@as(u16, 3), terminal.screen_state.alternate.cols);
+    try std.testing.expectEqual(alternate_active, terminal.screen_state.alt_active);
+    try std.testing.expect(!terminal.screen_state.primary.left_right_margin_mode);
+    try std.testing.expectEqual(@as(u16, 0), terminal.screen_state.primary.left_margin);
+    try std.testing.expectEqual(@as(u16, 2), terminal.screen_state.primary.right_margin);
+    try std.testing.expectEqual(.bar, terminal.screen_state.primary.cursor.default_style.shape);
+    try std.testing.expectEqual(.underline, terminal.screen_state.alternate.cursor.default_style.shape);
+    try std.testing.expectEqual(dirty_generation_before + 1, terminal.dirty_generation);
+}
+
 test "terminal rejects zero resize without changing dimensions" {
     var terminal = try Terminal.init(std.testing.allocator, 2, 3);
     defer terminal.deinit();

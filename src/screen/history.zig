@@ -169,7 +169,11 @@ pub fn replaceAuthority(
 
     var line_idx: u32 = kept_complete_start;
     while (line_idx < first_visible_line) : (line_idx += 1) {
-        try self.history_lines.append(allocator, try cloneAuthorityLine(allocator, logical_lines[@intCast(line_idx)].cells.items));
+        var line = try cloneAuthorityLine(allocator, logical_lines[@intCast(line_idx)].cells.items);
+        self.history_lines.append(allocator, line) catch |err| {
+            line.deinit(allocator);
+            return err;
+        };
     }
     std.debug.assert(self.history_lines.items.len == first_visible_line - kept_complete_start);
 
@@ -311,6 +315,7 @@ fn cursorOffsetInRow(self: anytype, cols: u16) u32 {
 
 fn cloneAuthorityLine(allocator: std.mem.Allocator, cells: []const Cell) !HistoryLine {
     var line = HistoryLine{};
+    errdefer line.deinit(allocator);
     try line.cells.appendSlice(allocator, cells);
     return line;
 }

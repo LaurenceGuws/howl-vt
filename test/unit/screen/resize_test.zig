@@ -30,6 +30,30 @@ fn canonicalLogicalStream(allocator: std.mem.Allocator, screen: *const Grid) ![]
     return try lines.toOwnedSlice(allocator);
 }
 
+test "screen resize is transactional at every allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, resizeScreenTransaction, .{});
+}
+
+fn resizeScreenTransaction(allocator: std.mem.Allocator) !void {
+    var screen = try Grid.initWithCellsAndHistory(allocator, 2, 4, 8);
+    defer screen.deinit(allocator);
+    apply(&screen, .{ .write_text = "ABCDEFGHIJ" });
+    const history_cell = screen.historyRowAt(0, 0);
+    const visible_cell = screen.cellAt(0, 0);
+
+    screen.resize(allocator, 3, 3) catch |err| {
+        try std.testing.expectEqual(@as(u16, 2), screen.rows);
+        try std.testing.expectEqual(@as(u16, 4), screen.cols);
+        try std.testing.expectEqual(history_cell, screen.historyRowAt(0, 0));
+        try std.testing.expectEqual(visible_cell, screen.cellAt(0, 0));
+        apply(&screen, .{ .write_text = "Z" });
+        return err;
+    };
+
+    try std.testing.expectEqual(@as(u16, 3), screen.rows);
+    try std.testing.expectEqual(@as(u16, 3), screen.cols);
+}
+
 test "screen resize: row-only resize preserves live bottom and restores from history" {
     const gpa = std.testing.allocator;
     var s = try Grid.initWithCellsAndHistory(gpa, 4, 4, 8);

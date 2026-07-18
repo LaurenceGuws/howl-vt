@@ -230,10 +230,23 @@ pub const Screen = struct {
         self.open_history_line = null;
     }
 
-    /// Resize visible grid while preserving retained history rows.
-    pub fn resize(self: *Screen, allocator: std.mem.Allocator, rows: u16, cols: u16) !void {
-        self.allocator = allocator;
-        try resize_mod.resizeWithReflow(self, allocator, rows, cols);
+    /// Replace this screen with a reflowed grid of the requested dimensions.
+    ///
+    /// Allocation failure leaves this screen unchanged. Successful replacement
+    /// preserves logical content and configured cursor defaults, resets margins
+    /// to the full new grid, and releases the old owned storage.
+    pub fn resize(self: *Screen, allocator: std.mem.Allocator, rows: u16, cols: u16) error{OutOfMemory}!void {
+        var replacement = try self.prepareResize(allocator, rows, cols);
+        std.mem.swap(Screen, self, &replacement);
+        replacement.deinit(allocator);
+    }
+
+    /// Build complete reflowed screen state without mutating this screen.
+    ///
+    /// The caller owns the returned Screen and must call `deinit` unless it
+    /// transfers ownership by swapping it into a Screen owner.
+    pub fn prepareResize(self: *const Screen, allocator: std.mem.Allocator, rows: u16, cols: u16) error{OutOfMemory}!Screen {
+        return resize_mod.prepareResize(self, allocator, rows, cols);
     }
 
     pub fn storeHistoryRow(self: *Screen, row: u16) void {

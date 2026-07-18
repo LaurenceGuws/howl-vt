@@ -53,17 +53,8 @@ const ResizeBuffers = struct {
     tab_stops: ?[]bool,
 };
 
-/// Resize visible grid storage while preserving logical scrollback lines.
-pub fn resizeWithReflow(self: anytype, allocator: std.mem.Allocator, rows: u16, cols: u16) !void {
-    const old = .{
-        .cells = self.cells,
-        .row_wraps = self.row_wraps,
-        .dirty_state = self.dirty_state,
-        .tab_stops = self.tab_stops,
-        .history = self.history,
-        .history_wraps = self.history_wraps,
-    };
-
+/// Prepare complete resized screen state while preserving the source.
+pub fn prepareResize(self: anytype, allocator: std.mem.Allocator, rows: u16, cols: u16) error{OutOfMemory}!@TypeOf(self.*) {
     var lines = try collectLogicalLines(self, allocator, self.rows);
     defer lines.deinit(allocator);
 
@@ -71,14 +62,44 @@ pub fn resizeWithReflow(self: anytype, allocator: std.mem.Allocator, rows: u16, 
     defer reflow.deinit(allocator);
 
     const viewport = projectViewport(@intCast(lines.logical_lines.items.len), reflow, rows);
-    const buffers = try allocResizeBuffers(allocator, rows, cols, old.tab_stops);
+    var buffers = try allocResizeBuffers(allocator, rows, cols, self.tab_stops);
     errdefer freeResizeBuffers(allocator, buffers);
 
     copyVisibleRows(buffers.cells, buffers.row_wraps, reflow, viewport, cols);
-    installResizeState(self, rows, cols, buffers);
-    try rebuildResizeAuthority(self, allocator, lines, reflow, viewport, cols);
-    restoreCursor(self, rows, cols, reflow, viewport);
-    freeOldStorage(allocator, old);
+    var replacement = replacementBase(self, allocator);
+    installResizeState(&replacement, rows, cols, buffers);
+    buffers = emptyResizeBuffers();
+    errdefer replacement.deinit(allocator);
+    try rebuildResizeAuthority(&replacement, allocator, lines, reflow, viewport, cols);
+    restoreCursor(&replacement, rows, cols, reflow, viewport);
+    return replacement;
+}
+
+fn emptyResizeBuffers() ResizeBuffers {
+    return .{
+        .cells = null,
+        .row_wraps = null,
+        .dirty_state = .{},
+        .tab_stops = null,
+    };
+}
+
+fn replacementBase(self: anytype, allocator: std.mem.Allocator) @TypeOf(self.*) {
+    var replacement = self.*;
+    replacement.allocator = allocator;
+    replacement.cells = null;
+    replacement.row_wraps = null;
+    replacement.dirty_state = .{};
+    replacement.tab_stops = null;
+    replacement.history = null;
+    replacement.history_wraps = null;
+    replacement.history_count = 0;
+    replacement.history_write_idx = 0;
+    replacement.history_lines = .empty;
+    replacement.history_lines_start = 0;
+    replacement.open_history_line = null;
+    replacement.open_history_reuse_slot = null;
+    return replacement;
 }
 
 fn collectLogicalLines(self: anytype, allocator: std.mem.Allocator, old_rows: u16) !LogicalLinesState {
@@ -427,16 +448,6 @@ fn restoreCursor(self: anytype, rows: u16, cols: u16, reflow: ReflowState, viewp
     std.debug.assert(self.cursor.row < rows);
     std.debug.assert(self.cursor.col < cols);
     if (self.wrap_pending) std.debug.assert(self.cursor.col == cols - 1);
-}
-
-fn freeOldStorage(allocator: std.mem.Allocator, old: anytype) void {
-    if (old.cells) |buf| allocator.free(buf);
-    if (old.row_wraps) |buf| allocator.free(buf);
-    var dirty_state = old.dirty_state;
-    dirty_state.deinit(allocator);
-    if (old.tab_stops) |buf| allocator.free(buf);
-    if (old.history) |buf| allocator.free(buf);
-    if (old.history_wraps) |buf| allocator.free(buf);
 }
 
 fn boundedCursorOffset(line: LogicalLine, has_cursor: bool, cursor_offset: u32) u32 {

@@ -142,9 +142,8 @@ pub const Terminal = struct {
 
     /// Resize both terminal screens.
     ///
-    /// Both dimensions must be nonzero; rejection leaves state unchanged.
-    /// Allocation failure may occur after the primary screen is resized, so
-    /// paired-screen rollback remains open under VT-012.
+    /// Both dimensions must be nonzero. Invalid dimensions or allocation
+    /// failure leave both screens and terminal publication state unchanged.
     pub fn resize(self: *Terminal, rows: u16, cols: u16) ResizeError!void {
         try validateDimensions(rows, cols);
         try self.screen_state.resize(self.allocator, rows, cols);

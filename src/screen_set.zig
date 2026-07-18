@@ -106,9 +106,20 @@ pub const Set = struct {
         self.active().reset();
     }
 
-    pub fn resize(self: *Set, allocator: std.mem.Allocator, rows: u16, cols: u16) !void {
-        try self.primary.resize(allocator, rows, cols);
-        try self.alternate.resize(allocator, rows, cols);
+    /// Atomically resize primary and alternate screens.
+    ///
+    /// Allocation failure leaves both screens unchanged and at matching
+    /// dimensions.
+    pub fn resize(self: *Set, allocator: std.mem.Allocator, rows: u16, cols: u16) error{OutOfMemory}!void {
+        var primary = try self.primary.prepareResize(allocator, rows, cols);
+        errdefer primary.deinit(allocator);
+        var alternate = try self.alternate.prepareResize(allocator, rows, cols);
+        errdefer alternate.deinit(allocator);
+
+        std.mem.swap(Screen, &self.primary, &primary);
+        std.mem.swap(Screen, &self.alternate, &alternate);
+        primary.deinit(allocator);
+        alternate.deinit(allocator);
     }
 
     pub fn setCellPixelSize(self: *Set, width: u32, height: u32) void {

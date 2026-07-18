@@ -147,9 +147,6 @@ fragmentation and indirect ownership are defects.
   `src/input/encode.zig:encodePaste`
 - Defect: `!T` and `!void` hide whether failure means invalid input, overflow,
   allocation failure, retained-state limit, or internal inconsistency.
-  `Terminal.ResizeError` now has exact membership, but that does not constitute
-  a transactional owner contract: allocation failure can leave primary and
-  alternate screens at divergent dimensions.
 - Bars: defensiveness, exact failures, embedding, deliberate modification
 - Simpler shape: each public owner declares its exact error set; internal
   helpers narrow or translate failures at the owning boundary.
@@ -158,8 +155,9 @@ fragmentation and indirect ownership are defects.
   surface; tests assert each public failure and unchanged/valid post-failure
   state.
 - Observed progress: `Terminal.InitError` and `Terminal.ResizeError` now name
-  invalid dimensions and allocation failure exactly; resize rollback remains
-  unproven and is tracked by VT-012.
+  invalid dimensions and allocation failure exactly. `Screen.resize` and
+  `Set.resize` now expose only `error.OutOfMemory`; VT-012 proves resize failure
+  preserves both screen owners and terminal publication state.
 
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 
@@ -251,17 +249,17 @@ fragmentation and indirect ownership are defects.
   boundary test at limit-1/limit/limit+1; rejected input resets parser state
   and does not retain partial payloads.
 
-### VT-012 — Cleanup proofs are narrow around transactional mutations
+### VT-012 — Resize/history replacement was not transactional
 
-- Status: open
-- Path/symbol: `src/screen/resize.zig:resizeWithReflow`;
+- Status: resolved
+- Path/symbol: `src/screen/resize.zig:prepareResize`;
   `src/screen/history.zig:replaceAuthority` and `rebuildProjection`;
   `src/screen_set.zig:Set.resize`
-- Defect: implementation uses cleanup branches, but allocator-failure tests
-  concentrate on OSC handling. Resize/history replacement has many temporary
-  lists and buffers without exhaustive failure-point evidence.
-  `Set.resize` mutates the primary screen before resizing the alternate, so
-  allocation failure can leave paired screens at divergent dimensions.
+- Defect: resize installed visible buffers before history authority/projection
+  allocation completed, and `Set.resize` committed primary before preparing
+  alternate. Failure could leave one Screen partially replaced or the pair at
+  divergent dimensions. History clones also leaked if destination append
+  failed.
 - Bars: defensiveness, ownership, cleanup, hostile-input evidence
 - Simpler shape: prepare complete replacement state, validate it, then swap
   once; one deinitializer for every temporary owner.
@@ -269,6 +267,13 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: `std.testing.checkAllAllocationFailures` covers each
   retained transactional owner and verifies the pre-operation state remains
   usable after every failure.
+- Resolution: `prepareResize` builds a complete replacement Screen without
+  mutating its source. `Screen.resize` swaps one completed replacement;
+  `Set.resize` prepares both screens before either swap and deinitializes old
+  storage only after commit. Failure injection covers Screen directly and a
+  history-enabled Terminal in both active-screen modes, proving dimensions,
+  content/history, selection, configured cursor defaults, margins, active mode,
+  and publication generation remain unchanged and usable after failure.
 
 ### VT-013 — Hostile-input testing is simulation-only, not a fuzz boundary
 
