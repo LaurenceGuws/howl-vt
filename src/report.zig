@@ -5,11 +5,13 @@ const locator = @import("locator.zig");
 const mode_mod = @import("mode.zig");
 const input_encode = @import("input/encode.zig");
 const host_state = @import("host_state.zig");
+const terminal_mod = @import("terminal.zig");
 
 const Screen = screen_mod.Screen;
 const Grid = Screen;
 const LocatorNs = locator;
 const TerminalModeNs = mode_mod;
+const Terminal = terminal_mod.Terminal;
 
 pub const ReportAction = union(enum) {
     ansi_mode_query: u16,
@@ -50,7 +52,7 @@ pub const RectChecksumRequest = struct {
     request_id: u16,
 };
 
-pub fn apply(vt: anytype, event: ReportAction) host_state.ApplyError!void {
+pub fn apply(vt: *Terminal, event: ReportAction) host_state.ApplyError!void {
     var scratch: input_encode.Scratch = .{};
     const allocator = vt.allocator;
     const pending_output = &vt.host.pending_output;

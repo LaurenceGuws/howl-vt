@@ -172,8 +172,9 @@ fragmentation and indirect ownership are defects.
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 
 - Status: open
-- Path/symbol: `src/report.zig` (2 occurrences);
-  `src/screen_set.zig` (2). Repository total: 11 occurrences across 9 files;
+- Path/symbol: `src/screen_set.zig` (2 occurrences);
+  `src/report.zig:formatOutput` (1 intentional formatting generic).
+  Repository total: 10 occurrences across 9 files;
   `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
@@ -246,7 +247,10 @@ fragmentation and indirect ownership are defects.
   only typed protocol actions, state/value vocabulary, and pure bounded
   query/storage mechanics, with zero `anytype`. Route application now accepts
   only concrete `*Terminal`, and OSC mapping accepts concrete parser
-  `OscAction`; `route.zig` has zero structural generics.
+  `OscAction`; `route.zig` has zero structural generics. Report application
+  now accepts only concrete `*Terminal`. Its retained `formatOutput` generic
+  is direct `std.fmt.bufPrint` use instantiated by intentional one-, two-, and
+  four-value argument tuples with decimal and hexadecimal formats.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
