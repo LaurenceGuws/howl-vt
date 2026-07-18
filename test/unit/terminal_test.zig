@@ -7,12 +7,27 @@ const Terminal = terminal_mod.Terminal;
 
 test "terminal rejects zero dimensions exactly" {
     try std.testing.expectError(error.InvalidDimensions, Terminal.init(std.testing.allocator, 0, 1));
-    try std.testing.expectError(error.InvalidDimensions, Terminal.initWithCells(std.testing.allocator, 1, 0));
-    try std.testing.expectError(error.InvalidDimensions, Terminal.initWithCellsAndHistory(std.testing.allocator, 0, 0, 8));
+    try std.testing.expectError(error.InvalidDimensions, Terminal.init(std.testing.allocator, 1, 0));
+    try std.testing.expectError(error.InvalidDimensions, Terminal.initWithHistory(std.testing.allocator, 0, 0, 8));
+}
+
+test "terminal constructors clean up every allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, initTerminal, .{});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, initTerminalWithHistory, .{});
+}
+
+fn initTerminal(allocator: std.mem.Allocator) !void {
+    var terminal = try Terminal.init(allocator, 2, 3);
+    terminal.deinit();
+}
+
+fn initTerminalWithHistory(allocator: std.mem.Allocator) !void {
+    var terminal = try Terminal.initWithHistory(allocator, 2, 3, 4);
+    terminal.deinit();
 }
 
 test "terminal rejects zero resize without changing dimensions" {
-    var terminal = try Terminal.initWithCells(std.testing.allocator, 2, 3);
+    var terminal = try Terminal.init(std.testing.allocator, 2, 3);
     defer terminal.deinit();
 
     try std.testing.expectError(error.InvalidDimensions, terminal.resize(0, 3));
@@ -35,7 +50,7 @@ test "terminal tracks synchronized output private mode" {
 }
 
 test "terminal visible view projects scrollback rows" {
-    var vt = try Terminal.initWithCellsAndHistory(std.testing.allocator, 2, 2, 4);
+    var vt = try Terminal.initWithHistory(std.testing.allocator, 2, 2, 4);
     defer vt.deinit();
     var stream = try stream_harness.Harness.init(&vt);
     defer stream.deinit();
@@ -56,7 +71,7 @@ test "terminal visible view projects scrollback rows" {
 }
 
 test "terminal reset screen delegates owner resets" {
-    var vt = try Terminal.initWithCells(std.testing.allocator, 2, 8);
+    var vt = try Terminal.init(std.testing.allocator, 2, 8);
     defer vt.deinit();
     var stream = try stream_harness.Harness.init(&vt);
     defer stream.deinit();

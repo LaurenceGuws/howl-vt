@@ -26,7 +26,7 @@ fn visibleView(terminal: *const Terminal) screen_set.View {
 
 test "snapshot: capture from simple text" {
     const gpa = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.init(gpa, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -54,7 +54,7 @@ test "snapshot: capture from simple text" {
 test "snapshot: determinism across identical state" {
     const gpa = std.testing.allocator;
 
-    var vt_core1 = try Terminal.initWithCells(gpa, 5, 10);
+    var vt_core1 = try Terminal.init(gpa, 5, 10);
     defer vt_core1.deinit();
     var stream1 = try StreamHarness.init(&vt_core1);
     defer stream1.deinit();
@@ -62,7 +62,7 @@ test "snapshot: determinism across identical state" {
     var snap1 = try captureSnapshot(&vt_core1);
     defer snap1.deinit();
 
-    var vt_core2 = try Terminal.initWithCells(gpa, 5, 10);
+    var vt_core2 = try Terminal.init(gpa, 5, 10);
     defer vt_core2.deinit();
     var stream2 = try StreamHarness.init(&vt_core2);
     defer stream2.deinit();
@@ -86,7 +86,7 @@ test "snapshot: determinism across identical state" {
 test "snapshot: split-feed equivalence" {
     const gpa = std.testing.allocator;
 
-    var vt_core_atomic = try Terminal.initWithCells(gpa, 5, 10);
+    var vt_core_atomic = try Terminal.init(gpa, 5, 10);
     defer vt_core_atomic.deinit();
     var atomic_stream = try StreamHarness.init(&vt_core_atomic);
     defer atomic_stream.deinit();
@@ -94,7 +94,7 @@ test "snapshot: split-feed equivalence" {
     var snap_atomic = try captureSnapshot(&vt_core_atomic);
     defer snap_atomic.deinit();
 
-    var vt_core_chunked = try Terminal.initWithCells(gpa, 5, 10);
+    var vt_core_chunked = try Terminal.init(gpa, 5, 10);
     defer vt_core_chunked.deinit();
     var chunked_stream = try StreamHarness.init(&vt_core_chunked);
     defer chunked_stream.deinit();
@@ -116,7 +116,7 @@ test "snapshot: split-feed equivalence" {
 
 test "snapshot: history capture when history is enabled" {
     const gpa = std.testing.allocator;
-    var terminal = try Terminal.initWithCellsAndHistory(gpa, 3, 5, 10);
+    var terminal = try Terminal.initWithHistory(gpa, 3, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -138,7 +138,7 @@ test "snapshot: history capture when history is enabled" {
 
 test "snapshot: historyRowAt matches terminal after wraparound" {
     const gpa = std.testing.allocator;
-    var terminal = try Terminal.initWithCellsAndHistory(gpa, 2, 3, 2);
+    var terminal = try Terminal.initWithHistory(gpa, 2, 3, 2);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -163,7 +163,7 @@ test "snapshot: historyRowAt matches terminal after wraparound" {
 
 test "snapshot: selection state is included" {
     const gpa = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.init(gpa, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -189,7 +189,7 @@ test "snapshot: selection state is included" {
 
 test "snapshot: parity with direct screen state" {
     const gpa = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(gpa, 5, 10);
+    var terminal = try Terminal.init(gpa, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();

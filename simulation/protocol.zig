@@ -308,7 +308,7 @@ fn runParser(gpa: std.mem.Allocator, bytes: []const u8, mode: FeedMode, rand: st
 }
 
 fn runTerminal(gpa: std.mem.Allocator, bytes: []const u8, mode: FeedMode, rand: std.Random, max_chunk_len: ChunkLen) !VtDigest {
-    var terminal = try Terminal.initWithCellsAndHistory(gpa, 24, 80, 256);
+    var terminal = try Terminal.initWithHistory(gpa, 24, 80, 256);
     defer terminal.deinit();
 
     try feedBytesToTerminal(&terminal, bytes, mode, rand, max_chunk_len);

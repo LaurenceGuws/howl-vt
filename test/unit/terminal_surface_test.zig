@@ -72,7 +72,7 @@ fn selectionClear(terminal: *Terminal) void {
 
 test "snapshot capture remains deterministic" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.init(allocator, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -93,7 +93,7 @@ test "snapshot capture remains deterministic" {
 
 test "resize keeps history enabled state" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCellsAndHistory(allocator, 1, 3, 8);
+    var terminal = try Terminal.initWithHistory(allocator, 1, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -108,7 +108,7 @@ test "resize keeps history enabled state" {
 
 test "alternate screen exit preserves primary scrollback" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCellsAndHistory(allocator, 2, 4, 16);
+    var terminal = try Terminal.initWithHistory(allocator, 2, 4, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -142,7 +142,7 @@ test "alternate screen exit preserves primary scrollback" {
 
 test "alternate screen 1049 restores primary cursor" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -157,7 +157,7 @@ test "alternate screen 1049 restores primary cursor" {
 
 test "alternate screen switches mark active viewport fully dirty" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 4);
+    var terminal = try Terminal.init(allocator, 3, 4);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -181,7 +181,7 @@ test "alternate screen switches mark active viewport fully dirty" {
 
 test "alternate screen switching clears selection on the screen-set owner path" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 4);
+    var terminal = try Terminal.init(allocator, 3, 4);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -201,7 +201,7 @@ test "alternate screen switching clears selection on the screen-set owner path" 
 
 test "full-screen scroll dirties only exposed bottom row" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCellsAndHistory(allocator, 3, 4, 8);
+    var terminal = try Terminal.initWithHistory(allocator, 3, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -220,7 +220,7 @@ test "full-screen scroll dirties only exposed bottom row" {
 
 test "terminal feed fails overlong OSC instead of truncating it" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 2, 4);
+    var terminal = try Terminal.init(allocator, 2, 4);
     defer terminal.deinit();
 
     var bytes = try std.ArrayList(u8).initCapacity(allocator, 4_101);
@@ -237,7 +237,7 @@ test "terminal feed fails overlong OSC instead of truncating it" {
 
 test "terminal feed fails overlong APC instead of truncating it" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 2, 4);
+    var terminal = try Terminal.init(allocator, 2, 4);
     defer terminal.deinit();
 
     _ = try terminal.feed("\x1b_");
@@ -260,7 +260,7 @@ test "terminal feed fails overlong APC instead of truncating it" {
 
 test "terminal feed fails overlong PM instead of truncating it" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 2, 4);
+    var terminal = try Terminal.init(allocator, 2, 4);
     defer terminal.deinit();
 
     _ = try terminal.feed("\x1b^");
@@ -283,7 +283,7 @@ test "terminal feed fails overlong PM instead of truncating it" {
 
 test "input encoding APIs are callable without terminal facade methods" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.init(allocator, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -307,7 +307,7 @@ test "input encoding APIs are callable without terminal facade methods" {
 
 test "selection follows viewport movement through scrollback rows" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCellsAndHistory(allocator, 2, 4, 8);
+    var terminal = try Terminal.initWithHistory(allocator, 2, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -329,7 +329,7 @@ test "selection follows viewport movement through scrollback rows" {
 
 test "cursor hides when viewport is scrolled off live bottom" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCellsAndHistory(allocator, 2, 4, 8);
+    var terminal = try Terminal.initWithHistory(allocator, 2, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();

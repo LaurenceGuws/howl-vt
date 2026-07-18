@@ -99,27 +99,27 @@ fragmentation and indirect ownership are defects.
 - Acceptance evidence: an audit lists no undocumented retained public symbol
   or owned file; comments match executable tests and current paths.
 
-### VT-005 — Terminal construction has six overlapping paths
+### VT-005 — Terminal construction had six overlapping paths
 
-- Status: open
-- Path/symbol: `src/terminal.zig:init`, `initWithOptions`, `initWithCells`,
-  `initWithCellsAndOptions`, `initWithCellsAndHistory`,
-  `initWithCellsHistoryAndOptions`
-- Defect: callers choose between cursor-only and storage-backed states through
-  six names rather than one explicit configuration. Nonzero dimensions are
-  enforced, but upper dimensions, cell-count multiplication, allocation size,
-  and failure-point cleanup are not proven at the terminal boundary.
+- Status: resolved
+- Path/symbol: `src/terminal.zig:Terminal.init`,
+  `Terminal.initWithHistory`
+- Defect: callers chose between cursor-only and storage-backed states through
+  six names. Constructor-time cursor style and a cursor-only terminal were
+  exposed despite having no production or native embedding requirement.
 - Bars: directness, density, bounds, invariants, exact failures, embedding
-- Simpler shape: one storage-backed `Terminal.init` with an explicit config and
-  exact invalid-dimension/allocation failures; cursor-only machinery, if still
-  required for tests, is a private owner.
+- Simpler shape: one direct storage-backed initializer and one initializer for
+  the demonstrated distinct bounded-history ownership mode, both with exact
+  invalid-dimension/allocation failures.
 - Depends on: VT-003
-- Acceptance evidence: zero dimensions return exact errors; maximum accepted
-  dimensions prove multiplication/allocation bounds; all initialization
-  failure points pass allocator-failure cleanup checks.
-- Observed progress: every public terminal constructor and resize rejects zero
-  dimensions with `error.InvalidDimensions`; rejected resize preserves the
-  published dimensions.
+- Acceptance evidence: `test/unit/terminal_test.zig` proves exact zero-dimension
+  errors and exhaustively injects failure at every allocation point for both
+  retained constructors. A compile-time invariant proves every `u16` row/column
+  product fits the grid's `u32` count and `usize`; allocator size failure remains
+  exact `error.OutOfMemory`.
+- Resolution: `Terminal.init` now always owns primary and alternate storage;
+  `Terminal.initWithHistory` adds bounded primary history. The four option or
+  cursor-only variants and `InitOptions` are deleted without aliases.
 - Caller audit:
   - `initWithOptions`, `initWithCellsAndOptions`, and
     `initWithCellsHistoryAndOptions` have zero callers.
@@ -135,8 +135,7 @@ fragmentation and indirect ownership are defects.
 - Audit conclusion: cursor-only Terminal state and constructor-time cursor
   style are test conveniences, not production or native embedding
   requirements. Two storage-backed entrypoints are earned: without history
-  and with bounded history. Upper dimension and allocation-size acceptance
-  remain unproven and keep this offender open.
+  and with bounded history.
 
 ### VT-006 — Owner-boundary failures are inferred
 

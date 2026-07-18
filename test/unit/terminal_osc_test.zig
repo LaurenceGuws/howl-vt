@@ -15,7 +15,7 @@ const StreamHarness = stream_harness.Harness;
 
 test "OSC title updates terminal title under stream path" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -26,7 +26,7 @@ test "OSC title updates terminal title under stream path" {
 
 test "raw OSC title updates terminal title through OSC owner path" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -37,7 +37,7 @@ test "raw OSC title updates terminal title through OSC owner path" {
 
 test "OSC title limit fails without dropping current title" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -61,7 +61,7 @@ test "OSC title limit fails without dropping current title" {
 
 test "OSC 8 assigns link ids and preserves URI lookup" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -82,7 +82,7 @@ test "OSC 8 assigns link ids and preserves URI lookup" {
 
 test "OSC 52 produces pending clipboard request" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -95,7 +95,7 @@ test "OSC 52 produces pending clipboard request" {
 
 test "OSC 52 decoded clipboard drain clears pending request" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -110,7 +110,7 @@ test "OSC 52 decoded clipboard drain clears pending request" {
 
 test "OSC 52 query clipboard drain clears without request" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -123,7 +123,7 @@ test "OSC 52 query clipboard drain clears without request" {
 
 test "kitty clipboard OSC 5522 and mode query use host-neutral state" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -137,7 +137,7 @@ test "kitty clipboard OSC 5522 and mode query use host-neutral state" {
 
 test "kitty file transfer and text sizing OSC payloads are retained" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 16);
+    var terminal = try Terminal.init(allocator, 3, 16);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -178,7 +178,7 @@ test "kitty file transfer OOM fails feed without dropping retained request" {
 
 test "kitty shell integration OSC 133 records latest mark" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -193,7 +193,7 @@ test "kitty shell integration OSC 133 records latest mark" {
 
 test "kitty notification OSC 99 queues host-neutral request" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -241,7 +241,7 @@ test "kitty notification OOM fails feed without dropping queued requests" {
 
 test "kitty notification OSC 9 alias queues host-neutral request" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -255,7 +255,7 @@ test "kitty notification OSC 9 alias queues host-neutral request" {
 
 test "kitty pointer shape OSC 22 maintains per-screen stack and replies to queries" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -272,7 +272,7 @@ test "kitty pointer shape OSC 22 maintains per-screen stack and replies to queri
 
 test "kitty multiple cursor support clear and empty queries" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -285,7 +285,7 @@ test "kitty multiple cursor support clear and empty queries" {
 
 test "xterm pointer mode stores bounded resource value" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -303,7 +303,7 @@ test "xterm pointer mode stores bounded resource value" {
 
 test "kitty color stack OSC 30001 and 30101 track depth" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -314,7 +314,7 @@ test "kitty color stack OSC 30001 and 30101 track depth" {
 
 test "kitty OSC 21 sets queries and resets terminal colors" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -341,7 +341,7 @@ test "kitty OSC 21 sets queries and resets terminal colors" {
 
 test "xterm OSC colors set query and reset palette and dynamic colors" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -361,7 +361,7 @@ test "xterm OSC colors set query and reset palette and dynamic colors" {
 
 test "xterm extra dynamic colors set query and reset host-neutral state" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -402,7 +402,7 @@ test "xterm extra dynamic colors set query and reset host-neutral state" {
 
 test "xterm special colors via OSC 5 and OSC 4 special offsets" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -432,7 +432,7 @@ test "xterm special colors via OSC 5 and OSC 4 special offsets" {
 
 test "kitty color stack restores terminal color snapshots" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -447,7 +447,7 @@ test "kitty color stack restores terminal color snapshots" {
 
 test "kitty tui CSI save and restore colors use the same stack" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();

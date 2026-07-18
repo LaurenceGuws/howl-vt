@@ -4,7 +4,7 @@ const std = @import("std");
 const howl_vt = @import("howl_vt");
 
 test "native root owns the complete embedding contract" {
-    var terminal = try howl_vt.Terminal.initWithCells(std.testing.allocator, 2, 8);
+    var terminal = try howl_vt.Terminal.init(std.testing.allocator, 2, 8);
     defer terminal.deinit();
 
     const feed = try terminal.feed("ABCD");

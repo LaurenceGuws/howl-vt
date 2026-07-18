@@ -270,7 +270,7 @@ fn runStreamWorkload(io: std.Io, base_allocator: std.mem.Allocator, name: []cons
     var i: RunCount = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
+        var terminal = try terminal_mod.Terminal.initWithHistory(
             counting.allocator(),
             rows,
             cols,
@@ -302,7 +302,7 @@ fn runMixedInteractiveWorkload(io: std.Io, base_allocator: std.mem.Allocator, ru
     var i: RunCount = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
+        var terminal = try terminal_mod.Terminal.initWithHistory(
             counting.allocator(),
             40,
             120,
@@ -336,7 +336,7 @@ fn runSnapshotWorkload(io: std.Io, base_allocator: std.mem.Allocator, fixture: [
     var i: RunCount = 0;
     while (i < runs) : (i += 1) {
         var counting = CountingAllocator.init(base_allocator);
-        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
+        var terminal = try terminal_mod.Terminal.initWithHistory(
             counting.allocator(),
             40,
             120,
@@ -383,7 +383,7 @@ fn runReplayRecordWorkload(
 
     for (observations) |*obs| {
         var counting = CountingAllocator.init(base_allocator);
-        var terminal = try terminal_mod.Terminal.initWithCellsAndHistory(
+        var terminal = try terminal_mod.Terminal.initWithHistory(
             counting.allocator(),
             rows,
             cols,

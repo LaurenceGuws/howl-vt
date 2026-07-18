@@ -9,7 +9,7 @@ const StreamHarness = stream_harness.Harness;
 
 test "terminal: stream applies bytes to grid state deterministically" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -30,7 +30,7 @@ test "terminal: stream applies bytes to grid state deterministically" {
 
 test "terminal: OSC cursor colors route into semantic cursor owner" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();

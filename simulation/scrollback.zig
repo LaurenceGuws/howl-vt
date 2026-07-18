@@ -64,7 +64,7 @@ pub fn runScenario(allocator: std.mem.Allocator, seed: u64, op_count: ScenarioOp
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
 
-    var vt = try Terminal.initWithCellsAndHistory(allocator, 24, 80, 4096);
+    var vt = try Terminal.initWithHistory(allocator, 24, 80, 4096);
     defer vt.deinit();
 
     var i: ScenarioOpCount = 0;
@@ -91,7 +91,7 @@ pub fn runCanonicalPreservation(allocator: std.mem.Allocator, seed: u64, options
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
 
-    var vt = try Terminal.initWithCellsAndHistory(
+    var vt = try Terminal.initWithHistory(
         allocator,
         options.initial_rows,
         options.initial_cols,

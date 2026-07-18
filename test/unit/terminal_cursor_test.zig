@@ -18,7 +18,7 @@ fn view(terminal: *const Terminal) screen_set.View {
 
 test "terminal cursor: save restore is terminal-owned per active bank" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -32,7 +32,7 @@ test "terminal cursor: save restore is terminal-owned per active bank" {
 
 test "terminal cursor: restore without prior save homes and clears charset state only" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -50,7 +50,7 @@ test "terminal cursor: restore without prior save homes and clears charset state
 
 test "terminal cursor: alt screen enter resets alt cursor instead of copying primary" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -65,7 +65,7 @@ test "terminal cursor: alt screen enter resets alt cursor instead of copying pri
 
 test "terminal cursor: decscusr no-shape stays explicit through surface view" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 2, 2);
+    var terminal = try Terminal.init(allocator, 2, 2);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -79,7 +79,7 @@ test "terminal cursor: decscusr no-shape stays explicit through surface view" {
 
 test "terminal cursor: savepoint restores Kitty cursor payload and leaves visibility and colors alone" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
 
     const active_screen = terminal.screen_state.active();
@@ -130,7 +130,7 @@ test "terminal cursor: savepoint restores Kitty cursor payload and leaves visibi
 
 test "terminal cursor: 1049 restores primary bank and 47 leaves banks independent" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();

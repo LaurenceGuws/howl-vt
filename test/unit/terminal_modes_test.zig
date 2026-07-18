@@ -91,7 +91,7 @@ fn mediaCopyRequest(terminal: *const Terminal) ?u16 {
 
 test "encodeMouse returns empty output and does not mutate state" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.init(allocator, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -127,7 +127,7 @@ test "encodeMouse returns empty output and does not mutate state" {
 
 test "mouse reporting is gated by DECSET mouse modes and SGR protocol" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.init(allocator, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -176,7 +176,7 @@ test "mouse reporting is gated by DECSET mouse modes and SGR protocol" {
 
 test "mouse reporting supports legacy x10 normal utf8 and urxvt encodings" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 5, 10);
+    var terminal = try Terminal.init(allocator, 5, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -204,7 +204,7 @@ test "mouse reporting supports legacy x10 normal utf8 and urxvt encodings" {
 
 test "mouse mode queries and save restore include extended protocols" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -219,7 +219,7 @@ test "mouse mode queries and save restore include extended protocols" {
 
 test "application cursor mode changes arrow key encoding" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -234,7 +234,7 @@ test "application cursor mode changes arrow key encoding" {
 
 test "kitty keyboard set query push and pop flags" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -256,7 +256,7 @@ test "kitty keyboard set query push and pop flags" {
 
 test "kitty keyboard flags stay separate across alternate screen" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -270,7 +270,7 @@ test "kitty keyboard flags stay separate across alternate screen" {
 
 test "kitty keyboard mode switches existing keys to CSI-u family" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -284,7 +284,7 @@ test "kitty keyboard mode switches existing keys to CSI-u family" {
 
 test "focus reports are gated by DECSET 1004" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -300,7 +300,7 @@ test "focus reports are gated by DECSET 1004" {
 
 test "bracketed paste wrappers are gated by DECSET 2004" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 8);
+    var terminal = try Terminal.init(allocator, 3, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -316,7 +316,7 @@ test "bracketed paste wrappers are gated by DECSET 2004" {
 
 test "report queries append pending host output" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -330,7 +330,7 @@ test "report queries append pending host output" {
 
 test "report query limit fails without partial pending output" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -347,7 +347,7 @@ test "report query limit fails without partial pending output" {
 
 test "ENQ default answerback is empty and printable space remains text" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 2, 8);
+    var terminal = try Terminal.init(allocator, 2, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -365,7 +365,7 @@ test "ENQ default answerback is empty and printable space remains text" {
 
 test "extended report queries append host output" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 18);
+    var terminal = try Terminal.init(allocator, 4, 18);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -377,7 +377,7 @@ test "extended report queries append host output" {
 
 test "ANSI mode queries and XTREPORTCOLORS append host output" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -388,7 +388,7 @@ test "ANSI mode queries and XTREPORTCOLORS append host output" {
 
 test "XTREPORTSGR reports common rectangle attrs conservatively" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 2, 4);
+    var terminal = try Terminal.init(allocator, 2, 4);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -399,7 +399,7 @@ test "XTREPORTSGR reports common rectangle attrs conservatively" {
 
 test "XTREPORTSGR reports extended style attrs" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 1, 2);
+    var terminal = try Terminal.init(allocator, 1, 2);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -410,7 +410,7 @@ test "XTREPORTSGR reports extended style attrs" {
 
 test "ANSI modes affect key encoding and insert writes" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 2, 4);
+    var terminal = try Terminal.init(allocator, 2, 4);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -433,7 +433,7 @@ test "ANSI modes affect key encoding and insert writes" {
 
 test "checksum extension affects rectangular checksum reply" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 2, 2);
+    var terminal = try Terminal.init(allocator, 2, 2);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -448,7 +448,7 @@ test "checksum extension affects rectangular checksum reply" {
 
 test "locator requests reply unavailable, then current position, then disable one-shot" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -472,7 +472,7 @@ test "locator requests reply unavailable, then current position, then disable on
 
 test "locator button and filter events append DECLRP" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -494,7 +494,7 @@ test "locator button and filter events append DECLRP" {
 
 test "DECCIR cursor information request is not supported" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 3, 10);
+    var terminal = try Terminal.init(allocator, 3, 10);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -505,7 +505,7 @@ test "DECCIR cursor information request is not supported" {
 
 test "DECXCPR appends DEC cursor position report" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -516,7 +516,7 @@ test "DECXCPR appends DEC cursor position report" {
 
 test "DEC locator DSR replies status and type" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -527,7 +527,7 @@ test "DEC locator DSR replies status and type" {
 
 test "DEC mode queries append DECRPM replies" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -538,7 +538,7 @@ test "DEC mode queries append DECRPM replies" {
 
 test "DECRQSS replies for owned state and invalid requests" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -554,7 +554,7 @@ test "DECRQSS replies for owned state and invalid requests" {
 
 test "DCS resource queries return conservative invalid replies" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -566,7 +566,7 @@ test "DCS resource queries return conservative invalid replies" {
 
 test "DCS legacy payload protocols retain latest host-neutral payload" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -578,7 +578,7 @@ test "DCS legacy payload protocols retain latest host-neutral payload" {
 
 test "DCS legacy payload protocols retain latest host-neutral payload across slices" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -591,7 +591,7 @@ test "DCS legacy payload protocols retain latest host-neutral payload across sli
 
 test "legacy Tektronix C0 and ESC controls retain latest host-neutral state" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -605,7 +605,7 @@ test "legacy Tektronix C0 and ESC controls retain latest host-neutral state" {
 
 test "XTSAVE and XTRESTORE restore supported DEC private modes" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -627,7 +627,7 @@ test "XTSAVE and XTRESTORE restore supported DEC private modes" {
 
 test "application keypad modes affect keypad encoding and DECRQM" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -648,7 +648,7 @@ test "application keypad modes affect keypad encoding and DECRQM" {
 
 test "modifyOtherKeys set query disable and encoding" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -669,7 +669,7 @@ test "modifyOtherKeys set query disable and encoding" {
 
 test "xterm key format query reset and other-key encoding" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();
@@ -686,7 +686,7 @@ test "xterm key format query reset and other-key encoding" {
 
 test "low priority private modes and media copy retain host-neutral state" {
     const allocator = std.testing.allocator;
-    var terminal = try Terminal.initWithCells(allocator, 4, 8);
+    var terminal = try Terminal.init(allocator, 4, 8);
     defer terminal.deinit();
     var stream = try StreamHarness.init(&terminal);
     defer stream.deinit();

@@ -87,7 +87,7 @@ test "pty feed replay matches whole feed" {
     const gpa = std.testing.allocator;
     const fixture = "ABC\nDEF\x1b[31mRED\x1b[0m";
 
-    var whole = try Terminal.initWithCells(gpa, 4, 16);
+    var whole = try Terminal.init(gpa, 4, 16);
     defer whole.deinit();
     var whole_stream = try StreamHarness.init(&whole);
     defer whole_stream.deinit();
@@ -104,7 +104,7 @@ test "pty feed replay matches whole feed" {
     );
     defer record.deinit();
 
-    var replayed = try Terminal.initWithCells(gpa, 4, 16);
+    var replayed = try Terminal.init(gpa, 4, 16);
     defer replayed.deinit();
     try replay(&replayed, &record);
     var replay_snap = try captureSnapshot(&replayed);
