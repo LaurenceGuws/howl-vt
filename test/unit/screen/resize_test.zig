@@ -1,5 +1,7 @@
 const std = @import("std");
 const screen_mod = @import("../../../src/screen.zig");
+const history_mod = @import("../../../src/screen/history.zig");
+const resize_mod = @import("../../../src/screen/resize.zig");
 const semantic_event = @import("../../../src/semantic_event.zig");
 
 const Grid = screen_mod.Screen;
@@ -28,6 +30,61 @@ fn canonicalLogicalStream(allocator: std.mem.Allocator, screen: *const Grid) ![]
 
 test "screen resize is transactional at every allocation failure" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, resizeScreenTransaction, .{});
+}
+
+test "screen resize allocation owners have exact contracts and reusable failure paths" {
+    const collect: *const fn (*const Grid, std.mem.Allocator) std.mem.Allocator.Error!history_mod.LogicalSnapshot = Grid.collectLogicalSnapshot;
+    const reflow: *const fn (std.mem.Allocator, history_mod.LogicalSnapshot, u16) std.mem.Allocator.Error!resize_mod.ReflowState = resize_mod.reflowLogicalLines;
+    const allocate: *const fn (std.mem.Allocator, u16, u16, ?[]bool) std.mem.Allocator.Error!resize_mod.ResizeBuffers = resize_mod.allocResizeBuffers;
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, collectSnapshotAllocation, .{collect});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, reflowAllocation, .{reflow});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, resizeBuffersAllocation, .{allocate});
+}
+
+fn collectSnapshotAllocation(
+    allocator: std.mem.Allocator,
+    collect: *const fn (*const Grid, std.mem.Allocator) std.mem.Allocator.Error!history_mod.LogicalSnapshot,
+) !void {
+    var screen = try Grid.initWithCellsAndHistory(std.testing.allocator, 2, 4, 8);
+    defer screen.deinit(std.testing.allocator);
+    apply(&screen, .{ .write_text = "ABCDEFGHIJ" });
+
+    var snapshot = collect(&screen, allocator) catch |err| {
+        var retry = try collect(&screen, std.testing.allocator);
+        retry.deinit(std.testing.allocator);
+        return err;
+    };
+    snapshot.deinit(allocator);
+}
+
+fn reflowAllocation(
+    allocator: std.mem.Allocator,
+    reflow: *const fn (std.mem.Allocator, history_mod.LogicalSnapshot, u16) std.mem.Allocator.Error!resize_mod.ReflowState,
+) !void {
+    var screen = try Grid.initWithCellsAndHistory(std.testing.allocator, 2, 4, 8);
+    defer screen.deinit(std.testing.allocator);
+    apply(&screen, .{ .write_text = "ABCDEFGHIJ" });
+    var snapshot = try screen.collectLogicalSnapshot(std.testing.allocator);
+    defer snapshot.deinit(std.testing.allocator);
+
+    var state = reflow(allocator, snapshot, 3) catch |err| {
+        var retry = try reflow(std.testing.allocator, snapshot, 3);
+        retry.deinit(std.testing.allocator);
+        return err;
+    };
+    state.deinit(allocator);
+}
+
+fn resizeBuffersAllocation(
+    allocator: std.mem.Allocator,
+    allocate: *const fn (std.mem.Allocator, u16, u16, ?[]bool) std.mem.Allocator.Error!resize_mod.ResizeBuffers,
+) !void {
+    var buffers = allocate(allocator, 3, 5, null) catch |err| {
+        var retry = try allocate(std.testing.allocator, 3, 5, null);
+        retry.deinit(std.testing.allocator);
+        return err;
+    };
+    buffers.deinit(allocator);
 }
 
 fn resizeScreenTransaction(allocator: std.mem.Allocator) !void {

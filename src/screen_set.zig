@@ -127,7 +127,7 @@ pub const Set = struct {
     ///
     /// Allocation failure leaves both screens unchanged and at matching
     /// dimensions.
-    pub fn resize(self: *Set, allocator: std.mem.Allocator, rows: u16, cols: u16) error{OutOfMemory}!void {
+    pub fn resize(self: *Set, allocator: std.mem.Allocator, rows: u16, cols: u16) std.mem.Allocator.Error!void {
         var primary = try self.primary.prepareResize(allocator, rows, cols);
         errdefer primary.deinit(allocator);
         var alternate = try self.alternate.prepareResize(allocator, rows, cols);

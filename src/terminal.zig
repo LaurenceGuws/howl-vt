@@ -35,7 +35,7 @@ pub const Terminal = struct {
     /// Reports invalid zero dimensions or allocation failure during construction.
     pub const InitError = error{ InvalidDimensions, OutOfMemory };
     /// Reports invalid zero dimensions or allocation failure before resize mutation.
-    pub const ResizeError = error{ InvalidDimensions, OutOfMemory };
+    pub const ResizeError = error{InvalidDimensions} || std.mem.Allocator.Error;
     /// Exposes the typed host-input vocabulary accepted by encodeInput.
     pub const InputEvent = input_event.Event;
     /// Provides caller-owned fixed scratch storage for allocation-free input encoding.

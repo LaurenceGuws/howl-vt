@@ -12,7 +12,7 @@ by themselves.
 | TigerBeetle defensiveness | 9/10 | Input failures propagate exactly and Screen runtime allocation failure preserves paired history state; broader typed hostile-operation proof remains. |
 | Character/capability density | 10/10 | The root exports one direct native `Terminal` owner without compatibility layers or additional ownership machinery. |
 | Ownership/cleanup | 9/10 | Resize and runtime history replacement are transactional; every temporary owner has failure cleanup and successful reuse proof. |
-| Exact failures | 8/10 | Parser construction, stream/DCS capture, OSC 52 decode, input, and retained consequences expose exact failures; resize/history allocation helpers still infer error sets. |
+| Exact failures | 10/10 | Parser, stream, OSC, input, retained consequences, logical snapshots, reflow, and resize storage expose their complete current failure vocabularies. |
 | Documentation | 10/10 | The source audit covers every source owner and retained public declaration and guards the one-symbol embedding root. |
 | Hostile-input evidence | 8/10 | Native fuzzing covers bytes, resize, reset, inspection, and post-error reuse; exhaustive allocation proof now covers input and runtime history, while other typed host operations remain absent. |
 | Embedding surface | 10/10 | `src/howl_vt.zig` exports one directly owned native `Terminal`; current root-only integration proof exercises the accepted embedding shape. |
@@ -70,13 +70,15 @@ by themselves.
 
 ### VT-019 — Allocation owners expose inferred failure sets
 
-- Status: open
-- Path/symbol: `src/screen/resize.zig:reflowLogicalLines`,
-  `allocResizeBuffers`;
+- Status: resolved
+- Path/symbol: `src/parser.zig:Parser.init`;
+  `src/stream_terminal.zig:DcsCapture.start`, `put`,
+  `TerminalStreamState.initAlloc`; `src/osc.zig:decodeClipboardSet`;
+  `src/screen/resize.zig:reflowLogicalLines`, `allocResizeBuffers`;
   `src/screen.zig:collectLogicalSnapshot`
-- Defect: these remaining allocation boundaries infer their error sets, so
-  callers cannot review the complete failure vocabulary from the owner
-  contract and implementation changes can widen it silently.
+- Defect: these allocation and decode boundaries inferred their error sets, so
+  callers could not review their complete failure vocabularies and
+  implementation changes could widen them silently.
 - Bars: defensiveness, exact failures, deliberate modification
 - Shape: give each owner the smallest exact error set supported by its current
   operations, preserving direct propagation through existing callers.
@@ -90,6 +92,13 @@ by themselves.
   alphabet bytes, and `OutOfMemory`; caller-buffer decode additionally owns
   `ShortBuffer`. Direct tests exercise each reachable error, reset/reuse after
   DCS failures, and constructor cleanup without compatibility errors.
+- Resolution: logical snapshot, reflow, replacement-buffer, and directly
+  coupled resize helpers now use `std.mem.Allocator.Error` as the single exact
+  allocation vocabulary. Typed function assignments pin the three owner
+  boundaries. Focused exhaustive failure injection releases partial owners,
+  preserves source state, and completes a subsequent snapshot, reflow, or
+  buffer allocation. Existing Screen and Terminal sweeps continue proving
+  transactional resize and post-failure usability.
 
 ### VT-020 — Native hostile proof omits typed host operations
 

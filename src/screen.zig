@@ -251,7 +251,7 @@ pub const Screen = struct {
     /// Allocation failure leaves this screen unchanged. Successful replacement
     /// preserves logical content and configured cursor defaults, resets margins
     /// to the full new grid, and releases the old owned storage.
-    pub fn resize(self: *Screen, allocator: std.mem.Allocator, rows: u16, cols: u16) error{OutOfMemory}!void {
+    pub fn resize(self: *Screen, allocator: std.mem.Allocator, rows: u16, cols: u16) std.mem.Allocator.Error!void {
         var replacement = try self.prepareResize(allocator, rows, cols);
         std.mem.swap(Screen, self, &replacement);
         replacement.deinit(allocator);
@@ -261,7 +261,7 @@ pub const Screen = struct {
     ///
     /// The caller owns the returned Screen and must call `deinit` unless it
     /// transfers ownership by swapping it into a Screen owner.
-    pub fn prepareResize(self: *const Screen, allocator: std.mem.Allocator, rows: u16, cols: u16) error{OutOfMemory}!Screen {
+    pub fn prepareResize(self: *const Screen, allocator: std.mem.Allocator, rows: u16, cols: u16) std.mem.Allocator.Error!Screen {
         var lines = try self.collectLogicalSnapshot(allocator);
         defer lines.deinit(allocator);
 
@@ -351,7 +351,7 @@ pub const Screen = struct {
         reflow: ReflowState,
         viewport: ViewportState,
         cols: u16,
-    ) !void {
+    ) std.mem.Allocator.Error!void {
         std.debug.assert(reflow.line_row_starts.items.len == lines.logical_lines.items.len);
         std.debug.assert(reflow.line_row_counts.items.len == lines.logical_lines.items.len);
         std.debug.assert(viewport.total_rows == history_mod.count32(reflow.rewrapped.items.len));
@@ -375,7 +375,7 @@ pub const Screen = struct {
         try self.installResizeProjection(allocator, reflow, viewport);
     }
 
-    fn installResizeProjection(self: *Screen, allocator: std.mem.Allocator, reflow: ReflowState, viewport: ViewportState) !void {
+    fn installResizeProjection(self: *Screen, allocator: std.mem.Allocator, reflow: ReflowState, viewport: ViewportState) std.mem.Allocator.Error!void {
         self.history_count = 0;
         self.history_write_idx = 0;
         if (self.history_capacity == 0 or self.cols == 0) return;
@@ -412,7 +412,7 @@ pub const Screen = struct {
         hidden_rows_in_first_visible_line: u16,
         rewrapped: []const RewrappedRow,
         cols: u16,
-    ) !void {
+    ) std.mem.Allocator.Error!void {
         self.clearHistoryAuthority(allocator);
 
         std.debug.assert(line_row_starts.len == logical_lines.len);
@@ -551,7 +551,7 @@ pub const Screen = struct {
     }
 
     /// Rebuild projected history rows from retained logical authority.
-    fn rebuildHistoryProjection(self: *Screen, allocator: std.mem.Allocator) !void {
+    fn rebuildHistoryProjection(self: *Screen, allocator: std.mem.Allocator) std.mem.Allocator.Error!void {
         self.history_count = 0;
         self.history_write_idx = 0;
 
@@ -567,8 +567,10 @@ pub const Screen = struct {
         }
     }
 
-    /// Clone retained, open, and visible content into one owned logical snapshot.
-    pub fn collectLogicalSnapshot(self: *const Screen, allocator: std.mem.Allocator) !LogicalSnapshot {
+    /// Clone retained, open, and visible content into one allocator-owned logical snapshot.
+    ///
+    /// Allocation failure releases partial clones and leaves this Screen unchanged.
+    pub fn collectLogicalSnapshot(self: *const Screen, allocator: std.mem.Allocator) std.mem.Allocator.Error!LogicalSnapshot {
         var result = LogicalSnapshot{};
         errdefer result.deinit(allocator);
 
@@ -620,7 +622,7 @@ pub const Screen = struct {
         result: *LogicalSnapshot,
         current_line: *LogicalLine,
         row: u16,
-    ) !void {
+    ) std.mem.Allocator.Error!void {
         const wrapped = self.rowWrapped(row);
         const content_len = self.sourceRowContentLen(row);
 
@@ -666,7 +668,7 @@ pub const Screen = struct {
         return self.cursor.col;
     }
 
-    fn appendProjectionRows(self: *Screen, allocator: std.mem.Allocator, cells: []const Cell, continues_to_visible: bool) !void {
+    fn appendProjectionRows(self: *Screen, allocator: std.mem.Allocator, cells: []const Cell, continues_to_visible: bool) std.mem.Allocator.Error!void {
         const cols: u32 = self.cols;
         if (cols == 0) return;
         const cell_count: u32 = @intCast(cells.len);
@@ -704,7 +706,7 @@ pub const Screen = struct {
         return slot;
     }
 
-    fn appendProjectedRow(self: *Screen, allocator: std.mem.Allocator, cells: []const Cell, wrapped: bool) !void {
+    fn appendProjectedRow(self: *Screen, allocator: std.mem.Allocator, cells: []const Cell, wrapped: bool) std.mem.Allocator.Error!void {
         if (self.cols == 0) return;
         const capacity_target = @min(self.history_count + 1, @as(u32, self.history_capacity));
         try self.ensureProjectedCapacity(allocator, capacity_target);
@@ -733,7 +735,7 @@ pub const Screen = struct {
         self.history_count += 1;
     }
 
-    fn ensureProjectedCapacity(self: *Screen, allocator: std.mem.Allocator, min_rows: u32) !void {
+    fn ensureProjectedCapacity(self: *Screen, allocator: std.mem.Allocator, min_rows: u32) std.mem.Allocator.Error!void {
         if (self.cols == 0) return;
 
         const current_rows = self.projectedCapacity();
@@ -2115,14 +2117,14 @@ fn colCount(value: u16) u32 {
     return value;
 }
 
-fn cloneLogicalLine(allocator: std.mem.Allocator, cells: []const cell.Cell) !LogicalLine {
+fn cloneLogicalLine(allocator: std.mem.Allocator, cells: []const cell.Cell) std.mem.Allocator.Error!LogicalLine {
     var line = LogicalLine{};
     errdefer line.deinit(allocator);
     try line.cells.appendSlice(allocator, cells);
     return line;
 }
 
-fn cloneAuthorityLine(allocator: std.mem.Allocator, cells: []const cell.Cell) !HistoryLine {
+fn cloneAuthorityLine(allocator: std.mem.Allocator, cells: []const cell.Cell) std.mem.Allocator.Error!HistoryLine {
     var line = HistoryLine{};
     errdefer line.deinit(allocator);
     try line.cells.appendSlice(allocator, cells);

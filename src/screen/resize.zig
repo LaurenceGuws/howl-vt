@@ -72,8 +72,10 @@ pub const ResizeBuffers = struct {
     }
 };
 
-/// Reflow one owned logical snapshot to `cols` without consuming it.
-pub fn reflowLogicalLines(allocator: std.mem.Allocator, lines: LogicalSnapshot, cols: u16) !ReflowState {
+/// Reflow one borrowed logical snapshot to allocator-owned rows without consuming it.
+///
+/// Allocation failure releases partial output and leaves the snapshot reusable.
+pub fn reflowLogicalLines(allocator: std.mem.Allocator, lines: LogicalSnapshot, cols: u16) std.mem.Allocator.Error!ReflowState {
     var result = ReflowState{};
     errdefer result.deinit(allocator);
 
@@ -100,7 +102,7 @@ pub fn reflowLogicalLines(allocator: std.mem.Allocator, lines: LogicalSnapshot, 
     return result;
 }
 
-fn appendRewrappedRows(allocator: std.mem.Allocator, result: *ReflowState, cells: []const Cell, row_count: u16, cols: u16) !void {
+fn appendRewrappedRows(allocator: std.mem.Allocator, result: *ReflowState, cells: []const Cell, row_count: u16, cols: u16) std.mem.Allocator.Error!void {
     if (cols == 0) return;
     if (row_count == 0) unreachable;
 
@@ -124,7 +126,7 @@ fn appendRewrappedRows(allocator: std.mem.Allocator, result: *ReflowState, cells
     std.debug.assert(history_mod.count32(result.flat_rows.items.len) == flat_rows_before + @as(u32, row_count) * colCount(cols));
 }
 
-fn appendRowCells(allocator: std.mem.Allocator, flat_rows: *std.ArrayListUnmanaged(Cell), cells: []const Cell, start: u32, cols: u16) !void {
+fn appendRowCells(allocator: std.mem.Allocator, flat_rows: *std.ArrayListUnmanaged(Cell), cells: []const Cell, start: u32, cols: u16) std.mem.Allocator.Error!void {
     const cell_len = history_mod.count32(cells.len);
     var col_idx: u16 = 0;
     while (col_idx < cols) : (col_idx += 1) {
@@ -196,8 +198,10 @@ pub fn projectViewport(logical_line_count: u32, reflow: ReflowState, rows: u16) 
     };
 }
 
-/// Allocate complete visible-grid replacement buffers.
-pub fn allocResizeBuffers(allocator: std.mem.Allocator, rows: u16, cols: u16, old_tab_stops: ?[]bool) !ResizeBuffers {
+/// Allocate complete visible-grid replacement buffers for transfer to one Screen.
+///
+/// Allocation failure releases every completed buffer and returns no owner.
+pub fn allocResizeBuffers(allocator: std.mem.Allocator, rows: u16, cols: u16, old_tab_stops: ?[]bool) std.mem.Allocator.Error!ResizeBuffers {
     const cell_count = cellCount(rows, cols);
     var cells: ?[]Cell = null;
     if (cell_count > 0) {
