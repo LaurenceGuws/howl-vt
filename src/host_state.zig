@@ -4,7 +4,6 @@ const legacy_control = @import("legacy_control.zig");
 const locator = @import("locator.zig");
 const osc_color = @import("osc_color.zig");
 const osc = @import("osc.zig");
-const parser = @import("parser.zig");
 
 const LocatorNs = locator;
 const OscColorNs = osc_color;
@@ -30,16 +29,16 @@ pub const ApplyError = error{
     ConsequenceLimit,
 };
 
-pub const pending_output_max_bytes: u32 = parser.max_large_osc_control_bytes;
-pub const retained_payload_max_bytes: u32 = parser.max_large_osc_control_bytes;
-pub const retained_metadata_max_bytes: u32 = parser.max_metadata_control_bytes;
+/// Current bound on accumulated terminal reply bytes.
+pub const pending_output_max_bytes: u32 = 1024 * 1024;
+/// Current bound on one retained bulk consequence.
+pub const retained_payload_max_bytes: u32 = 1024 * 1024;
+/// Current bound on one retained metadata consequence.
+pub const retained_metadata_max_bytes: u32 = 4096;
 pub const title_max_bytes: u32 = 1024;
 pub const hyperlink_target_max_count: u32 = 4096;
 
 comptime {
-    std.debug.assert(pending_output_max_bytes == parser.max_large_osc_control_bytes);
-    std.debug.assert(retained_payload_max_bytes == parser.max_large_osc_control_bytes);
-    std.debug.assert(retained_metadata_max_bytes == parser.max_metadata_control_bytes);
     std.debug.assert(title_max_bytes <= retained_metadata_max_bytes);
     std.debug.assert(hyperlink_target_max_count > 0);
 }

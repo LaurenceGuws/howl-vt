@@ -272,3 +272,35 @@ test "osc control: clipboard payload uses large limit" {
     try std.testing.expectEqualStrings("c;abcdefgh", snapshot.payload());
     try std.testing.expectEqual(@as(?(error{ OutOfMemory, StringControlLimit }), null), osc.takeFailure());
 }
+
+test "osc control: large payload boundary rejects and resets exactly" {
+    var osc = try OscControl.init(std.testing.allocator, 16, 4, 4);
+    defer osc.deinit();
+
+    const cases = [_]struct {
+        body: []const u8,
+        payload: []const u8,
+        exceeds_limit: bool,
+    }{
+        .{ .body = "52;abc", .payload = "abc", .exceeds_limit = false },
+        .{ .body = "52;abcd", .payload = "abcd", .exceeds_limit = false },
+        .{ .body = "52;abcde", .payload = "abcd", .exceeds_limit = true },
+        .{ .body = "52;z", .payload = "z", .exceeds_limit = false },
+    };
+
+    for (cases) |case| {
+        osc.start();
+        for (case.body) |byte| _ = osc.feed(byte);
+        _ = osc.feed(0x07);
+        const snapshot = osc.snapshot(.bel);
+        try std.testing.expectEqualStrings(case.payload, snapshot.payload());
+        if (case.exceeds_limit) {
+            try std.testing.expectEqual(error.StringControlLimit, osc.takeFailure().?);
+        } else {
+            try std.testing.expectEqual(
+                @as(?(error{ OutOfMemory, StringControlLimit }), null),
+                osc.takeFailure(),
+            );
+        }
+    }
+}

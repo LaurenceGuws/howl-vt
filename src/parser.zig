@@ -35,15 +35,11 @@ const control_init_capacity = 256;
 // metadata paths, not bulk transport.
 const metadata_control_max_bytes = 4096;
 // Large OSC payload families such as clipboard, text sizing, and file-transfer
-// can legitimately exceed the metadata ceiling. Keep their parser-owned bound
-// aligned to the same 1 MiB burst scale already used for APC and PTY transport
-// proof until host-neutral protocol ownership says otherwise.
+// use a larger transient parser buffer. This acceptance limit does not define
+// how much any downstream owner may retain.
 const large_osc_control_max_bytes = 1024 * 1024;
-// APC is the one owned string-control family that legitimately carries large
-// Kitty payload chunks. Ghostty gives Kitty APC a much larger default budget
-// because oversized string controls should fail before unbounded buffering.
-// Keep Howl explicit and bounded, but follow Ghostty's larger remote-upload
-// posture rather than reusing the generic large-OSC ceiling.
+// Production APC payload bytes are counted and discarded. This limit is the
+// accepted ignored-byte tolerance before rejection, not a memory budget.
 const apc_max_bytes = 65 * 1024 * 1024;
 
 pub const max_params = csi_max_params;

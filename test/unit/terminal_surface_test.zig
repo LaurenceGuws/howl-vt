@@ -215,29 +215,6 @@ test "terminal feed fails overlong OSC instead of truncating it" {
     try std.testing.expect(recovered.state_changed);
 }
 
-test "terminal feed fails overlong APC instead of truncating it" {
-    const allocator = std.testing.allocator;
-    var terminal = try Terminal.init(allocator, 2, 4);
-    defer terminal.deinit();
-
-    _ = try terminal.feed("\x1b_");
-
-    const chunk_len: usize = 4096;
-    const chunk = try allocator.alloc(u8, chunk_len);
-    defer allocator.free(chunk);
-    @memset(chunk, 'A');
-
-    var sent: usize = 0;
-    while (sent + chunk_len <= parser_mod.max_apc_control_bytes) : (sent += chunk_len) {
-        _ = try terminal.feed(chunk);
-    }
-
-    try std.testing.expectError(error.StringControlLimit, terminal.feed(chunk[0..1]));
-
-    const recovered = try terminal.feed("A");
-    try std.testing.expect(recovered.state_changed);
-}
-
 test "terminal feed fails overlong PM instead of truncating it" {
     const allocator = std.testing.allocator;
     var terminal = try Terminal.init(allocator, 2, 4);

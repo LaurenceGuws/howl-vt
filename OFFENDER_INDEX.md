@@ -344,6 +344,13 @@ fragmentation and indirect ownership are defects.
   buffering and retained host consequences are different owners. One parser
   can reserve/grow very large payloads without protocol-specific retained-state
   evidence.
+- Observed progress: parser acceptance and HostState retention now own their
+  unchanged numeric bounds independently. APC production bytes are counted and
+  discarded; direct bounded-state tests prove APC and PM limit-1, limit, limit+1,
+  and reset/reuse without constructing 65 MiB input. A small configured
+  `OscControl` proves large-payload acceptance, rejection, and reuse at the same
+  boundaries. The numeric choices and protocol-specific retention needs remain
+  undecided.
 - Bars: bounds, ownership, density, hostile-input evidence, maturity
 - Simpler shape: protocol-family limits sized from native ownership and
   retention behavior; streaming or rejection where bulk payload ownership

@@ -345,3 +345,43 @@ fn mapDecSpecial(byte: u8) u21 {
         else => byte,
     };
 }
+
+test "ignored APC bytes enforce the exact tolerance and reset" {
+    var control: BoundedStringControl = .{};
+    control.start();
+    control.count = parser_mod.max_apc_control_bytes - 1;
+
+    try control.put(parser_mod.max_apc_control_bytes);
+    try std.testing.expectEqual(parser_mod.max_apc_control_bytes, control.count);
+    try std.testing.expectError(
+        error.StringControlLimit,
+        control.put(parser_mod.max_apc_control_bytes),
+    );
+
+    control.reset();
+    try std.testing.expect(!control.active);
+    try std.testing.expectEqual(@as(u32, 0), control.count);
+    control.start();
+    try control.put(parser_mod.max_apc_control_bytes);
+    try std.testing.expectEqual(@as(u32, 1), control.count);
+}
+
+test "ignored PM bytes enforce the exact tolerance and reset" {
+    var control: BoundedStringControl = .{};
+    control.start();
+    control.count = parser_mod.max_metadata_control_bytes - 1;
+
+    try control.put(parser_mod.max_metadata_control_bytes);
+    try std.testing.expectEqual(parser_mod.max_metadata_control_bytes, control.count);
+    try std.testing.expectError(
+        error.StringControlLimit,
+        control.put(parser_mod.max_metadata_control_bytes),
+    );
+
+    control.reset();
+    try std.testing.expect(!control.active);
+    try std.testing.expectEqual(@as(u32, 0), control.count);
+    control.start();
+    try control.put(parser_mod.max_metadata_control_bytes);
+    try std.testing.expectEqual(@as(u32, 1), control.count);
+}
