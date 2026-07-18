@@ -171,9 +171,10 @@ fragmentation and indirect ownership are defects.
 
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 
-- Status: open
-- Path/symbol: `src/report.zig:formatOutput` (1 intentional formatting
-  generic). Repository total: 3 occurrences across 3 files;
+- Status: resolved
+- Path/symbol: `src/report.zig:formatOutput`,
+  `src/locator.zig:formatOutput`, `src/osc_color.zig:formatOscReply`.
+  Repository total: 3 intentional occurrences across 3 files;
   `src/input/encode.zig`, `src/host_state.zig`,
   `src/kitty/state.zig`, `src/selection.zig`, and
   `src/screen/cursor.zig`, `src/screen/tabs.zig`, and
@@ -262,6 +263,11 @@ fragmentation and indirect ownership are defects.
   `[]const i32` parser boundary while retaining the checked `usize` to `u32`
   assertion. OSC accumulation now checks and converts its concrete byte
   buffer length directly at the policy-limit comparison.
+- Resolution: every structural generic was removed. The three retained
+  formatting generics directly call `std.fmt.bufPrint`: report uses
+  `{i8}`, `{u8,u16}`, `{u16}`, `{u16,u16}`, `{u16,u8}`, `{u8,u8}`,
+  `{u8,u32}`, and `{u8,u32,u32,u32}` tuples; locator uses `{}` and
+  `{u16,u16,u32,u32}`; OSC color uses `{u3}`, `{u8}`, and `{u16}`.
 
 ### VT-008 — Screen mutation is fragmented by mechanics, not owners
 
