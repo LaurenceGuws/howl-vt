@@ -158,14 +158,16 @@ fragmentation and indirect ownership are defects.
   `selection_projection.CopyError` now owns exact UTF-8/allocation failures;
   exhaustive allocation injection proves selection/content remain usable, and
   invalid stored codepoints return errors rather than trapping.
-- Resolution: `Screen.InitError` is the allocating Screen owner's single exact
-  `error{OutOfMemory}` set and every storage-backed constructor uses it; the
-  existing Terminal constructor allocation-failure sweep retains cleanup
-  evidence across those calls. `encodePaste` now returns exact OutOfMemory,
-  checks wrapper-size arithmetic, documents borrowing and ownership, and has
-  direct tests proving plain paste borrows without allocation, bracketed paste
-  owns the fixed CSI 200/201 pair, failure returns no partial owner, and both
-  successful variants accept one `Encoded.deinit`.
+- Resolution: `Screen.InitError` is the storage owner's exact
+  `error{InvalidDimensions, OutOfMemory}` set. Direct tests reject zero rows or
+  columns; the only zero-sized caller uses the distinct nonallocating
+  cursor-only `Screen.init`. Existing Terminal constructor failure injection
+  retains cleanup evidence across every Screen allocation point. `encodePaste`
+  owns `PasteError`, distinguishing `LengthOverflow` from `OutOfMemory`; its
+  production length helper has a direct overflow test. Plain paste still
+  borrows without allocation, bracketed paste owns the fixed CSI 200/201 pair,
+  failure returns no partial owner, and both successful variants accept one
+  `Encoded.deinit`. `Terminal.encodeInput` exposes `PasteError` unchanged.
 
 ### VT-007 — Structural `anytype` erases screen and terminal ownership
 

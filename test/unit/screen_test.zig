@@ -14,6 +14,12 @@ fn apply(screen: *Screen, event: SemanticEvent) void {
     screen.applyScreen(event);
 }
 
+test "screen storage constructors reject zero dimensions exactly" {
+    try std.testing.expectError(error.InvalidDimensions, Grid.initWithCells(std.testing.allocator, 0, 1));
+    try std.testing.expectError(error.InvalidDimensions, Grid.initWithCells(std.testing.allocator, 1, 0));
+    try std.testing.expectError(error.InvalidDimensions, Grid.initWithCellsAndHistory(std.testing.allocator, 0, 1, 8));
+}
+
 fn emptySeparators() parser_mod.CsiSeparatorList {
     return parser_mod.CsiSeparatorList.initEmpty();
 }

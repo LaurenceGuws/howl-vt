@@ -23,8 +23,8 @@ const HistoryLine = history_mod.HistoryLine;
 
 /// Terminal screen state for cursor, cells, margins, and history.
 pub const Screen = struct {
-    /// Failure while allocating owned Screen storage.
-    pub const InitError = error{OutOfMemory};
+    /// Failure while validating dimensions or allocating owned Screen storage.
+    pub const InitError = error{ InvalidDimensions, OutOfMemory };
 
     pub const Rgb = color.Rgb;
     pub const Color = color.Color;
@@ -151,6 +151,7 @@ pub const Screen = struct {
     }
 
     fn initOwnedVisibleGrid(allocator: std.mem.Allocator, rows: u16, cols: u16, cursor_style_default: CursorStyle) InitError!Screen {
+        if (rows == 0 or cols == 0) return error.InvalidDimensions;
         const cell_count = cellCount(rows, cols);
         const cells: ?[]Cell = if (cell_count > 0) blk: {
             const buf = try allocator.alloc(Cell, @intCast(cell_count));

@@ -10,6 +10,9 @@ pub const Scratch = struct {
     buf: [64]u8 = undefined,
 };
 
+/// Exact failures while constructing an encoded paste result.
+pub const PasteError = error{ LengthOverflow, OutOfMemory };
+
 pub fn encodeKey(vt: anytype, scratch: *Scratch, key_value: keyboard.Key, mod: keyboard.Modifier) []const u8 {
     if (vt.modes.keyboard_action_mode) {
         return scratch.buf[0..0];
@@ -52,21 +55,25 @@ pub fn encodeFocusOut(vt: anytype, scratch: *Scratch) []const u8 {
 ///
 /// Plain paste returns a borrowed view of `text` without allocating. Bracketed
 /// paste allocates one caller-owned result containing the fixed CSI 200/201
-/// pair; allocation-size overflow and allocation failure return OutOfMemory.
-/// The caller must call `Encoded.deinit` once for either result.
-pub fn encodePaste(vt: anytype, allocator: std.mem.Allocator, text: []const u8) error{OutOfMemory}!encoded_owner.Encoded {
+/// pair. Encoded-length overflow is distinct from allocator exhaustion. The
+/// caller must call `Encoded.deinit` once for either successful result.
+pub fn encodePaste(vt: anytype, allocator: std.mem.Allocator, text: []const u8) PasteError!encoded_owner.Encoded {
     const start = if (vt.modes.bracketed_paste) "\x1b[200~" else "";
     const end = if (vt.modes.bracketed_paste) "\x1b[201~" else "";
     if (start.len == 0 and end.len == 0) return .{ .bytes = text };
 
-    const prefix_and_text = std.math.add(usize, start.len, text.len) catch return error.OutOfMemory;
-    const encoded_len = std.math.add(usize, prefix_and_text, end.len) catch return error.OutOfMemory;
+    const encoded_len = try bracketedPasteLength(text.len);
     const out = try allocator.alloc(u8, encoded_len);
     std.debug.assert(out.len == encoded_len);
     @memcpy(out[0..start.len], start);
     @memcpy(out[start.len .. start.len + text.len], text);
     @memcpy(out[start.len + text.len ..], end);
     return .{ .allocator = allocator, .bytes = out };
+}
+
+fn bracketedPasteLength(text_len: usize) error{LengthOverflow}!usize {
+    const with_start = std.math.add(usize, "\x1b[200~".len, text_len) catch return error.LengthOverflow;
+    return std.math.add(usize, with_start, "\x1b[201~".len) catch return error.LengthOverflow;
 }
 
 pub fn encodePasteStart(vt: anytype, scratch: *Scratch) []const u8 {
@@ -101,4 +108,9 @@ fn fixed(scratch: *Scratch, encoded: []const u8) []const u8 {
     @memcpy(scratch.buf[0..encoded.len], encoded);
     std.debug.assert(encoded.len <= scratch.buf.len);
     return scratch.buf[0..encoded.len];
+}
+
+test "bracketed paste length reports arithmetic overflow" {
+    try std.testing.expectEqual(@as(usize, 15), try bracketedPasteLength(3));
+    try std.testing.expectError(error.LengthOverflow, bracketedPasteLength(std.math.maxInt(usize)));
 }

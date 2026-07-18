@@ -390,13 +390,14 @@ pub const Terminal = struct {
     ///
     /// Non-paste results borrow `scratch` or event bytes. Paste encoding may
     /// allocate through `allocator`; callers must always call `deinit` on the
-    /// returned value.
+    /// returned value. Paste length overflow is reported separately from
+    /// allocator exhaustion.
     pub fn encodeInput(
         self: *Terminal,
         allocator: std.mem.Allocator,
         scratch: *InputScratch,
         event: InputEvent,
-    ) error{OutOfMemory}!EncodedInput {
+    ) input_encode.PasteError!EncodedInput {
         return switch (event) {
             .bytes => |bytes| .{ .bytes = bytes },
             .key => |key| .{ .bytes = input_encode.encodeKey(self, scratch, key.key, key.mods) },
