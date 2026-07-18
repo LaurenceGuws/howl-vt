@@ -3,9 +3,16 @@ const cell = @import("cell.zig");
 
 const Cell = cell.Cell;
 
-fn count32(items: anytype) u32 {
-    std.debug.assert(items.len <= std.math.maxInt(u32));
-    return @intCast(items.len);
+/// Convert a checked standard-library length to the history/reflow domain.
+pub fn count32(len: usize) u32 {
+    std.debug.assert(len <= std.math.maxInt(u32));
+    return @intCast(len);
+}
+
+/// Return rows needed for `cell_count`, or zero when no columns exist.
+pub fn rowCountForCells(cell_count: u32, cols: u16) u32 {
+    if (cols == 0) return 0;
+    return @max(@as(u32, 1), std.math.divCeil(u32, cell_count, cols) catch unreachable);
 }
 
 /// Owned logical terminal line used while reflowing retained content.
@@ -74,8 +81,8 @@ pub fn replaceAuthority(
 
     std.debug.assert(line_row_starts.len == logical_lines.len);
     std.debug.assert(line_row_counts.len == logical_lines.len);
-    std.debug.assert(first_visible_line <= count32(logical_lines));
-    if (first_visible_line < count32(logical_lines)) {
+    std.debug.assert(first_visible_line <= count32(logical_lines.len));
+    if (first_visible_line < count32(logical_lines.len)) {
         std.debug.assert(hidden_rows_in_first_visible_line < line_row_counts[@intCast(first_visible_line)]);
     } else {
         std.debug.assert(hidden_rows_in_first_visible_line == 0);
@@ -96,11 +103,11 @@ pub fn replaceAuthority(
     }
     std.debug.assert(self.history_lines.items.len == first_visible_line - kept_complete_start);
 
-    if (first_visible_line < count32(logical_lines) and hidden_rows_in_first_visible_line > 0) {
+    if (first_visible_line < count32(logical_lines.len) and hidden_rows_in_first_visible_line > 0) {
         const line = logical_lines[@intCast(first_visible_line)];
         const row_start = line_row_starts[@intCast(first_visible_line)];
         const row_limit = @min(hidden_rows_in_first_visible_line, line_row_counts[@intCast(first_visible_line)]);
-        std.debug.assert(row_start + row_limit <= count32(rewrapped));
+        std.debug.assert(row_start + row_limit <= count32(rewrapped.len));
         var prefix_len: u32 = 0;
         var hidden_row: u16 = 0;
         while (hidden_row < row_limit) : (hidden_row += 1) {
@@ -108,8 +115,8 @@ pub fn replaceAuthority(
             std.debug.assert(row.len <= cols);
             prefix_len += rewrapped[@intCast(row_start + hidden_row)].len;
         }
-        prefix_len = @min(prefix_len, count32(line.cells.items));
-        std.debug.assert(prefix_len <= count32(line.cells.items));
+        prefix_len = @min(prefix_len, count32(line.cells.items.len));
+        std.debug.assert(prefix_len <= count32(line.cells.items.len));
         self.open_history_line = try cloneAuthorityLine(allocator, line.cells.items[0..@intCast(prefix_len)]);
     }
 

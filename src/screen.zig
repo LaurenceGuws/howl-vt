@@ -1680,8 +1680,7 @@ pub const Screen = struct {
 
     /// Return projected row count for `cells` at the current column width.
     pub fn projectedRowCountForCells(self: *const Screen, cells: []const Cell) u32 {
-        if (self.cols == 0) return 0;
-        return @max(@as(u32, 1), std.math.divCeil(u32, @intCast(cells.len), self.cols) catch unreachable);
+        return history_mod.rowCountForCells(history_mod.count32(cells.len), self.cols);
     }
 
     /// Return retained logical history-line count.
